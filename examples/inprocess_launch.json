@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Dapper AI (In-Process)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/test_example.py",
+      "debugServer": 4711,
+      "inProcess": true,
+      "console": "integratedTerminal"
+    }
+  ]
+}
