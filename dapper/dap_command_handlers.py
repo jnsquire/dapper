@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from dapper.protocol_types import EvaluateArguments
     from dapper.protocol_types import ExceptionInfoArguments
     from dapper.protocol_types import LoadedSourcesRequest
+    from dapper.protocol_types import Module
+    from dapper.protocol_types import ModulesArguments
     from dapper.protocol_types import NextArguments
     from dapper.protocol_types import PauseArguments
     from dapper.protocol_types import SetBreakpointsArguments
@@ -552,3 +554,75 @@ def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
     
     # Send the response
     send_debug_message("response", success=True, body={"sources": loaded_sources})
+
+
+@command_handler("modules")
+def handle_modules(arguments: ModulesArguments | None = None) -> None:
+    """Handle modules request to return loaded Python modules."""
+    # Get all loaded modules from sys.modules
+    all_modules: list[Module] = []
+    
+    for module_name, module in sys.modules.items():
+        if module is None:
+            continue
+            
+        try:
+            # Create module information
+            module_info: Module = {
+                "id": module_name,
+                "name": module_name,
+            }
+            
+            # Add path if available
+            module_file = getattr(module, "__file__", None)
+            if module_file:
+                module_path = Path(module_file).resolve()
+                module_info["path"] = str(module_path)
+                
+                # Determine if it's user code (not in site-packages or standard library)
+                path_str = str(module_path)
+                is_user_code = not any(
+                    part in path_str.lower() for part in
+                    ["site-packages", "lib/python", "lib\\python", "Lib"]
+                )
+                module_info["isUserCode"] = is_user_code
+            
+            # Add version if available
+            if hasattr(module, "__version__"):
+                module_info["version"] = str(module.__version__)
+            
+            # Add package information
+            if hasattr(module, "__package__") and module.__package__:
+                # This is part of a package
+                pass  # We already have the name
+                
+            all_modules.append(module_info)
+            
+        except (AttributeError, TypeError, OSError):
+            # Skip modules that cause errors
+            continue
+    
+    # Sort modules by name for consistent ordering
+    all_modules.sort(key=lambda m: m["name"])
+    
+    # Handle paging if requested
+    if arguments:
+        start_module = arguments.get("startModule", 0)
+        module_count = arguments.get("moduleCount", 0)
+        
+        if module_count > 0:
+            # Return a slice of modules
+            modules = all_modules[start_module:start_module + module_count]
+        else:
+            # Return all modules from start index
+            modules = all_modules[start_module:]
+    else:
+        # Return all modules
+        modules = all_modules
+    
+    # Send the response
+    send_debug_message(
+        "response",
+        success=True,
+        body={"modules": modules, "totalModules": len(all_modules)}
+    )

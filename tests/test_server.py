@@ -295,3 +295,66 @@ async def test_sequence_numbers():
 
     for i, msg in enumerate(mock_connection.written_messages):
         assert msg["seq"] == i + 1
+
+
+@pytest.mark.asyncio
+@patch("dapper.server.PyDebugger")
+async def test_modules_request(mock_debugger_class):
+    """Test the modules request handler"""
+    # Setup mocked debugger
+    mock_debugger = mock_debugger_class.return_value
+    mock_debugger.launch = AsyncCallRecorder(return_value=None)
+    mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
+    
+    # Mock the get_modules method
+    mock_modules = [
+        {"id": "1", "name": "sys", "isUserCode": False},
+        {"id": "2", "name": "os", "isUserCode": False, "path": "/usr/lib/python3.13/os.py"},
+        {"id": "3", "name": "test_module", "isUserCode": True, "path": "/home/user/test_module.py"},
+    ]
+    mock_debugger.get_modules = AsyncCallRecorder(return_value=mock_modules)
+
+    # Create mock connection and server
+    mock_connection = MockConnection()
+    loop = asyncio.get_event_loop()
+    server = DebugAdapterServer(mock_connection, loop)
+    server.debugger = mock_debugger
+
+    # Add initialization and modules request
+    mock_connection.add_request("initialize")
+    mock_connection.add_request("launch", {"program": "test.py"}, seq=2)
+    mock_connection.add_request("configurationDone", seq=3)
+    mock_connection.add_request("modules", {}, seq=4)
+
+    # Run the server with timeout
+    server_task = asyncio.create_task(server.start())
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(server_task, timeout=1.0)
+
+    # Find the modules response
+    modules_response = next(
+        (
+            m
+            for m in mock_connection.written_messages
+            if m.get("type") == "response" and m.get("command") == "modules"
+        ),
+        None,
+    )
+    
+    assert modules_response is not None
+    if modules_response:
+        # Debug output for test failure investigation
+        assert modules_response["request_seq"] == 4, f"Expected seq 4, got response: {modules_response}"
+        assert modules_response["success"] is True, f"Modules request failed: {modules_response}"
+        assert "modules" in modules_response["body"]
+        
+        # Should have some modules loaded (at least sys, os, etc.)
+        modules = modules_response["body"]["modules"]
+        assert isinstance(modules, list)
+        assert len(modules) > 0
+        
+        # Check first module has required fields
+        first_module = modules[0]
+        assert "id" in first_module
+        assert "name" in first_module
+        assert isinstance(first_module.get("isUserCode"), bool)

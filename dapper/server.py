@@ -379,6 +379,30 @@ class RequestHandler:
             "body": {"sources": loaded_sources},
         }
 
+    async def _handle_modules(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle modules request."""
+        args = request.get("arguments", {})
+        start_module = args.get("startModule", 0)
+        module_count = args.get("moduleCount")
+        
+        # Get all loaded modules from the debugger
+        all_modules = await self.server.debugger.get_modules()
+        
+        # Apply paging
+        if module_count is not None:
+            end_module = start_module + module_count
+            modules = all_modules[start_module:end_module]
+        else:
+            modules = all_modules[start_module:]
+        
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "modules",
+            "body": {"modules": modules},
+        }
+
     async def _handle_stack_trace(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle stackTrace request."""
         args = request["arguments"]

@@ -1551,6 +1551,48 @@ class PyDebugger:
 
         return loaded_sources
 
+    async def get_modules(self) -> list[dict[str, Any]]:
+        """Get all loaded Python modules"""
+        all_modules = []
+        
+        for name, module in sys.modules.items():
+            if module is None:
+                continue
+                
+            module_id = str(id(module))
+            
+            # Try to get the module path
+            path = None
+            try:
+                if hasattr(module, "__file__") and module.__file__:
+                    path = module.__file__
+            except Exception:
+                pass
+            
+            # Determine if this is user code (heuristic)
+            is_user_code = False
+            if path:
+                is_user_code = (
+                    not path.startswith(sys.prefix) and
+                    not path.startswith(sys.base_prefix) and
+                    "site-packages" not in path
+                )
+            
+            module_obj = {
+                "id": module_id,
+                "name": name,
+                "isUserCode": is_user_code,
+            }
+            if path:
+                module_obj["path"] = path
+                
+            all_modules.append(module_obj)
+        
+        # Sort modules by name for consistent ordering
+        all_modules.sort(key=lambda m: m["name"])
+        
+        return all_modules
+
     async def get_stack_trace(
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> dict[str, Any]:

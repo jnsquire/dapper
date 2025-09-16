@@ -802,6 +802,28 @@ class PauseArguments(TypedDict):
     threadId: int  # Pause execution for this thread
 
 
+class ModulesArguments(TypedDict):
+    """Arguments for 'modules' request."""
+
+    startModule: NotRequired[int]  # The index of the first module to return; if omitted modules start at 0
+    moduleCount: NotRequired[int]  # The number of modules to return. If moduleCount is not specified or 0, all modules are returned
+
+
+class Module(TypedDict):
+    """A Module object represents a row in the modules view."""
+
+    id: str | int  # Unique identifier for the module
+    name: str  # A name of the module
+    path: NotRequired[str]  # Logical full path to the module
+    isOptimized: NotRequired[bool]  # True if the module is optimized
+    isUserCode: NotRequired[bool]  # True if the module is considered 'user code'
+    version: NotRequired[str]  # Version of Module
+    symbolStatus: NotRequired[str]  # User-understandable description of symbol status
+    symbolFilePath: NotRequired[str]  # Logical full path to the symbol file
+    dateTimeStamp: NotRequired[str]  # Module created or modified, encoded as a RFC 3339 timestamp
+    addressRange: NotRequired[str]  # Address range covered by this module
+
+
 # Event types
 class InitializedEvent(Event):
     """This event indicates that the debug adapter is ready to accept configuration requests."""
