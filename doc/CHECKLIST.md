@@ -54,8 +54,8 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Exception Options**: Advanced exception filtering options
 
 ### Data Breakpoints
-- ❌ **Data Breakpoints**: Break when variable values change
-- ❌ **Watchpoints**: Monitor variable access/modification
+- 🟡 **Data Breakpoints (Phase 1)**: Requests implemented (dataBreakpointInfo, setDataBreakpoints) and server advertises capability. Currently bookkeeping only – no runtime stop on change yet.
+- ❌ **Watchpoints (runtime triggers)**: Break when variable values change (Phase 2 planned: compare stored values per line and emit `stopped` with reason `data breakpoint`).
 
 ---
 
@@ -105,7 +105,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Goto Targets**: Find possible goto locations
 
 ### Modules
-- ❌ **Modules**: List loaded modules
+- ✅ **Modules**: List loaded modules
 - ❌ **Module Source**: Get module source code
 
 ### Exceptions
@@ -123,7 +123,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 
 ### Current Implementation Level: **Basic Debugging Support**
 
-**Implemented (19/35 features - 54%)**
+**Implemented (20/35 features - 57%)**
 - Core program control (launch, disconnect, terminate)
 - Basic execution control (continue, pause, stepping)
 - Breakpoint management (source, function, exception)
@@ -135,10 +135,10 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 **Partially Implemented (1/35 features - 3%)**
 - Expression evaluation (basic support, needs enhancement)
 
-**Not Implemented (15/35 features - 43%)**
+**Not Implemented (14/35 features - 40%)**
 - Advanced execution control (reverse debugging, step granularity)
 - Advanced breakpoints (hit conditions, log points, data breakpoints)
-- Advanced runtime features (completions, modules)
+- Advanced runtime features (completions)
 - Source code management
 - Exception details
 - Configuration management
@@ -157,7 +157,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 ### Medium Priority (Enhanced debugging experience)
 1. ~~**Configuration Done**~~ - ✅ Proper configuration management
 2. ~~**Loaded Sources**~~ - ✅ Source file management
-3. **Modules** - Module inspection
+3. ~~**Modules**~~ - ✅ Module inspection
 4. **Completions** - Expression auto-completion
 5. **Source References** - Handle dynamic source code
 
@@ -204,7 +204,6 @@ Current test coverage for debugger features:
 
 ### Phase 2: Enhanced Debugging Experience
 - Add source code management
-- Implement modules inspection
 - Add auto-completion
 - Improve variable presentation
 
@@ -216,5 +215,5 @@ Current test coverage for debugger features:
 
 ---
 
-*Last updated: September 14, 2025*
+*Last updated: September 16, 2025*
 *Coverage data: 56% overall, 64% debugger module*

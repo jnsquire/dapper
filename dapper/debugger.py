@@ -76,6 +76,9 @@ class PyDebugger:
     configuration_done: asyncio.Event
     _bg_tasks: set[asyncio.Task]
     _test_mode: bool
+    # Data breakpoint state
+    _data_watches: dict[str, dict[str, Any]]  # dataId -> watch metadata
+    _frame_watches: dict[int, list[str]]  # frameId -> list of dataIds
 
     def __init__(self, server, loop: asyncio.AbstractEventLoop | None = None):
         self.server = server
@@ -98,7 +101,9 @@ class PyDebugger:
         self.var_refs: dict[int, object] = {}
         self.breakpoints: dict[str, list[dict]] = {}
         self.function_breakpoints: list[dict[str, Any]] = []
-        self.exception_breakpoints = {"uncaught": False, "raised": False}
+        # Exception breakpoint flags (two booleans for clarity)
+        self.exception_breakpoints_uncaught = False
+        self.exception_breakpoints_raised = False
         self.process = None
         self.debugger_thread = None
         self.is_terminated = False
@@ -136,6 +141,104 @@ class PyDebugger:
         self._ipc_pipe_listener: mp_conn.Listener | None = None
         self._ipc_pipe_conn: mp_conn.Connection | None = None
         self._ipc_unix_path: Path | None = None
+
+        # Data breakpoint containers
+        self._data_watches = {}
+        self._frame_watches = {}
+
+    # ------------------------------------------------------------------
+    # Data Breakpoint (Watchpoint) Support (Phase 1: bookkeeping only)
+    # ------------------------------------------------------------------
+    def data_breakpoint_info(self, *, name: str, frame_id: int) -> dict[str, Any]:
+        """Return minimal data breakpoint info for a variable in a frame.
+
+        We currently always return a writable watch descriptor. A dataId is
+        synthesized from the frame and variable name. No validation that the
+        frame exists is performed yet (future enhancement: map frame ids to
+        actual frames when stackTrace responses are cached).
+        """
+        data_id = f"frame:{frame_id}:var:{name}"
+        return {
+            "dataId": data_id,
+            "description": f"Variable '{name}' in frame {frame_id}",
+            "accessTypes": ["write"],
+            "canPersist": False,
+        }
+
+    def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Register a set of data breakpoints.
+
+        Each breakpoint dict should contain a 'dataId'. Optional fields:
+        condition, hitCondition, accessType. We store them verbatim. At this
+        phase we do not yet evaluate or trigger stops; that will be added
+        when integrating with line execution hooks.
+        """
+        # Clear existing watches (DAP semantics: full replace)
+        self._data_watches.clear()
+        self._frame_watches.clear()
+
+        results: list[dict[str, Any]] = []
+        frame_id_parts_expected = 4  # pattern: frame:{id}:var:{name}
+        watch_names: set[str] = set()
+        watch_meta: list[tuple[str, dict[str, Any]]] = []
+        for bp in breakpoints:
+            data_id = bp.get("dataId")
+            if not data_id or not isinstance(data_id, str):
+                results.append({"verified": False, "message": "Missing dataId"})
+                continue
+            # Parse frame id for indexing (best-effort extraction)
+            frame_id = None
+            parts = data_id.split(":")
+            # Expect pattern frame:{fid}:var:{name}
+            if len(parts) >= frame_id_parts_expected and parts[0] == "frame" and parts[2] == "var":
+                try:
+                    frame_id = int(parts[1])
+                except ValueError:
+                    frame_id = None
+                # capture variable name portion for runtime detection bridging
+                if len(parts) >= frame_id_parts_expected:
+                    var_name = parts[3]
+                    watch_names.add(var_name)
+            meta = {
+                "dataId": data_id,
+                "accessType": bp.get("accessType", "write"),
+                "condition": bp.get("condition"),
+                "hitCondition": bp.get("hitCondition"),
+                "hit": 0,
+                "verified": True,
+            }
+            self._data_watches[data_id] = meta
+            # store meta for bridging keyed by variable name
+            if "var:" in data_id:
+                # append tuple (name, meta dict reference) so hits update shared
+                try:
+                    watch_meta.append((parts[3], meta))
+                except Exception:  # pragma: no cover - defensive
+                    pass
+            if frame_id is not None:
+                self._frame_watches.setdefault(frame_id, []).append(data_id)
+            results.append({"verified": True})
+        # Bridge to in-process debugger (if active) so it can detect changes by name
+        try:
+            inproc = getattr(self, "_inproc", None)
+            if inproc is not None and hasattr(inproc, "debugger"):
+                dbg = getattr(inproc, "debugger", None)
+                register = getattr(dbg, "register_data_watches", None)
+                if callable(register):
+                    register(sorted(watch_names), watch_meta)
+        except Exception:  # pragma: no cover - defensive
+            logger = logging.getLogger(__name__)
+            logger.debug("Failed bridging data watches to BDB", exc_info=True)
+        return results
+
+    # Placeholder for future change detection hook
+    def _check_data_watches_for_frame(self, frame_id: int, frame_locals: dict[str, Any]) -> None:  # noqa: ARG002
+        """(Future) Detect variable changes for watches tied to frame_id.
+
+        Phase 1: No-op. Phase 2 will compare cached last values and emit
+        stopped events when changes are detected.
+        """
+        return
 
     def _schedule_coroutine(self, coro: Callable[[], Awaitable[Any]] | Awaitable[Any]) -> None:
         """Schedule a callable or awaitable on the debugger's event loop.
@@ -234,7 +337,7 @@ class PyDebugger:
             # Defer creating the awaitable until scheduled on the loop.
             self._schedule_coroutine(lambda: self.server.send_event(event_name, payload))
 
-    async def launch(  # noqa: PLR0913
+    async def launch(
         self,
         program: str,
         args: list[str] | None = None,
@@ -382,7 +485,7 @@ class PyDebugger:
         }
         await self.server.send_event("process", proc_event)
 
-    async def attach(  # noqa: PLR0913, PLR0915
+    async def attach(  # noqa: PLR0915
         self,
         *,
         use_ipc: bool = False,
@@ -909,10 +1012,11 @@ class PyDebugger:
                 ),
             }
 
-            handler = dispatch.get(event_type)
-            if handler is not None:
-                payload_factory, immediate = handler
-                self._forward_event(event_type, payload_factory(), immediate)
+            if event_type is not None:
+                handler = dispatch.get(event_type)
+                if handler is not None:
+                    payload_factory, immediate = handler
+                    self._forward_event(event_type, payload_factory(), immediate)
         # Remaining event handling falls through to the rest of the method
 
     def _resolve_pending_response(
@@ -1055,11 +1159,9 @@ class PyDebugger:
 
     async def set_exception_breakpoints(self, filters: list[str]) -> list[dict[str, Any]]:
         """Set exception breakpoints"""
-        # Update exception breakpoints
-        self.exception_breakpoints = {
-            "uncaught": "uncaught" in filters,
-            "raised": "raised" in filters,
-        }
+        # Update exception breakpoint flags
+        self.exception_breakpoints_raised = "raised" in filters
+        self.exception_breakpoints_uncaught = "uncaught" in filters
 
         # Send exception breakpoint update in appropriate mode
         if self.in_process and self._inproc is not None:
@@ -1469,98 +1571,114 @@ class PyDebugger:
 
         return threads
 
-    async def get_loaded_sources(self) -> list[Source]:
-        """Get all loaded source files"""
-        loaded_sources = []
-        seen_paths = set()
+    # Helpers for source discovery
+    def _is_python_source_file(self, filename: str | Path) -> bool:
+        try:
+            return str(filename).endswith((".py", ".pyw"))
+        except Exception:
+            return False
 
-        # Get sources from sys.modules (all imported modules)
+    def _resolve_path(self, filename: str | Path) -> Path | None:
+        try:
+            return Path(filename).resolve()
+        except Exception:
+            return None
+
+    def _make_source(self, path: Path, origin: str, name: str | None = None) -> Source:
+        src: dict[str, Any] = {
+            "name": name or path.name,
+            "path": str(path),
+        }
+        if origin:
+            src["origin"] = origin
+        return src  # type: ignore[return-value]
+
+    def _try_add_source(
+        self,
+        seen_paths: set[str],
+        loaded_sources: list[Source],
+        filename: str | Path,
+        *,
+        origin: str = "",
+        name: str | None = None,
+        check_exists: bool = False,
+    ) -> None:
+        if not self._is_python_source_file(filename):
+            return
+        path = self._resolve_path(filename)
+        if path is None or (abs_path := str(path)) in seen_paths:
+            return
+        if check_exists and not path.exists():
+            return
+        seen_paths.add(abs_path)
+        loaded_sources.append(self._make_source(path, origin, name))
+
+    def _iter_python_module_files(self):
         for module_name, module in sys.modules.items():
             if module is None:
                 continue
-
             try:
                 module_file = getattr(module, "__file__", None)
-                if module_file is None:
+                if not module_file:
                     continue
-
-                # Normalize the path
-                module_path = Path(module_file).resolve()
-                module_file = str(module_path)
-
-                # Skip already seen paths and non-Python files
-                if module_file in seen_paths:
+                path = self._resolve_path(module_file)
+                if path is None or not self._is_python_source_file(path):
                     continue
-                if not module_file.endswith((".py", ".pyw")):
-                    continue
-
-                seen_paths.add(module_file)
-
-                # Create a source object
-                source = {
-                    "name": module_path.name,
-                    "path": module_file,
-                }
-
-                # Add additional information if available
-                if hasattr(module, "__package__") and module.__package__:
-                    source["origin"] = f"module:{module.__package__}"
-                else:
-                    source["origin"] = f"module:{module_name}"
-
-                loaded_sources.append(source)
-
-            except (AttributeError, TypeError, OSError):
-                # Skip modules that don't have file information or cause errors
+                package = getattr(module, "__package__", None)
+                origin = f"module:{package or module_name}"
+                yield module_name, path, origin
+            except Exception:
                 continue
 
-        # Add sources from linecache (files that have been accessed)
-        for filename in linecache.cache:
-            if filename not in seen_paths and filename.endswith((".py", ".pyw")):
-                try:
-                    file_path = Path(filename).resolve()
-                    abs_path = str(file_path)
-                    if abs_path not in seen_paths and file_path.exists():
-                        seen_paths.add(abs_path)
-                        source = {
-                            "name": file_path.name,
-                            "path": abs_path,
-                            "origin": "linecache",
-                        }
-                        loaded_sources.append(source)
-                except (OSError, TypeError):
-                    continue
+    async def get_loaded_sources(self) -> list[Source]:
+        """Get all loaded source files"""
+        loaded_sources: list[Source] = []
+        seen_paths: set[str] = set()
 
-        # Add the main program source if it exists
-        if self.program_path and self.program_path not in seen_paths:
-            try:
-                program_file_path = Path(self.program_path).resolve()
-                abs_path = str(program_file_path)
-                if program_file_path.exists():
-                    source = {
-                        "name": program_file_path.name,
-                        "path": abs_path,
-                        "origin": "main",
-                    }
-                    loaded_sources.append(source)
-            except (OSError, TypeError):
-                pass
+        # From imported modules
+        for _name, path, origin in self._iter_python_module_files():
+            self._try_add_source(
+                seen_paths,
+                loaded_sources,
+                path,
+                origin=origin,
+                name=path.name,
+                check_exists=False,  # preserve original behavior
+            )
 
-        # Sort sources by name for consistent ordering
+        # From linecache
+        for filename in list(linecache.cache.keys()):
+            self._try_add_source(
+                seen_paths,
+                loaded_sources,
+                filename,
+                origin="linecache",
+                check_exists=True,
+            )
+
+        # Main program
+        if self.program_path:
+            self._try_add_source(
+                seen_paths,
+                loaded_sources,
+                self.program_path,
+                origin="main",
+                check_exists=True,
+            )
+
         loaded_sources.sort(key=lambda s: s.get("name", ""))
-
         return loaded_sources
 
     async def get_modules(self) -> list[dict[str, Any]]:
         """Get all loaded Python modules"""
         all_modules = []
-        
+
         for name, module in sys.modules.items():
             if module is None:
                 continue
-                
+
             module_id = str(id(module))
-            
+
             # Try to get the module path
             path = None
             try:
@@ -1568,16 +1686,16 @@ class PyDebugger:
                     path = module.__file__
             except Exception:
                 pass
-            
+
             # Determine if this is user code (heuristic)
             is_user_code = False
             if path:
                 is_user_code = (
-                    not path.startswith(sys.prefix) and
-                    not path.startswith(sys.base_prefix) and
-                    "site-packages" not in path
+                    not path.startswith(sys.prefix)
+                    and not path.startswith(sys.base_prefix)
+                    and "site-packages" not in path
                 )
-            
+
             module_obj = {
                 "id": module_id,
                 "name": name,
@@ -1585,12 +1703,12 @@ class PyDebugger:
             }
             if path:
                 module_obj["path"] = path
-                
+
             all_modules.append(module_obj)
-        
+
         # Sort modules by name for consistent ordering
         all_modules.sort(key=lambda m: m["name"])
-        
+
         return all_modules
 
     async def get_stack_trace(

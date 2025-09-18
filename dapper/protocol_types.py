@@ -113,6 +113,50 @@ class Capabilities(TypedDict):
     supportsInstructionBreakpoints: NotRequired[bool]
     supportsExceptionFilterOptions: NotRequired[bool]
     supportsSingleThreadExecutionRequests: NotRequired[bool]
+    # Data breakpoint related capabilities (subset implemented)
+    supportsDataBreakpoints: NotRequired[bool]  # type: ignore[override]
+    supportsDataBreakpointInfo: NotRequired[bool]  # type: ignore[override]
+
+
+"""Data Breakpoints (watchpoints) minimal protocol types.
+
+We intentionally do NOT subclass Request/Response with Literal command overrides
+to avoid TypedDict key redefinition issues under current lint settings. These
+TypedDicts represent the argument and body payloads only. Generic `Request`
+objects with command 'dataBreakpointInfo' or 'setDataBreakpoints' will carry
+these shapes in their `arguments` / `body` fields when implemented.
+"""
+
+
+class DataBreakpointInfoArguments(TypedDict, total=False):  # type: ignore[misc]
+    """Arguments for 'dataBreakpointInfo' request.
+
+    Minimal subset: identify by variable name within a specific frame.
+    """
+
+    name: str
+    frameId: int
+
+
+class DataBreakpointInfoResponseBody(TypedDict, total=False):  # type: ignore[misc]
+    dataId: str | None  # Opaque ID used in setDataBreakpoints
+    description: str
+    accessTypes: list[str]  # Supported access types (currently only ['write'])
+    canPersist: bool
+
+
+class SetDataBreakpointsArguments(TypedDict):  # type: ignore[misc]
+    """Arguments for 'setDataBreakpoints' request.
+
+    Each breakpoint: { dataId: str, accessType?: str, condition?: str, hitCondition?: str }
+    Stored verbatim; adapter validates only dataId currently.
+    """
+
+    breakpoints: list[dict[str, Any]]
+
+
+class SetDataBreakpointsResponseBody(TypedDict):  # type: ignore[misc]
+    breakpoints: list[Breakpoint]
 
 
 # Source related types
@@ -791,8 +835,12 @@ class SetExceptionBreakpointsArguments(TypedDict):
     """Arguments for 'setExceptionBreakpoints' request."""
 
     filters: list[str]  # Set of exception filters specified by their ID
-    filterOptions: NotRequired[list[dict[str, Any]]]  # Configuration options for selected exceptions
-    exceptionOptions: NotRequired[list[dict[str, Any]]]  # Configuration options for selected exceptions
+    filterOptions: NotRequired[
+        list[dict[str, Any]]
+    ]  # Configuration options for selected exceptions
+    exceptionOptions: NotRequired[
+        list[dict[str, Any]]
+    ]  # Configuration options for selected exceptions
 
 
 # Pause Request
@@ -805,8 +853,12 @@ class PauseArguments(TypedDict):
 class ModulesArguments(TypedDict):
     """Arguments for 'modules' request."""
 
-    startModule: NotRequired[int]  # The index of the first module to return; if omitted modules start at 0
-    moduleCount: NotRequired[int]  # The number of modules to return. If moduleCount is not specified or 0, all modules are returned
+    startModule: NotRequired[
+        int
+    ]  # The index of the first module to return; if omitted modules start at 0
+    moduleCount: NotRequired[
+        int
+    ]  # The number of modules to return. If moduleCount is not specified or 0, all modules are returned
 
 
 class Module(TypedDict):
@@ -822,6 +874,25 @@ class Module(TypedDict):
     symbolFilePath: NotRequired[str]  # Logical full path to the symbol file
     dateTimeStamp: NotRequired[str]  # Module created or modified, encoded as a RFC 3339 timestamp
     addressRange: NotRequired[str]  # Address range covered by this module
+
+
+# Modules Request and Response
+class ModulesRequest(Request):
+    """The request retrieves a list of all loaded modules."""
+
+    command: Literal["modules"]
+    arguments: NotRequired[ModulesArguments]
+
+
+class ModulesResponseBody(TypedDict):
+    modules: list[Module]  # The modules
+    totalModules: NotRequired[int]  # The total number of modules available
+
+
+class ModulesResponse(Response):
+    """Response to 'modules' request."""
+
+    body: ModulesResponseBody
 
 
 # Event types
@@ -931,6 +1002,7 @@ REQUEST_TYPES = {
     "stepOut": StepOutRequest,
     "threads": ThreadsRequest,
     "loadedSources": LoadedSourcesRequest,
+    "modules": ModulesRequest,
     "stackTrace": StackTraceRequest,
     "scopes": ScopesRequest,
     "variables": VariablesRequest,
@@ -956,6 +1028,7 @@ RESPONSE_TYPES = {
     "stepOut": StepOutResponse,
     "threads": ThreadsResponse,
     "loadedSources": LoadedSourcesResponse,
+    "modules": ModulesResponse,
     "stackTrace": StackTraceResponse,
     "scopes": ScopesResponse,
     "variables": VariablesResponse,

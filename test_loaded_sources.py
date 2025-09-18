@@ -35,7 +35,7 @@ async def test_loaded_sources():
         loaded_sources = await debugger.get_loaded_sources()
         logger.info(f"Found {len(loaded_sources)} loaded sources:")
         for i, source in enumerate(loaded_sources[:MAX_DISPLAY_SOURCES]):
-            logger.info(f"  {i+1}. {source['name']} ({source.get('origin', 'unknown')})")
+            logger.info(f"  {i + 1}. {source['name']} ({source.get('origin', 'unknown')})")
             logger.info(f"      Path: {source['path']}")
         if len(loaded_sources) > MAX_DISPLAY_SOURCES:
             logger.info(f"  ... and {len(loaded_sources) - MAX_DISPLAY_SOURCES} more")

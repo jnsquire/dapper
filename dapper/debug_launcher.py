@@ -259,8 +259,13 @@ def handle_set_exception_breakpoints(arguments):
     filters = arguments.get("filters", [])
 
     if state.debugger:
-        state.debugger.exception_breakpoints["raised"] = "raised" in filters
-        state.debugger.exception_breakpoints["uncaught"] = "uncaught" in filters
+        # New boolean flags on debugger implementations
+        try:
+            state.debugger.exception_breakpoints_raised = "raised" in filters
+            state.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+        except Exception:
+            # If debugger doesn't expose boolean attrs, ignore silently
+            pass
 
 
 def handle_continue(arguments):
@@ -675,7 +680,8 @@ class DebuggerBDB(bdb.Bdb):
         # Function breakpoint metadata: name -> {condition, hitCondition,
         # logMessage, hit}
         self.function_breakpoint_meta = {}
-        self.exception_breakpoints = {"uncaught": False, "raised": False}
+        self.exception_breakpoints_uncaught = False
+        self.exception_breakpoints_raised = False
         self.custom_breakpoints = {}  # filename -> {line: condition}
         self.current_thread_id = threading.get_ident()
         self.current_frame = None
@@ -802,7 +808,12 @@ class DebuggerBDB(bdb.Bdb):
     def user_exception(self, frame, exc_info):
         """Called when an exception occurs"""
         # Only break on exception if configured
-        if not self.exception_breakpoints["raised"] and not self.exception_breakpoints["uncaught"]:
+        if not (
+            getattr(self, "exception_breakpoints_raised", False)
+            or getattr(self, "exception_breakpoints_uncaught", False)
+            or getattr(self, "exception_breakpoints", {}).get("raised")
+            or getattr(self, "exception_breakpoints", {}).get("uncaught")
+        ):
             return
 
         # Get exception info
@@ -831,15 +842,29 @@ class DebuggerBDB(bdb.Bdb):
         thread_id = threading.get_ident()
 
         # Determine break mode and whether we should break
-        break_mode = "always" if self.exception_breakpoints["raised"] else "unhandled"
+        try:
+            break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
 
-        # Check if we should break
-        if (is_uncaught and self.exception_breakpoints["uncaught"]) or self.exception_breakpoints[
-            "raised"
-        ]:
-            break_on_exception = True
-        else:
-            break_on_exception = False
+            # Check if we should break
+            if (
+                is_uncaught and self.exception_breakpoints_uncaught
+            ) or self.exception_breakpoints_raised:
+                break_on_exception = True
+            else:
+                break_on_exception = False
+        except Exception:
+            # Fallback to dict-style if present
+            break_mode = (
+                "always"
+                if getattr(self, "exception_breakpoints", {}).get("raised")
+                else "unhandled"
+            )
+            if (
+                is_uncaught and getattr(self, "exception_breakpoints", {}).get("uncaught")
+            ) or getattr(self, "exception_breakpoints", {}).get("raised"):
+                break_on_exception = True
+            else:
+                break_on_exception = False
 
         # Prepare stack trace (only used if we break and need details)
         stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
@@ -1101,18 +1126,24 @@ def _format_log_message(template: str, frame) -> str:
     """
     import re as _re  # noqa: PLC0415 - local import
 
-    def repl(match):
-        expr = match.group(1)
-        try:
-            val = eval(expr, frame.f_globals, frame.f_locals)
-            return str(val)
-        except Exception:
-            return "<error>"
+    # Pattern matches either escaped {{literal}} or an expression {expr}
+    pattern = _re.compile(r"\{\{([^{}]+)\}\}|\{([^{}]+)\}")
 
-    # Replace doubled braces with placeholders to allow literals
-    s = template.replace("{{", "\u007b").replace("}}", "\u007d")
-    s = _re.sub(r"\{([^{}]+)\}", repl, s)
-    return s.replace("\u007b", "{").replace("\u007d", "}")
+    def repl(match):
+        literal = match.group(1)
+        expr = match.group(2)
+        if literal is not None:
+            # Escaped braces -> return literal text inside braces
+            return "{" + literal + "}"
+        if expr is not None:
+            try:
+                val = eval(expr, frame.f_globals, frame.f_locals)
+                return str(val)
+            except Exception:
+                return "<error>"
+        return match.group(0)
+
+    return pattern.sub(repl, template)
 
 
 def parse_args():

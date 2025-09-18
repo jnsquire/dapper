@@ -305,12 +305,17 @@ async def test_modules_request(mock_debugger_class):
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.launch = AsyncCallRecorder(return_value=None)
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
-    
+
     # Mock the get_modules method
     mock_modules = [
         {"id": "1", "name": "sys", "isUserCode": False},
         {"id": "2", "name": "os", "isUserCode": False, "path": "/usr/lib/python3.13/os.py"},
-        {"id": "3", "name": "test_module", "isUserCode": True, "path": "/home/user/test_module.py"},
+        {
+            "id": "3",
+            "name": "test_module",
+            "isUserCode": True,
+            "path": "/home/user/test_module.py",
+        },
     ]
     mock_debugger.get_modules = AsyncCallRecorder(return_value=mock_modules)
 
@@ -340,19 +345,21 @@ async def test_modules_request(mock_debugger_class):
         ),
         None,
     )
-    
+
     assert modules_response is not None
     if modules_response:
         # Debug output for test failure investigation
-        assert modules_response["request_seq"] == 4, f"Expected seq 4, got response: {modules_response}"
+        assert modules_response["request_seq"] == 4, (
+            f"Expected seq 4, got response: {modules_response}"
+        )
         assert modules_response["success"] is True, f"Modules request failed: {modules_response}"
         assert "modules" in modules_response["body"]
-        
+
         # Should have some modules loaded (at least sys, os, etc.)
         modules = modules_response["body"]["modules"]
         assert isinstance(modules, list)
         assert len(modules) > 0
-        
+
         # Check first module has required fields
         first_module = modules[0]
         assert "id" in first_module

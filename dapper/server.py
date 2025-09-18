@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Awaitable
@@ -37,7 +38,11 @@ class RequestHandler:
         Handle a DAP request and return a response.
         """
         command = request["command"]
-        handler_method = getattr(self, f"_handle_{command}", self._handle_unknown)
+        handler_method = getattr(self, f"_handle_{command}", None)
+        if handler_method is None:
+            # Attempt snake_case fallback for camelCase DAP commands (e.g. setBreakpoints -> set_breakpoints)
+            snake = re.sub(r"(?<!^)([A-Z])", r"_\1", command).lower()
+            handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
         return await handler_method(request)
 
     async def _handle_unknown(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -93,6 +98,8 @@ class RequestHandler:
                 "supportsDisassembleRequest": True,
                 "supportsSteppingGranularity": True,
                 "supportsInstructionBreakpoints": True,
+                "supportsDataBreakpoints": True,
+                "supportsDataBreakpointInfo": True,
             },
         }
         await self.server.send_message(response)
@@ -384,23 +391,23 @@ class RequestHandler:
         args = request.get("arguments", {})
         start_module = args.get("startModule", 0)
         module_count = args.get("moduleCount")
-        
+
         # Get all loaded modules from the debugger
         all_modules = await self.server.debugger.get_modules()
-        
+
         # Apply paging
         if module_count is not None:
             end_module = start_module + module_count
             modules = all_modules[start_module:end_module]
         else:
             modules = all_modules[start_module:]
-        
+
         return {
             "type": "response",
             "request_seq": request["seq"],
             "success": True,
             "command": "modules",
-            "body": {"modules": modules},
+            "body": {"modules": modules, "totalModules": len(all_modules)},
         }
 
     async def _handle_stack_trace(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -494,6 +501,41 @@ class RequestHandler:
             "success": True,
             "command": "evaluate",
             "body": result,
+        }
+
+    async def _handle_dataBreakpointInfo(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+        """Handle dataBreakpointInfo request (subset: variable name + frameId)."""
+        args = request.get("arguments", {})
+        name = args.get("name")
+        frame_id = args.get("frameId")
+        if name is None or frame_id is None:
+            body = {
+                "dataId": None,
+                "description": "Data breakpoint unsupported for missing name/frameId",
+                "accessTypes": ["write"],
+                "canPersist": False,
+            }
+        else:
+            body = self.server.debugger.data_breakpoint_info(name=name, frame_id=frame_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "dataBreakpointInfo",
+            "body": body,
+        }
+
+    async def _handle_setDataBreakpoints(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+        """Handle setDataBreakpoints request (full replace)."""
+        args = request.get("arguments", {})
+        bps = args.get("breakpoints", [])
+        results = self.server.debugger.set_data_breakpoints(bps)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "setDataBreakpoints",
+            "body": {"breakpoints": results},
         }
 
     async def _handle_exceptionInfo(  # noqa: N802

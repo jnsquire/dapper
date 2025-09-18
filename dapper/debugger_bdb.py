@@ -14,6 +14,9 @@ from dapper.debug_adapter_comm import process_queued_commands
 from dapper.debug_adapter_comm import send_debug_message
 from dapper.debug_helpers import frame_may_handle_exception
 
+# Safety limit for stack walking to avoid infinite loops on mocked frames
+MAX_STACK_DEPTH = 128
+
 
 def evaluate_hit_condition(expr: str, hit_count: int) -> bool:
     try:
@@ -77,7 +80,9 @@ class DebuggerBDB(bdb.Bdb):
         self.breakpoints = {}
         self.function_breakpoints = []
         self.function_breakpoint_meta = {}
-        self.exception_breakpoints = {"uncaught": False, "raised": False}
+        # Exception breakpoint flags (separate booleans for clarity)
+        self.exception_breakpoints_uncaught = False
+        self.exception_breakpoints_raised = False
         self.custom_breakpoints = {}
         self.current_thread_id = threading.get_ident()
         self.current_frame = None
@@ -94,6 +99,29 @@ class DebuggerBDB(bdb.Bdb):
         self.var_refs = {}
         self.current_exception_info = {}
         self.breakpoint_meta = {}
+        # Data breakpoint Phase 2 (lightweight): watch names & last values per frame
+        self.data_watch_names: set[str] = set()
+        self._last_locals_by_frame: dict[int, dict[str, object]] = {}
+        self.data_watch_meta: dict[str, list[dict]] = {}
+        # Global fallback for tests / cases where new frame objects appear per line
+        self._last_global_watch_values: dict[str, object] = {}
+
+    # ---------------- Data Breakpoint (Watch) Support -----------------
+    def register_data_watches(
+        self, names: list[str], metas: list[tuple[str, dict]] | None = None
+    ) -> None:
+        """Replace the set of variable names to watch for changes.
+
+        Optionally accepts metadata tuples (name, meta) mirroring adapter-side
+        data breakpoint records containing 'condition' and 'hitCondition'.
+        Multiple meta entries per variable name are stored in a list.
+        """
+        self.data_watch_names = {n for n in names if isinstance(n, str) and n}
+        self.data_watch_meta = {n: [] for n in self.data_watch_names}
+        if metas:
+            for name, meta in metas:
+                if name in self.data_watch_meta:
+                    self.data_watch_meta[name].append(meta)
 
     def record_breakpoint(self, path, line, *, condition, hit_condition, log_message):
         key = (path, int(line))
@@ -109,29 +137,84 @@ class DebuggerBDB(bdb.Bdb):
         for k in to_del:
             self.breakpoint_meta.pop(k, None)
 
-    def user_line(self, frame):
-        filename = frame.f_code.co_filename
-        line = frame.f_lineno
-        if self.get_break(filename, line) or (
-            filename in self.custom_breakpoints and line in self.custom_breakpoints[filename]
-        ):
-            meta = self.breakpoint_meta.get((filename, int(line)))
-            if meta is not None:
-                meta["hit"] = int(meta.get("hit", 0)) + 1
-                hc_expr = meta.get("hitCondition")
-                if hc_expr and not evaluate_hit_condition(str(hc_expr), meta["hit"]):
-                    self.set_continue()
-                    return
-                log_msg = meta.get("logMessage")
-                if log_msg:
-                    try:
-                        rendered = format_log_message(str(log_msg), frame)
-                    except Exception:
-                        rendered = str(log_msg)
-                    send_debug_message("output", category="console", output=str(rendered))
-                    self.set_continue()
-                    return
-        thread_id = threading.get_ident()
+    def _check_data_watch_changes(self, frame):
+        """Check for changes in watched variables and return changed variable name if any."""
+        if not self.data_watch_names or not isinstance(frame.f_locals, dict):
+            return None
+
+        frame_key = id(frame)
+        current_locals = frame.f_locals
+        prior = self._last_locals_by_frame.get(frame_key)
+
+        for name in self.data_watch_names:
+            if name not in current_locals:
+                continue
+            new_val = current_locals[name]
+            old_val = None
+            have_old = False
+
+            if prior is not None and name in prior:
+                old_val = prior.get(name, object())
+                have_old = True
+            elif name in self._last_global_watch_values:
+                old_val = self._last_global_watch_values[name]
+                have_old = True
+
+            if have_old:
+                try:
+                    equal = new_val == old_val
+                except Exception:  # pragma: no cover - defensive
+                    equal = False
+                if old_val is not new_val and not equal:
+                    return name
+        return None
+
+    def _update_watch_snapshots(self, frame):
+        """Update snapshots of watched variable values."""
+        if not self.data_watch_names or not isinstance(frame.f_locals, dict):
+            return
+
+        frame_key = id(frame)
+        current_locals = frame.f_locals
+
+        # Snapshot current watched values per frame
+        self._last_locals_by_frame[frame_key] = {
+            n: current_locals.get(n) for n in self.data_watch_names
+        }
+        # Update global snapshot
+        for n in self.data_watch_names:
+            if n in current_locals:
+                self._last_global_watch_values[n] = current_locals[n]
+
+    def _should_stop_for_data_breakpoint(self, changed_name, frame):
+        """Evaluate conditions and hitConditions for a changed variable."""
+        metas = self.data_watch_meta.get(changed_name, [])
+
+        for m in metas:
+            # Increment hit counter per meta (change-based hit)
+            m["hit"] = int(m.get("hit", 0)) + 1
+
+            # Check hitCondition
+            hc_expr = m.get("hitCondition")
+            if hc_expr and not evaluate_hit_condition(str(hc_expr), m["hit"]):
+                continue
+
+            # Check condition
+            cond_expr = m.get("condition")
+            if cond_expr:
+                try:
+                    cond_ok = bool(eval(str(cond_expr), frame.f_globals, frame.f_locals))
+                except Exception:  # pragma: no cover - defensive
+                    cond_ok = False
+                if not cond_ok:
+                    continue
+            return True
+
+        # No metadata means default stop semantics
+        return not metas
+
+    def _ensure_thread_registered(self, thread_id):
+        """Ensure the current thread is registered and send thread started event if needed."""
         if thread_id not in self.threads:
             thread_name = threading.current_thread().name
             self.threads[thread_id] = thread_name
@@ -141,10 +224,76 @@ class DebuggerBDB(bdb.Bdb):
                 reason="started",
                 name=thread_name,
             )
+
+    def _handle_regular_breakpoint(self, filename, line, frame):
+        """Handle regular line breakpoints with hit conditions and log messages."""
+        if not (
+            self.get_break(filename, line)
+            or (filename in self.custom_breakpoints and line in self.custom_breakpoints[filename])
+        ):
+            return False
+
+        meta = self.breakpoint_meta.get((filename, int(line)))
+        if meta is not None:
+            meta["hit"] = int(meta.get("hit", 0)) + 1
+            hc_expr = meta.get("hitCondition")
+            if hc_expr and not evaluate_hit_condition(str(hc_expr), meta["hit"]):
+                self.set_continue()
+                return True
+
+            log_msg = meta.get("logMessage")
+            if log_msg:
+                try:
+                    rendered = format_log_message(str(log_msg), frame)
+                except Exception:
+                    rendered = str(log_msg)
+                send_debug_message("output", category="console", output=str(rendered))
+                self.set_continue()
+                return True
+        return False
+
+    def _emit_stopped_event(self, frame, thread_id, reason, description=None):
+        """Emit a stopped event with proper bookkeeping."""
         self.current_frame = frame
         self.stopped_thread_ids.add(thread_id)
         stack_frames = self._get_stack_frames(frame)
         self.frames_by_thread[thread_id] = stack_frames
+
+        event_args = {
+            "threadId": thread_id,
+            "reason": reason,
+            "allThreadsStopped": True,
+        }
+        if description:
+            event_args["description"] = description
+
+        send_debug_message("stopped", **event_args)
+
+    def user_line(self, frame):
+        filename = frame.f_code.co_filename
+        line = frame.f_lineno
+        thread_id = threading.get_ident()
+
+        self.botframe = frame  # to satisfy bdb expectations
+
+        # Check for data watch changes first
+        changed_name = self._check_data_watch_changes(frame)
+        self._update_watch_snapshots(frame)
+
+        if changed_name and self._should_stop_for_data_breakpoint(changed_name, frame):
+            self._ensure_thread_registered(thread_id)
+            self._emit_stopped_event(
+                frame, thread_id, "data breakpoint", f"{changed_name} changed"
+            )
+            return
+
+        # Handle regular breakpoints
+        if self._handle_regular_breakpoint(filename, line, frame):
+            return
+
+        # Default stop behavior for stepping, entry, or normal breakpoints
+        self._ensure_thread_registered(thread_id)
+
         reason = "breakpoint"
         if self.stop_on_entry:
             reason = "entry"
@@ -152,17 +301,15 @@ class DebuggerBDB(bdb.Bdb):
         elif self.stepping:
             reason = "step"
             self.stepping = False
-        send_debug_message(
-            "stopped",
-            threadId=thread_id,
-            reason=reason,
-            allThreadsStopped=True,
-        )
+
+        self._emit_stopped_event(frame, thread_id, reason)
         process_queued_commands()
         self.set_continue()
 
     def user_exception(self, frame, exc_info):
-        if not self.exception_breakpoints["raised"] and not self.exception_breakpoints["uncaught"]:
+        if not getattr(self, "exception_breakpoints_raised", False) and not getattr(
+            self, "exception_breakpoints_uncaught", False
+        ):
             return
         exc_type, exc_value, exc_traceback = exc_info
         is_uncaught = True
@@ -170,10 +317,12 @@ class DebuggerBDB(bdb.Bdb):
         if res is True or res is None:
             is_uncaught = False
         thread_id = threading.get_ident()
-        break_mode = "always" if self.exception_breakpoints["raised"] else "unhandled"
-        if (is_uncaught and self.exception_breakpoints["uncaught"]) or self.exception_breakpoints[
-            "raised"
-        ]:
+        break_mode = (
+            "always" if getattr(self, "exception_breakpoints_raised", False) else "unhandled"
+        )
+        if (is_uncaught and getattr(self, "exception_breakpoints_uncaught", False)) or getattr(
+            self, "exception_breakpoints_raised", False
+        ):
             break_on_exception = True
         else:
             break_on_exception = False
@@ -212,24 +361,41 @@ class DebuggerBDB(bdb.Bdb):
     def _get_stack_frames(self, frame):
         stack_frames = []
         f = frame
-        while f is not None:
+        visited = set()
+        depth = 0
+        while f is not None and depth < MAX_STACK_DEPTH:
+            # Break if cycle detected
+            fid = id(f)
+            if fid in visited:
+                break
+            visited.add(fid)
+            depth += 1
+            try:
+                code = f.f_code
+                filename = getattr(code, "co_filename", "<unknown>")
+                lineno = getattr(f, "f_lineno", 0)
+                name = getattr(code, "co_name", "<unknown>") or "<unknown>"
+            except Exception:
+                break
             frame_id = self.next_frame_id
             self.next_frame_id += 1
             self.frame_id_to_frame[frame_id] = f
-            filename = f.f_code.co_filename
-            lineno = f.f_lineno
             stack_frame = {
                 "id": frame_id,
-                "name": f.f_code.co_name or "<unknown>",
+                "name": name,
                 "line": lineno,
                 "column": 0,
                 "source": {
-                    "name": Path(filename).name,
+                    "name": Path(filename).name if isinstance(filename, str) else str(filename),
                     "path": filename,
                 },
             }
             stack_frames.append(stack_frame)
-            f = f.f_back
+            # Next frame with defensive getattr
+            try:
+                f = getattr(f, "f_back", None)
+            except Exception:
+                break
         return stack_frames
 
     def set_custom_breakpoint(self, filename, line, condition=None):

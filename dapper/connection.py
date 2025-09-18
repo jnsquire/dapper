@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+traffic_logger = logging.getLogger("dapper.connection.traffic")
 
 
 class ConnectionBase(ABC):
@@ -211,16 +212,14 @@ class NamedPipeServerConnection(ConnectionBase):
         self.pipe_name = pipe_name
         self.pipe_path = self._get_pipe_path(pipe_name)
         self.server = None
-        self._connected_event: asyncio.Event | None = None
+        self._awaiting_connection_event: asyncio.Event | None = None
 
     def _get_pipe_path(self, name: str) -> str:
-        if sys.platform == "win32":
-            return rf"\\.\pipe\{name}"
-        return f"/tmp/{name}"
+        return rf"\\.\pipe\{name}" if sys.platform == "win32" else f"/tmp/{name}"
 
     async def accept(self) -> None:
         logger.info("Creating named pipe at %s", self.pipe_path)
-        self._connected_event = asyncio.Event()
+        self._awaiting_connection_event = asyncio.Event()
 
         if sys.platform == "win32":
             self.server = await asyncio.start_server(self._handle_client, path=self.pipe_path)
@@ -248,17 +247,18 @@ class NamedPipeServerConnection(ConnectionBase):
             self.writer = asyncio.StreamWriter(transport, protocol, self.reader, loop)
 
             self._is_connected = True
-            self._connected_event.set()
+            self._awaiting_connection_event.set()
 
-        await self._connected_event.wait()
+        await self._awaiting_connection_event.wait()
         logger.info("Client connected to named pipe at %s", self.pipe_path)
 
     async def _handle_client(self, reader, writer) -> None:
         self.reader = reader
         self.writer = writer
         self._is_connected = True
-        if self._connected_event and not self._connected_event.is_set():
-            self._connected_event.set()
+        if self._awaiting_connection_event:
+            self._awaiting_connection_event.set()
+            self._awaiting_connection_event = None
 
     async def close(self) -> None:
         if self.writer:
@@ -305,7 +305,7 @@ class NamedPipeServerConnection(ConnectionBase):
             return None
 
         message = json.loads(content.decode("utf-8"))
-        logger.debug("Received message: %s", message)
+        traffic_logger.debug("Received message: %s", message)
         return message
 
     async def write_message(self, message: dict[str, Any]) -> None:
@@ -314,7 +314,7 @@ class NamedPipeServerConnection(ConnectionBase):
             raise RuntimeError(msg)
 
         content = json.dumps(message).encode("utf-8")
-        header = f"Content-Length: {len(content)}\r\n\r\n".encode()
-        self.writer.write(header + content)
+        self.writer.write(f"Content-Length: {len(content)}\r\n\r\n".encode())
+        self.writer.write(content)
         await self.writer.drain()
-        logger.debug("Sent message: %s", message)
+        traffic_logger.debug("Sent message: %s", message)

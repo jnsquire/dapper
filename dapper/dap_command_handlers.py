@@ -45,9 +45,11 @@ COMMAND_HANDLERS = {}
 
 def command_handler(command_name):
     """Decorator to register DAP command handlers."""
+
     def decorator(func):
         COMMAND_HANDLERS[command_name] = func
         return func
+
     return decorator
 
 
@@ -55,13 +57,18 @@ def handle_debug_command(command: dict[str, Any]) -> None:
     """Handle debug commands using a mapping table for better maintainability."""
     cmd = command.get("command")
     arguments = command.get("arguments", {})
-    
+
     # Look up the command handler in the mapping table
     handler_func = COMMAND_HANDLERS.get(cmd)
     if handler_func is not None:
         handler_func(arguments)
     else:
-        send_debug_message("response", request_seq=command.get("seq"), success=False, message=f"Unknown command: {cmd}")
+        send_debug_message(
+            "response",
+            request_seq=command.get("seq"),
+            success=False,
+            message=f"Unknown command: {cmd}",
+        )
 
 
 @command_handler("setBreakpoints")
@@ -133,8 +140,8 @@ def handle_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) 
 def handle_set_exception_breakpoints(arguments: SetExceptionBreakpointsArguments) -> None:
     filters = arguments.get("filters", [])
     if state.debugger:
-        state.debugger.exception_breakpoints["raised"] = "raised" in filters
-    state.debugger.exception_breakpoints["uncaught"] = "uncaught" in filters
+        state.debugger.exception_breakpoints_raised = "raised" in filters
+        state.debugger.exception_breakpoints_uncaught = "uncaught" in filters
 
 
 @command_handler("continue")
@@ -250,7 +257,9 @@ def handle_set_variable(arguments: SetVariableArguments) -> None:
                 result = _set_scope_variable(frame, scope, name, value)
                 send_debug_message("setVariable", **result)
                 return
-    send_debug_message("setVariable", success=False, message=f"Invalid variable reference: {var_ref}")
+    send_debug_message(
+        "setVariable", success=False, message=f"Invalid variable reference: {var_ref}"
+    )
 
 
 def _set_scope_variable(frame, scope, name, value):
@@ -455,7 +464,7 @@ def handle_terminate(_arguments: TerminateArguments | None = None) -> None:
 def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from sys.modules."""
     sources: list[Source] = []
-    
+
     for module_name, module in sys.modules.items():
         if module is None:
             continue
@@ -492,7 +501,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
         except (AttributeError, TypeError, OSError):
             # Skip modules that don't have file information or cause errors
             continue
-    
+
     return sources
 
 
@@ -519,7 +528,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
 def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
     """Collect the main program source if available."""
     sources: list[Source] = []
-    
+
     # Add the main program source if it exists
     if hasattr(state, "debugger") and state.debugger:
         program_path = getattr(state.debugger, "program_path", None)
@@ -533,7 +542,7 @@ def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
                     sources.append(source)
             except (OSError, TypeError):
                 pass
-    
+
     return sources
 
 
@@ -542,16 +551,16 @@ def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
     """Handle loadedSources request to return all loaded source files."""
     # Track seen paths to avoid duplicates
     seen_paths = set[str]()
-    
+
     # Collect sources from all available sources
     loaded_sources: list[Source] = []
     loaded_sources.extend(_collect_module_sources(seen_paths))
     loaded_sources.extend(_collect_linecache_sources(seen_paths))
     loaded_sources.extend(_collect_main_program_source(seen_paths))
-    
+
     # Sort sources by name for consistent ordering
     loaded_sources.sort(key=lambda s: s.get("name", ""))
-    
+
     # Send the response
     send_debug_message("response", success=True, body={"sources": loaded_sources})
 
@@ -561,68 +570,66 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
     """Handle modules request to return loaded Python modules."""
     # Get all loaded modules from sys.modules
     all_modules: list[Module] = []
-    
+
     for module_name, module in sys.modules.items():
         if module is None:
             continue
-            
+
         try:
             # Create module information
             module_info: Module = {
                 "id": module_name,
                 "name": module_name,
             }
-            
+
             # Add path if available
             module_file = getattr(module, "__file__", None)
             if module_file:
                 module_path = Path(module_file).resolve()
                 module_info["path"] = str(module_path)
-                
+
                 # Determine if it's user code (not in site-packages or standard library)
                 path_str = str(module_path)
                 is_user_code = not any(
-                    part in path_str.lower() for part in
-                    ["site-packages", "lib/python", "lib\\python", "Lib"]
+                    part in path_str.lower()
+                    for part in ["site-packages", "lib/python", "lib\\python", "Lib"]
                 )
                 module_info["isUserCode"] = is_user_code
-            
+
             # Add version if available
             if hasattr(module, "__version__"):
                 module_info["version"] = str(module.__version__)
-            
+
             # Add package information
             if hasattr(module, "__package__") and module.__package__:
                 # This is part of a package
                 pass  # We already have the name
-                
+
             all_modules.append(module_info)
-            
+
         except (AttributeError, TypeError, OSError):
             # Skip modules that cause errors
             continue
-    
+
     # Sort modules by name for consistent ordering
     all_modules.sort(key=lambda m: m["name"])
-    
+
     # Handle paging if requested
     if arguments:
         start_module = arguments.get("startModule", 0)
         module_count = arguments.get("moduleCount", 0)
-        
+
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module:start_module + module_count]
+            modules = all_modules[start_module : start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]
     else:
         # Return all modules
         modules = all_modules
-    
+
     # Send the response
     send_debug_message(
-        "response",
-        success=True,
-        body={"modules": modules, "totalModules": len(all_modules)}
+        "response", success=True, body={"modules": modules, "totalModules": len(all_modules)}
     )

@@ -152,6 +152,9 @@ allow-dict-calls-with-keyword-arguments = true
 # an import to be moved into a type-checking block.
 quote-annotations = true
 
+[tool.ruff.lint.pylint]
+max-args = 10
+
 [tool.ruff.lint.per-file-ignores]
 # Tests can use magic values, assertions, and imports
 "tests/**/*" = ["PLR2004", "S101", "TID252", "SLF001"]

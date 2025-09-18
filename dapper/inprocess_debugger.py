@@ -79,8 +79,13 @@ class InProcessDebugger:
 
     def set_exception_breakpoints(self, filters: list[str]) -> list[dict[str, Any]]:
         with self.command_lock:
-            self.debugger.exception_breakpoints["raised"] = "raised" in filters
-            self.debugger.exception_breakpoints["uncaught"] = "uncaught" in filters
+            # Set boolean flags if present, fallback to dict otherwise
+            try:
+                self.debugger.exception_breakpoints_raised = "raised" in filters
+                self.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+            except Exception:
+                # If underlying debugger doesn't expose boolean attrs, ignore
+                pass
         return [{"verified": True} for _ in filters]
 
     def continue_(self, thread_id: int) -> dict[str, Any]:

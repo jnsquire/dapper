@@ -8,6 +8,7 @@ import ast
 import dis
 import linecache
 import types
+from itertools import chain
 from typing import Any
 from typing import TypeVar
 from typing import cast
@@ -46,9 +47,9 @@ def frame_may_handle_exception(f) -> bool | None:
     code = get_code(f, "f_code", None)
     lineno = get_int(f, "f_lineno", None)
     res = frame_has_exception_table_handler(code, lineno)
-    if res is not None:
-        return res
-    return frame_has_ast_handler(code, lineno)
+    if res is None:
+        res = frame_has_ast_handler(code, lineno)
+    return res
 
 
 def frame_has_exception_table_handler(code, lineno) -> bool | None:
@@ -79,12 +80,21 @@ def frame_has_exception_table_handler(code, lineno) -> bool | None:
 
 
 def frame_has_ast_handler(code, lineno) -> bool | None:
+    """
+    Determines if the given code object has an AST handler for exceptions at the specified line number.
+
+    Returns:
+        True if an exception handler is present,
+        False if not,
+        None if the information cannot be determined.
+    """
     try:
         filename = get_str(code, "co_filename", None)
         source_lines = linecache.getlines(filename) if filename else []
         if not source_lines:
             return None
-        tree = ast.parse("".join(source_lines))
+        all_lines = "".join(source_lines)
+        tree = ast.parse(all_lines, filename=filename or "<unknown>")
         result = None
         for node in ast.walk(tree):
             if not isinstance(node, ast.Try):
@@ -94,9 +104,13 @@ def frame_has_ast_handler(code, lineno) -> bool | None:
                 continue
             end = get_int(node, "end_lineno", None)
             if end is None:
-                parts = node.body + node.handlers + node.orelse + node.finalbody
-                nums = [get_int(n, "lineno", start) for n in parts]
-                nums = [v for v in nums if v is not None]
+                nums = filter(
+                    None,
+                    (
+                        get_int(n, "lineno", start)
+                        for n in chain(node.body, node.handlers, node.orelse, node.finalbody)
+                    ),
+                )
                 end = max(nums) if nums else start
             if lineno is not None and start <= lineno <= end and node.handlers:
                 result = True
