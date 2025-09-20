@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper.debug_shared import MAX_STRING_LENGTH
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
@@ -487,16 +488,11 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
 
             seen_paths.add(module_file)
 
-            # Create a source object using Source's constructor
-            source = Source(name=module_path.name, path=module_file)
+            # Build a minimal Source-shaped dict for this module and cast
+            origin = getattr(module, "__package__", module_name)
+            source_obj = Source(name=module_path.name, path=module_file, origin=f"module:{origin}")
 
-            # Add additional information if available
-            if hasattr(module, "__package__") and module.__package__:
-                source["origin"] = f"module:{module.__package__}"
-            else:
-                source["origin"] = f"module:{module_name}"
-
-            sources.append(source)
+            sources.append(source_obj)
 
         except (AttributeError, TypeError, OSError):
             # Skip modules that don't have file information or cause errors
@@ -676,7 +672,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module : start_module + module_count]
+            modules = all_modules[start_module:start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

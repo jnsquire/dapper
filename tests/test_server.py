@@ -267,7 +267,6 @@ async def test_send_event():
     server = DebugAdapterServer(mock_connection, loop)
     # Send an event
     await server.send_event("stopped", {"reason": "breakpoint", "threadId": 1})
-    await asyncio.sleep(0.1)  # Give time for the message to be processed
     # Verify the event was sent
     assert len(mock_connection.written_messages) == 1
     event = mock_connection.written_messages[0]
@@ -288,7 +287,6 @@ async def test_sequence_numbers():
     await server.send_event("initialized")
     await server.send_event("stopped", {"reason": "entry"})
     await server.send_response({"seq": 5, "command": "test"}, {"result": "ok"})
-    await asyncio.sleep(0.1)  # Give time for the messages to be processed
 
     # Verify sequence numbers
     assert len(mock_connection.written_messages) == 3

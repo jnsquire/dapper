@@ -8,6 +8,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from typing import Any
 from typing import TypedDict
 
 MAX_STRING_LENGTH = 1000
@@ -51,17 +52,18 @@ class SessionState:
         # Avoid reinitializing on subsequent __new__ returns
         if getattr(self, "_initialized", False):
             return
-        self.debugger = None
-        self.stop_at_entry = False
-        self.no_debug = False
-        self.command_queue = []
+
+        self.debugger: Any | None = None
+        self.stop_at_entry: bool = False
+        self.no_debug: bool = False
+        self.command_queue: list[Any] = []
         self.command_lock = threading.Lock()
-        self.is_terminated = False
-        self.ipc_enabled = False
-        self.ipc_sock = None
-        self.ipc_rfile = None
-        self.ipc_wfile = None
-        self.handle_debug_command = None  # Set by debug_adapter_comm
+        self.is_terminated: bool = False
+        self.ipc_enabled: bool = False
+        self.ipc_sock: Any | None = None
+        self.ipc_rfile: Any | None = None
+        self.ipc_wfile: Any | None = None
+        self.handle_debug_command: Any | None = None  # Set by debug_adapter_comm
 
         # Mapping of sourceReference -> metadata (path/name)
         self.source_references: dict[int, SourceReferenceMeta] = {}

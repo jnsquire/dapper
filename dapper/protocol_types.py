@@ -7,12 +7,15 @@ These types enable better type checking and auto-completion when working with th
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
-from typing import NotRequired
-from typing import Self
 from typing import TypedDict
 from typing import Union
+
+if TYPE_CHECKING:
+    from typing_extensions import NotRequired
+    from typing_extensions import Self
 
 # Type for the top-level 'type' field in protocol messages.
 MessageType = Literal["request", "response", "event"]
@@ -31,25 +34,24 @@ class ProtocolMessage(TypedDict):
     # for 'type' without conflicting TypedDict redefinition rules.
 
 
-class Request(ProtocolMessage):
+class Request(TypedDict):
     """A client or debug adapter initiated request."""
 
+    seq: int
     type: Literal["request"]
 
 
-class Response(ProtocolMessage):
+class Response(TypedDict):
     """Response for a request."""
 
+    seq: int
     type: Literal["response"]
-    request_seq: int  # Sequence number of the corresponding request
-    success: bool  # Outcome of the request
-    command: str  # The command requested
-    message: NotRequired[str]  # Contains the raw error in short form if success is false
 
 
-class Event(ProtocolMessage):
+class Event(TypedDict):
     """A debug adapter initiated event."""
 
+    seq: int
     type: Literal["event"]
 
 
@@ -314,16 +316,23 @@ class InitializeRequestArguments(TypedDict):
     supportsInvalidatedEvent: NotRequired[bool]  # Client supports the invalidated event
 
 
-class InitializeRequest(Request):
+class InitializeRequest(TypedDict):
     """The 'initialize' request is sent as the first request to configure the adapter."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["initialize"]
     arguments: InitializeRequestArguments
 
 
-class InitializeResponse(Response):
+class InitializeResponse(TypedDict):
     """Response to 'initialize' request."""
 
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["initialize"]
     body: Capabilities  # The capabilities of this debug adapter
 
 
@@ -332,15 +341,22 @@ class ConfigurationDoneArguments(TypedDict):
     """Arguments for 'configurationDone' request."""
 
 
-class ConfigurationDoneRequest(Request):
+class ConfigurationDoneRequest(TypedDict):
     """This request indicates that the client has finished initialization of the debug adapter."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["configurationDone"]
     arguments: NotRequired[ConfigurationDoneArguments]
 
 
-class ConfigurationDoneResponse(Response):
+class ConfigurationDoneResponse(TypedDict):
     """Response to 'configurationDone' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
 
 
 # Launch Request and Response

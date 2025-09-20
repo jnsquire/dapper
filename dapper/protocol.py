@@ -140,17 +140,14 @@ class ProtocolHandler:
         Returns:
             A Request TypedDict
         """
-        request: Request = {
-            "seq": self.seq_counter,
-            "type": "request",
-            "command": command,
-        }
 
+        request_dict: dict[str, Any] = dict(seq=self.seq_counter, type="request")
+        request_dict["command"] = command
         if arguments is not None:
-            request["arguments"] = arguments
+            request_dict["arguments"] = arguments
 
         self.seq_counter += 1
-        return request
+        return cast("Request", request_dict)
 
     def create_response(
         self,
@@ -171,22 +168,27 @@ class ProtocolHandler:
         Returns:
             A Response TypedDict
         """
-        response: Response = {
+        # request is typed as a TypedDict that may not declare 'command',
+        # so access it via a cast to a plain dict to satisfy the type
+        # checker before building the response dict.
+        req = cast("dict[str, Any]", request)
+
+        response_dict: dict[str, Any] = {
             "seq": self.seq_counter,
             "type": "response",
-            "request_seq": request["seq"],
+            "request_seq": req["seq"],
             "success": success,
-            "command": request["command"],
+            "command": req.get("command"),
         }
 
         if body is not None:
-            response["body"] = body
+            response_dict["body"] = body
 
         if not success and error_message is not None:
-            response["message"] = error_message
+            response_dict["message"] = error_message
 
         self.seq_counter += 1
-        return response
+        return cast("Response", response_dict)
 
     def create_error_response(self, request: Request, error_message: str) -> ErrorResponse:
         """
@@ -206,7 +208,6 @@ class ProtocolHandler:
                 "showUser": True,
             }
         }
-
         response = self.create_response(request, False, error_body, error_message)
         return cast("ErrorResponse", response)
 
@@ -221,17 +222,17 @@ class ProtocolHandler:
         Returns:
             An Event TypedDict
         """
-        event: Event = {
+        event_dict: dict[str, Any] = {
             "seq": self.seq_counter,
             "type": "event",
             "event": event_type,
         }
 
         if body is not None:
-            event["body"] = body
+            event_dict["body"] = body
 
         self.seq_counter += 1
-        return event
+        return cast("Event", event_dict)
 
     # Specific request creation methods
 
