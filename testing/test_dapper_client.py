@@ -9,15 +9,12 @@ debug adapter and send commands to debug a Python program.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import socket
 import sys
-import time
 from pathlib import Path
 from typing import Any
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 

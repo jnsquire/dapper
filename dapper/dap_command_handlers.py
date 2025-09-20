@@ -580,7 +580,9 @@ def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
 def handle_source(arguments: dict[str, Any] | None = None) -> None:
     """Handle 'source' request to return source content by path or sourceReference."""
     if arguments is None:
-        send_debug_message("response", success=False, message="Missing arguments for source request")
+        send_debug_message(
+            "response", success=False, message="Missing arguments for source request"
+        )
         return
 
     source = arguments.get("source", {})
@@ -674,7 +676,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module:start_module + module_count]
+            modules = all_modules[start_module : start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

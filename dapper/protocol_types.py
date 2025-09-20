@@ -12,6 +12,13 @@ from typing import Literal
 from typing import NotRequired
 from typing import Self
 from typing import TypedDict
+from typing import Union
+
+# Type for the top-level 'type' field in protocol messages.
+MessageType = Literal["request", "response", "event"]
+
+# Union of the three top-level protocol message TypedDicts.
+ProtocolMessageVariant = Union["Request", "Response", "Event"]
 
 
 # Base protocol types
@@ -19,15 +26,15 @@ class ProtocolMessage(TypedDict):
     """Base class of requests, responses, and events."""
 
     seq: int  # Sequence number of the message
-    type: Literal["request", "response", "event"]  # Message type
+    # Note: the 'type' key is intentionally *not* defined here so that concrete
+    # subtypes (Request/Response/Event) can declare a more specific Literal type
+    # for 'type' without conflicting TypedDict redefinition rules.
 
 
 class Request(ProtocolMessage):
     """A client or debug adapter initiated request."""
 
     type: Literal["request"]
-    command: str  # The command to execute
-    arguments: NotRequired[Any]  # Object containing arguments for the command
 
 
 class Response(ProtocolMessage):
@@ -38,17 +45,12 @@ class Response(ProtocolMessage):
     success: bool  # Outcome of the request
     command: str  # The command requested
     message: NotRequired[str]  # Contains the raw error in short form if success is false
-    body: NotRequired[
-        Any
-    ]  # Contains request result if success is true and error details if success is false
 
 
 class Event(ProtocolMessage):
     """A debug adapter initiated event."""
 
     type: Literal["event"]
-    event: str  # Type of event
-    body: NotRequired[Any]  # Event-specific information
 
 
 class ErrorResponse(Response):
@@ -1047,3 +1049,399 @@ EVENT_TYPES = {
     "output": OutputEvent,
     "breakpoint": BreakpointEvent,
 }
+
+
+# Strong per-message TypedDicts (non-inheriting) that explicitly declare the
+# top-level `type` literal plus the command/event literal. These are useful
+# when you want a discriminated TypedDict for a specific protocol message.
+
+
+# Requests
+class InitializeProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["initialize"]
+    arguments: NotRequired[InitializeRequestArguments]
+
+
+class ConfigurationDoneProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["configurationDone"]
+    arguments: NotRequired[ConfigurationDoneArguments]
+
+
+class LaunchProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["launch"]
+    arguments: NotRequired[LaunchRequestArguments]
+
+
+class AttachProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["attach"]
+    arguments: NotRequired[AttachRequestArguments]
+
+
+class DisconnectProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["disconnect"]
+    arguments: NotRequired[DisconnectArguments]
+
+
+class TerminateProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["terminate"]
+    arguments: NotRequired[TerminateArguments]
+
+
+class BreakpointLocationsProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["breakpointLocations"]
+    arguments: BreakpointLocationsArguments
+
+
+class SetBreakpointsProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setBreakpoints"]
+    arguments: SetBreakpointsArguments
+
+
+class SetFunctionBreakpointsProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setFunctionBreakpoints"]
+    arguments: SetFunctionBreakpointsArguments
+
+
+class ContinueProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["continue"]
+    arguments: ContinueArguments
+
+
+class NextProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["next"]
+    arguments: NextArguments
+
+
+class StepInProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["stepIn"]
+    arguments: StepInArguments
+
+
+class StepOutProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["stepOut"]
+    arguments: StepOutArguments
+
+
+class ThreadsProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["threads"]
+
+
+class LoadedSourcesProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["loadedSources"]
+
+
+class ModulesProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["modules"]
+    arguments: NotRequired[ModulesArguments]
+
+
+class StackTraceProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["stackTrace"]
+    arguments: StackTraceArguments
+
+
+class ScopesProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["scopes"]
+    arguments: ScopesArguments
+
+
+class VariablesProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["variables"]
+    arguments: VariablesArguments
+
+
+class SetVariableProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setVariable"]
+    arguments: SetVariableArguments
+
+
+class EvaluateProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["evaluate"]
+    arguments: EvaluateArguments
+
+
+class ExceptionInfoProtocolRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["exceptionInfo"]
+    arguments: ExceptionInfoArguments
+
+
+# Responses
+class InitializeProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["initialize"]
+    message: NotRequired[str]
+    body: NotRequired[Capabilities]
+
+
+class BreakpointLocationsProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["breakpointLocations"]
+    message: NotRequired[str]
+    body: NotRequired[BreakpointLocationsResponseBody]
+
+
+class SetBreakpointsProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetBreakpointsResponseBody]
+
+
+class SetFunctionBreakpointsProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setFunctionBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetFunctionBreakpointsResponseBody]
+
+
+class ContinueProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["continue"]
+    message: NotRequired[str]
+    body: NotRequired[ContinueResponseBody]
+
+
+class ThreadsProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["threads"]
+    message: NotRequired[str]
+    body: NotRequired[ThreadsResponseBody]
+
+
+class LoadedSourcesProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["loadedSources"]
+    message: NotRequired[str]
+    body: NotRequired[LoadedSourcesResponseBody]
+
+
+class ModulesProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["modules"]
+    message: NotRequired[str]
+    body: NotRequired[ModulesResponseBody]
+
+
+class StackTraceProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["stackTrace"]
+    message: NotRequired[str]
+    body: NotRequired[StackTraceResponseBody]
+
+
+class ScopesProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["scopes"]
+    message: NotRequired[str]
+    body: NotRequired[ScopesResponseBody]
+
+
+class VariablesProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["variables"]
+    message: NotRequired[str]
+    body: NotRequired[VariablesResponseBody]
+
+
+class SetVariableProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setVariable"]
+    message: NotRequired[str]
+    body: NotRequired[SetVariableResponseBody]
+
+
+class EvaluateProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["evaluate"]
+    message: NotRequired[str]
+    body: NotRequired[EvaluateResponseBody]
+
+
+class ExceptionInfoProtocolResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["exceptionInfo"]
+    message: NotRequired[str]
+    body: NotRequired[ExceptionInfoResponseBody]
+
+
+# Events
+class InitializedProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["initialized"]
+
+
+class StoppedProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["stopped"]
+    body: StoppedEventBody
+
+
+class ExitedProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["exited"]
+    body: ExitedEventBody
+
+
+class TerminatedProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["terminated"]
+    body: NotRequired[TerminatedEventBody]
+
+
+class ThreadProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["thread"]
+    body: ThreadEventBody
+
+
+class OutputProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["output"]
+    body: OutputEventBody
+
+
+class BreakpointProtocolEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["breakpoint"]
+    body: BreakpointEventBody
+
+
+# Union of all strong protocol message variants
+ProtocolMessageStrong = Union[
+    InitializeProtocolRequest,
+    ConfigurationDoneProtocolRequest,
+    LaunchProtocolRequest,
+    AttachProtocolRequest,
+    DisconnectProtocolRequest,
+    TerminateProtocolRequest,
+    BreakpointLocationsProtocolRequest,
+    SetBreakpointsProtocolRequest,
+    SetFunctionBreakpointsProtocolRequest,
+    ContinueProtocolRequest,
+    NextProtocolRequest,
+    StepInProtocolRequest,
+    StepOutProtocolRequest,
+    ThreadsProtocolRequest,
+    LoadedSourcesProtocolRequest,
+    ModulesProtocolRequest,
+    StackTraceProtocolRequest,
+    ScopesProtocolRequest,
+    VariablesProtocolRequest,
+    SetVariableProtocolRequest,
+    EvaluateProtocolRequest,
+    ExceptionInfoProtocolRequest,
+    InitializeProtocolResponse,
+    BreakpointLocationsProtocolResponse,
+    SetBreakpointsProtocolResponse,
+    SetFunctionBreakpointsProtocolResponse,
+    ContinueProtocolResponse,
+    ThreadsProtocolResponse,
+    LoadedSourcesProtocolResponse,
+    ModulesProtocolResponse,
+    StackTraceProtocolResponse,
+    ScopesProtocolResponse,
+    VariablesProtocolResponse,
+    SetVariableProtocolResponse,
+    EvaluateProtocolResponse,
+    ExceptionInfoProtocolResponse,
+    InitializedProtocolEvent,
+    StoppedProtocolEvent,
+    ExitedProtocolEvent,
+    TerminatedProtocolEvent,
+    ThreadProtocolEvent,
+    OutputProtocolEvent,
+    BreakpointProtocolEvent,
+]

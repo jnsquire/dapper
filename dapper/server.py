@@ -26,14 +26,13 @@ from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Awaitable
 from typing import Callable
-from typing import Dict
 from typing import cast
 
 from dapper.protocol import ProtocolHandler
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
     from concurrent.futures import Future as _CFuture
 
     from dapper.connection import ConnectionBase
@@ -296,9 +295,7 @@ class PyDebugger:
             ).start()
         else:
             try:
-                await self.loop.run_in_executor(
-                    None, self._start_debuggee_process, debug_args
-                )
+                await self.loop.run_in_executor(None, self._start_debuggee_process, debug_args)
             except Exception:
                 await asyncio.to_thread(self._start_debuggee_process, debug_args)
 
@@ -550,14 +547,16 @@ class PyDebugger:
         listen.listen(1)
         _addr, port = listen.getsockname()
         self._ipc_listen_sock = listen
-        debug_args.extend([
-            "--ipc",
-            "tcp",
-            "--ipc-host",
-            host,
-            "--ipc-port",
-            str(port),
-        ])
+        debug_args.extend(
+            [
+                "--ipc",
+                "tcp",
+                "--ipc-host",
+                host,
+                "--ipc-port",
+                str(port),
+            ]
+        )
 
     def _run_ipc_accept_and_read(self) -> None:
         """Accept one IPC connection then stream DBGP lines to handler."""
@@ -785,6 +784,7 @@ class PyDebugger:
         elif event_type == "variables":
             self._handle_event_variables(data)
         else:
+
             def _payload_output() -> dict[str, Any]:
                 return {
                     "category": data.get("category", "console"),
@@ -901,9 +901,7 @@ class PyDebugger:
         """Set breakpoints for a source file"""
         path = source if isinstance(source, str) else source.get("path")
         if not path:
-            return [
-                {"verified": False, "message": "Source path is required"} for _ in breakpoints
-            ]
+            return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
         path = str(Path(path).resolve())
 
         bp_lines = [
@@ -1146,6 +1144,7 @@ class PyDebugger:
 
     def _schedule_coroutine(self, coro_or_factory: Any) -> None:
         """Schedule a coroutine, Future, or a factory producing one on the debugger loop."""
+
         def _submit() -> None:
             try:
                 obj = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
@@ -1762,6 +1761,7 @@ class PyDebugger:
             cid: int,
         ) -> bool:
             if fut_loop is not None and fut_loop.is_running():
+
                 async def _mark_failed() -> None:
                     if not fut.done():
                         fut.set_exception(RuntimeError("Debugger shutdown"))
@@ -1779,7 +1779,8 @@ class PyDebugger:
         def _shutdown_schedule_on_debugger_loop(fut: asyncio.Future, cid: int) -> None:
             try:
                 self.loop.call_soon_threadsafe(
-                    lambda: (not fut.done()) and fut.set_exception(RuntimeError("Debugger shutdown"))
+                    lambda: (not fut.done())
+                    and fut.set_exception(RuntimeError("Debugger shutdown"))
                 )
             except Exception:
                 logger.debug("failed scheduling on debugger loop for %s", cid)
@@ -2573,16 +2574,16 @@ class DebugAdapterServer:
     ) -> None:
         """Send a success response to a request"""
         response = self.protocol_handler.create_response(cast("Request", request), True, body)
-        await self.send_message(cast("Dict[str, Any]", response))
+        await self.send_message(cast("dict[str, Any]", response))
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
         """Send an error response to a request"""
         response = self.protocol_handler.create_response(
             cast("Request", request), False, None, error_message
         )
-        await self.send_message(cast("Dict[str, Any]", response))
+        await self.send_message(cast("dict[str, Any]", response))
 
     async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
         """Send an event to the client"""
         event = self.protocol_handler.create_event(event_name, body)
-        await self.send_message(cast("Dict[str, Any]", event))
+        await self.send_message(cast("dict[str, Any]", event))

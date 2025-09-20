@@ -4,7 +4,7 @@ This project uses [uv](https://github.com/astral-sh/uv) for fast Python package 
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - [uv](https://github.com/astral-sh/uv) package manager
 
 ## Installation

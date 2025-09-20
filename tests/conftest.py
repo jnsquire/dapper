@@ -16,16 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 @pytest.fixture(autouse=True)
 def event_loop():
-	loop = asyncio.new_event_loop()
-	try:
-		asyncio.set_event_loop(loop)
-		yield loop
-	finally:
-		try:
-			if not loop.is_closed():
-				loop.close()
-		finally:
-			try:
-				asyncio.set_event_loop(None)
-			except Exception:
-				pass
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        yield loop
+    finally:
+        try:
+            if not loop.is_closed():
+                loop.close()
+        finally:
+            try:
+                asyncio.set_event_loop(None)
+            except Exception:
+                pass

@@ -11,7 +11,7 @@ authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
 dependencies = []
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -19,8 +19,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/dapper"
-"Bug Tracker" = "https://github.com/yourusername/dapper/issues"
+"Homepage" = "https://github.com/jnsquire/dapper"
+"Bug Tracker" = "https://github.com/jnsquire/dapper/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,8 +79,8 @@ exclude = [
 line-length = 99
 indent-width = 4
 
-# Assume Python 3.8+
-target-version = "py38"
+# Assume Python 3.9+
+target-version = "py39"
 
 [tool.ruff.lint]
 select = [

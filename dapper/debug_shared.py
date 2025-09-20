@@ -8,12 +8,30 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from typing import TypedDict
 
 MAX_STRING_LENGTH = 1000
 VAR_REF_TUPLE_SIZE = 2
 
 send_logger = logging.getLogger(__name__ + ".send")
 logger = logging.getLogger(__name__)
+
+
+class SourceReferenceMetaBase(TypedDict):
+    """Required fields for a sourceReference entry."""
+
+    path: str
+
+
+class SourceReferenceMeta(SourceReferenceMetaBase, total=False):
+    """Optional fields for a sourceReference entry.
+
+    Values of SessionState.source_references map to this shape.
+    - path: required absolute or relative file system path
+    - name: optional display name for the source
+    """
+
+    name: str | None
 
 
 class SessionState:
@@ -46,7 +64,7 @@ class SessionState:
         self.handle_debug_command = None  # Set by debug_adapter_comm
 
         # Mapping of sourceReference -> metadata (path/name)
-        self.source_references: dict[int, dict] = {}
+        self.source_references: dict[int, SourceReferenceMeta] = {}
         # Reverse mapping path -> ref id
         self._path_to_ref: dict[str, int] = {}
         # Session counter for allocating new ids
@@ -71,7 +89,7 @@ class SessionState:
         self.next_source_ref = ref + 1
         return ref
 
-    def get_source_meta(self, ref: int) -> dict | None:
+    def get_source_meta(self, ref: int) -> SourceReferenceMeta | None:
         return self.source_references.get(ref)
 
     def get_source_content_by_ref(self, ref: int) -> str | None:

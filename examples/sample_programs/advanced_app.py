@@ -15,8 +15,11 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
-from typing import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 

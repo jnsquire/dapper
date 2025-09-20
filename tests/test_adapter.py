@@ -10,8 +10,8 @@ import asyncio
 import logging
 from contextlib import ExitStack
 from contextlib import suppress
+from typing import TYPE_CHECKING
 from typing import Callable
-from typing import Iterable
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -19,6 +19,9 @@ import pytest
 
 from dapper.adapter import main
 from dapper.adapter import start_server
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # ---------------------------------------------------------------------------
 # Helper fixtures
