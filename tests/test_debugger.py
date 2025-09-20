@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.debugger import PyDebugger
-from dapper.debugger import PyDebuggerThread
+from dapper.server import PyDebugger
+from dapper.server import PyDebuggerThread
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -242,6 +242,10 @@ async def test_shutdown_fails_pending_commands_cross_loop(debugger):
     # Clean up the other loop
     other_loop.call_soon_threadsafe(other_loop.stop)
     thread.join(timeout=1.0)
+    try:
+        other_loop.close()
+    except Exception:
+        pass
 
 
 @pytest.mark.asyncio

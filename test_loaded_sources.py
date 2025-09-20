@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dapper.connection import TCPServerConnection
-from dapper.debugger import PyDebugger
+from dapper.server import PyDebugger
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

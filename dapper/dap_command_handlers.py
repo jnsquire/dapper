@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import linecache
+import mimetypes
 import sys
 import threading
 from pathlib import Path
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
     from dapper.protocol_types import ContinueArguments
     from dapper.protocol_types import EvaluateArguments
     from dapper.protocol_types import ExceptionInfoArguments
-    from dapper.protocol_types import LoadedSourcesRequest
     from dapper.protocol_types import Module
     from dapper.protocol_types import ModulesArguments
     from dapper.protocol_types import NextArguments
@@ -561,8 +561,61 @@ def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
     # Sort sources by name for consistent ordering
     loaded_sources.sort(key=lambda s: s.get("name", ""))
 
+    # Assign sourceReference ids and populate state mapping
+    # Reuse existing ids for paths already known, otherwise allocate new ids
+    # via the State API
+    for s in loaded_sources:
+        p = s.get("path")
+        if not p:
+            continue
+        # Use State API to get or create a session-scoped id
+        ref_id = state.get_ref_for_path(p) or state.get_or_create_source_ref(p, s.get("name"))
+        s["sourceReference"] = ref_id
+
     # Send the response
     send_debug_message("response", success=True, body={"sources": loaded_sources})
+
+
+@command_handler("source")
+def handle_source(arguments: dict[str, Any] | None = None) -> None:
+    """Handle 'source' request to return source content by path or sourceReference."""
+    if arguments is None:
+        send_debug_message("response", success=False, message="Missing arguments for source request")
+        return
+
+    source = arguments.get("source", {})
+    source_reference = source.get("sourceReference") or arguments.get("sourceReference")
+    path = source.get("path") or arguments.get("path")
+    # Resolve content (by sourceReference preferred, else by path)
+    content = None
+    mime_type: str | None = None
+
+    if source_reference and isinstance(source_reference, int) and source_reference > 0:
+        # Prefer resolving by reference; meta may provide the canonical path
+        meta = state.get_source_meta(source_reference)
+        if meta:
+            path = meta.get("path") or path
+        content = state.get_source_content_by_ref(source_reference)
+    elif path:
+        content = state.get_source_content_by_path(path)
+
+    # If we found content and have a path, try to determine a conservative mimeType.
+    if content is not None and path and "\x00" not in content:
+        # If it contains a NUL byte we consider it binary and skip mimeType detection
+        guessed, _ = mimetypes.guess_type(path)
+        if guessed:
+            mime_type = guessed
+        elif path.endswith((".py", ".pyw", ".txt", ".md")):
+            mime_type = "text/plain; charset=utf-8"
+
+    if content is None:
+        send_debug_message("response", success=False, message="Could not load source content")
+        return
+
+    body: dict[str, Any] = {"content": content}
+    if mime_type:
+        body["mimeType"] = mime_type
+    send_debug_message("response", success=True, body=body)
 
 
 @command_handler("modules")
@@ -621,7 +674,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module : start_module + module_count]
+            modules = all_modules[start_module:start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

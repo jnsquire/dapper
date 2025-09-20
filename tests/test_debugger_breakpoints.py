@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
 from .test_debugger_base import BaseDebuggerTest
 
 
@@ -36,6 +38,7 @@ class AsyncCallRecorder:
         assert actual_kwargs == kwargs
 
 
+@pytest.mark.asyncio
 class TestDebuggerBreakpoints(BaseDebuggerTest):
     """Test cases for debugger breakpoint management"""
 

@@ -1,10 +1,13 @@
 import unittest
 
-from dapper.debugger import PyDebuggerThread
+import pytest
+
+from dapper.server import PyDebuggerThread
 
 from .test_debugger_base import BaseDebuggerTest
 
 
+@pytest.mark.asyncio
 class TestDebuggerThreads(BaseDebuggerTest):
     """Test cases for debugger thread management"""
 

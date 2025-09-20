@@ -1,9 +1,12 @@
 import unittest
 from unittest.mock import MagicMock
 
+import pytest
+
 from .test_debugger_base import BaseDebuggerTest
 
 
+@pytest.mark.asyncio
 class TestDebuggerCore(BaseDebuggerTest):
     """Test cases for core debugger functionality"""
 

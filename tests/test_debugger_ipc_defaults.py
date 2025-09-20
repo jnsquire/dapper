@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from dapper.debugger import PyDebugger
+from dapper.server import PyDebugger
 
 
 class _StubServer:
@@ -62,3 +62,6 @@ async def test_unix_is_default_on_non_windows():
     path_idx = argv.index("--ipc-path")
     assert path_idx + 1 < len(argv)
     assert argv[path_idx + 1].endswith(".sock")
+    # Clean up any IPC listener resources created by launch to avoid
+    # leaking sockets that are detected by strict test runs.
+    await dbg.shutdown()

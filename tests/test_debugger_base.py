@@ -1,14 +1,13 @@
 import asyncio
-import unittest
 from unittest.mock import MagicMock
 
-from dapper.debugger import PyDebugger
+from dapper.server import PyDebugger
 
 
-class BaseDebuggerTest(unittest.IsolatedAsyncioTestCase):
+class BaseDebuggerTest:
     """Base test class with common debugger setup"""
 
-    async def asyncSetUp(self):
+    def setup_method(self):
         """Set up for each test"""
         self.mock_server = MagicMock()
 
@@ -32,12 +31,12 @@ class BaseDebuggerTest(unittest.IsolatedAsyncioTestCase):
 
         self.mock_server.send_event = AsyncRecorder()
         # Use current event loop instead of creating a new one
-        current_loop = asyncio.get_event_loop()
-        self.debugger = PyDebugger(self.mock_server, current_loop)
+        self.loop = asyncio.get_event_loop()
+        self.debugger = PyDebugger(self.mock_server, self.loop)
 
-    async def asyncTearDown(self):
+    def teardown_method(self):
         """Clean up after each test"""
         if hasattr(self, "debugger") and self.debugger:
             # Shutdown the debugger - no need to close loop since we're
             # using current
-            await self.debugger.shutdown()
+            self.loop.run_until_complete(self.debugger.shutdown())

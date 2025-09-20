@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from dapper.debugger import PyDebugger
+from dapper.server import PyDebugger
 from dapper.server import RequestHandler
 
 

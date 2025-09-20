@@ -5,8 +5,8 @@ from unittest.mock import patch
 import pytest
 
 from dapper.connection import ConnectionBase
-from dapper.debugger import PyDebugger as RealDebugger
 from dapper.server import DebugAdapterServer
+from dapper.server import PyDebugger as RealDebugger
 
 
 class MockConnection(ConnectionBase):

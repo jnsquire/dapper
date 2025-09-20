@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from dapper.connection import TCPServerConnection
-from dapper.debugger import PyDebugger
+from dapper.server import PyDebugger
 
 # Add the dapper module to the path
 sys.path.insert(0, str(Path(__file__).parent))

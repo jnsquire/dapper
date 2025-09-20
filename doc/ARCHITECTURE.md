@@ -47,7 +47,7 @@ Resource management:
 
 - The adapter uses a dedicated asyncio event loop for most logic. The loop is stored as `self.loop` on the `PyDebugger` instance.
 
-- Blocking or CPU-bound tasks are dispatched to a `ThreadPoolExecutor` (`self.executor`) via `loop.run_in_executor(...)`.
+- Blocking or CPU-bound tasks are dispatched to the event loop `ThreadPoolExecutor` via `loop.run_in_executor(...)`.
 
 - Subprocess mode: The debuggee process is started in a worker thread that launches the external Python process. In test mode a real `threading.Thread` is used to more closely match production sequencing.
 

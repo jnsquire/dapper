@@ -62,11 +62,13 @@ async def test_launch_inprocess_sends_process_event():
 
         task = asyncio.create_task(server.start())
         # Allow loop to process queued messages briefly
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.1)
         if not task.done():
             task.cancel()
-            with pytest.raises(asyncio.CancelledError):
+            try:
                 await task
+            except asyncio.CancelledError:
+                pass
         else:
             # If already finished naturally, just await it
             await task

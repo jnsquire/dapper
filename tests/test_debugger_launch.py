@@ -36,6 +36,7 @@ class AsyncCallRecorder:
         assert len(self.calls) == 1
 
 
+@pytest.mark.asyncio
 class TestDebuggerLaunch(BaseDebuggerTest):
     """Test cases for debugger launch and process management"""
 
@@ -117,11 +118,16 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                         timeout=5.0,  # 5 second timeout
                     )
 
+                    # Check that program is running before shutdown
+                    assert self.debugger.program_running
+                    expected_program_path = str(Path("python").resolve())
+                    assert self.debugger.program_path == expected_program_path
+
+                    await self.debugger.shutdown()
+
             # Since we mocked _start_debuggee_process, Popen won't be called
-            # Instead, verify that the launch method completed without hanging
-            assert self.debugger.program_running
-            expected_program_path = str(Path("python").resolve())
-            assert self.debugger.program_path == expected_program_path
+            # and shutdown is called, program_running should be false
+            assert not self.debugger.program_running
 
     async def test_launch_already_running_error(self):
         """Test launching when already running"""

@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from .test_debugger_base import BaseDebuggerTest
 
 
@@ -36,6 +38,7 @@ class AsyncCallRecorder:
         assert len(self.calls) == 1, f"expected 1 call, got {len(self.calls)}"
 
 
+@pytest.mark.asyncio
 class TestDebuggerExecution(BaseDebuggerTest):
     """Test cases for debugger execution control"""
 

@@ -8,22 +8,24 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-# Fixture for asyncio loop
-@pytest.fixture
+# Provide a fresh event loop for each test and ensure it is closed. This
+# avoids relying on plugin behavior and guarantees deterministic cleanup of
+# platform-specific resources (for example, the ProactorEventLoop's
+# internal socketpair on Windows).
+
+
+@pytest.fixture(autouse=True)
 def event_loop():
-    """Use the current running event loop for each test."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # If no loop is running, pytest-asyncio will create one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        created_new = True
-    else:
-        created_new = False
-
-    yield loop
-
-    # Only close if we created it
-    if created_new and not loop.is_closed():
-        loop.close()
+	loop = asyncio.new_event_loop()
+	try:
+		asyncio.set_event_loop(loop)
+		yield loop
+	finally:
+		try:
+			if not loop.is_closed():
+				loop.close()
+		finally:
+			try:
+				asyncio.set_event_loop(None)
+			except Exception:
+				pass
