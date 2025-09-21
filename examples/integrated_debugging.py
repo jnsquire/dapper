@@ -24,7 +24,7 @@ import logging
 import sys
 import time
 
-from dapper.debug_launcher import DebuggerBDB
+from dapper.DebuggerBDB import DebuggerBDB
 from dapper.events import EventEmitter
 
 # Module level logger for examples

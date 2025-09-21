@@ -17,8 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.debug_launcher import DebuggerBDB
 from dapper.debug_launcher import _format_log_message
+from dapper.debugger_bdb import DebuggerBDB
 from dapper.server import DebugAdapterServer
 from tests.test_server import AsyncCallRecorder
 from tests.test_server import MockConnection

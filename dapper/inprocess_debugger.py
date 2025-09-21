@@ -13,8 +13,8 @@ import logging
 import threading
 from typing import Any
 
-from dapper.debug_launcher import DebuggerBDB
 from dapper.debug_shared import make_variable_object
+from dapper.debugger_bdb import DebuggerBDB
 from dapper.events import EventEmitter
 
 # Length of (frame_id, scope) tuple used in var_refs

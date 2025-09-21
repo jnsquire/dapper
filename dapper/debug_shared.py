@@ -8,9 +8,12 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
-from typing import TextIO
 from typing import TypedDict
+
+if TYPE_CHECKING:
+    import io
 
 # Maximum length of strings to be sent over the wire
 MAX_STRING_LENGTH = 1000
@@ -68,8 +71,8 @@ class SessionState:
         self.is_terminated: bool = False
         self.ipc_enabled: bool = False
         self.ipc_sock: Any | None = None
-        self.ipc_rfile: TextIO | None = None
-        self.ipc_wfile: TextIO | None = None
+        self.ipc_rfile: io.TextIOBase | None = None
+        self.ipc_wfile: io.TextIOBase | None = None
         self.handle_debug_command: Any | None = None  # Set by debug_adapter_comm
 
         # Mapping of sourceReference -> metadata (path/name)

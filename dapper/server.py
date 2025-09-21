@@ -950,7 +950,44 @@ class PyDebugger:
                     "breakpoints": bp_lines,
                 },
             }
+            # Emit a progress start event for longer running operations so
+            # clients can show a spinner if they want. We keep this lightweight
+            # and emit progress end once the command is sent.
+            # build a reasonably unique progress id without touching other
+            # properties that static analysis may not like
+            try:
+                progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
+            except Exception:
+                progress_id = f"setBreakpoints:{path}"
+
+            # schedule progressStart and progressEnd around the outgoing command
+            self._schedule_coroutine(
+                lambda pid=progress_id: self.server.send_event(
+                    "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
+                )
+            )
+
             await self._send_command_to_debuggee(bp_command)
+
+            # After sending the setBreakpoints command to the debuggee, forward
+            # a breakpoint-changed event so clients can react to changes.
+            try:
+                bp_events = [
+                    {"reason": "changed", "breakpoint": {"verified": bp.get("verified", True), "line": bp.get("line")}}
+                    for bp in bp_lines
+                ]
+                for be in bp_events:
+                    # forward as an adapter-level 'breakpoint' event
+                    self._forward_event("breakpoint", be, immediate=False)
+            except Exception:
+                logger.debug("Failed to forward breakpoint events")
+
+            # schedule a progressEnd
+            self._schedule_coroutine(
+                lambda pid=progress_id: self.server.send_event(
+                    "progressEnd", {"progressId": pid}
+                )
+            )
 
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]
 
@@ -1262,15 +1299,16 @@ class PyDebugger:
             }
             await self._send_command_to_debuggee(command)
 
-    async def pause(self, thread_id: int) -> None:
+    async def pause(self, thread_id: int) -> bool:
         """Pause execution of the specified thread"""
         if not self.program_running or self.is_terminated:
-            return
+            return False
 
         if self.in_process and self._inproc is not None:
-            return
+            return False
         command = {"command": "pause", "arguments": {"threadId": thread_id}}
         await self._send_command_to_debuggee(command)
+        return True
 
     async def get_threads(self) -> list[dict[str, Any]]:
         """Get all threads"""
@@ -2177,6 +2215,35 @@ class RequestHandler:
             "success": True,
             "command": "stepOut",
         }
+
+    async def _handle_pause(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle pause request by delegating to the debugger.pause method.
+
+        Accepts an optional `threadId` argument per the DAP spec.
+        """
+        args = request.get("arguments", {}) or {}
+        thread_id: int = args["threadId"]
+
+        try:
+            # Support sync or async implementations of pause()
+            success = await self.server.debugger.pause(thread_id)
+
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": success,
+                "command": "pause",
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            logger = logging.getLogger(__name__)
+            logger.exception("Error handling pause request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "pause",
+                "message": f"Pause failed: {e!s}",
+            }
 
     async def _handle_disconnect(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle disconnect request."""

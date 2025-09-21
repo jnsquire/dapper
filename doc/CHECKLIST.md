@@ -32,6 +32,8 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Reverse Continue**: Continue backwards in execution
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
 
+Note: `Pause` is supported in the debugger/launcher command path, however the adapter's `RequestHandler` currently has no `_handle_pause` method to accept a client-initiated `pause` request. Consider adding `_handle_pause` in `dapper/server.py` to expose this to clients.
+
 ---
 
 ## Breakpoints
@@ -45,12 +47,16 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Log Points**: Log messages without stopping
 
 ### Function Breakpoints
-- ✅ **Set Function Breakpoints**: Set breakpoints on function names
+### Function Breakpoints
+- 🟡 **Set Function Breakpoints**: Set breakpoints on function names
+  - Note: low-level support exists in the debugger and launcher (PyDebugger + debug launcher handlers), but the adapter `RequestHandler` currently does not expose a `_handle_setFunctionBreakpoints` method to DAP clients.
 - ❌ **Function Breakpoint Conditions**: Conditions for function breakpoints
 
 ### Exception Breakpoints
-- ✅ **Set Exception Breakpoints**: Break on raised/uncaught exceptions
+### Exception Breakpoints
+- 🟡 **Set Exception Breakpoints**: Break on raised/uncaught exceptions
   - Supports "uncaught" and "raised" filters
+  - Note: the debugger and launcher support exception breakpoints, but the adapter currently lacks a `_handle_setExceptionBreakpoints` method on `RequestHandler` to expose this to clients.
 - ❌ **Exception Options**: Advanced exception filtering options
 
 ### Data Breakpoints

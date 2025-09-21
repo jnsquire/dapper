@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import argparse
 import ast
-import bdb
 import contextlib
+import io
 import json
 import logging
 import os
@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 from typing import cast
 
-from dapper.debug_helpers import frame_may_handle_exception
 from dapper.debug_shared import state
+from dapper.debugger_bdb import DebuggerBDB
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -33,6 +33,42 @@ logger = logging.getLogger(__name__)
 
 MAX_STRING_LENGTH = 1000
 VAR_REF_TUPLE_SIZE = 2  # Variable references are stored as 2-element tuples
+
+
+class PipeWriter(io.TextIOBase):
+    """TextIO-compatible writer that sends strings over the pipe."""
+
+    def __init__(self, conn: _mpc.Connection):
+        self.conn = conn
+
+    def write(self, s: str) -> int:  # return number of characters written
+        self.conn.send(s)
+        return len(s)
+
+    def flush(self) -> None:
+        return
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.conn.close()
+
+
+class PipeReader(io.TextIOBase):
+    """TextIO-compatible reader that receives strings from the pipe."""
+
+    def __init__(self, conn: _mpc.Connection):
+        self.conn = conn
+        self.conn = conn
+
+    def readline(self, size: int = -1) -> str:
+        try:
+            data = self.conn.recv()
+        except (EOFError, OSError):
+            return ""
+        s = cast("str", data)
+        if size is not None and size >= 0:
+            return s[:size]
+        return s
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
@@ -123,6 +159,7 @@ def handle_debug_command(command: dict[str, Any]) -> None:
     # Map command names to handler callables to reduce branching
     handlers: dict[str, Any] = {
         "setBreakpoints": handle_set_breakpoints,
+        "initialize": handle_initialize,
         "setFunctionBreakpoints": handle_set_function_breakpoints,
         "setExceptionBreakpoints": handle_set_exception_breakpoints,
         "continue": handle_continue,
@@ -130,13 +167,20 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         "stepIn": handle_step_in,
         "stepOut": handle_step_out,
         "pause": handle_pause,
+        "threads": handle_threads,
         "stackTrace": handle_stack_trace,
+        "scopes": handle_scopes,
+        "source": handle_source,
         "variables": handle_variables,
         "setVariable": handle_set_variable,
         "evaluate": handle_evaluate,
+        "setDataBreakpoints": handle_set_data_breakpoints,
+        "dataBreakpointInfo": handle_data_breakpoint_info,
         "exceptionInfo": handle_exception_info,
         "configurationDone": lambda _: handle_configuration_done(),
         "terminate": lambda _: handle_terminate(),
+        "disconnect": lambda _: handle_terminate(),
+        "restart": handle_restart,
     }
 
     handler = handlers.get(command_type)
@@ -667,384 +711,127 @@ def handle_terminate():
     os._exit(0)
 
 
-class DebuggerBDB(bdb.Bdb):
+def handle_initialize(_arguments):
+    """Handle initialize command (minimal capabilities response)."""
+    # Return a conservative set of capabilities the debuggee can support.
+    caps = {
+        "supportsConfigurationDoneRequest": True,
+        "supportsEvaluateForHovers": True,
+        "supportsSetVariable": True,
+        "supportsRestartRequest": False,
+    }
+    return {"success": True, "body": caps}
+
+
+def handle_threads(_arguments):
+    """Handle threads request: return current threads list."""
+    dbg = state.debugger
+    threads_list = []
+    if dbg:
+        for tid, name in getattr(dbg, "threads", {}).items():
+            threads_list.append({"id": tid, "name": name})
+
+    return {"success": True, "body": {"threads": threads_list}}
+
+
+def handle_scopes(arguments):
+    """Handle scopes request for a given frameId.
+
+    This returns locals and globals scopes with variablesReference ids set up
+    so the existing `handle_variables` can be used to fetch them.
     """
-    Custom BDB debugger implementation for the debug adapter
+    frame_id = arguments.get("frameId")
+    dbg = state.debugger
+    if not dbg or frame_id not in dbg.frame_id_to_frame:
+        return {"success": False, "message": "Invalid frameId"}
+
+    # Create two variable references: locals and globals
+    locals_ref = dbg.next_var_ref
+    dbg.next_var_ref += 1
+    dbg.var_refs[locals_ref] = (frame_id, "locals")
+
+    globals_ref = dbg.next_var_ref
+    dbg.next_var_ref += 1
+    dbg.var_refs[globals_ref] = (frame_id, "globals")
+
+    scopes = [
+        {"name": "Locals", "variablesReference": locals_ref, "expensive": False},
+        {"name": "Globals", "variablesReference": globals_ref, "expensive": False},
+    ]
+
+    return {"success": True, "body": {"scopes": scopes}}
+
+
+def handle_source(arguments):
+    """Handle source request: return file contents for a given source path."""
+    source = arguments.get("source") or {}
+    path = source.get("path") or arguments.get("path")
+    if not path:
+        return {"success": False, "message": "Missing source path"}
+
+    try:
+        with Path(path).open("r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return {"success": False, "message": f"Failed to read source: {e!s}"}
+
+    return {"success": True, "body": {"content": content}}
+
+
+def handle_set_data_breakpoints(arguments):
+    """Handle setDataBreakpoints (minimal support).
+
+    Stores a list of configured data breakpoints on the debugger instance.
     """
-
-    def __init__(self, skip=None):
-        super().__init__(skip)
-        self.is_terminated = False
-        self.breakpoints = {}  # file_path -> list of breakpoints
-        self.function_breakpoints = []  # list of function names
-        # Function breakpoint metadata: name -> {condition, hitCondition,
-        # logMessage, hit}
-        self.function_breakpoint_meta = {}
-        self.exception_breakpoints_uncaught = False
-        self.exception_breakpoints_raised = False
-        self.custom_breakpoints = {}  # filename -> {line: condition}
-        self.current_thread_id = threading.get_ident()
-        self.current_frame = None
-        self.stepping = False
-        self.stop_on_entry = False
-        self.frames_by_thread = {}  # thread_id -> list of frames
-        self.threads = {}  # thread_id -> thread name
-        self.thread_ids = {}  # thread object -> thread_id
-        self.thread_count = 1
-        self.stopped_thread_ids = set()  # thread_ids that are currently stopped
-        self.next_frame_id = 1
-        self.frame_id_to_frame = {}  # frame_id -> frame object
-        self.next_var_ref = 1000
-        self.var_refs = {}  # var_ref -> (type, object) or (frame_id, scope)
-        self.current_exception_info = {}  # thread_id -> exception details
-        # Map (file_path, line) -> metadata: hit counter, hit/log conditions
-        self.breakpoint_meta = {}
-
-    # ---- Breakpoint metadata helpers ----
-    def record_breakpoint(
-        self,
-        path: str,
-        line: int,
-        *,
-        condition: str | None,
-        hit_condition: str | None,
-        log_message: str | None,
-    ) -> None:
-        """Record DAP breakpoint metadata for gating/logging at runtime."""
-        key = (path, int(line))
-        meta = self.breakpoint_meta.get(key, {})
-        meta.setdefault("hit", 0)
-        meta["condition"] = condition
-        meta["hitCondition"] = hit_condition
-        meta["logMessage"] = log_message
-        self.breakpoint_meta[key] = meta
-
-    def clear_break_meta_for_file(self, path: str) -> None:
-        """Remove any stored metadata for breakpoints in a given file."""
-        to_del = [k for k in self.breakpoint_meta if k[0] == path]
-        for k in to_del:
-            self.breakpoint_meta.pop(k, None)
-
-    def user_line(self, frame):
-        """Called when we hit a breakpoint or a step"""
-        filename = frame.f_code.co_filename
-        line = frame.f_lineno
-
-        # If at a (file,line) breakpoint, apply DAP hitCondition/logMessage
-        if self.get_break(filename, line) or (
-            filename in self.custom_breakpoints and line in self.custom_breakpoints[filename]
-        ):
-            meta = self.breakpoint_meta.get((filename, int(line)))
-            if meta is not None:
-                # Increment hit counter and evaluate hitCondition gate
-                meta["hit"] = int(meta.get("hit", 0)) + 1
-                hc_expr = meta.get("hitCondition")
-                if hc_expr and not _evaluate_hit_condition(str(hc_expr), meta["hit"]):
-                    # Skip stopping/logging until the hit condition matches
-                    self.set_continue()
-                    return
-
-                # Logpoints: if logMessage is set, emit output and continue
-                log_msg = meta.get("logMessage")
-                if log_msg:
-                    try:
-                        rendered = _format_log_message(str(log_msg), frame)
-                    except Exception:
-                        rendered = str(log_msg)
-                    # Emit output event and continue without stopping
-                    send_debug_message("output", category="console", output=str(rendered))
-                    self.set_continue()
-                    return
-
-        # Get current thread
-        thread_id = threading.get_ident()
-
-        # Update thread info
-        if thread_id not in self.threads:
-            thread_name = threading.current_thread().name
-            self.threads[thread_id] = thread_name
-
-            # Send thread event
-            send_debug_message(
-                "thread",
-                threadId=thread_id,
-                reason="started",
-                name=thread_name,
-            )
-
-        # Store current frame
-        self.current_frame = frame
-
-        # Update stopped thread info
-        self.stopped_thread_ids.add(thread_id)
-
-        # Calculate stack frames
-        stack_frames = self._get_stack_frames(frame)
-        self.frames_by_thread[thread_id] = stack_frames
-
-        # Determine stop reason
-        reason = "breakpoint"
-        if self.stop_on_entry:
-            reason = "entry"
-            self.stop_on_entry = False
-        elif self.stepping:
-            reason = "step"
-            self.stepping = False
-
-        # Send stopped event
-        send_debug_message(
-            "stopped",
-            threadId=thread_id,
-            reason=reason,
-            allThreadsStopped=True,
-        )
-
-        # Process any queued commands before we wait
-        process_queued_commands()
-
-        # Wait for continued command
-        self.set_continue()
-
-    def user_exception(self, frame, exc_info):
-        """Called when an exception occurs"""
-        # Only break on exception if configured
-        if not (
-            getattr(self, "exception_breakpoints_raised", False)
-            or getattr(self, "exception_breakpoints_uncaught", False)
-            or getattr(self, "exception_breakpoints", {}).get("raised")
-            or getattr(self, "exception_breakpoints", {}).get("uncaught")
-        ):
-            return
-
-        # Get exception info
-        exc_type, exc_value, exc_traceback = exc_info
-
-        # Use the module-level helper for detection (keeps this method small).
-
-        # Conservative uncaught detection: inspect only the frame where the
-        # exception was raised. This avoids helper frames used by tests
-        # (which capture and re-raise) from masking whether the original
-        # frame had an enclosing try/except. If detection cannot determine
-        # handler presence (returns None), treat as possibly handled.
-        is_uncaught = True
-        res = frame_may_handle_exception(frame)
-        # Keep the debug call within line-length limits by splitting args.
-        logger.debug(
-            "frame_may_handle_exception: frame=%r filename=%r",
-            frame,
-            getattr(frame.f_code, "co_filename", None),
-        )
-        logger.debug("lineno=%s -> %r", getattr(frame, "f_lineno", None), res)
-        if res is True or res is None:
-            is_uncaught = False
-
-        # Get current thread
-        thread_id = threading.get_ident()
-
-        # Determine break mode and whether we should break
+    bps = arguments.get("breakpoints", [])
+    dbg = state.debugger
+    if dbg is not None:
         try:
-            break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
-
-            # Check if we should break
-            if (
-                is_uncaught and self.exception_breakpoints_uncaught
-            ) or self.exception_breakpoints_raised:
-                break_on_exception = True
-            else:
-                break_on_exception = False
+            dbg.data_breakpoints = bps
         except Exception:
-            # Fallback to dict-style if present
-            break_mode = (
-                "always"
-                if getattr(self, "exception_breakpoints", {}).get("raised")
-                else "unhandled"
-            )
-            if (
-                is_uncaught and getattr(self, "exception_breakpoints", {}).get("uncaught")
-            ) or getattr(self, "exception_breakpoints", {}).get("raised"):
-                break_on_exception = True
-            else:
-                break_on_exception = False
+            pass
 
-        # Prepare stack trace (only used if we break and need details)
-        stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
+    # Return verified list (conservative: mark all as verified=False if none)
+    verified = [
+        {"verified": True, "id": bp.get("dataId") or bp.get("name")} for bp in bps
+    ]
 
-        # Store exception details only if we will break on this exception.
-        if break_on_exception:
-            self.current_exception_info[thread_id] = {
-                "exceptionId": exc_type.__name__,
-                "description": str(exc_value),
-                "breakMode": break_mode,
-                "details": {
-                    "message": str(exc_value),
-                    "typeName": exc_type.__name__,
-                    "fullTypeName": (exc_type.__module__ + "." + exc_type.__name__),
-                    "source": frame.f_code.co_filename,
-                    "stackTrace": stack_trace,
-                },
-            }
+    return {"success": True, "body": {"breakpoints": verified}}
 
-        if break_on_exception:
-            # Store current frame
-            self.current_frame = frame
 
-            # Update stopped thread info
-            self.stopped_thread_ids.add(thread_id)
+def handle_data_breakpoint_info(arguments):
+    """Return minimal info about a data breakpoint target."""
+    name = arguments.get("name")
+    if not name:
+        return {"success": False, "message": "Missing name"}
 
-            # Calculate stack frames
-            stack_frames = self._get_stack_frames(frame)
-            self.frames_by_thread[thread_id] = stack_frames
+    # Minimal response: say we can set a breakpoint but cannot persist it
+    return {"success": True, "body": {"dataId": name, "canPersist": False}}
 
-            # Send stopped event
-            send_debug_message(
-                "stopped",
-                threadId=thread_id,
-                reason="exception",
-                text=f"{exc_type.__name__}: {exc_value!s}",
-                allThreadsStopped=True,
-            )
 
-            # Process any queued commands before we wait
-            process_queued_commands()
+def handle_restart(_arguments):
+    """Attempt to restart the debuggee process.
 
-            # Wait for continued command
-            try:
-                self.set_continue()
-            except Exception:
-                _msg = "set_continue: call failed or debugger not fully initialized"
-                logger.debug(_msg, exc_info=True)
+    This implementation attempts to re-exec the current Python interpreter with
+    the same arguments. If re-exec fails, returns an error response. Note: this
+    will replace the current process image and not return on success.
+    """
+    # If no debugger/state, can't safely restart
+    try:
+        # Build argv from original sys.argv if possible
+        argv = list(sys.argv)
+        python = sys.executable or "python"
 
-    def _get_stack_frames(self, frame):
-        """Get stack frames for the current frame"""
-        stack_frames = []
+        # Acknowledge the restart request before re-exec so the adapter can
+        # proceed. We mark termination to allow any other threads to observe.
+        state.is_terminated = True
+        send_debug_message("exited", exitCode=0)
 
-        # Walk up the stack
-        f = frame
-        while f is not None:
-            frame_id = self.next_frame_id
-            self.next_frame_id += 1
-
-            # Store frame for later reference
-            self.frame_id_to_frame[frame_id] = f
-
-            # Get source info
-            filename = f.f_code.co_filename
-            lineno = f.f_lineno
-
-            # Create stack frame info
-            stack_frame = {
-                "id": frame_id,
-                "name": f.f_code.co_name or "<unknown>",
-                "line": lineno,
-                "column": 0,  # We don't have column info
-                "source": {
-                    "name": Path(filename).name,
-                    "path": filename,
-                },
-            }
-
-            stack_frames.append(stack_frame)
-            f = f.f_back
-
-        return stack_frames
-
-    def set_custom_breakpoint(self, filename: str, line: int, condition=None):
-        """Set a breakpoint programmatically"""
-        if filename not in self.custom_breakpoints:
-            self.custom_breakpoints[filename] = {}
-        self.custom_breakpoints[filename][line] = condition
-
-        # Also set a real breakpoint using BDB's mechanism
-        self.set_break(filename, line, cond=condition)
-
-    def clear_custom_breakpoint(self, filename: str, line: int):
-        """Clear a specific breakpoint"""
-        if filename in self.custom_breakpoints and line in self.custom_breakpoints[filename]:
-            del self.custom_breakpoints[filename][line]
-
-            # Also clear from BDB
-            self.clear_break(filename, line)
-
-    def clear_all_custom_breakpoints(self):
-        """Clear all custom breakpoints"""
-        self.custom_breakpoints.clear()
-
-    def clear_all_function_breakpoints(self):
-        """Clear all function breakpoints and their metadata."""
-        self.function_breakpoints = []
-        self.function_breakpoint_meta.clear()
-
-    def user_call(self, frame, argument_list):  # noqa: ARG002 - signature
-        """Called when there is the 'call' event.
-
-        Used to implement Function Breakpoints by matching the current call.
-        """
-        if not self.function_breakpoints and not self.function_breakpoint_meta:
-            return
-
-        # Build candidate names to match against configured function bps
-        candidates = _get_function_candidate_names(frame)
-        match_name = None
-        for name in self.function_breakpoints:
-            if name in candidates:
-                match_name = name
-                break
-
-        if match_name is None:
-            return
-
-        meta = self.function_breakpoint_meta.get(match_name, {})
-
-        # Increment hit count and apply hitCondition
-        meta["hit"] = int(meta.get("hit", 0)) + 1
-        hc_expr = meta.get("hitCondition")
-        if hc_expr and not _evaluate_hit_condition(str(hc_expr), meta["hit"]):
-            return
-
-        # Evaluate condition if present
-        cond = meta.get("condition")
-        if cond:
-            try:
-                if not eval(cond, frame.f_globals, frame.f_locals):
-                    return
-            except Exception:
-                # If condition evaluation fails, do not break
-                return
-
-        # Logpoint support for function bp
-        log_msg = meta.get("logMessage")
-        if log_msg:
-            try:
-                rendered = _format_log_message(str(log_msg), frame)
-            except Exception:
-                rendered = str(log_msg)
-            send_debug_message("output", category="console", output=str(rendered))
-            return
-
-        # Stop here: mirror user_line stopping behavior
-        thread_id = threading.get_ident()
-        if thread_id not in self.threads:
-            thread_name = threading.current_thread().name
-            self.threads[thread_id] = thread_name
-            send_debug_message(
-                "thread",
-                threadId=thread_id,
-                reason="started",
-                name=thread_name,
-            )
-
-        self.current_frame = frame
-        self.stopped_thread_ids.add(thread_id)
-        stack_frames = self._get_stack_frames(frame)
-        self.frames_by_thread[thread_id] = stack_frames
-        send_debug_message(
-            "stopped",
-            threadId=thread_id,
-            reason="function breakpoint",
-            allThreadsStopped=True,
-        )
-        process_queued_commands()
-        self.set_continue()
+        # Perform exec - on success this does not return
+        os.execv(python, [python, *argv])
+    except Exception as e:
+        # If exec failed, return error response to adapter
+        return {"success": False, "message": f"Restart failed: {e!s}"}
 
 
 def _get_function_candidate_names(frame) -> set[str]:
@@ -1204,33 +991,10 @@ def main():
             if args.ipc == "pipe" and os.name == "nt" and args.ipc_pipe:
                 conn = _mpc.Client(address=args.ipc_pipe, family="AF_PIPE")
                 state.ipc_enabled = True
-                # Wrap with simple text protocol adapter
 
-                class _PipeWriter:
-                    def write(self, s: str) -> None:
-                        conn.send(s)
-
-                    def flush(self) -> None:
-                        return
-
-                    def close(self) -> None:
-                        with contextlib.suppress(Exception):
-                            conn.close()
-
-                class _PipeReader:
-                    def readline(self) -> str:
-                        try:
-                            data = conn.recv()
-                        except (EOFError, OSError):
-                            return ""
-                        return cast("str", data)
-
-                    def close(self) -> None:
-                        with contextlib.suppress(Exception):
-                            conn.close()
-
-                state.ipc_rfile = _PipeReader()
-                state.ipc_wfile = _PipeWriter()
+                # Cast wrappers to TextIO to satisfy SessionState annotations
+                state.ipc_rfile = PipeReader(conn)
+                state.ipc_wfile = PipeWriter(conn)
             else:
                 sock = None
                 if args.ipc == "unix":

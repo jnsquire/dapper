@@ -295,11 +295,17 @@ class NamedPipeServerConnection(ConnectionBase):
             key, value = line.split(":", 1)
             headers[key.strip()] = value.strip()
 
-        if "Content-Length" not in headers:
+        content_len_header = headers.get("Content-Length")
+        if content_len_header is None:
             msg = "Content-Length header missing"
             raise RuntimeError(msg)
 
-        content_length = int(headers["Content-Length"])
+        try:
+            content_length = int(content_len_header)
+        except ValueError as err:
+            msg = f"Malformed Content-Length header: {content_len_header!r}"
+            raise RuntimeError(msg) from err
+
         content = await self.reader.readexactly(content_length)
         if not content:
             return None
