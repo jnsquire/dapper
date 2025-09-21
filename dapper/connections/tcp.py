@@ -22,25 +22,33 @@ class TCPServerConnection(ConnectionBase):
         self.server = None
 
     async def accept(self) -> None:
-        logger.info("Starting TCP server on %s:%s", self.host, self.port)
-        self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
+        """Start listening and wait for the first client to connect.
 
-        # Update the port to the actual bound port in case an ephemeral port
-        # (port=0) was requested. This makes the object reflect the real
-        # listening port after start_server returns.
-        srv = self.server
-        if srv is not None and getattr(srv, "sockets", None):
-            try:
-                bound = srv.sockets[0].getsockname()
-                # getsockname() typically returns (host, port)
-                self.port = bound[1]
-            except Exception:
-                # Be conservative: if the socket shape is unexpected, leave
-                # the configured port unchanged.
-                logger.debug("Unable to determine bound port from server sockets")
+        If start_listening() was already called, this method reuses the
+        existing server socket and only waits for a client.
+        """
+        if self.server is None:
+            logger.info("Starting TCP server on %s:%s", self.host, self.port)
+            self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
+
+            # Update the port to the actual bound port in case an ephemeral port
+            # (port=0) was requested. This makes the object reflect the real
+            # listening port after start_server returns.
+            srv = self.server
+            if srv is not None and getattr(srv, "sockets", None):
+                try:
+                    bound = srv.sockets[0].getsockname()
+                    # getsockname() typically returns (host, port)
+                    self.port = bound[1]
+                except Exception:
+                    # Be conservative: if the socket shape is unexpected, leave
+                    # the configured port unchanged.
+                    logger.debug("Unable to determine bound port from server sockets")
+
+            # Prepare the future used to signal the first client connect
+            self._client_connected = asyncio.Future()
 
         # Wait for the first client to connect; fulfilled in _handle_client
-        self._client_connected = asyncio.Future()
         await self._client_connected
 
         logger.info(

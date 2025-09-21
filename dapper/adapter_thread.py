@@ -25,6 +25,7 @@ import concurrent.futures
 import logging
 import threading
 
+from dapper.breakpoints_controller import BreakpointController
 from dapper.connections.pipe import NamedPipeServerConnection
 from dapper.connections.tcp import TCPServerConnection
 from dapper.events import EventEmitter
@@ -65,6 +66,8 @@ class AdapterThread:
         self._port_future: concurrent.futures.Future[int] | None = None
         # Background task observing port; kept to avoid GC
         self._port_observer_task: asyncio.Task | None = None
+        # Breakpoint controller (exposed after server is constructed)
+        self.breakpoints: BreakpointController | None = None
 
     def get_port_future(self) -> concurrent.futures.Future[int]:
         """Return a concurrent.futures.Future that will be completed with the
@@ -90,6 +93,18 @@ class AdapterThread:
         """Internal helper called from the adapter thread/loop to publish
         the bound port to any waiting futures/listeners.
         """
+        try:
+            if self._port_future is None:
+                self._port_future = concurrent.futures.Future()
+            if not self._port_future.done():
+                self._port_future.set_result(port)
+        except Exception:
+            logger.debug("failed to complete port future", exc_info=True)
+        try:
+            self.on_port_assigned.emit(port)
+        except Exception:
+            logger.debug("failed to emit on_port_assigned", exc_info=True)
+
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
         return self._loop
@@ -137,6 +152,9 @@ class AdapterThread:
                 # Build connection and server in this loop context
                 connection = _create_connection()
                 self._server = DebugAdapterServer(connection, loop)
+
+                # Expose a breakpoint controller bound to the adapter loop
+                self.breakpoints = BreakpointController(loop, self._server.debugger)
 
                 # For TCP connections we can call start_listening() to obtain
                 # the bound ephemeral port immediately, before waiting for a
