@@ -222,14 +222,15 @@ class TestProtocolMessages(unittest.TestCase):
         assert req["type"] == "request"
         assert req["command"] == "initialize"
         assert "arguments" in req
+
         args = req["arguments"]
-        assert args["clientID"] == "vscode"
-        assert args["adapterID"] == "python"
-        assert args["linesStartAt1"]
-        assert args["columnsStartAt1"]
-        assert args["supportsVariableType"]
-        assert args["supportsVariablePaging"]
-        assert not args["supportsRunInTerminalRequest"]
+        assert args.get("clientID") == "vscode"
+        assert args.get("adapterID") == "python"
+        assert args.get("linesStartAt1") is True
+        assert args.get("columnsStartAt1") is True
+        assert args.get("supportsVariableType") is True
+        assert args.get("supportsVariablePaging") is True
+        assert args.get("supportsRunInTerminalRequest", False) is False
 
     def test_create_launch_request(self):
         """Test creating launch request"""
@@ -310,8 +311,8 @@ class TestProtocolMessages(unittest.TestCase):
         assert "arguments" in req
         args = req["arguments"]
         assert args["threadId"] == 1
-        assert args["startFrame"] == 5
-        assert args["levels"] == 10
+        assert args.get("startFrame") == 5
+        assert args.get("levels") == 10
 
     def test_create_scopes_request(self):
         """Test creating scopes request"""
@@ -345,7 +346,7 @@ class TestProtocolMessages(unittest.TestCase):
         assert "arguments" in req
         args = req["arguments"]
         assert args["expression"] == "x + 1"
-        assert args["frameId"] == 1
+        assert args.get("frameId") == 1
 
     def test_create_evaluate_request_no_frame(self):
         """Test creating evaluate request without frameId"""

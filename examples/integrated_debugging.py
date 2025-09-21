@@ -63,21 +63,21 @@ class DebugEventHandler:
     def on_step(self, _frame, filename: str, line: int):
         """Called when stepping through code"""
         logger = logging.getLogger(__name__)
-        logger.info("👣 Step at %s:%s", filename, line)
+        logger.info("Step at %s:%s", filename, line)
 
     def on_function_call(self, _frame, filename: str, line: int, func_name: str):
         """Called when entering a function"""
-        logger.info("📞 Function call: %s at %s:%s", func_name, filename, line)
+        logger.info("Function call: %s at %s:%s", func_name, filename, line)
 
     def on_function_return(self, _frame, filename: str, line: int, func_name: str, return_value):
         """Called when returning from a function"""
-        logger.info("↩️ Function return: %s at %s:%s", func_name, filename, line)
+        logger.info("Function return: %s at %s:%s", func_name, filename, line)
         logger.info("   Returned: %r", return_value)
 
     def on_exception(self, _frame, exc_type, exc_value, filename: str, line: int):
         """Called when an exception occurs"""
         exc_msg = f"{exc_type.__name__}: {exc_value}"
-        logger.info(f"💥 Exception at {filename}:{line}: {exc_msg}")
+        logger.info(f"Exception at {filename}:{line}: {exc_msg}")
 
 
 class IntegratedDebugger(DebuggerBDB):
@@ -85,8 +85,9 @@ class IntegratedDebugger(DebuggerBDB):
     Extended debugger that integrates with the application.
     """
 
-    def __init__(self, event_handler=None):
+    def __init__(self):
         super().__init__()
+
         # EventEmitters for various debug events. Consumers can register
         # multiple listeners via `add_listener`.
         self.on_breakpoint_hit = EventEmitter()
@@ -100,7 +101,7 @@ class IntegratedDebugger(DebuggerBDB):
         # Use the base class method
         super().set_custom_breakpoint(filename, line, condition)
 
-        bp_msg = f"✓ Set custom breakpoint at {filename}:{line}"
+        bp_msg = f"Set custom breakpoint at {filename}:{line}"
         if condition:
             bp_msg += f" (condition: {condition})"
         logger.info(bp_msg)
@@ -113,7 +114,7 @@ class IntegratedDebugger(DebuggerBDB):
         """Clear a specific breakpoint"""
         if filename in self.custom_breakpoints and line in self.custom_breakpoints[filename]:
             del self.custom_breakpoints[filename][line]
-            logger.info(f"❌ Cleared breakpoint at {filename}:{line}")
+            logger.info(f"Cleared breakpoint at {filename}:{line}")
 
             # Also clear from BDB
             self.clear_break(filename, line)
@@ -121,41 +122,41 @@ class IntegratedDebugger(DebuggerBDB):
     def clear_all_custom_breakpoints(self):
         """Clear all custom breakpoints"""
         self.custom_breakpoints.clear()
-        logger.info("🧹 Cleared all custom breakpoints")
+        logger.info("Cleared all custom breakpoints")
 
         # Also clear from BDB
         self.clear_all_breaks()
 
     def continue_execution(self):
         """Continue execution until next breakpoint"""
-        logger.info("▶️ Continuing execution...")
+        logger.info("Continuing execution...")
         self.set_continue()
 
     def step_into(self):
         """Step into the next function call"""
-        logger.info("👣 Stepping into...")
+        logger.info("Stepping into...")
         self.set_step()
 
     def step_over(self):
         """Step over to the next line"""
-        logger.info("⏭️ Stepping over...")
+        logger.info("Stepping over...")
         if self.current_frame:
             self.set_next(self.current_frame)
 
     def step_out(self):
         """Step out of the current function"""
-        logger.info("↗️ Stepping out...")
+        logger.info("Stepping out...")
         if self.current_frame:
             self.set_return(self.current_frame)
 
     def start_tracing(self):
         """Start tracing execution"""
-        logger.info("🔍 Starting trace...")
+        logger.info("Starting trace...")
         self.set_trace()
 
     def stop_tracing(self):
         """Stop tracing execution"""
-        logger.info("⏹️ Stopping trace...")
+        logger.info("Stopping trace...")
         self.set_quit()
 
     def user_line(self, frame):
@@ -194,7 +195,7 @@ class IntegratedDebugger(DebuggerBDB):
                 try:
                     if eval(condition, frame.f_globals, frame.f_locals):
                         logger.info(
-                            "🔴 Conditional breakpoint hit at "
+                            "Conditional breakpoint hit at "
                             f"{filename}:{line} (condition: {condition})"
                         )
                         self.on_breakpoint_hit.emit(frame, filename, line)
@@ -203,7 +204,7 @@ class IntegratedDebugger(DebuggerBDB):
                     # If condition evaluation fails, don't trigger breakpoint
                     pass
             else:
-                logger.info(f"🔴 Breakpoint hit at {filename}:{line}")
+                logger.info(f"Breakpoint hit at {filename}:{line}")
                 self.on_breakpoint_hit.emit(frame, filename, line)
                 return
 
@@ -290,17 +291,14 @@ async def main():
     """
     Main example demonstrating integrated debugging
     """
-    logger.info("🚀 Dapper AI Integrated Debugger Example")
+    logger.info("Dapper AI Integrated Debugger Example")
     logger.info("=" * 50)
 
-    # Create event handler
-    event_handler = DebugEventHandler()
-
     # Create integrated debugger
-    debugger = IntegratedDebugger(event_handler)
+    debugger = IntegratedDebugger()
 
     # Set some custom breakpoints
-    logger.info("\n📍 Setting custom breakpoints...")
+    logger.info("\nSetting custom breakpoints...")
 
     # Get the current file path for breakpoints
     current_file = __file__
@@ -314,7 +312,7 @@ async def main():
     # Set breakpoint in complex_example
     debugger.set_custom_breakpoint(current_file, 263)
 
-    logger.info("\n🔧 Starting debugging session...")
+    logger.info("\nStarting debugging session...")
 
     # Run the first example with debugging
     logger.info("\n%s EXAMPLE 1 %s", "=" * 30, "=" * 30)
@@ -337,16 +335,14 @@ async def main():
         debugger.set_quit()
 
     logger.info("\n%s", "=" * 50)
-    logger.info("📊 Debug Session Summary:")
-    logger.info(f"   Breakpoints hit: {event_handler.breakpoints_hit}")
-    logger.info("✅ Debugging session completed!")
+    logger.info("Debugging session completed!")
 
 
 def run_without_debugging():
     """
     Run the examples without debugging for comparison
     """
-    logger.info("🔧 Running examples WITHOUT debugging...")
+    logger.info("Running examples WITHOUT debugging...")
 
     logger.info("\n%s EXAMPLE 1 %s", "=" * 30, "=" * 30)
     result1 = example_function()
@@ -359,19 +355,20 @@ def run_without_debugging():
 
 def demo_advanced_features():
     """Demonstrate advanced debugging features"""
-    logger.info("🔧 Demonstrating Advanced Debugging Features")
+    logger.info("Demonstrating Advanced Debugging Features")
     logger.info("=" * 50)
 
-    # Create event handler and debugger
-    event_handler = DebugEventHandler()
-    debugger = IntegratedDebugger(event_handler)
+    debugger = IntegratedDebugger()
+    debugger.on_breakpoint_hit.add_listener(
+        lambda _, filename, line: logger.info(f"Breakpoint hit at {filename}:{line}")
+    )
 
     # Set some breakpoints
     current_file = __file__
     debugger.set_custom_breakpoint(current_file, 133)  # example_function
     debugger.set_custom_breakpoint(current_file, 152)  # complex_example
 
-    logger.info("\n📋 Available debugging commands:")
+    logger.info("\nAvailable debugging commands:")
     logger.info("  - debugger.continue_execution() - Continue until next breakpoint")
     logger.info("  - debugger.step_into() - Step into function calls")
     logger.info("  - debugger.step_over() - Step over to next line")
@@ -381,15 +378,13 @@ def demo_advanced_features():
     logger.info("  - debugger.start_tracing() - Start execution tracing")
     logger.info("  - debugger.stop_tracing() - Stop execution tracing")
 
-    logger.info("\n🎯 Running with enhanced debugging...")
+    logger.info("\nRunning with enhanced debugging...")
 
     # Run example with enhanced debugging
     debugger.run("example_function()")
     debugger.run("complex_example()")
 
-    logger.info("\n📊 Final Summary:")
-    logger.info(f"   Breakpoints hit: {event_handler.breakpoints_hit}")
-    logger.info("✅ Enhanced debugging demonstration complete!")
+    logger.info("Enhanced debugging demonstration complete!")
 
 
 if __name__ == "__main__":

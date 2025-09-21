@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 async def start_server(
     connection_type: str,
     host: str = "localhost",
-    port: int = 4711,
+    port: int | None = None,
     pipe_name: str | None = None,
 ) -> None:
     """
@@ -29,7 +29,7 @@ async def start_server(
 
     connection = None
     if connection_type == "tcp":
-        connection = TCPServerConnection(host=host, port=port)
+        connection = TCPServerConnection(host=host, port=port or 4711)
     elif connection_type == "pipe":
         if pipe_name is None:
             pipe_name = "dapper_debug_pipe"
@@ -78,7 +78,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logging.getLogger().setLevel(getattr(logging, args.log_level))
+    logging.getLogger().setLevel(logging.getLevelNamesMapping().get(args.log_level, logging.INFO))
 
     if args.port:
         connection_type = "tcp"
@@ -90,19 +90,14 @@ def main() -> None:
         pipe_name = args.pipe
 
     try:
-        if port is not None:
-            asyncio.run(
-                start_server(
-                    connection_type,
-                    args.host,
-                    port,
-                    pipe_name,
-                )
+        asyncio.run(
+            start_server(
+                connection_type,
+                args.host,
+                port,
+                pipe_name,
             )
-        else:
-            # Use default port when none was specified
-            # pass explicit None for the port so argument order is consistent
-            asyncio.run(start_server(connection_type, host=args.host, pipe_name=pipe_name))
+        )
     except KeyboardInterrupt:
         logger.info("Debug adapter stopped by user")
     except Exception:
