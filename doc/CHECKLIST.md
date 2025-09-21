@@ -86,7 +86,30 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
   - List element modification by index
   - Dictionary key-value setting
   - Error handling for invalid operations and immutable types
-- ❌ **Variable Presentation**: Rich variable display hints
+- 🟡 **Variable Presentation**: Rich variable display hints
+  - Supported fields (DAP VariablePresentationHint):
+    - `kind` (string): semantic kind; recommended values include `property`, `method`, `class`, `data`, `event`, `baseClass`, `innerClass`, `interface`, `mostDerivedClass`, `virtual`.
+    - `attributes` (string[]): badges/flags; recommended values include `static`, `constant`, `readOnly`, `rawString`, `hasObjectId`, `canHaveObjectId`, `hasSideEffects`, `hasDataBreakpoint`.
+    - `visibility` (string): `public`, `private`, `protected`, `internal`, `final`.
+    - `lazy` (boolean): when true, the client should present a UI affordance to fetch the value (useful for getters or expensive evaluations). When `lazy` is used, `variablesReference` is expected to point at the value provider.
+  - Notes: The adapter returns these hints as part of each `Variable`'s `presentationHint`. Clients may map `kind` and `attributes` to icons, styles, or tooltips. Prefer `hasDataBreakpoint` attribute over the deprecated `dataBreakpoint` kind.
+  - Examples:
+    - Property (read-only):
+
+      ```json
+      {
+        "presentationHint": { "kind": "property", "attributes": ["readOnly"], "visibility": "public" }
+      }
+      ```
+
+    - Lazy property (expensive getter):
+
+      ```json
+      {
+        "presentationHint": { "kind": "property", "lazy": true, "attributes": ["canHaveObjectId"] },
+        "variablesReference": 123
+      }
+      ```
 
 ### Expression Evaluation
 - 🟡 **Evaluate**: Evaluate expressions in debug context

@@ -322,47 +322,15 @@ class PyDebugger:
 
     async def _launch_in_process(self) -> None:
         """Initialize in-process debugging bridge and emit process event."""
-        try:
-            module = importlib.import_module("dapper.inprocess_debugger")
-            _inproc_cls = module.InProcessDebugger  # type: ignore[attr-defined]
-        except Exception as exc:  # pragma: no cover - defensive import
-            msg = f"In-process debugging not available: {exc!s}"
-            raise RuntimeError(msg) from exc
+        _inproc_cls = self._import_inprocess_cls()
 
+        # Create the in-process bridge and attach event listeners
         self.in_process = True
         self._inproc = _inproc_cls()
-
-        # Callback shims to reuse existing event handlers
-        def _on_stopped(data: dict[str, Any]) -> None:
-            try:
-                self._handle_event_stopped(data)
-            except Exception:
-                logger.exception("error in on_stopped callback")
-
-        def _on_thread(data: dict[str, Any]) -> None:
-            try:
-                self._handle_event_thread(data)
-            except Exception:
-                logger.exception("error in on_thread callback")
-
-        def _on_exited(data: dict[str, Any]) -> None:
-            try:
-                self._handle_event_exited(data)
-            except Exception:
-                logger.exception("error in on_exited callback")
-
-        def _on_output(category: str, output: str) -> None:
-            try:
-                payload = {"category": category, "output": output}
-                self.server.send_event("output", payload)
-            except Exception:
-                logger.exception("error in on_output callback")
-
-        # Direct attribute assignment
-        self._inproc.on_stopped = _on_stopped  # type: ignore[attr-defined]
-        self._inproc.on_thread = _on_thread  # type: ignore[attr-defined]
-        self._inproc.on_exited = _on_exited  # type: ignore[attr-defined]
-        self._inproc.on_output = _on_output  # type: ignore[attr-defined]
+        self._inproc.on_stopped.add_listener(self._inproc_on_stopped)  # type: ignore[attr-defined]
+        self._inproc.on_thread.add_listener(self._inproc_on_thread)  # type: ignore[attr-defined]
+        self._inproc.on_exited.add_listener(self._inproc_on_exited)  # type: ignore[attr-defined]
+        self._inproc.on_output.add_listener(self._inproc_on_output)  # type: ignore[attr-defined]
 
         # Mark running and emit process event for current interpreter
         self.program_running = True
@@ -373,6 +341,57 @@ class PyDebugger:
             "startMethod": "launch",
         }
         await self.server.send_event("process", proc_event)
+
+    def _import_inprocess_cls(self):
+        """Import and return the InProcessDebugger class.
+
+        Raises RuntimeError with a clear message if import fails.
+        """
+        try:
+            module = importlib.import_module("dapper.inprocess_debugger")
+        except Exception as exc:  # pragma: no cover - defensive import
+            msg = f"In-process debugging not available: {exc!s}"
+            raise RuntimeError(msg) from exc
+        else:
+            return module.InProcessDebugger  # type: ignore[attr-defined]
+
+    def _make_inproc_callbacks(self):
+        """Return a dict of event handlers that forward inproc events to the server."""
+        return {
+            "stopped": self._inproc_on_stopped,
+            "thread": self._inproc_on_thread,
+            "exited": self._inproc_on_exited,
+            "output": self._inproc_on_output,
+        }
+
+    def _inproc_on_stopped(self, data: dict[str, Any]) -> None:
+        """Forward stopped events from inproc to the server, with isolation."""
+        try:
+            self._handle_event_stopped(data)
+        except Exception:
+            logger.exception("error in on_stopped callback")
+
+    def _inproc_on_thread(self, data: dict[str, Any]) -> None:
+        """Forward thread events from inproc to the server, with isolation."""
+        try:
+            self._handle_event_thread(data)
+        except Exception:
+            logger.exception("error in on_thread callback")
+
+    def _inproc_on_exited(self, data: dict[str, Any]) -> None:
+        """Forward exited events from inproc to the server, with isolation."""
+        try:
+            self._handle_event_exited(data)
+        except Exception:
+            logger.exception("error in on_exited callback")
+
+    def _inproc_on_output(self, category: str, output: str) -> None:
+        """Forward output events from inproc to the server, with isolation."""
+        try:
+            payload = {"category": category, "output": output}
+            self.server.send_event("output", payload)
+        except Exception:
+            logger.exception("error in on_output callback")
 
     async def attach(  # noqa: PLR0915
         self,

@@ -12,10 +12,9 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 
-from dapper.debug_shared import MAX_STRING_LENGTH
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
+from dapper.debug_shared import make_variable_object
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
 from dapper.protocol_types import Source
@@ -370,26 +369,10 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
 
 
 def create_variable_object(name, value):
-    try:
-        val_str = repr(value)
-        if len(val_str) > MAX_STRING_LENGTH:
-            val_str = val_str[:MAX_STRING_LENGTH] + "..."
-    except Exception:
-        val_str = "<Error getting value>"
-    var_ref = 0
-    if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
-        dbg = state.debugger
-        if dbg is not None:
-            var_ref = dbg.next_var_ref
-            dbg.next_var_ref += 1
-            dbg.var_refs[var_ref] = ("object", value)
-    type_name = type(value).__name__
-    return {
-        "name": str(name),
-        "value": val_str,
-        "type": type_name,
-        "variablesReference": var_ref,
-    }
+    # Use shared helper to construct variable-shaped dict; pass debugger so
+    # that the helper can allocate variablesReference when appropriate.
+    dbg = state.debugger if hasattr(state, "debugger") else None
+    return make_variable_object(name, value, dbg)
 
 
 @command_handler("evaluate")

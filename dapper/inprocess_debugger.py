@@ -14,11 +14,16 @@ import threading
 from typing import Any
 
 from dapper.debug_launcher import DebuggerBDB
+from dapper.debug_shared import make_variable_object
+from dapper.events import EventEmitter
 
 # Length of (frame_id, scope) tuple used in var_refs
 SCOPE_TUPLE_LEN = 2
 
 logger = logging.getLogger(__name__)
+
+# Threshold for considering a string 'raw' (long/multiline)
+STRING_RAW_THRESHOLD = 80
 
 
 class InProcessDebugger:
@@ -32,18 +37,12 @@ class InProcessDebugger:
         self.debugger = DebuggerBDB()
         self.command_lock = threading.RLock()
 
-        # Optional event callbacks (set by adapter)
-        self.on_stopped = None  # (data: dict) -> None
-        self.on_thread = None  # (data: dict) -> None
-        self.on_exited = None  # (data: dict) -> None
-        self.on_output = None  # (category: str, output: str) -> None
+        # Optional event callbacks (set by adapter).
 
-        # Internal caches similar to debug_launcher
-        self.frames_by_thread: dict[int, list[dict[str, Any]]] = {}
-        self.var_refs: dict[int, Any] = {}
-        self.frame_id_to_frame: dict[int, Any] = {}
-
-    # ---- Commands mirrored from the launcher ----
+        self.on_stopped = EventEmitter()
+        self.on_thread = EventEmitter()
+        self.on_exited = EventEmitter()
+        self.on_output = EventEmitter()
 
     def set_breakpoints(
         self, path: str, breakpoints: list[dict[str, Any]]
@@ -224,20 +223,10 @@ class InProcessDebugger:
 
     # ---- Helpers ----
 
-    @staticmethod
-    def _make_var(name: str, value: Any) -> dict[str, Any]:
-        try:
-            vtype = type(value).__name__
-            return {
-                "name": name,
-                "value": repr(value),
-                "type": vtype,
-                "variablesReference": 0,
-            }
-        except Exception:  # pragma: no cover - defensive
-            return {
-                "name": name,
-                "value": "<error>",
-                "type": "unknown",
-                "variablesReference": 0,
-            }
+    def _make_var(self, name: str, value: Any) -> dict[str, Any]:
+        """Delegates to shared `make_variable_object` to build variable dicts.
+
+        Passes the in-process debugger so the helper can allocate var refs.
+        """
+        dbg = getattr(self, "debugger", None)
+        return make_variable_object(name, value, dbg)

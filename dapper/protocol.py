@@ -66,9 +66,6 @@ class ProtocolHandler:
             ProtocolError: If the message is invalid or cannot be parsed
         """
 
-        def _raise(msg: str) -> None:
-            raise ProtocolError(msg)
-
         try:
             message = json.loads(message_json)
         except json.JSONDecodeError as e:
@@ -79,30 +76,28 @@ class ProtocolHandler:
             raise ProtocolError(msg) from e
 
         if not isinstance(message, dict):
-            _raise("Message is not a JSON object")
+            raise ProtocolError("Message is not a JSON object")  # noqa: EM101, TRY003
 
         if "seq" not in message:
-            _raise("Message missing 'seq' field")
+            raise ProtocolError("Message missing 'seq' field")  # noqa: EM101, TRY003
 
         if "type" not in message:
-            _raise("Message missing 'type' field")
+            raise ProtocolError("Message missing 'type' field")  # noqa: EM101, TRY003
 
         msg_type = message["type"]
 
         if msg_type == "request":
-            return self._parse_request(message)
+            return self._validate_request(message)
 
         if msg_type == "response":
-            return self._parse_response(message)
+            return self._validate_response(message)
 
         if msg_type == "event":
-            return self._parse_event(message)
+            return self._validate_event(message)
 
-        _raise(f"Invalid message type: {msg_type}")
+        raise ProtocolError(f"Invalid message type: {msg_type}")  # noqa: EM102, TRY003
 
-        return None
-
-    def _parse_request(self, message: dict[str, Any]):
+    def _validate_request(self, message: dict[str, Any]):
         """Validate and return a request message."""
         if "command" not in message:
             msg = "Request message missing 'command' field"
@@ -112,7 +107,7 @@ class ProtocolHandler:
         # for potential future validation.
         return cast("Request", message)
 
-    def _parse_response(self, message: dict[str, Any]):
+    def _validate_response(self, message: dict[str, Any]):
         """Validate and return a response message."""
         for key in ("request_seq", "success", "command"):
             if key not in message:
@@ -121,7 +116,7 @@ class ProtocolHandler:
 
         return cast("Response", message)
 
-    def _parse_event(self, message: dict[str, Any]):
+    def _validate_event(self, message: dict[str, Any]):
         """Validate and return an event message."""
         if "event" not in message:
             msg = "Event message missing 'event' field"

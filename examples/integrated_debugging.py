@@ -25,6 +25,7 @@ import sys
 import time
 
 from dapper.debug_launcher import DebuggerBDB
+from dapper.events import EventEmitter
 
 # Module level logger for examples
 logger = logging.getLogger(__name__)
@@ -86,7 +87,13 @@ class IntegratedDebugger(DebuggerBDB):
 
     def __init__(self, event_handler=None):
         super().__init__()
-        self.event_handler = event_handler or DebugEventHandler()
+        # EventEmitters for various debug events. Consumers can register
+        # multiple listeners via `add_listener`.
+        self.on_breakpoint_hit = EventEmitter()
+        self.on_step = EventEmitter()
+        self.on_function_call = EventEmitter()
+        self.on_function_return = EventEmitter()
+        self.on_exception = EventEmitter()
 
     def set_custom_breakpoint(self, filename: str, line: int, condition=None):
         """Set a breakpoint programmatically"""
@@ -171,7 +178,7 @@ class IntegratedDebugger(DebuggerBDB):
         # Check if we're at a breakpoint set by BDB
         if self.get_break(filename, line):
             # This is a breakpoint that was hit
-            self.event_handler.on_breakpoint_hit(frame, filename, line)
+            self.on_breakpoint_hit.emit(frame, filename, line)
             # Don't call super().user_line() to avoid double processing
             return
 
@@ -190,14 +197,14 @@ class IntegratedDebugger(DebuggerBDB):
                             "🔴 Conditional breakpoint hit at "
                             f"{filename}:{line} (condition: {condition})"
                         )
-                        self.event_handler.on_breakpoint_hit(frame, filename, line)
+                        self.on_breakpoint_hit.emit(frame, filename, line)
                         return
                 except Exception:
                     # If condition evaluation fails, don't trigger breakpoint
                     pass
             else:
                 logger.info(f"🔴 Breakpoint hit at {filename}:{line}")
-                self.event_handler.on_breakpoint_hit(frame, filename, line)
+                self.on_breakpoint_hit.emit(frame, filename, line)
                 return
 
         # Call parent implementation for standard debugging
@@ -208,9 +215,7 @@ class IntegratedDebugger(DebuggerBDB):
         filename = frame.f_code.co_filename
         line = frame.f_lineno
         func_name = frame.f_code.co_name
-
-        self.event_handler.on_function_call(frame, filename, line, func_name)
-
+        self.on_function_call.emit(frame, filename, line, func_name)
         # Call parent implementation
         super().user_call(frame, argument_list)
 
@@ -219,9 +224,7 @@ class IntegratedDebugger(DebuggerBDB):
         filename = frame.f_code.co_filename
         line = frame.f_lineno
         func_name = frame.f_code.co_name
-
-        self.event_handler.on_function_return(frame, filename, line, func_name, return_value)
-
+        self.on_function_return.emit(frame, filename, line, func_name, return_value)
         # Call parent implementation
         super().user_return(frame, return_value)
 
@@ -230,10 +233,8 @@ class IntegratedDebugger(DebuggerBDB):
         exc_type, exc_value, _ = exc_info
         filename = frame.f_code.co_filename
         line = frame.f_lineno
-
-        handler = self.event_handler
-        handler.on_exception(frame, exc_type, exc_value, filename, line)
-
+        # Emit exception event to listeners
+        self.on_exception.emit(frame, exc_type, exc_value, filename, line)
         # Call parent implementation
         super().user_exception(frame, exc_info)
 
