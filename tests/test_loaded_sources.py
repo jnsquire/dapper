@@ -73,6 +73,11 @@ async def test_loaded_sources():
     finally:
         # Clean up
         await connection.close()
+        # Ensure PyDebugger releases any owned loop/resources
+        try:
+            await debugger.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

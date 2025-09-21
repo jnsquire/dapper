@@ -11,7 +11,6 @@ import pytest
 
 from dapper.protocol import ProtocolError
 from dapper.protocol import ProtocolHandler
-from dapper.protocol_types import ProtocolMessage
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -29,6 +29,10 @@ from typing import Any
 from typing import Callable
 from typing import cast
 
+from dapper.ipc_binary import HEADER_SIZE
+from dapper.ipc_binary import pack_frame
+from dapper.ipc_binary import read_exact
+from dapper.ipc_binary import unpack_header
 from dapper.protocol import ProtocolHandler
 from dapper.protocol_types import FunctionBreakpoint
 
@@ -140,9 +144,10 @@ class PyDebugger:
         self._ipc_sock = None
         self._ipc_rfile = None
         self._ipc_wfile = None
-        self._ipc_pipe_listener: mp_conn.Listener | None = None
-        self._ipc_pipe_conn: mp_conn.Connection | None = None
-        self._ipc_unix_path: Path | None = None
+        self._ipc_pipe_listener = None  # type: mp_conn.Listener | None
+        self._ipc_pipe_conn = None  # type: mp_conn.Connection | None
+        self._ipc_unix_path = None  # type: Path | None
+        self._ipc_binary = False
 
         # Data breakpoint containers
         self._data_watches = {}
@@ -242,6 +247,7 @@ class PyDebugger:
         no_debug: bool = False,
         in_process: bool = False,
         use_ipc: bool = False,
+        use_binary_ipc: bool = False,
         ipc_transport: str | None = None,
         ipc_pipe_name: str | None = None,
     ) -> None:
@@ -281,8 +287,11 @@ class PyDebugger:
 
         # If IPC is requested, prepare a listener and pass coordinates.
         self._use_ipc = bool(use_ipc)
+        self._ipc_binary = bool(use_binary_ipc)
         if self._use_ipc:
             self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
+            if self._ipc_binary:
+                debug_args.append("--ipc-binary")
 
         logger.info("Launching program: %s", self.program_path)
         logger.debug("Debug command: %s", " ".join(debug_args))
@@ -463,8 +472,9 @@ class PyDebugger:
                         line = rfile.readline()
                         if not line:
                             break
-                        if line.startswith("DBGP:"):
-                            self._handle_debug_message(line[5:].strip())
+                        line_s = cast("str", line)
+                        if line_s.startswith("DBGP:"):
+                            self._handle_debug_message(line_s[5:].strip())
                 finally:
                     self._ipc_enabled = False
                     self._cleanup_ipc_resources()
@@ -494,8 +504,9 @@ class PyDebugger:
                         line = rfile.readline()
                         if not line:
                             break
-                        if line.startswith("DBGP:"):
-                            self._handle_debug_message(line[5:].strip())
+                        line_s = cast("str", line)
+                        if line_s.startswith("DBGP:"):
+                            self._handle_debug_message(line_s[5:].strip())
                 finally:
                     self._ipc_enabled = False
                     self._cleanup_ipc_resources()
@@ -600,6 +611,18 @@ class PyDebugger:
         self._ipc_enabled = True
         while True:
             try:
+                if self._ipc_binary:
+                    data = conn.recv_bytes()
+                    if not data:
+                        break
+                    try:
+                        kind, length = unpack_header(data[:HEADER_SIZE])
+                    except Exception:
+                        break
+                    payload = data[HEADER_SIZE:HEADER_SIZE + length]
+                    if kind == 1:
+                        self._handle_debug_message(payload.decode("utf-8"))
+                    continue
                 msg = conn.recv()
             except (EOFError, OSError):
                 break
@@ -612,15 +635,35 @@ class PyDebugger:
         assert listen_sock is not None
         conn2, _ = listen_sock.accept()
         self._ipc_sock = conn2
-        self._ipc_rfile = conn2.makefile("r", encoding="utf-8", newline="")
-        self._ipc_wfile = conn2.makefile("w", encoding="utf-8", newline="")
+        if self._ipc_binary:
+            self._ipc_rfile = conn2.makefile("rb", buffering=0)
+            self._ipc_wfile = conn2.makefile("wb", buffering=0)
+        else:
+            self._ipc_rfile = conn2.makefile("r", encoding="utf-8", newline="")
+            self._ipc_wfile = conn2.makefile("w", encoding="utf-8", newline="")
         self._ipc_enabled = True
         while True:
+            if self._ipc_binary:
+                # Read header then payload
+                header = read_exact(self._ipc_rfile, HEADER_SIZE)  # type: ignore[arg-type]
+                if not header:
+                    break
+                try:
+                    kind, length = unpack_header(header)
+                except Exception:
+                    break
+                payload = read_exact(self._ipc_rfile, length)  # type: ignore[arg-type]
+                if not payload:
+                    break
+                if kind == 1:
+                    self._handle_debug_message(payload.decode("utf-8"))
+                continue
             line = self._ipc_rfile.readline()  # type: ignore[union-attr]
             if not line:
                 break
-            if line.startswith("DBGP:"):
-                self._handle_debug_message(line[5:].strip())
+            line_s = cast("str", line)
+            if line_s.startswith("DBGP:"):
+                self._handle_debug_message(line_s[5:].strip())
 
     def _cleanup_ipc_resources(self) -> None:
         """Close IPC resources quietly and clean up files."""
@@ -757,7 +800,6 @@ class PyDebugger:
         """Handle debuggee exited event and schedule cleanup."""
         exit_code = data.get("exitCode", 0)
         self.is_terminated = True
-        self.program_running = False
         self._schedule_coroutine(lambda ec=exit_code: self._handle_program_exit(ec))
 
     def _handle_event_stacktrace(self, data: dict[str, Any]) -> None:
@@ -1187,12 +1229,19 @@ class PyDebugger:
         """Safely write a DBGCMD line to the active IPC or stdio channel."""
         if self._ipc_enabled and self._ipc_pipe_conn is not None:
             with contextlib.suppress(Exception):
-                self._ipc_pipe_conn.send(f"DBGCMD:{cmd_str}")
+                if self._ipc_binary:
+                    self._ipc_pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
+                else:
+                    self._ipc_pipe_conn.send(f"DBGCMD:{cmd_str}")
             return
         if self._ipc_enabled and self._ipc_wfile is not None:
             with contextlib.suppress(Exception):
-                self._ipc_wfile.write(f"DBGCMD:{cmd_str}\n")
-                self._ipc_wfile.flush()
+                if self._ipc_binary:
+                    self._ipc_wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
+                    self._ipc_wfile.flush()  # type: ignore[call-arg]
+                else:
+                    self._ipc_wfile.write(f"DBGCMD:{cmd_str}\n")  # type: ignore[arg-type]
+                    self._ipc_wfile.flush()
             return
 
         stdin = getattr(self.process, "stdin", None)
@@ -2068,6 +2117,7 @@ class RequestHandler:
         no_debug = args.get("noDebug", False)
         in_process = args.get("inProcess", False)
         use_ipc = args.get("useIpc", False)
+        use_binary_ipc = args.get("useBinaryIpc", False)
         # Optional IPC transport details (used only when useIpc is True)
         ipc_transport = args.get("ipcTransport")
         ipc_pipe_name = args.get("ipcPipeName")
@@ -2084,6 +2134,8 @@ class RequestHandler:
                     launch_kwargs["ipc_transport"] = ipc_transport
                 if ipc_pipe_name is not None:
                     launch_kwargs["ipc_pipe_name"] = ipc_pipe_name
+                if use_binary_ipc:
+                    launch_kwargs["use_binary_ipc"] = True
 
             await self.server.debugger.launch(
                 program,

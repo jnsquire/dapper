@@ -57,8 +57,9 @@ def start_debug_adapter(port: int = 4711) -> subprocess.Popen[bytes]:
     time.sleep(2)
 
     if process.poll() is not None:
-        logger.error("Debug adapter failed to start")
-        return None
+        msg = "Debug adapter failed to start"
+        logger.error(msg)
+        raise RuntimeError(msg)
 
     logger.info("✅ Debug adapter running (PID: %d)", process.pid)
     return process

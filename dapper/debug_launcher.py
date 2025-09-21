@@ -23,6 +23,10 @@ from typing import cast
 
 from dapper.debug_shared import state
 from dapper.debugger_bdb import DebuggerBDB
+from dapper.ipc_binary import HEADER_SIZE
+from dapper.ipc_binary import pack_frame
+from dapper.ipc_binary import read_exact
+from dapper.ipc_binary import unpack_header
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -80,18 +84,104 @@ def send_debug_message(event_type: str, **kwargs) -> None:
     """
     message = {"event": event_type}
     message.update(kwargs)
-    if state.ipc_enabled and state.ipc_wfile is not None:
-        try:
-            state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")
-            state.ipc_wfile.flush()
-        except Exception:
-            # Fall back to logger
-            pass
-        else:
-            return
+    if state.ipc_enabled:
+        # Binary IPC when enabled
+        if getattr(state, "ipc_binary", False):
+            payload = json.dumps(message).encode("utf-8")
+            frame = pack_frame(1, payload)
+            # Prefer pipe conn if available
+            conn = getattr(state, "ipc_pipe_conn", None)
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.send_bytes(frame)
+                    return
+            wfile = getattr(state, "ipc_wfile", None)
+            if wfile is not None:
+                with contextlib.suppress(Exception):
+                    wfile.write(frame)  # type: ignore[arg-type]
+                    with contextlib.suppress(Exception):
+                        wfile.flush()  # type: ignore[call-arg]
+                    return
+        # Text IPC fallback
+        if state.ipc_wfile is not None:
+            try:
+                state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")
+                state.ipc_wfile.flush()
+            except Exception:
+                # Fall back to logger
+                pass
+            else:
+                return
     send_logger.debug(json.dumps(message))
     with contextlib.suppress(Exception):
         sys.stdout.flush()
+
+
+KIND_EVENT = 1
+KIND_COMMAND = 2
+
+
+def _handle_command_bytes(payload: bytes) -> None:
+    try:
+        command = json.loads(payload.decode("utf-8"))
+        with state.command_lock:
+            state.command_queue.append(command)
+        handle_debug_command(command)
+    except Exception as e:
+        send_debug_message("error", message=f"Error receiving command: {e!s}")
+        traceback.print_exc()
+
+
+def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
+    while not state.is_terminated:
+        try:
+            data = conn.recv_bytes()
+        except (EOFError, OSError):
+            os._exit(0)
+        if not data:
+            os._exit(0)
+        try:
+            kind, length = unpack_header(data[:HEADER_SIZE])
+        except Exception as e:
+            send_debug_message("error", message=f"Bad frame header: {e!s}")
+            continue
+        payload = data[HEADER_SIZE:HEADER_SIZE + length]
+        if kind == KIND_COMMAND:
+            _handle_command_bytes(payload)
+
+
+def _recv_binary_from_stream(rfile: Any) -> None:
+    while not state.is_terminated:
+        header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
+        if not header:
+            os._exit(0)
+        try:
+            kind, length = unpack_header(header)
+        except Exception as e:
+            send_debug_message("error", message=f"Bad frame header: {e!s}")
+            continue
+        payload = read_exact(rfile, length)  # type: ignore[arg-type]
+        if not payload:
+            os._exit(0)
+        if kind == KIND_COMMAND:
+            _handle_command_bytes(payload)
+
+
+def _recv_text(reader: Any) -> None:
+    while not state.is_terminated:
+        line = reader.readline()
+        if not line:
+            os._exit(0)
+        if line.startswith("DBGCMD:"):
+            command_json = line[7:].strip()
+            try:
+                command = json.loads(command_json)
+                with state.command_lock:
+                    state.command_queue.append(command)
+                handle_debug_command(command)
+            except Exception as e:
+                send_debug_message("error", message=f"Error receiving command: {e!s}")
+                traceback.print_exc()
 
 
 def receive_debug_commands() -> None:
@@ -101,21 +191,16 @@ def receive_debug_commands() -> None:
     """
     # read-only access to state.is_terminated
     if state.ipc_enabled and state.ipc_rfile is not None:
-        reader = state.ipc_rfile
-        while not state.is_terminated:
-            line = reader.readline()
-            if not line:
-                os._exit(0)
-            if line.startswith("DBGCMD:"):
-                command_json = line[7:].strip()
-                try:
-                    command = json.loads(command_json)
-                    with state.command_lock:
-                        state.command_queue.append(command)
-                    handle_debug_command(command)
-                except Exception as e:
-                    send_debug_message("error", message=f"Error receiving command: {e!s}")
-                    traceback.print_exc()
+        # Binary IPC path
+        if getattr(state, "ipc_binary", False):
+            conn = getattr(state, "ipc_pipe_conn", None)
+            if conn is not None:
+                _recv_binary_from_pipe(conn)
+                return
+            _recv_binary_from_stream(state.ipc_rfile)
+            return
+        # Text IPC path
+        _recv_text(state.ipc_rfile)
     else:
         while not state.is_terminated:
             line = sys.stdin.readline()
@@ -972,6 +1057,7 @@ def parse_args():
     parser.add_argument("--ipc-port", type=int, help="IPC TCP port")
     parser.add_argument("--ipc-path", type=str, help="IPC UNIX socket path")
     parser.add_argument("--ipc-pipe", type=str, help="IPC Windows pipe name")
+    parser.add_argument("--ipc-binary", action="store_true", help="Use binary IPC frames")
     return parser.parse_args()
 
 
@@ -993,10 +1079,14 @@ def main():
             if args.ipc == "pipe" and os.name == "nt" and args.ipc_pipe:
                 conn = _mpc.Client(address=args.ipc_pipe, family="AF_PIPE")
                 state.ipc_enabled = True
-
-                # Cast wrappers to TextIO to satisfy SessionState annotations
-                state.ipc_rfile = PipeIO(conn)
-                state.ipc_wfile = PipeIO(conn)
+                # Binary vs text path for pipes
+                if args.ipc_binary:
+                    state.ipc_binary = True
+                    state.ipc_pipe_conn = conn
+                else:
+                    # Cast wrappers to TextIO to satisfy SessionState annotations
+                    state.ipc_rfile = PipeIO(conn)
+                    state.ipc_wfile = PipeIO(conn)
             else:
                 sock = None
                 if args.ipc == "unix":
@@ -1011,8 +1101,13 @@ def main():
                     sock.connect((host, port))
                 if sock is not None:
                     state.ipc_sock = sock
-                    state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-                    state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
+                    if args.ipc_binary:
+                        state.ipc_binary = True
+                        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+                        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
+                    else:
+                        state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
+                        state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
                     state.ipc_enabled = True
         except Exception:
             # If IPC fails, proceed with stdio

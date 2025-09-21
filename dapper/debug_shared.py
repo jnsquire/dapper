@@ -13,6 +13,7 @@ from typing import Any
 from typing import TypedDict
 
 from dapper.events import EventEmitter
+from dapper.ipc_binary import pack_frame  # lightweight util
 
 if TYPE_CHECKING:
     import io
@@ -75,6 +76,10 @@ class SessionState:
         self.ipc_sock: Any | None = None
         self.ipc_rfile: io.TextIOBase | None = None
         self.ipc_wfile: io.TextIOBase | None = None
+        # Binary IPC mode (adapter<->launcher); when True, use length-prefixed frames
+        self.ipc_binary: bool = False
+        # Optional direct pipe connection object for binary send/recv on Windows
+        self.ipc_pipe_conn: Any | None = None
 
         # Event emitter for outgoing debug messages. Consumers can subscribe
         # instead of monkeypatching the send_debug_message function.
@@ -257,14 +262,35 @@ def send_debug_message(event_type: str, **kwargs) -> None:
         state.on_debug_message.emit(event_type, **kwargs)
 
     # Prefer IPC when enabled; fall back to logging/flush.
-    if state.ipc_enabled and state.ipc_wfile is not None:
-        try:
-            state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")
-            state.ipc_wfile.flush()
-        except Exception:
-            pass
-        else:
-            return
+    if state.ipc_enabled:
+        # Binary IPC path
+        if getattr(state, "ipc_binary", False):
+            payload = json.dumps(message).encode("utf-8")
+            frame = pack_frame(1, payload)
+            # Prefer pipe conn if available
+            conn = getattr(state, "ipc_pipe_conn", None)
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.send_bytes(frame)
+                    return
+            # Else try binary file
+            wfile = getattr(state, "ipc_wfile", None)
+            if wfile is not None:
+                with contextlib.suppress(Exception):
+                    # Assume binary BufferedWriter
+                    wfile.write(frame)  # type: ignore[arg-type]
+                    with contextlib.suppress(Exception):
+                        wfile.flush()  # type: ignore[call-arg]
+                    return
+        # Text IPC path
+        if state.ipc_wfile is not None:
+            try:
+                state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")
+                state.ipc_wfile.flush()
+            except Exception:
+                pass
+            else:
+                return
     send_logger.debug(json.dumps(message))
     with contextlib.suppress(Exception):
         sys.stdout.flush()
