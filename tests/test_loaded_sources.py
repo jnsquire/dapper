@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from dapper.connection import TCPServerConnection
+from dapper.connections.tcp import TCPServerConnection
 from dapper.server import PyDebugger
 
 # Add the dapper module to the path

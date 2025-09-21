@@ -30,12 +30,13 @@ from typing import Callable
 from typing import cast
 
 from dapper.protocol import ProtocolHandler
+from dapper.protocol_types import FunctionBreakpoint
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
     from concurrent.futures import Future as _CFuture
 
-    from dapper.connection import ConnectionBase
+    from dapper.connections import ConnectionBase
     from dapper.inprocess_debugger import InProcessDebugger
     from dapper.protocol_types import ExceptionInfoRequest
     from dapper.protocol_types import Request
@@ -69,7 +70,7 @@ class PyDebugger:
     next_var_ref: int
     var_refs: dict[int, object]
     breakpoints: dict[str, list[dict]]
-    function_breakpoints: list[dict[str, Any]]
+    function_breakpoints: list[FunctionBreakpoint]
     exception_breakpoints: dict[str, bool]
     process: subprocess.Popen | None
     debugger_thread: threading.Thread | None
@@ -102,7 +103,7 @@ class PyDebugger:
         self.next_var_ref = 1000
         self.var_refs: dict[int, object] = {}
         self.breakpoints: dict[str, list[dict]] = {}
-        self.function_breakpoints: list[dict[str, Any]] = []
+        self.function_breakpoints: list[FunctionBreakpoint] = []
         # Exception breakpoint flags (two booleans for clarity)
         self.exception_breakpoints_uncaught = False
         self.exception_breakpoints_raised = False
@@ -916,7 +917,7 @@ class PyDebugger:
 
     async def set_breakpoints(
         self, source: dict[str, Any] | str, breakpoints: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    ) -> list[Any]:
         """Set breakpoints for a source file"""
         path = source if isinstance(source, str) else source.get("path")
         if not path:
@@ -938,7 +939,8 @@ class PyDebugger:
 
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.set_breakpoints(path, bp_lines)
+                result = self._inproc.set_breakpoints(path, bp_lines)
+                return list(result)  # ensure a concrete list for the declared return type
             except Exception:
                 logger.exception("in-process set_breakpoints failed")
                 return [{"verified": False} for _ in bp_lines]
@@ -992,16 +994,16 @@ class PyDebugger:
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]
 
     async def set_function_breakpoints(
-        self, breakpoints: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+        self, breakpoints: list[FunctionBreakpoint]
+    ) -> list[Any]:
         """Set breakpoints for functions"""
         bp_funcs = [
-            {
-                "name": bp.get("name", ""),
-                "condition": bp.get("condition"),
-                "hitCondition": bp.get("hitCondition"),
-                "verified": True,
-            }
+            FunctionBreakpoint(
+                name=bp.get("name", ""),
+                condition=bp.get("condition"),
+                hitCondition=bp.get("hitCondition"),
+                verified=True,
+            )
             for bp in breakpoints
         ]
 
@@ -1009,9 +1011,10 @@ class PyDebugger:
 
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.set_function_breakpoints(bp_funcs)
+                result = self._inproc.set_function_breakpoints(bp_funcs)
+                return list(result)
             except Exception:
-                logger.exception("in-process set_function_breakpoints failed")
+                logger.exception("in-process set_function_breakpoints_failed")
                 return [{"verified": False} for _ in breakpoints]
         if self.process and not self.is_terminated:
             bp_command = {
@@ -1022,14 +1025,15 @@ class PyDebugger:
 
         return [{"verified": bp.get("verified", True)} for bp in bp_funcs]
 
-    async def set_exception_breakpoints(self, filters: list[str]) -> list[dict[str, Any]]:
+    async def set_exception_breakpoints(self, filters: list[str]) -> list[Any]:
         """Set exception breakpoints"""
         self.exception_breakpoints_raised = "raised" in filters
         self.exception_breakpoints_uncaught = "uncaught" in filters
 
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.set_exception_breakpoints(filters)
+                result = self._inproc.set_exception_breakpoints(filters)
+                return list(result)
             except Exception:
                 logger.exception("in-process set_exception_breakpoints failed")
                 return [{"verified": False} for _ in filters]
@@ -1089,7 +1093,7 @@ class PyDebugger:
 
     def _dispatch_inprocess_command(
         self, command: dict[str, Any], expect_response: bool
-    ) -> dict[str, Any] | None:
+    ) -> Any | None:
         """Dispatch in-process commands through the bridge using a mapping."""
         try:
             cmd_key = command.get("command")
@@ -1097,7 +1101,7 @@ class PyDebugger:
             bridge = self._inproc
             assert bridge is not None
 
-            def _exception_info() -> dict[str, Any]:
+            def _exception_info() -> Any:
                 return {
                     "exceptionId": "Unknown",
                     "description": ("Exception information not available"),
@@ -1114,23 +1118,23 @@ class PyDebugger:
             def _tid() -> int:
                 return int(args.get("threadId", 1))
 
-            def _cmd_next() -> None:
-                bridge.next_(_tid())
+            def _cmd_next() -> Any:
+                return bridge.next_(_tid())
 
-            def _cmd_step_in() -> None:
-                bridge.step_in(_tid())
+            def _cmd_step_in() -> Any:
+                return bridge.step_in(_tid())
 
-            def _cmd_step_out() -> None:
-                bridge.step_out(_tid())
+            def _cmd_step_out() -> Any:
+                return bridge.step_out(_tid())
 
-            def _cmd_stack_trace() -> dict[str, Any]:
+            def _cmd_stack_trace() -> Any:
                 return bridge.stack_trace(
                     _tid(),
                     args.get("startFrame", 0),
                     args.get("levels", 0),
                 )
 
-            def _cmd_variables() -> dict[str, Any]:
+            def _cmd_variables() -> Any:
                 return bridge.variables(
                     args.get("variablesReference"),
                     _filter=args.get("filter"),
@@ -1138,21 +1142,21 @@ class PyDebugger:
                     _count=args.get("count"),
                 )
 
-            def _cmd_set_variable() -> dict[str, Any] | None:
+            def _cmd_set_variable() -> Any | None:
                 return bridge.set_variable(
                     args.get("variablesReference"),
                     args.get("name"),
                     args.get("value"),
                 )
 
-            def _cmd_evaluate() -> dict[str, Any]:
+            def _cmd_evaluate() -> Any:
                 return bridge.evaluate(
                     args.get("expression", ""),
                     args.get("frameId", 0),
                     args.get("context", "hover"),
                 )
 
-            dispatch: dict[str, Callable[[], dict[str, Any] | None]] = {
+            dispatch: dict[str, Callable[[], Any]] = {
                 "continue": lambda: bridge.continue_(_tid()),
                 "next": _cmd_next,
                 "stepIn": _cmd_step_in,
@@ -1233,7 +1237,8 @@ class PyDebugger:
 
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.continue_(thread_id)
+                result = self._inproc.continue_(thread_id)
+                return cast("dict[str, Any]", result)
             except Exception:
                 logger.exception("in-process continue failed")
                 return {"allThreadsContinued": False}
@@ -1461,7 +1466,8 @@ class PyDebugger:
         """Get stack trace for a thread"""
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.stack_trace(thread_id, start_frame, levels)
+                result = self._inproc.stack_trace(thread_id, start_frame, levels)
+                return cast("dict[str, Any]", result)
             except Exception:
                 logger.exception("in-process stack_trace failed")
                 return {"stackFrames": [], "totalFrames": 0}
@@ -1586,7 +1592,8 @@ class PyDebugger:
 
             if self.in_process and self._inproc is not None:
                 try:
-                    return self._inproc.set_variable(var_ref, name, value)
+                    result = self._inproc.set_variable(var_ref, name, value)
+                    return cast("dict[str, Any]", result)
                 except Exception:
                     logger.exception("in-process set_variable failed")
                     return {
@@ -1624,7 +1631,8 @@ class PyDebugger:
         """Evaluate an expression in a specific context"""
         if self.in_process and self._inproc is not None:
             try:
-                return self._inproc.evaluate(expression, frame_id, context)
+                result = self._inproc.evaluate(expression, frame_id, context)
+                return cast("dict[str, Any]", result)
             except Exception:
                 logger.exception("in-process evaluate failed")
                 return {

@@ -11,11 +11,24 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper.debug_shared import make_variable_object
 from dapper.debugger_bdb import DebuggerBDB
 from dapper.events import EventEmitter
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dapper.protocol_types import Breakpoint
+    from dapper.protocol_types import ContinueResponseBody
+    from dapper.protocol_types import EvaluateResponseBody
+    from dapper.protocol_types import FunctionBreakpoint
+    from dapper.protocol_types import SetVariableResponseBody
+    from dapper.protocol_types import StackTraceResponseBody
+    from dapper.protocol_types import VariablesResponseBody
 
 # Length of (frame_id, scope) tuple used in var_refs
 SCOPE_TUPLE_LEN = 2
@@ -46,7 +59,7 @@ class InProcessDebugger:
 
     def set_breakpoints(
         self, path: str, breakpoints: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    ) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         with self.command_lock:
             # Clear existing breakpoints for this file
@@ -60,9 +73,10 @@ class InProcessDebugger:
                 cond = bp.get("condition")
                 if line:
                     self.debugger.set_break(path, line, cond=cond)
-        return [{"verified": True, "line": bp.get("line")} for bp in breakpoints]
+            # Return the minimal Breakpoint shape expected by the adapter/client
+            return cast("list[Breakpoint]", [{"verified": True, "line": bp.get("line")} for bp in breakpoints])
 
-    def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def set_function_breakpoints(self, breakpoints: list[FunctionBreakpoint]) -> Sequence[FunctionBreakpoint]:
         with self.command_lock:
             try:
                 for bpn in self.debugger.function_breakpoints:
@@ -74,9 +88,9 @@ class InProcessDebugger:
                 name = bp.get("name")
                 if name:
                     self.debugger.function_breakpoints.append(name)
-        return [{"verified": True} for _ in breakpoints]
+            return cast("list[FunctionBreakpoint]", [{"verified": True} for _ in breakpoints])
 
-    def set_exception_breakpoints(self, filters: list[str]) -> list[dict[str, Any]]:
+    def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:
             # Set boolean flags if present, fallback to dict otherwise
             try:
@@ -85,9 +99,9 @@ class InProcessDebugger:
             except Exception:
                 # If underlying debugger doesn't expose boolean attrs, ignore
                 pass
-        return [{"verified": True} for _ in filters]
+            return cast("list[Breakpoint]", [{"verified": True} for _ in filters])
 
-    def continue_(self, thread_id: int) -> dict[str, Any]:
+    def continue_(self, thread_id: int) -> ContinueResponseBody:
         with self.command_lock:
             dbg = self.debugger
             if thread_id in dbg.stopped_thread_ids:
@@ -97,7 +111,7 @@ class InProcessDebugger:
                     pass
             if not dbg.stopped_thread_ids:
                 dbg.set_continue()
-        return {"allThreadsContinued": True}
+            return cast("ContinueResponseBody", {"allThreadsContinued": True})
 
     def next_(self, thread_id: int) -> None:
         with self.command_lock:
@@ -125,10 +139,10 @@ class InProcessDebugger:
     # Variables/Stack/Evaluate
     # These follow the launcher semantics, but return dicts directly.
 
-    def stack_trace(self, thread_id: int, start_frame: int = 0, levels: int = 0) -> dict[str, Any]:
+    def stack_trace(self, thread_id: int, start_frame: int = 0, levels: int = 0) -> StackTraceResponseBody:
         dbg = self.debugger
         if thread_id not in getattr(dbg, "frames_by_thread", {}):
-            return {"stackFrames": [], "totalFrames": 0}
+            return cast("StackTraceResponseBody", {"stackFrames": [], "totalFrames": 0})
 
         frames = dbg.frames_by_thread[thread_id]
         total_frames = len(frames)
@@ -137,10 +151,10 @@ class InProcessDebugger:
             frames_to_send = frames[start_frame:end_frame]
         else:
             frames_to_send = frames[start_frame:]
-        return {
+        return cast("StackTraceResponseBody", {
             "stackFrames": frames_to_send,
             "totalFrames": total_frames,
-        }
+        })
 
     def variables(
         self,
@@ -149,7 +163,7 @@ class InProcessDebugger:
         _filter: str | None = None,  # unused
         _start: int | None = None,  # unused
         _count: int | None = None,  # unused
-    ) -> dict[str, Any]:
+    ) -> VariablesResponseBody:
         dbg = self.debugger
         var_ref = variables_reference
         if var_ref not in dbg.var_refs:
@@ -167,10 +181,11 @@ class InProcessDebugger:
             elif frame and scope == "globals":
                 for name, value in frame.f_globals.items():
                     variables.append(self._make_var(name, value))
-            return {"variables": variables}
-        return {"variables": []}
+            # The `make_variable_object` helper returns Variable-shaped dicts
+            return cast("VariablesResponseBody", {"variables": variables})
+        return cast("VariablesResponseBody", {"variables": []})
 
-    def set_variable(self, variables_reference: int, name: str, value: str) -> dict[str, Any]:
+    def set_variable(self, variables_reference: int, name: str, value: str) -> SetVariableResponseBody | dict[str, Any]:
         dbg = self.debugger
         var_ref = variables_reference
         if var_ref not in dbg.var_refs:
@@ -198,7 +213,9 @@ class InProcessDebugger:
                 return {"success": False, "message": str(exc)}
         return {"success": False, "message": "Invalid reference"}
 
-    def evaluate(self, expression: str, frame_id: int, _context: str = "hover") -> dict[str, Any]:
+    def evaluate(
+        self, expression: str, frame_id: int, _context: str = "hover"
+    ) -> EvaluateResponseBody:
         dbg = self.debugger
         frame = dbg.frame_id_to_frame.get(frame_id)
         if not frame:

@@ -26,8 +26,7 @@ import sys
 import time
 from contextlib import suppress
 
-from dapper.adapter_runner import AdapterThread
-from dapper.connection import TCPServerConnection
+from dapper.adapter_thread import AdapterThread
 
 logger = logging.getLogger(__name__)
 MAIN_LOOP_MAX_ITER = 50
@@ -42,15 +41,7 @@ def _configure_logging() -> None:
     )
 
 
-def _find_bound_port(thread: AdapterThread) -> int | None:
-    """Best-effort inspection to get the bound port once the server is up."""
-    server = thread.server
-    if not server:
-        return None
-    conn = getattr(server, "connection", None)
-    if isinstance(conn, TCPServerConnection):
-        return getattr(conn, "port", None)
-    return None
+PORT_WAIT_TIMEOUT = 5.0
 
 
 def main() -> None:
@@ -60,15 +51,16 @@ def main() -> None:
     adapter = AdapterThread(connection_type="tcp", host="127.0.0.1", port=0)
     adapter.start()
 
-    # Wait briefly for the adapter to bind
-    time.sleep(0.2)
-
-    port = _find_bound_port(adapter)
-    if port:
+    # Use the adapter's port future to get the actual bound ephemeral port
+    try:
+        port = adapter.get_port_future().result(timeout=PORT_WAIT_TIMEOUT)
         logger.info("Adapter listening on tcp://127.0.0.1:%s", port)
         logger.info("Use a DAP client configured with debugServer=%s to attach.", port)
-    else:
-        logger.warning("Could not determine adapter port. It may still be starting.")
+    except Exception:
+        logger.warning(
+            "Could not determine adapter port within %.1fs. It may still be starting.",
+            PORT_WAIT_TIMEOUT,
+        )
 
     stop = False
 

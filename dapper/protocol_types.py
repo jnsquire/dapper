@@ -196,16 +196,6 @@ class SourceBreakpoint(TypedDict):
     ]  # If this exists and is non-empty, the adapter must not 'break' but log the message
 
 
-class FunctionBreakpoint(TypedDict):
-    """Properties of a breakpoint passed to the setFunctionBreakpoints request."""
-
-    name: str  # The name of the function
-    condition: NotRequired[str]  # An expression for conditional breakpoints
-    hitCondition: NotRequired[
-        str
-    ]  # An expression that controls how many hits of the breakpoint are ignored
-
-
 class Breakpoint(TypedDict):
     """Information about a breakpoint created in setBreakpoints, setFunctionBreakpoints, etc."""
 
@@ -1413,6 +1403,14 @@ class BreakpointProtocolEvent(TypedDict):
     type: Literal["event"]
     event: Literal["breakpoint"]
     body: BreakpointEventBody
+
+
+class FunctionBreakpoint(TypedDict, total=False):
+    """TypedDict describing a function breakpoint entry from the client."""
+    name: str
+    condition: str | None
+    hitCondition: str | None
+    verified: bool
 
 
 # Union of all strong protocol message variants

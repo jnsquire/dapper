@@ -13,8 +13,8 @@ from unittest import mock
 
 import pytest
 
-from dapper.connection import NamedPipeServerConnection
-from dapper.connection import TCPServerConnection
+from dapper.connections.pipe import NamedPipeServerConnection
+from dapper.connections.tcp import TCPServerConnection
 
 # ---------------------------------------------------------------------------
 # Fixtures

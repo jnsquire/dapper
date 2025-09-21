@@ -5,41 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.connection import ConnectionBase
 from dapper.server import DebugAdapterServer
-
-
-class MockConnection(ConnectionBase):
-    def __init__(self) -> None:
-        super().__init__()
-        self.read_queue: list[dict] = []
-        self.written_messages: list[dict] = []
-
-    async def accept(self) -> None:
-        # Immediately mark as connected for the server loop
-        self.is_connected = True
-
-    async def close(self) -> None:
-        # Mark as disconnected; nothing else to clean up
-        self.is_connected = False
-
-    async def read_message(self) -> dict | None:
-        if self.read_queue:
-            return self.read_queue.pop(0)
-        return None
-
-    async def write_message(self, message: dict) -> None:
-        self.written_messages.append(message)
-
-    def add_request(self, command: str, arguments: dict | None = None, seq: int = 1) -> None:
-        self.read_queue.append(
-            {
-                "seq": seq,
-                "type": "request",
-                "command": command,
-                "arguments": arguments or {},
-            }
-        )
+from tests.mocks import MockConnection
 
 
 @pytest.mark.asyncio

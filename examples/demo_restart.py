@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from dapper.connection import TCPServerConnection
+from dapper.connections.tcp import TCPServerConnection
 from dapper.server import DebugAdapterServer
 
 

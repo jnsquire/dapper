@@ -4,36 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.connection import ConnectionBase
 from dapper.server import DebugAdapterServer
 from dapper.server import PyDebugger as RealDebugger
-
-
-class MockConnection(ConnectionBase):
-    def __init__(self):
-        self.messages = []
-        self._is_connected = True
-        self.written_messages = []
-
-    async def accept(self):
-        self._is_connected = True
-
-    async def close(self):
-        self._is_connected = False
-
-    async def read_message(self):
-        if not self.messages:
-            return None
-        return self.messages.pop(0)
-
-    async def write_message(self, message):
-        self.written_messages.append(message)
-
-    def add_request(self, command, arguments=None, seq=1):
-        req = {"seq": seq, "type": "request", "command": command}
-        if arguments:
-            req["arguments"] = arguments
-        self.messages.append(req)
+from tests.mocks import MockConnection
 
 
 @pytest.mark.asyncio

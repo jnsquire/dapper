@@ -9,8 +9,8 @@ import asyncio
 import logging
 import sys
 
-from dapper.connection import NamedPipeServerConnection
-from dapper.connection import TCPServerConnection
+from dapper.connections.pipe import NamedPipeServerConnection
+from dapper.connections.tcp import TCPServerConnection
 from dapper.server import DebugAdapterServer
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,19 @@ async def start_server(
 
     server = DebugAdapterServer(connection)
     await server.start()
+
+
+# Eventually this can just be logging.getLevelNamesMapping()
+NAME_TO_LEVEL: dict[str, int] = {
+    "CRITICAL": logging.CRITICAL,
+    "FATAL": logging.FATAL,
+    "ERROR": logging.ERROR,
+    "WARN": logging.WARNING,
+    "WARNING": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+    "NOTSET": logging.NOTSET,
+}
 
 
 def main() -> None:
@@ -78,7 +91,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logging.getLogger().setLevel(logging.getLevelNamesMapping().get(args.log_level, logging.INFO))
+    logging.getLogger().setLevel(NAME_TO_LEVEL.get(args.log_level, logging.INFO))
 
     if args.port:
         connection_type = "tcp"

@@ -21,11 +21,13 @@ Notes:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 
-from dapper.connection import NamedPipeServerConnection
-from dapper.connection import TCPServerConnection
+from dapper.connections.pipe import NamedPipeServerConnection
+from dapper.connections.tcp import TCPServerConnection
+from dapper.events import EventEmitter
 from dapper.server import DebugAdapterServer
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,37 @@ class AdapterThread:
         self._started = threading.Event()
         self._stopped = threading.Event()
 
+        # Event/future used to publish the bound port for TCP listeners.
+        self.on_port_assigned = EventEmitter()
+        # Future to deliver the assigned TCP port to callers. Created lazily.
+        self._port_future: concurrent.futures.Future[int] | None = None
+        # Background task observing port; kept to avoid GC
+        self._port_observer_task: asyncio.Task | None = None
+
+    def get_port_future(self) -> concurrent.futures.Future[int]:
+        """Return a concurrent.futures.Future that will be completed with the
+        TCP port number once the adapter has bound to a port.
+
+        The future is created lazily and may be completed from the adapter
+        thread when the bound port becomes available. If the port is already
+        known when called, the returned future will already be resolved.
+        """
+        if self._port_future is None:
+            self._port_future = concurrent.futures.Future()
+            # If the server already exists and has a port, set it now
+            try:
+                conn = getattr(self._server, "connection", None)
+                if conn is not None and getattr(conn, "port", None):
+                    self._port_future.set_result(int(conn.port))
+            except Exception:
+                # Safe to ignore; the background thread will fulfill later
+                logger.debug("Could not set port future immediately")
+        return self._port_future
+
+    def _set_port_from_loop(self, port: int) -> None:
+        """Internal helper called from the adapter thread/loop to publish
+        the bound port to any waiting futures/listeners.
+        """
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
         return self._loop
@@ -104,6 +137,27 @@ class AdapterThread:
                 # Build connection and server in this loop context
                 connection = _create_connection()
                 self._server = DebugAdapterServer(connection, loop)
+
+                # For TCP connections we can call start_listening() to obtain
+                # the bound ephemeral port immediately, before waiting for a
+                # client in accept(). This avoids polling the socket.
+                if isinstance(connection, TCPServerConnection):
+                    # Schedule a coroutine on the adapter loop to call
+                    # start_listening() and publish the bound port. We don't
+                    # block here; start_listening will prepare the listening
+                    # socket and allow us to observe the port before a client
+                    # connects.
+                    async def _start_listen_and_publish() -> None:
+                        try:
+                            await connection.start_listening()
+                            port = getattr(connection, "port", None)
+                            if port:
+                                self._set_port_from_loop(int(port))
+                        except Exception:
+                            logger.exception("Error starting TCP listener to obtain port")
+
+                    # keep a reference to avoid GC
+                    self._port_observer_task = loop.create_task(_start_listen_and_publish())
 
                 # Kick off server start and mark as started once queued
                 _start_server_on_loop(loop)
