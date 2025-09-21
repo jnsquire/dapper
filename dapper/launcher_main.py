@@ -4,6 +4,7 @@ Launcher, argument parsing, IPC setup, and main routine for debug launcher.
 
 import argparse
 import contextlib
+import io
 import logging
 import os
 import socket
@@ -56,31 +57,33 @@ def main():
                 conn = _mpc.Client(address=args.ipc_pipe, family="AF_PIPE")
                 state.ipc_enabled = True
 
-                class _PipeWriter:
-                    def write(self, s: str) -> None:
-                        conn.send(s)
+                class _PipeIO(io.TextIOBase):
+                    def __init__(self, conn=conn):
+                        self.conn = conn
+
+                    def write(self, s: str) -> int:
+                        self.conn.send(s)
+                        return len(s)
 
                     def flush(self) -> None:
                         return
 
-                    def close(self) -> None:
-                        with contextlib.suppress(Exception):
-                            conn.close()
-
-                class _PipeReader:
-                    def readline(self) -> str:
+                    def readline(self, size: int = -1) -> str:
                         try:
-                            data = conn.recv()
+                            data = self.conn.recv()
                         except (EOFError, OSError):
                             return ""
-                        return data
+                        s = data
+                        if size is not None and size >= 0:
+                            return s[:size]
+                        return s
 
                     def close(self) -> None:
                         with contextlib.suppress(Exception):
-                            conn.close()
+                            self.conn.close()
 
-                state.ipc_rfile = _PipeReader()
-                state.ipc_wfile = _PipeWriter()
+                state.ipc_rfile = _PipeIO()
+                state.ipc_wfile = _PipeIO()
             else:
                 sock = None
                 if args.ipc == "unix":

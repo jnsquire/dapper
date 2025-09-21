@@ -35,31 +35,28 @@ MAX_STRING_LENGTH = 1000
 VAR_REF_TUPLE_SIZE = 2  # Variable references are stored as 2-element tuples
 
 
-class PipeWriter(io.TextIOBase):
-    """TextIO-compatible writer that sends strings over the pipe."""
+class PipeIO(io.TextIOBase):
+    """Combined reader/writer over a multiprocessing Connection.
+
+    Provides a minimal TextIO-like surface: readline(), write(), flush(), close().
+    This replaces separate PipeReader and PipeWriter classes and is intentionally
+    small to match the needs of this module and the launcher.
+    """
 
     def __init__(self, conn: _mpc.Connection):
         self.conn = conn
 
+    # Writer API -------------------------------------------------
     def write(self, s: str) -> int:  # return number of characters written
+        # The connection may raise; let callers handle exceptions or they are
+        # suppressed by callers that perform contextlib.suppress.
         self.conn.send(s)
         return len(s)
 
     def flush(self) -> None:
         return
 
-    def close(self) -> None:
-        with contextlib.suppress(Exception):
-            self.conn.close()
-
-
-class PipeReader(io.TextIOBase):
-    """TextIO-compatible reader that receives strings from the pipe."""
-
-    def __init__(self, conn: _mpc.Connection):
-        self.conn = conn
-        self.conn = conn
-
+    # Reader API -------------------------------------------------
     def readline(self, size: int = -1) -> str:
         try:
             data = self.conn.recv()
@@ -69,6 +66,11 @@ class PipeReader(io.TextIOBase):
         if size is not None and size >= 0:
             return s[:size]
         return s
+
+    # Common -----------------------------------------------------
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.conn.close()
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
@@ -993,8 +995,8 @@ def main():
                 state.ipc_enabled = True
 
                 # Cast wrappers to TextIO to satisfy SessionState annotations
-                state.ipc_rfile = PipeReader(conn)
-                state.ipc_wfile = PipeWriter(conn)
+                state.ipc_rfile = PipeIO(conn)
+                state.ipc_wfile = PipeIO(conn)
             else:
                 sock = None
                 if args.ipc == "unix":
