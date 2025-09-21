@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
 
+from dapper.events import EventEmitter
+
 if TYPE_CHECKING:
     import io
 
@@ -73,7 +75,17 @@ class SessionState:
         self.ipc_sock: Any | None = None
         self.ipc_rfile: io.TextIOBase | None = None
         self.ipc_wfile: io.TextIOBase | None = None
-        self.handle_debug_command: Any | None = None  # Set by debug_adapter_comm
+
+        # Event emitter for outgoing debug messages. Consumers can subscribe
+        # instead of monkeypatching the send_debug_message function.
+        self.on_debug_message = EventEmitter()
+
+        # Command dispatch provider registry and back-compat handler shim
+        self._providers: list[tuple[int, Any]] = []  # list of (priority, provider)
+        self._providers_lock = threading.RLock()
+        # Back-compat attribute; callers may assign, but by default we point to
+        # our session-aware dispatcher.
+        self.handle_debug_command: Any | None = self.dispatch_debug_command
 
         # Mapping of sourceReference -> metadata (path/name)
         self.source_references: dict[int, SourceReferenceMeta] = {}
@@ -83,6 +95,110 @@ class SessionState:
         self.next_source_ref = 1
 
         self._initialized = True
+
+    # ------------------------------------------------------------------
+    # Command provider registration and dispatch
+    # ------------------------------------------------------------------
+    def register_command_provider(self, provider: Any, *, priority: int = 0) -> None:
+        """Register a provider that can handle debug commands.
+
+        Providers are consulted in descending priority order. The provider
+        must implement:
+          - can_handle(command: str) -> bool
+          - handle(session, command: str, arguments: dict[str, Any], full_command: dict[str, Any]) -> dict | None
+        Returning a dict with a "success" key asks SessionState to send a
+        response using the incoming command's id (if present). Returning None
+        implies the provider has sent any events/responses itself.
+        """
+        with self._providers_lock:
+            self._providers.append((int(priority), provider))
+            # Highest priority first
+            self._providers.sort(key=lambda p: p[0], reverse=True)
+
+    def unregister_command_provider(self, provider: Any) -> None:
+        with self._providers_lock:
+            self._providers = [(pri, p) for (pri, p) in self._providers if p is not provider]
+
+    def dispatch_debug_command(self, command: dict[str, Any]) -> None:
+        """Dispatch a debug command to the first capable registered provider.
+
+        This is the new session-aware entrypoint. It's also assigned to
+        handle_debug_command for back-compat.
+        """
+        name = str(command.get("command", "")) if isinstance(command, dict) else ""
+        arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
+        arguments = arguments or {}
+
+        providers = self._providers_snapshot()
+        for provider in providers:
+            if not self._provider_can_handle(provider, name):
+                continue
+            handle = getattr(provider, "handle", None)
+            if not callable(handle):
+                continue
+            try:
+                result = handle(self, name, arguments, command)
+            except Exception as exc:  # pragma: no cover - defensive
+                self._send_error_for_exception(command, name, exc)
+                return
+            self._send_response_for_result(command, result)
+            return
+
+        self._send_unknown_command(command, name)
+
+    # ---- helpers to reduce complexity
+    def _providers_snapshot(self) -> list[Any]:
+        with self._providers_lock:
+            return [p for _, p in list(self._providers)]
+
+    @staticmethod
+    def _provider_can_handle(provider: Any, name: str) -> bool:
+        can_handle = getattr(provider, "can_handle", None)
+        if callable(can_handle):
+            try:
+                return bool(can_handle(name))
+            except Exception:
+                return False
+        supported = getattr(provider, "supported_commands", None)
+        if callable(supported):
+            try:
+                supp = supported()
+            except Exception:
+                return False
+            else:
+                if isinstance(supp, (list, tuple, set)):
+                    return name in supp
+                return False
+        return False
+
+    @staticmethod
+    def _send_response_for_result(command: dict[str, Any], result: Any) -> None:
+        if not (isinstance(result, dict) and ("success" in result)):
+            return
+        cmd_id = command.get("id") if isinstance(command, dict) else None
+        if cmd_id is None:
+            return
+        response = {"id": cmd_id}
+        response.update(result)
+        send_debug_message("response", **response)
+
+    @staticmethod
+    def _send_error_for_exception(command: dict[str, Any], name: str, exc: Exception) -> None:
+        cmd_id = command.get("id") if isinstance(command, dict) else None
+        msg = f"Error handling command {name}: {exc!s}"
+        if cmd_id is not None:
+            send_debug_message("response", id=cmd_id, success=False, message=msg)
+        else:
+            send_debug_message("error", message=msg)
+
+    @staticmethod
+    def _send_unknown_command(command: dict[str, Any], name: str) -> None:
+        cmd_id = command.get("id") if isinstance(command, dict) else None
+        msg = f"Unknown command: {name}"
+        if cmd_id is not None:
+            send_debug_message("response", id=cmd_id, success=False, message=msg)
+        else:
+            send_debug_message("error", message=msg)
 
     # Source reference helpers
     def get_ref_for_path(self, path: str) -> int | None:
@@ -128,8 +244,19 @@ state = SessionState()
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
+    """Send a debug message via IPC/logging and emit to subscribers.
+
+    Back-compat: this function remains available; new code can subscribe to
+    `state.on_debug_message` to observe messages without monkeypatching.
+    """
     message = {"event": event_type}
     message.update(kwargs)
+
+    # Emit to listeners first; listeners should never raise.
+    with contextlib.suppress(Exception):
+        state.on_debug_message.emit(event_type, **kwargs)
+
+    # Prefer IPC when enabled; fall back to logging/flush.
     if state.ipc_enabled and state.ipc_wfile is not None:
         try:
             state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")

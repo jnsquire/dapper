@@ -287,6 +287,11 @@ The default remains subprocess mode (omit `inProcess` or set `false`).
 
 See `examples/README.md` for detailed documentation.
 
+Quick start examples:
+- Integrated debugging: `examples/integrated_debugging.py`
+- Adapter-in-thread (in-process): `examples/adapter_in_thread.py`
+- Simple command provider: `examples/simple_command_provider.py`
+
 ## Running Tests
 
 To run all tests:

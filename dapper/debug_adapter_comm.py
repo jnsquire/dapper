@@ -7,11 +7,41 @@ import os
 import sys
 import traceback
 
-from dapper.dap_command_handlers import handle_debug_command
+from dapper.dap_command_handlers import COMMAND_HANDLERS
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
 
-state.handle_debug_command = handle_debug_command
+
+class DapMappingProvider:
+    """Provider that wraps the legacy COMMAND_HANDLERS mapping.
+
+    Each handler is a callable taking (arguments) and optionally returning
+    a response dict with a "success" field. If no dict is returned, the
+    handler is assumed to have already sent messages.
+    """
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    def supported_commands(self):
+        try:
+            return set(self._mapping.keys())
+        except Exception:
+            return set()
+
+    def can_handle(self, command: str) -> bool:
+        return command in self._mapping
+
+    def handle(self, _session, command: str, arguments, _full_command):
+        func = self._mapping.get(command)
+        if not callable(func):
+            return {"success": False, "message": f"Unknown command: {command}"}
+        result = func(arguments)
+        return result if isinstance(result, dict) and ("success" in result) else None
+
+
+# Register the mapping provider at a reasonable default priority.
+state.register_command_provider(DapMappingProvider(COMMAND_HANDLERS), priority=100)
 
 
 def receive_debug_commands() -> None:

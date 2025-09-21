@@ -122,6 +122,30 @@ Then configure your DAP client to attach:
 
 See `examples/inprocess_launch.json` for a minimal configuration.
 
+## Simple Command Provider Example
+
+Demonstrates how to implement and register a session-aware command provider that handles custom commands dispatched via `SessionState`.
+
+Files:
+- `simple_command_provider.py` — minimal provider that implements two commands: `hello` and `sum`.
+
+Provider contract:
+- `supported_commands()` returns the set of commands the provider can handle. Alternatively, implement `can_handle(command: str) -> bool`.
+- `handle(session, command, arguments, full_command)` returns either:
+	- a dict containing a `success` key (the session will synthesize a response using the incoming command `id`, if present), or
+	- `None` if the provider has already sent messages (events/responses) itself.
+
+Usage:
+
+```powershell
+uv run python examples/simple_command_provider.py
+```
+
+What you’ll see:
+- A synthesized response for `hello` that includes a greeting body
+- A synthesized response for `sum` with the computed total
+- An error response for an unknown command
+
 ## Restart Demo
 
 `demo_restart.py` spins up a local Dapper server, launches in-process, and then
