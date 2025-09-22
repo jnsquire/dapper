@@ -96,9 +96,20 @@ class PyDebugger:
 
     def __init__(self, server, loop: asyncio.AbstractEventLoop | None = None):
         self.server = server
-        # Use provided loop or create a new one and track ownership
-        self.loop = loop or asyncio.new_event_loop()
-        self._owns_loop = loop is None
+        # Prefer the caller-provided loop; otherwise reuse the current event loop.
+        # Avoid creating ad-hoc event loops by default to prevent leaks in tests
+        # and to integrate cleanly with pytest-asyncio.
+        if loop is None:
+            try:
+                self.loop = asyncio.get_event_loop()
+                self._owns_loop = False
+            except RuntimeError:
+                # No current loop set; fall back to creating one we own.
+                self.loop = asyncio.new_event_loop()
+                self._owns_loop = True
+        else:
+            self.loop = loop
+            self._owns_loop = False
 
         # Core state
         self.threads: dict[int, PyDebuggerThread] = {}
@@ -1418,7 +1429,9 @@ class PyDebugger:
         loaded_sources.append(self._make_source(path, origin, name))
 
     def _iter_python_module_files(self):
-        for module_name, module in sys.modules.items():
+        # Iterate over a snapshot to avoid 'dictionary changed size during iteration'
+        # if imports occur while scanning.
+        for module_name, module in list(sys.modules.items()):
             if module is None:
                 continue
             try:

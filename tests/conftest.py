@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import sys
 from pathlib import Path
 
@@ -10,30 +11,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 @pytest.fixture(autouse=True)
 def event_loop():
-    """Provide a fresh event loop for each test and ensure it is closed.
+    """Ensure a usable event loop exists and is cleaned up.
 
-    Many sync tests still call asyncio.get_event_loop(); setting a loop here
-    provides compatibility while keeping teardown deterministic across OSes.
+    - If a loop is already running (pytest-asyncio for @pytest.mark.asyncio), reuse it.
+    - Otherwise, create a per-test loop and close it on teardown.
     """
-    loop = asyncio.new_event_loop()
     try:
-        asyncio.set_event_loop(loop)
+        # If we're inside an asyncio test, just reuse the active loop
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    if running is not None:
+        # Yield the existing loop without creating another
+        yield running
+        return
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
         yield loop
     finally:
+        # Best-effort teardown of anything bound to this loop
         try:
             if not loop.is_closed():
-                # Cancel all pending tasks bound to this loop
                 try:
                     pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
                     for t in pending:
                         t.cancel()
                     if pending:
-                        loop.run_until_complete(
-                            asyncio.gather(*pending, return_exceptions=True)
-                        )
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                 except Exception:
                     pass
-                # Shutdown async generators and default executor threads
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
                 except Exception:
@@ -42,13 +51,10 @@ def event_loop():
                     loop.run_until_complete(loop.shutdown_default_executor())
                 except Exception:
                     pass
-                # Finally close the loop
                 try:
                     loop.close()
                 except Exception:
                     pass
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 asyncio.set_event_loop(None)
-            except Exception:
-                pass
