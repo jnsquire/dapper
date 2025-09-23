@@ -41,6 +41,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
 
         # Test with global access
         result = _convert_value_with_context("math.pi", frame)
+        assert type(result) is float
         assert abs(result - 3.14159) < 0.001
 
     def test_convert_value_with_context_type_inference(self):

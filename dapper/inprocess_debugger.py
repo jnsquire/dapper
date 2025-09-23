@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from dapper.protocol_types import Breakpoint
     from dapper.protocol_types import ContinueResponseBody
     from dapper.protocol_types import EvaluateResponseBody
-    from dapper.protocol_types import FunctionBreakpoint
     from dapper.protocol_types import SetVariableResponseBody
     from dapper.protocol_types import StackTraceResponseBody
     from dapper.protocol_types import VariablesResponseBody
@@ -76,7 +75,7 @@ class InProcessDebugger:
             # Return the minimal Breakpoint shape expected by the adapter/client
             return cast("list[Breakpoint]", [{"verified": True, "line": bp.get("line")} for bp in breakpoints])
 
-    def set_function_breakpoints(self, breakpoints: list[FunctionBreakpoint]) -> Sequence[FunctionBreakpoint]:
+    def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> Sequence[dict[str, Any]]:
         with self.command_lock:
             try:
                 for bpn in self.debugger.function_breakpoints:
@@ -88,7 +87,7 @@ class InProcessDebugger:
                 name = bp.get("name")
                 if name:
                     self.debugger.function_breakpoints.append(name)
-            return cast("list[FunctionBreakpoint]", [{"verified": True} for _ in breakpoints])
+            return cast("list[dict[str, Any]]", [{"verified": True} for _ in breakpoints])
 
     def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:

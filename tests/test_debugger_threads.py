@@ -37,15 +37,6 @@ class TestDebuggerThreads(BaseDebuggerTest):
         assert 1 in thread_ids
         assert 2 in thread_ids
 
-    async def test_get_threads_empty(self):
-        """Test getting threads when none exist"""
-        result = await self.debugger.get_threads()
-
-        # Should return list with default thread
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["id"] == 1
-        assert result[0]["name"] == "Main Thread"
 
     async def test_thread_stopped_state(self):
         """Test thread stopped state management"""

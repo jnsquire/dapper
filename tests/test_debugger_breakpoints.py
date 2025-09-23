@@ -75,6 +75,7 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
 
             # Should send setBreakpoints command
             assert len(mock_send.calls) == 1
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "setBreakpoints"
             assert "source" in call_args["arguments"]
@@ -141,6 +142,7 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
             # Verify the command was sent correctly
             # Verify the mock was called once with expected args
             assert len(mock_send.calls) == 1
+            assert mock_send.call_args is not None
             sent_args, sent_kwargs = mock_send.call_args
             assert sent_args[0] == {
                 "command": "exceptionInfo",

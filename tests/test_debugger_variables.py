@@ -100,6 +100,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
 
             # Should send evaluate command
             assert len(mock_send.calls) == 1
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "evaluate"
             assert call_args["arguments"]["expression"] == "x + 1"

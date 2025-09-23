@@ -1061,6 +1061,108 @@ def parse_args():
     return parser.parse_args()
 
 
+def _setup_ipc_pipe(ipc_pipe: str | None, use_binary: bool) -> None:
+    """Initialize Windows named pipe IPC.
+
+    On success, populates state.ipc_* fields and enables IPC. On failure, raises.
+    """
+    if not (os.name == "nt" and ipc_pipe):
+        msg = "Pipe IPC requested but not on Windows or missing pipe name"
+        raise RuntimeError(msg)
+
+    conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
+    state.ipc_enabled = True
+    if use_binary:
+        state.ipc_binary = True
+        state.ipc_pipe_conn = conn
+    else:
+        # Wrap in text IO for compatibility with text mode
+        state.ipc_rfile = PipeIO(conn)
+        state.ipc_wfile = PipeIO(conn)
+
+
+def _setup_ipc_socket(
+    kind: str,
+    host: str | None,
+    port: int | None,
+    path: str | None,
+    use_binary: bool,
+) -> None:
+    """Initialize TCP/UNIX socket IPC and configure state.
+
+    kind: "tcp" or "unix"
+    """
+    sock = None
+    if kind == "unix":
+        af_unix = getattr(socket, "AF_UNIX", None)
+        if af_unix and path:
+            sock = socket.socket(af_unix, socket.SOCK_STREAM)
+            sock.connect(path)
+        else:
+            msg = "UNIX sockets unsupported or missing path"
+            raise RuntimeError(msg)
+    else:
+        # Default to TCP
+        if port is None:
+            msg = "Missing --ipc-port for TCP IPC"
+            raise RuntimeError(msg)
+        h = host or "127.0.0.1"
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((h, int(port)))
+
+    state.ipc_sock = sock
+    if use_binary:
+        state.ipc_binary = True
+        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
+    else:
+        state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
+        state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
+    state.ipc_enabled = True
+
+
+def setup_ipc_from_args(args: Any) -> None:
+    """Best-effort IPC initialization based on parsed CLI args.
+
+    Any failure will leave IPC disabled and fall back to stdio.
+    """
+    if not args.ipc:
+        return
+    try:
+        if args.ipc == "pipe":
+            _setup_ipc_pipe(args.ipc_pipe, args.ipc_binary)
+        else:
+            _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary)
+    except Exception:
+        # If IPC fails, proceed with stdio
+        state.ipc_enabled = False
+
+
+def start_command_listener() -> threading.Thread:
+    """Start the background thread that listens for incoming commands."""
+    thread = threading.Thread(target=receive_debug_commands, daemon=True)
+    thread.start()
+    return thread
+
+
+def configure_debugger(stop_on_entry: bool) -> DebuggerBDB:
+    """Create and configure the debugger, storing it on shared state."""
+    dbg = DebuggerBDB()
+    if stop_on_entry:
+        dbg.stop_on_entry = True
+    state.debugger = dbg
+    return dbg
+
+
+def run_with_debugger(program_path: str, program_args: list[str]) -> None:
+    """Execute the target program under the debugger instance in state."""
+    sys.argv = [program_path, *program_args]
+    dbg = state.debugger
+    if dbg is None:
+        dbg = configure_debugger(False)
+    dbg.run(f"exec(Path('{program_path}').open().read())")
+
+
 def main():
     """Main entry point for the debug launcher"""
     # Parse arguments and set module state
@@ -1074,62 +1176,20 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
 
     # Establish IPC connection if requested
-    if args.ipc:
-        try:
-            if args.ipc == "pipe" and os.name == "nt" and args.ipc_pipe:
-                conn = _mpc.Client(address=args.ipc_pipe, family="AF_PIPE")
-                state.ipc_enabled = True
-                # Binary vs text path for pipes
-                if args.ipc_binary:
-                    state.ipc_binary = True
-                    state.ipc_pipe_conn = conn
-                else:
-                    # Cast wrappers to TextIO to satisfy SessionState annotations
-                    state.ipc_rfile = PipeIO(conn)
-                    state.ipc_wfile = PipeIO(conn)
-            else:
-                sock = None
-                if args.ipc == "unix":
-                    af_unix = getattr(socket, "AF_UNIX", None)
-                    if af_unix and args.ipc_path:
-                        sock = socket.socket(af_unix, socket.SOCK_STREAM)
-                        sock.connect(args.ipc_path)
-                else:
-                    host = args.ipc_host or "127.0.0.1"
-                    port = int(args.ipc_port)
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.connect((host, port))
-                if sock is not None:
-                    state.ipc_sock = sock
-                    if args.ipc_binary:
-                        state.ipc_binary = True
-                        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
-                        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
-                    else:
-                        state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-                        state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
-                    state.ipc_enabled = True
-        except Exception:
-            # If IPC fails, proceed with stdio
-            state.ipc_enabled = False
+    setup_ipc_from_args(args)
 
     # Start command listener thread (from IPC or stdin depending on state)
-    command_thread = threading.Thread(target=receive_debug_commands, daemon=True)
-    command_thread.start()
+    start_command_listener()
 
     # Create the debugger and store it on state
-    state.debugger = DebuggerBDB()
-
-    if state.stop_at_entry:
-        state.debugger.stop_on_entry = True
+    configure_debugger(state.stop_at_entry)
 
     if state.no_debug:
         # Just run the program without debugging
         run_program(program_path, program_args)
     else:
         # Run the program with debugging
-        sys.argv = [program_path, *program_args]
-        state.debugger.run(f"exec(Path('{program_path}').open().read())")
+        run_with_debugger(program_path, program_args)
 
 
 def run_program(program_path, args):

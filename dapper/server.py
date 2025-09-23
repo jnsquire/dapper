@@ -25,6 +25,7 @@ import time
 from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import cast
@@ -34,7 +35,9 @@ from dapper.ipc_binary import pack_frame
 from dapper.ipc_binary import read_exact
 from dapper.ipc_binary import unpack_header
 from dapper.protocol import ProtocolHandler
-from dapper.protocol_types import FunctionBreakpoint
+
+if _TYPE_CHECKING:
+    from dapper.protocol_types import FunctionBreakpoint
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -43,7 +46,7 @@ if TYPE_CHECKING:
     from dapper.connections import ConnectionBase
     from dapper.inprocess_debugger import InProcessDebugger
     from dapper.protocol_types import ExceptionInfoRequest
-    from dapper.protocol_types import Request
+    from dapper.protocol_types import GenericRequest
     from dapper.protocol_types import Source
 
 
@@ -74,7 +77,7 @@ class PyDebugger:
     next_var_ref: int
     var_refs: dict[int, object]
     breakpoints: dict[str, list[dict]]
-    function_breakpoints: list[FunctionBreakpoint]
+    function_breakpoints: list[dict[str, Any]]
     exception_breakpoints: dict[str, bool]
     process: subprocess.Popen | None
     debugger_thread: threading.Thread | None
@@ -118,7 +121,8 @@ class PyDebugger:
         self.next_var_ref = 1000
         self.var_refs: dict[int, object] = {}
         self.breakpoints: dict[str, list[dict]] = {}
-        self.function_breakpoints: list[FunctionBreakpoint] = []
+        # store function breakpoints as list[dict] at runtime for flexibility
+        self.function_breakpoints = []
         # Exception breakpoint flags (two booleans for clarity)
         self.exception_breakpoints_uncaught = False
         self.exception_breakpoints_raised = False
@@ -1047,16 +1051,16 @@ class PyDebugger:
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]
 
     async def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self, breakpoints: list[dict[str, Any]]
     ) -> list[Any]:
         """Set breakpoints for functions"""
         bp_funcs = [
-            FunctionBreakpoint(
-                name=bp.get("name", ""),
-                condition=bp.get("condition"),
-                hitCondition=bp.get("hitCondition"),
-                verified=True,
-            )
+            {
+                "name": bp.get("name", ""),
+                "condition": bp.get("condition"),
+                "hitCondition": bp.get("hitCondition"),
+                "verified": True,
+            }
             for bp in breakpoints
         ]
 
@@ -1381,9 +1385,6 @@ class PyDebugger:
         with self.lock:
             for thread_id, thread in self.threads.items():
                 threads.append({"id": thread_id, "name": thread.name})
-
-        if not threads:
-            threads.append({"id": 1, "name": "Main Thread"})
 
         return threads
 
@@ -1819,10 +1820,6 @@ class PyDebugger:
         self.program_running = False
 
         await self.shutdown()
-
-    async def next_step(self, thread_id: int) -> None:
-        """Step over to the next line (alias for next)"""
-        await self.next(thread_id)
 
     async def evaluate_expression(
         self, expression: str, frame_id: int, context: str = "hover"
@@ -2732,13 +2729,13 @@ class DebugAdapterServer:
         self, request: dict[str, Any], body: dict[str, Any] | None = None
     ) -> None:
         """Send a success response to a request"""
-        response = self.protocol_handler.create_response(cast("Request", request), True, body)
+        response = self.protocol_handler.create_response(cast("GenericRequest", request), True, body)
         await self.send_message(cast("dict[str, Any]", response))
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
         """Send an error response to a request"""
         response = self.protocol_handler.create_response(
-            cast("Request", request), False, None, error_message
+            cast("GenericRequest", request), False, None, error_message
         )
         await self.send_message(cast("dict[str, Any]", response))
 

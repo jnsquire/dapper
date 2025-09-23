@@ -96,6 +96,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
 
             # Should send next command
             mock_send.assert_called_once()
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "next"
             assert call_args["arguments"]["threadId"] == 1
@@ -114,6 +115,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
 
             # Should send stepIn command
             mock_send.assert_called_once()
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "stepIn"
             assert call_args["arguments"]["threadId"] == 1
@@ -132,6 +134,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
 
             # Should send stepOut command
             mock_send.assert_called_once()
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "stepOut"
             assert call_args["arguments"]["threadId"] == 1
@@ -150,6 +153,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
 
             # Should send pause command
             mock_send.assert_called_once()
+            assert mock_send.call_args is not None
             call_args = mock_send.call_args[0][0]
             assert call_args["command"] == "pause"
             assert call_args["arguments"]["threadId"] == 1

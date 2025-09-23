@@ -15,7 +15,6 @@ from typing import Union
 
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
-    from typing_extensions import Self
 
 # Type for the top-level 'type' field in protocol messages.
 MessageType = Literal["request", "response", "event"]
@@ -29,9 +28,19 @@ class ProtocolMessage(TypedDict):
     """Base class of requests, responses, and events."""
 
     seq: int  # Sequence number of the message
-    # Note: the 'type' key is intentionally *not* defined here so that concrete
-    # subtypes (Request/Response/Event) can declare a more specific Literal type
-    # for 'type' without conflicting TypedDict redefinition rules.
+    # Include commonly accessed keys as NotRequired so that code operating on
+    # unions of message types (Request|Response|Event) can safely index them
+    # without spurious type-checker errors. Concrete subtypes will declare
+    # more specific required keys where appropriate.
+    type: NotRequired[MessageType]
+    # Common runtime keys shared across messages (optional at the base level).
+    command: NotRequired[str]
+    arguments: NotRequired[Any]
+    request_seq: NotRequired[int]
+    success: NotRequired[bool]
+    event: NotRequired[str]
+    body: NotRequired[Any]
+    message: NotRequired[str]
 
 
 class Request(TypedDict):
@@ -39,6 +48,11 @@ class Request(TypedDict):
 
     seq: int
     type: Literal["request"]
+    # Runtime keys that are expected on request objects. `command` is
+    # required (all requests have a command). `arguments` may be absent for
+    # some requests and is therefore NotRequired.
+    command: str
+    arguments: Any
 
 
 class Response(TypedDict):
@@ -46,6 +60,13 @@ class Response(TypedDict):
 
     seq: int
     type: Literal["response"]
+    # Runtime keys for responses. These are required for normal responses;
+    # `message` and `body` are optional.
+    request_seq: int
+    success: bool
+    command: str
+    message: NotRequired[str]
+    body: Any
 
 
 class Event(TypedDict):
@@ -53,11 +74,46 @@ class Event(TypedDict):
 
     seq: int
     type: Literal["event"]
+    # Runtime keys for events. `event` is required; `body` is optional.
+    event: str
+    body: Any
+# Generic runtime-friendly message shapes (non-inheriting) used by the
+# ProtocolFactory and ProtocolHandler when constructing/parsing messages.
 
 
-class ErrorResponse(Response):
+class GenericRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: str
+    arguments: Any
+
+
+class GenericResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: str
+    message: NotRequired[str]
+    body: Any
+
+
+class GenericEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: str
+    body: Any
+
+
+class ErrorResponse(TypedDict):
     """On error (whenever success is false), the body can provide more details."""
 
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: str
+    message: NotRequired[str]
     body: dict[str, Any]  # The body with error details
 
 
@@ -81,7 +137,6 @@ class ExceptionBreakpointsFilter(TypedDict):
 
 class Capabilities(TypedDict):
     """Information about the capabilities of a debug adapter."""
-
     supportsConfigurationDoneRequest: NotRequired[bool]
     supportsFunctionBreakpoints: NotRequired[bool]
     supportsConditionalBreakpoints: NotRequired[bool]
@@ -118,8 +173,15 @@ class Capabilities(TypedDict):
     supportsExceptionFilterOptions: NotRequired[bool]
     supportsSingleThreadExecutionRequests: NotRequired[bool]
     # Data breakpoint related capabilities (subset implemented)
-    supportsDataBreakpoints: NotRequired[bool]  # type: ignore[override]
-    supportsDataBreakpointInfo: NotRequired[bool]  # type: ignore[override]
+    supportsDataBreakpointInfo: NotRequired[bool]
+    # Additional/extended capability fields (kept optional and permissive)
+    additionalModuleColumns: NotRequired[list[Any]]
+    supportedChecksumAlgorithms: NotRequired[list[Any]]
+    supportsRestartRequest: NotRequired[bool]
+    supportsExceptionOptions: NotRequired[bool]
+    supportsDataBreakpointBytes: NotRequired[bool]
+    breakpointModes: NotRequired[list[Any]]
+    supportsANSIStyling: NotRequired[bool]
 
 
 """Data Breakpoints (watchpoints) minimal protocol types.
@@ -168,7 +230,7 @@ class Source(TypedDict):
     """A source is a descriptor for source code."""
 
     name: NotRequired[str]  # The short name of the source
-    path: NotRequired[str]  # The path of the source to be shown in the UI
+    path: str  # The path of the source to be shown in the UI
     sourceReference: NotRequired[
         int
     ]  # If > 0, the contents must be retrieved through the source request
@@ -293,8 +355,8 @@ class InitializeRequestArguments(TypedDict):
     clientName: NotRequired[str]  # The human readable name of the client
     adapterID: str  # The ID of the debug adapter
     locale: NotRequired[str]  # The ISO-639 locale of the client using this adapter
-    linesStartAt1: NotRequired[bool]  # If true all line numbers are 1-based
-    columnsStartAt1: NotRequired[bool]  # If true all column numbers are 1-based
+    linesStartAt1: bool  # If true all line numbers are 1-based
+    columnsStartAt1: bool  # If true all column numbers are 1-based
     pathFormat: NotRequired[
         Literal["path", "uri"]
     ]  # Determines in what format paths are specified
@@ -352,22 +414,31 @@ class ConfigurationDoneResponse(TypedDict):
 # Launch Request and Response
 class LaunchRequestArguments(TypedDict):
     """Arguments for 'launch' request. Additional attributes are implementation specific."""
-
-    noDebug: NotRequired[
-        bool
-    ]  # If true, the launch request should launch the program without debugging
+    program: str  # The program to launch
+    args: NotRequired[list[str]]  # Optional program arguments
+    noDebug: bool  # If true, the launch request should launch the program without debugging
     __restart: NotRequired[Any]  # Arbitrary data from the previous, restarted session
 
 
-class LaunchRequest(Request):
+class LaunchRequest(TypedDict):
     """The request to launch the debuggee with or without debugging."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["launch"]
     arguments: LaunchRequestArguments
 
 
-class LaunchResponse(Response):
+class LaunchResponse(TypedDict):
     """Response to 'launch' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["launch"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # Attach Request and Response
@@ -377,15 +448,25 @@ class AttachRequestArguments(TypedDict):
     __restart: NotRequired[Any]  # Arbitrary data from the previous, restarted session
 
 
-class AttachRequest(Request):
+class AttachRequest(TypedDict):
     """The 'attach' request is sent to attach to a debuggee that is already running."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["attach"]
-    arguments: AttachRequestArguments
+    arguments: NotRequired[AttachRequestArguments]
 
 
-class AttachResponse(Response):
+class AttachResponse(TypedDict):
     """Response to 'attach' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["attach"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # Disconnect Request and Response
@@ -403,15 +484,25 @@ class DisconnectArguments(TypedDict):
     ]  # Indicates whether the debuggee should stay suspended when disconnecting
 
 
-class DisconnectRequest(Request):
+class DisconnectRequest(TypedDict):
     """Request to disconnect from the debuggee."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["disconnect"]
     arguments: NotRequired[DisconnectArguments]
 
 
-class DisconnectResponse(Response):
+class DisconnectResponse(TypedDict):
     """Response to 'disconnect' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["disconnect"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # Terminate Request and Response
@@ -423,15 +514,25 @@ class TerminateArguments(TypedDict):
     ]  # A value of true indicates that this 'terminate' request is part of a restart
 
 
-class TerminateRequest(Request):
+class TerminateRequest(TypedDict):
     """The 'terminate' request is sent from the client to the debug adapter to terminate the debuggee."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["terminate"]
     arguments: NotRequired[TerminateArguments]
 
 
-class TerminateResponse(Response):
+class TerminateResponse(TypedDict):
     """Response to 'terminate' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["terminate"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # BreakpointLocations Request and Response
@@ -454,9 +555,11 @@ class BreakpointLocation(TypedDict):
     endColumn: NotRequired[int]  # End position within endLine
 
 
-class BreakpointLocationsRequest(Request):
+class BreakpointLocationsRequest(TypedDict):
     """The 'breakpointLocations' request returns all possible locations for source breakpoints in a given range."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["breakpointLocations"]
     arguments: BreakpointLocationsArguments
 
@@ -465,10 +568,16 @@ class BreakpointLocationsResponseBody(TypedDict):
     breakpoints: list[BreakpointLocation]
 
 
-class BreakpointLocationsResponse(Response):
+class BreakpointLocationsResponse(TypedDict):
     """Response to 'breakpointLocations' request."""
 
-    body: BreakpointLocationsResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["breakpointLocations"]
+    message: NotRequired[str]
+    body: NotRequired[BreakpointLocationsResponseBody]
 
 
 # SetBreakpoints Request and Response
@@ -476,7 +585,7 @@ class SetBreakpointsArguments(TypedDict):
     """Arguments for 'setBreakpoints' request."""
 
     source: Source  # The source location of the breakpoints
-    breakpoints: NotRequired[list[SourceBreakpoint]]  # The code locations of the breakpoints
+    breakpoints: list[SourceBreakpoint]  # The code locations of the breakpoints
     lines: NotRequired[list[int]]  # Deprecated: The code locations of the breakpoints
     sourceModified: NotRequired[
         bool
@@ -487,41 +596,59 @@ class SetBreakpointsResponseBody(TypedDict):
     breakpoints: list[Breakpoint]  # Information about the breakpoints.
 
 
-class SetBreakpointsRequest(Request):
+class SetBreakpointsRequest(TypedDict):
     """Sets multiple breakpoints for a single source and clears all previous breakpoints in that source."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["setBreakpoints"]
     arguments: SetBreakpointsArguments
 
 
-class SetBreakpointsResponse(Response):
+class SetBreakpointsResponse(TypedDict):
     """Response to 'setBreakpoints' request."""
 
-    body: SetBreakpointsResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetBreakpointsResponseBody]
 
 
 # SetFunctionBreakpoints Request and Response
 class SetFunctionBreakpointsArguments(TypedDict):
     """Arguments for 'setFunctionBreakpoints' request."""
 
-    breakpoints: list[FunctionBreakpoint]  # The function names of the breakpoints
+    # Tests historically pass plain dicts here; accept either FunctionBreakpoint
+    # TypedDict instances or plain dicts to reduce friction during runtime.
+    breakpoints: list[dict[str, Any]]  # The function names of the breakpoints
 
 
 class SetFunctionBreakpointsResponseBody(TypedDict):
     breakpoints: list[Breakpoint]  # Information about the breakpoints
 
 
-class SetFunctionBreakpointsRequest(Request):
+class SetFunctionBreakpointsRequest(TypedDict):
     """Replaces all existing function breakpoints with new function breakpoints."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["setFunctionBreakpoints"]
     arguments: SetFunctionBreakpointsArguments
 
 
-class SetFunctionBreakpointsResponse(Response):
+class SetFunctionBreakpointsResponse(TypedDict):
     """Response to 'setFunctionBreakpoints' request."""
 
-    body: SetFunctionBreakpointsResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setFunctionBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetFunctionBreakpointsResponseBody]
 
 
 # Continue Request and Response
@@ -538,17 +665,25 @@ class ContinueResponseBody(TypedDict):
     allThreadsContinued: NotRequired[bool]  # If true, the continue request resumed all threads
 
 
-class ContinueRequest(Request):
+class ContinueRequest(TypedDict):
     """The request resumes execution of all threads."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["continue"]
     arguments: ContinueArguments
 
 
-class ContinueResponse(Response):
+class ContinueResponse(TypedDict):
     """Response to 'continue' request."""
 
-    body: ContinueResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["continue"]
+    message: NotRequired[str]
+    body: NotRequired[ContinueResponseBody]
 
 
 # Next (Step Over) Request and Response
@@ -562,15 +697,25 @@ class NextArguments(TypedDict):
     granularity: NotRequired[Literal["statement", "line", "instruction"]]  # Step granularity
 
 
-class NextRequest(Request):
+class NextRequest(TypedDict):
     """The request executes one step (over) for the specified thread."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["next"]
     arguments: NextArguments
 
 
-class NextResponse(Response):
+class NextResponse(TypedDict):
     """Response to 'next' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["next"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # StepIn Request and Response
@@ -585,15 +730,25 @@ class StepInArguments(TypedDict):
     granularity: NotRequired[Literal["statement", "line", "instruction"]]  # Step granularity
 
 
-class StepInRequest(Request):
+class StepInRequest(TypedDict):
     """The request resumes the given thread to step into a function/method."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["stepIn"]
     arguments: StepInArguments
 
 
-class StepInResponse(Response):
+class StepInResponse(TypedDict):
     """Response to 'stepIn' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["stepIn"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # StepOut Request and Response
@@ -607,21 +762,33 @@ class StepOutArguments(TypedDict):
     granularity: NotRequired[Literal["statement", "line", "instruction"]]  # Step granularity
 
 
-class StepOutRequest(Request):
+class StepOutRequest(TypedDict):
     """The request resumes the given thread to step out (return) from the current function/method."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["stepOut"]
     arguments: StepOutArguments
 
 
-class StepOutResponse(Response):
+class StepOutResponse(TypedDict):
     """Response to 'stepOut' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["stepOut"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
 
 
 # Threads Request and Response
-class ThreadsRequest(Request):
+class ThreadsRequest(TypedDict):
     """The request retrieves a list of all threads."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["threads"]
 
 
@@ -629,16 +796,24 @@ class ThreadsResponseBody(TypedDict):
     threads: list[Thread]  # All threads
 
 
-class ThreadsResponse(Response):
+class ThreadsResponse(TypedDict):
     """Response to 'threads' request."""
 
-    body: ThreadsResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["threads"]
+    message: NotRequired[str]
+    body: NotRequired[ThreadsResponseBody]
 
 
 # LoadedSources Request and Response
-class LoadedSourcesRequest(Request):
+class LoadedSourcesRequest(TypedDict):
     """The request retrieves a list of all loaded sources."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["loadedSources"]
 
 
@@ -646,10 +821,16 @@ class LoadedSourcesResponseBody(TypedDict):
     sources: list[Source]  # Set of loaded sources
 
 
-class LoadedSourcesResponse(Response):
+class LoadedSourcesResponse(TypedDict):
     """Response to 'loadedSources' request."""
 
-    body: LoadedSourcesResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["loadedSources"]
+    message: NotRequired[str]
+    body: NotRequired[LoadedSourcesResponseBody]
 
 
 # StackTrace Request and Response
@@ -657,8 +838,8 @@ class StackTraceArguments(TypedDict):
     """Arguments for 'stackTrace' request."""
 
     threadId: int  # Retrieve the stacktrace for this thread
-    startFrame: NotRequired[int]  # The index of the first frame to return
-    levels: NotRequired[int]  # The maximum number of frames to return
+    startFrame: int  # The index of the first frame to return
+    levels: int  # The maximum number of frames to return
     format: NotRequired[dict[str, Any]]  # Specifies details on how to format the stack frames
 
 
@@ -667,17 +848,25 @@ class StackTraceResponseBody(TypedDict):
     totalFrames: NotRequired[int]  # The total number of frames available
 
 
-class StackTraceRequest(Request):
+class StackTraceRequest(TypedDict):
     """The request returns a stacktrace from the current execution state of a given thread."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["stackTrace"]
     arguments: StackTraceArguments
 
 
-class StackTraceResponse(Response):
+class StackTraceResponse(TypedDict):
     """Response to 'stackTrace' request."""
 
-    body: StackTraceResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["stackTrace"]
+    message: NotRequired[str]
+    body: NotRequired[StackTraceResponseBody]
 
 
 # Scopes Request and Response
@@ -691,17 +880,25 @@ class ScopesResponseBody(TypedDict):
     scopes: list[Scope]  # The scopes of the stack frame
 
 
-class ScopesRequest(Request):
+class ScopesRequest(TypedDict):
     """The request returns the variable scopes for a given stack frame ID."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["scopes"]
     arguments: ScopesArguments
 
 
-class ScopesResponse(Response):
+class ScopesResponse(TypedDict):
     """Response to 'scopes' request."""
 
-    body: ScopesResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["scopes"]
+    message: NotRequired[str]
+    body: NotRequired[ScopesResponseBody]
 
 
 # Variables Request and Response
@@ -721,17 +918,25 @@ class VariablesResponseBody(TypedDict):
     variables: list[Variable]  # All (or a range of) variables for the given reference
 
 
-class VariablesRequest(Request):
+class VariablesRequest(TypedDict):
     """Retrieves all child variables for the given variable reference."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["variables"]
     arguments: VariablesArguments
 
 
-class VariablesResponse(Response):
+class VariablesResponse(TypedDict):
     """Response to 'variables' request."""
 
-    body: VariablesResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["variables"]
+    message: NotRequired[str]
+    body: NotRequired[VariablesResponseBody]
 
 
 # SetVariable Request and Response
@@ -756,17 +961,25 @@ class SetVariableResponseBody(TypedDict):
     indexedVariables: NotRequired[int]  # The number of indexed child variables
 
 
-class SetVariableRequest(Request):
+class SetVariableRequest(TypedDict):
     """Set the variable with the given name in the variable container to a new value."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["setVariable"]
     arguments: SetVariableArguments
 
 
-class SetVariableResponse(Response):
+class SetVariableResponse(TypedDict):
     """Response to 'setVariable' request."""
 
-    body: SetVariableResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setVariable"]
+    message: NotRequired[str]
+    body: NotRequired[SetVariableResponseBody]
 
 
 # Evaluate Request and Response
@@ -782,24 +995,32 @@ class EvaluateArguments(TypedDict):
 class EvaluateResponseBody(TypedDict):
     result: str  # The result of the evaluate request
     type: NotRequired[str]  # The type of the evaluate result
-    presentationHint: NotRequired[dict[str, Any]]  # Properties of the evaluate result
+    presentationHint: NotRequired[VariablePresentationHint]  # Properties of the evaluate result
     variablesReference: int  # If > 0 the evaluate result is structured and has children
     namedVariables: NotRequired[int]  # The number of named child variables
     indexedVariables: NotRequired[int]  # The number of indexed child variables
     memoryReference: NotRequired[str]  # Memory reference to a location appropriate for this result
 
 
-class EvaluateRequest(Request):
+class EvaluateRequest(TypedDict):
     """Evaluates the given expression in the context of the top most frame."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["evaluate"]
     arguments: EvaluateArguments
 
 
-class EvaluateResponse(Response):
+class EvaluateResponse(TypedDict):
     """Response to 'evaluate' request."""
 
-    body: EvaluateResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["evaluate"]
+    message: NotRequired[str]
+    body: NotRequired[EvaluateResponseBody]
 
 
 # ExceptionInfo Request and Response
@@ -815,7 +1036,7 @@ class ExceptionDetails(TypedDict):
     fullTypeName: NotRequired[str]
     evaluateName: NotRequired[str]
     stackTrace: NotRequired[str]
-    innerException: NotRequired[list[Self]]
+    innerException: NotRequired[list[ExceptionDetails]]
 
 
 class ExceptionInfoResponseBody(TypedDict):
@@ -825,17 +1046,25 @@ class ExceptionInfoResponseBody(TypedDict):
     details: NotRequired[ExceptionDetails]
 
 
-class ExceptionInfoRequest(Request):
+class ExceptionInfoRequest(TypedDict):
     """Retrieves details of the current exception for a thread."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["exceptionInfo"]
     arguments: ExceptionInfoArguments
 
 
-class ExceptionInfoResponse(Response):
+class ExceptionInfoResponse(TypedDict):
     """Response to 'exceptionInfo' request."""
 
-    body: ExceptionInfoResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["exceptionInfo"]
+    message: NotRequired[str]
+    body: NotRequired[ExceptionInfoResponseBody]
 
 
 # SetExceptionBreakpoints Request
@@ -885,7 +1114,7 @@ class Module(TypedDict):
 
 
 # Modules Request and Response
-class ModulesRequest(Request):
+class ModulesRequest(TypedDict):
     """The request retrieves a list of all loaded modules."""
 
     command: Literal["modules"]
@@ -897,16 +1126,17 @@ class ModulesResponseBody(TypedDict):
     totalModules: NotRequired[int]  # The total number of modules available
 
 
-class ModulesResponse(Response):
+class ModulesResponse(TypedDict):
     """Response to 'modules' request."""
 
     body: ModulesResponseBody
 
 
 # Event types
-class InitializedEvent(Event):
+class InitializedEvent(TypedDict):
     """This event indicates that the debug adapter is ready to accept configuration requests."""
-
+    seq: int
+    type: Literal["event"]
     event: Literal["initialized"]
 
 
@@ -922,9 +1152,11 @@ class StoppedEventBody(TypedDict):
     hitBreakpointIds: NotRequired[list[int]]  # Ids of the breakpoints that triggered the event
 
 
-class StoppedEvent(Event):
+class StoppedEvent(TypedDict):
     """The event indicates that the execution of the debuggee has stopped."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["stopped"]
     body: StoppedEventBody
 
@@ -933,9 +1165,11 @@ class ExitedEventBody(TypedDict):
     exitCode: int  # The exit code returned from the debuggee
 
 
-class ExitedEvent(Event):
+class ExitedEvent(TypedDict):
     """The event indicates that the debuggee has exited."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["exited"]
     body: ExitedEventBody
 
@@ -946,9 +1180,11 @@ class TerminatedEventBody(TypedDict):
     ]  # A debug adapter may set this to true to request that the client restarts the session
 
 
-class TerminatedEvent(Event):
+class TerminatedEvent(TypedDict):
     """The event indicates that debugging of the debuggee has terminated."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["terminated"]
     body: NotRequired[TerminatedEventBody]
 
@@ -958,9 +1194,11 @@ class ThreadEventBody(TypedDict):
     threadId: int  # The identifier of the thread
 
 
-class ThreadEvent(Event):
+class ThreadEvent(TypedDict):
     """The event indicates that a thread has started or exited."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["thread"]
     body: ThreadEventBody
 
@@ -972,11 +1210,16 @@ class OutputEventBody(TypedDict):
     source: NotRequired[Source]  # The source location where the output was produced
     line: NotRequired[int]  # The line where the output was produced
     column: NotRequired[int]  # The column where the output was produced
+    data: NotRequired[Any]  # Additional data to report. For telemetry or JSON output
+    group: NotRequired[Literal["start", "startCollapsed", "end"]]
+    locationReference: NotRequired[int]
 
 
-class OutputEvent(Event):
+class OutputEvent(TypedDict):
     """The event indicates that the target has produced some output."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["output"]
     body: OutputEventBody
 
@@ -986,9 +1229,11 @@ class BreakpointEventBody(TypedDict):
     breakpoint: Breakpoint  # The breakpoint
 
 
-class BreakpointEvent(Event):
+class BreakpointEvent(TypedDict):
     """The event indicates that some information about a breakpoint has changed."""
 
+    seq: int
+    type: Literal["event"]
     event: Literal["breakpoint"]
     body: BreakpointEventBody
 

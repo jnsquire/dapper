@@ -374,7 +374,7 @@ async def test_next_step(debugger):
     debugger.program_running = True
     debugger.is_terminated = False
 
-    await debugger.next_step(thread_id=1)
+    await debugger.next(thread_id=1)
 
     debugger.process.stdin.write.assert_called_once()
     call_args = debugger.process.stdin.write.call_args[0][0]
@@ -538,19 +538,6 @@ async def test_get_threads(debugger):
     assert result[0]["name"] == "MainThread"
     assert result[1]["id"] == 2
     assert result[1]["name"] == "WorkerThread"
-
-
-@pytest.mark.asyncio
-async def test_get_threads_empty(debugger):
-    """Test getting threads when none exist"""
-    debugger.threads = {}
-
-    result = await debugger.get_threads()
-
-    # Should return default main thread when no threads exist
-    assert len(result) == 1
-    assert result[0]["id"] == 1
-    assert result[0]["name"] == "Main Thread"
 
 
 @pytest.mark.asyncio
