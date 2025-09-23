@@ -8,12 +8,37 @@ import argparse
 import asyncio
 import logging
 import sys
+from typing import TYPE_CHECKING
+from typing import Optional
 
 from dapper.connections.pipe import NamedPipeServerConnection
 from dapper.connections.tcp import TCPServerConnection
 from dapper.server import DebugAdapterServer
 
+if TYPE_CHECKING:
+    from dapper.connections import ConnectionBase
+
+
 logger = logging.getLogger(__name__)
+
+
+async def create_connection(
+    connection_type: str,
+    host: str = "localhost",
+    port: int | None = None,
+    pipe_name: str | None = None
+) -> ConnectionBase | None:
+    connection = None
+    if connection_type == "tcp":
+        connection = TCPServerConnection(host=host, port=port or 4711)
+    elif connection_type == "pipe":
+        if pipe_name is None:
+            pipe_name = "dapper_debug_pipe"
+        connection = NamedPipeServerConnection(pipe_name=pipe_name)
+    else:
+        logger.error("Unknown connection type: %s", connection_type)
+        return None
+    return connection
 
 
 async def start_server(
@@ -27,19 +52,16 @@ async def start_server(
     """
     logger.info("Starting debug adapter with %s connection", connection_type)
 
-    connection = None
-    if connection_type == "tcp":
-        connection = TCPServerConnection(host=host, port=port or 4711)
-    elif connection_type == "pipe":
-        if pipe_name is None:
-            pipe_name = "dapper_debug_pipe"
-        connection = NamedPipeServerConnection(pipe_name=pipe_name)
-    else:
-        logger.error("Unknown connection type: %s", connection_type)
-        return
+    connection = await create_connection(
+        connection_type,
+        host=host,
+        port=port,
+        pipe_name=pipe_name,
+    )
 
-    server = DebugAdapterServer(connection)
-    await server.start()
+    if connection:
+        server = DebugAdapterServer(connection)
+        await server.start()
 
 
 # Eventually this can just be logging.getLevelNamesMapping()

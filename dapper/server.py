@@ -25,7 +25,6 @@ import time
 from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import TYPE_CHECKING as _TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import cast
@@ -35,9 +34,6 @@ from dapper.ipc_binary import pack_frame
 from dapper.ipc_binary import read_exact
 from dapper.ipc_binary import unpack_header
 from dapper.protocol import ProtocolHandler
-
-if _TYPE_CHECKING:
-    from dapper.protocol_types import FunctionBreakpoint
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -243,16 +239,9 @@ class PyDebugger:
         """(Future) Detect variable changes for watches tied to frame_id."""
         return
 
-    def _forward_event(
-        self, event_name: str, payload: dict[str, Any], immediate: bool = False
-    ) -> None:
+    def _forward_event(self, event_name: str, payload: dict[str, Any]) -> None:
         """Forward an event to the client, scheduling on the debugger loop."""
-        if immediate:
-            # Tests may rely on synchronous recorder calls; create the awaitable now
-            self._schedule_coroutine(self.server.send_event(event_name, payload))
-        else:
-            # Defer creating the awaitable until scheduled on the loop.
-            self._schedule_coroutine(lambda: self.server.send_event(event_name, payload))
+        self._schedule_coroutine(self.server.send_event(event_name, payload))
 
     async def launch(
         self,
@@ -734,11 +723,11 @@ class PyDebugger:
             if not self.is_terminated:
                 self.is_terminated = True
 
-            self._schedule_coroutine(lambda ec=exit_code: self._handle_program_exit(ec))
+            self._schedule_coroutine(self._handle_program_exit(exit_code))
         except Exception:
             logger.exception("Error starting debuggee")
             self.is_terminated = True
-            self._schedule_coroutine(lambda ec=1: self._handle_program_exit(ec))
+            self._schedule_coroutine(self._handle_program_exit(1))
 
     def _read_output(self, stream, category: str) -> None:
         """Read output from the debuggee's stdout/stderr streams."""
@@ -752,10 +741,7 @@ class PyDebugger:
                     self._handle_debug_message(line[5:].strip())
                 else:
                     self._schedule_coroutine(
-                        lambda out=line: self.server.send_event(
-                            "output",
-                            {"category": category, "output": out},
-                        )
+                        self.server.send_event("output", {"category": category, "output": line})
                     )
         except Exception:
             logger.exception("Error reading %s", category)
@@ -791,7 +777,7 @@ class PyDebugger:
 
         awaitable = self.server.send_event("stopped", stop_event)
         if awaitable is not None:
-            self._schedule_coroutine(lambda: awaitable)
+            self._schedule_coroutine(awaitable)
 
     def _handle_event_thread(self, data: dict[str, Any]) -> None:
         """Handle thread started/exited events and forward to client."""
@@ -809,13 +795,13 @@ class PyDebugger:
                 if thread_id in self.threads:
                     del self.threads[thread_id]
 
-        self._forward_event("thread", {"reason": reason, "threadId": thread_id}, immediate=True)
+        self._forward_event("thread", {"reason": reason, "threadId": thread_id})
 
     def _handle_event_exited(self, data: dict[str, Any]) -> None:
         """Handle debuggee exited event and schedule cleanup."""
         exit_code = data.get("exitCode", 0)
         self.is_terminated = True
-        self._schedule_coroutine(lambda ec=exit_code: self._handle_program_exit(ec))
+        self._schedule_coroutine(self._handle_program_exit(exit_code))
 
     def _handle_event_stacktrace(self, data: dict[str, Any]) -> None:
         """Cache stack trace data from the debuggee."""
@@ -925,7 +911,7 @@ class PyDebugger:
                 handler = dispatch.get(event_type)
                 if handler is not None:
                     payload_factory, immediate = handler
-                    self._forward_event(event_type, payload_factory(), immediate)
+                    self._forward_event(event_type, payload_factory())
 
     def _resolve_pending_response(
         self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
@@ -981,7 +967,7 @@ class PyDebugger:
             return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
         path = str(Path(path).resolve())
 
-        bp_lines = [
+        bp_lines: list[dict[str, Any]] = [
             {
                 "line": bp.get("line", 0),
                 "condition": bp.get("condition"),
@@ -1021,8 +1007,8 @@ class PyDebugger:
 
             # schedule progressStart and progressEnd around the outgoing command
             self._schedule_coroutine(
-                lambda pid=progress_id: self.server.send_event(
-                    "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
+                self.server.send_event(
+                    "progressStart", {"progressId": progress_id, "title": "Setting breakpoints"}
                 )
             )
 
@@ -1037,14 +1023,14 @@ class PyDebugger:
                 ]
                 for be in bp_events:
                     # forward as an adapter-level 'breakpoint' event
-                    self._forward_event("breakpoint", be, immediate=False)
+                    self._forward_event("breakpoint", be)
             except Exception:
                 logger.debug("Failed to forward breakpoint events")
 
             # schedule a progressEnd
             self._schedule_coroutine(
-                lambda pid=progress_id: self.server.send_event(
-                    "progressEnd", {"progressId": pid}
+                self.server.send_event(
+                    "progressEnd", {"progressId": progress_id}
                 )
             )
 
@@ -1266,12 +1252,11 @@ class PyDebugger:
                 with contextlib.suppress(Exception):
                     stdin.flush()
 
-    def _schedule_coroutine(self, coro_or_factory: Any) -> None:
+    def _schedule_coroutine(self, obj: Any) -> None:
         """Schedule a coroutine, Future, or a factory producing one on the debugger loop."""
 
         def _submit() -> None:
             try:
-                obj = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
                 # ensure_future accepts coroutine or Future
                 if inspect.iscoroutine(obj) or isinstance(obj, asyncio.Future):
                     task = asyncio.ensure_future(obj)
@@ -1288,9 +1273,7 @@ class PyDebugger:
 
     async def continue_execution(self, thread_id: int) -> dict[str, Any]:
         """Continue execution of the specified thread"""
-        if not self.program_running:
-            return {"allThreadsContinued": False}
-        if self.is_terminated:
+        if not self.program_running or self.is_terminated:
             return {"allThreadsContinued": False}
 
         self.stopped_event.clear()
