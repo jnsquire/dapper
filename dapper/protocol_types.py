@@ -77,6 +77,8 @@ class Event(TypedDict):
     # Runtime keys for events. `event` is required; `body` is optional.
     event: str
     body: Any
+
+
 # Generic runtime-friendly message shapes (non-inheriting) used by the
 # ProtocolFactory and ProtocolHandler when constructing/parsing messages.
 
@@ -137,6 +139,7 @@ class ExceptionBreakpointsFilter(TypedDict):
 
 class Capabilities(TypedDict):
     """Information about the capabilities of a debug adapter."""
+
     supportsConfigurationDoneRequest: NotRequired[bool]
     supportsFunctionBreakpoints: NotRequired[bool]
     supportsConditionalBreakpoints: NotRequired[bool]
@@ -414,6 +417,7 @@ class ConfigurationDoneResponse(TypedDict):
 # Launch Request and Response
 class LaunchRequestArguments(TypedDict):
     """Arguments for 'launch' request. Additional attributes are implementation specific."""
+
     program: str  # The program to launch
     args: NotRequired[list[str]]  # Optional program arguments
     noDebug: bool  # If true, the launch request should launch the program without debugging
@@ -1135,6 +1139,7 @@ class ModulesResponse(TypedDict):
 # Event types
 class InitializedEvent(TypedDict):
     """This event indicates that the debug adapter is ready to accept configuration requests."""
+
     seq: int
     type: Literal["event"]
     event: Literal["initialized"]
@@ -1652,6 +1657,7 @@ class BreakpointProtocolEvent(TypedDict):
 
 class FunctionBreakpoint(TypedDict, total=False):
     """TypedDict describing a function breakpoint entry from the client."""
+
     name: str
     condition: str | None
     hitCondition: str | None

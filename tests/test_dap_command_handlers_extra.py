@@ -1,36 +1,135 @@
+from __future__ import annotations
+
 import sys
 import types
+from typing import Any
 
 from dapper import dap_command_handlers as handlers
 from dapper import debug_shared
 
 
 class DummyDebugger:
-    def __init__(self):
-        self.cleared = []
-        self.breaks = {}
-        self.recorded = []
-        self.next_var_ref = 1
-        self.var_refs = {}
-        self.frame_id_to_frame = {}
+    def __init__(self) -> None:
+        self.next_var_ref: int = 1
+        self.var_refs: dict[int, Any] = {}
+        self.frame_id_to_frame: dict[int, Any] = {}
 
-    def clear_break(self, path):
+        # thread/frame mappings
+        self.frames_by_thread: dict[int, list] = {}
+        self.threads: dict[int, Any] = {}
+        self.current_exception_info: dict[str, Any] = {}
+        self.current_frame: Any | None = None
+        self.stepping: bool = False
+
+        # optional data breakpoint storage
+        self.data_breakpoints: list[dict[str, Any]] | None = []
+
+        # breakpoint bookkeeping
+        self.breakpoint_meta: dict[tuple[str, int], dict[str, Any]] = {}
+        self.function_breakpoints: list[str] = []
+        self.function_breakpoint_meta: dict[str, dict[str, Any]] = {}
+
+        # exception flags
+        self.exception_breakpoints_raised: bool = False
+        self.exception_breakpoints_uncaught: bool = False
+
+        # misc
+        self.cleared: list[str] = []
+        self.breaks: dict[str, list[tuple[int, Any | None]]] = {}
+        self.recorded: list[tuple[str, int, dict]] = []
+        self.stopped_thread_ids: set[int] = set()
+
+    def set_break(
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,
+        cond: Any | None = None,
+        funcname: str | None = None,
+    ) -> Any | None:  # type: ignore[override]
+        _ = temporary, funcname
+        arr = self.breaks.get(filename)
+        if arr is None:
+            self.breaks[filename] = [(int(lineno), cond)]
+        else:
+            arr.append((int(lineno), cond))
+        return None
+
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: Any | None = None,
+        hit_condition: Any | None = None,
+        log_message: Any | None = None,
+    ) -> None:
+        self.recorded.append(
+            (
+                path,
+                line,
+                {
+                    "condition": condition,
+                    "hit_condition": hit_condition,
+                    "log_message": log_message,
+                },
+            )
+        )
+
+    def clear_breaks_for_file(self, path: str) -> None:
+        # Record that clear was requested (tests assert this) and remove any breaks
         self.cleared.append(path)
+        self.breaks.pop(path, None)
 
-    def set_break(self, path, line, cond=None):
-        self.breaks.setdefault(path, []).append((int(line), cond))
+    def clear_break(self, filename: str, lineno: int) -> Any | None:
+        # remove a specific breakpoint if present
+        arr = self.breaks.get(filename)
+        if arr:
+            self.breaks[filename] = [b for b in arr if b[0] != int(lineno)]
+        return None
 
-    def record_breakpoint(self, path, line, **meta):
-        self.recorded.append((path, line, meta))
+    def clear_break_meta_for_file(self, path: str) -> None:
+        to_del = [k for k in list(self.breakpoint_meta.keys()) if k[0] == path]
+        for k in to_del:
+            self.breakpoint_meta.pop(k, None)
+
+    def clear_all_function_breakpoints(self) -> None:
+        self.function_breakpoints = []
+        self.function_breakpoint_meta.clear()
+
+    def set_continue(self) -> None:
+        pass
+
+    def set_next(self, frame: Any) -> None:
+        _ = frame
+
+    def set_step(self) -> None:
+        pass
+
+    def set_return(self, frame: Any) -> None:
+        _ = frame
+
+    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> Any:
+        _ = cmd, args, kwargs
+        return None
+
+    def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        # Delegate to shared helper to produce a realistic variable object
+        from dapper import debug_shared  # noqa: PLC0415
+
+        return debug_shared.make_variable_object(name, value, self, frame, max_string_length=max_string_length)
+
+    def create_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        # Backwards-compatible alias used by some callers
+        return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
 
 def capture_send(monkeypatch):
-    messages = []
+    messages: list[tuple[str, dict]] = []
 
     def _send(event, **kwargs):
         messages.append((event, kwargs))
 
-    # Patch both the shared module and the handlers module (handlers imported the function)
     monkeypatch.setattr(debug_shared, "send_debug_message", _send)
     monkeypatch.setattr(handlers, "send_debug_message", _send)
     return messages
@@ -48,12 +147,9 @@ def test_set_breakpoints_and_state(monkeypatch):
         }
     )
 
-    # verify debugger cleared and breaks set
     assert "./somefile.py" in dbg.cleared
     assert any(b[0] == 10 for b in dbg.breaks["./somefile.py"])  # line 10
     assert any(b[0] == 20 for b in dbg.breaks["./somefile.py"])  # line 20
-
-    # verify a breakpoints response message was sent
     assert any(m[0] == "breakpoints" for m in messages)
 
 
@@ -67,16 +163,12 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
             self.f_locals = {"a": 1}
             self.f_globals = {}
 
-    # register a frame
     frame = Frame()
     dbg.frame_id_to_frame[42] = frame
     dbg.var_refs[1] = (42, "locals")
 
-    # setVariable should update the frame locals
     handlers.handle_set_variable({"variablesReference": 1, "name": "a", "value": "2"})
     assert frame.f_locals["a"] == 2
-
-    # verify send_debug_message was called with success True
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
 
@@ -85,7 +177,6 @@ def test_set_variable_on_object(monkeypatch):
     debug_shared.state.debugger = dbg
     messages = capture_send(monkeypatch)
 
-    # object var ref
     obj = {"x": 1}
     dbg.var_refs[2] = ("object", obj)
     handlers.handle_set_variable({"variablesReference": 2, "name": "x", "value": "3"})
@@ -94,7 +185,6 @@ def test_set_variable_on_object(monkeypatch):
 
 
 def test_convert_value_with_context_basic():
-    # numeric
     assert handlers._convert_value_with_context("  123 ") == 123
     assert handlers._convert_value_with_context("None") is None
     assert handlers._convert_value_with_context("true") is True
@@ -102,7 +192,6 @@ def test_convert_value_with_context_basic():
 
 
 def test_loaded_sources_collect(monkeypatch, tmp_path):
-    # create a dummy module file and add to sys.modules
     mod_path = tmp_path / "mymod.py"
     mod_path.write_text("print('hello')\n")
 
@@ -112,7 +201,6 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     monkeypatch.setitem(sys.modules, "mymod", fake_mod)
 
-    # ensure state mapping starts empty
     debug_shared.state.source_references.clear()
     debug_shared.state._path_to_ref.clear()
 
@@ -120,7 +208,6 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     handlers.handle_loaded_sources()
 
-    # a response message should have been sent
     resp = [m for m in messages if m[0] == "response"]
     assert resp
     body = resp[-1][1].get("body", {})

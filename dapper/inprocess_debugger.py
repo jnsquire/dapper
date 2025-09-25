@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.debug_shared import make_variable_object
 from dapper.debugger_bdb import DebuggerBDB
 from dapper.events import EventEmitter
 
@@ -56,15 +55,12 @@ class InProcessDebugger:
         self.on_exited = EventEmitter()
         self.on_output = EventEmitter()
 
-    def set_breakpoints(
-        self, path: str, breakpoints: list[dict[str, Any]]
-    ) -> list[Breakpoint]:
+    def set_breakpoints(self, path: str, breakpoints: list[dict[str, Any]]) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         with self.command_lock:
-            # Clear existing breakpoints for this file
+            # Clear existing breakpoints for this file (helper on DebuggerBDB)
             try:
-                # Some implementations support clearing by filename only
-                self.debugger.clear_break(path)  # type: ignore[call-arg]
+                self.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
             except Exception:
                 pass
             for bp in breakpoints:
@@ -73,21 +69,50 @@ class InProcessDebugger:
                 if line:
                     self.debugger.set_break(path, line, cond=cond)
             # Return the minimal Breakpoint shape expected by the adapter/client
-            return cast("list[Breakpoint]", [{"verified": True, "line": bp.get("line")} for bp in breakpoints])
+            return cast(
+                "list[Breakpoint]",
+                [{"verified": True, "line": bp.get("line")} for bp in breakpoints],
+            )
 
-    def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> Sequence[dict[str, Any]]:
+    def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> Sequence[Breakpoint]:
+        """Replace function breakpoints and record per-breakpoint metadata.
+
+        Mirrors the behavior in debug_launcher: clears existing function
+        breakpoints and associated metadata, then installs new ones while
+        persisting condition/hitCondition/logMessage for runtime use.
+        """
         with self.command_lock:
-            try:
-                for bpn in self.debugger.function_breakpoints:
-                    self.debugger.clear_bpbynumber(bpn)
-            except Exception:
-                pass
-            self.debugger.function_breakpoints = []
+            # Clear any existing function breakpoints and metadata
+            self.debugger.clear_all_function_breakpoints()
+
+            # Install new function breakpoints and capture metadata
             for bp in breakpoints:
                 name = bp.get("name")
-                if name:
+                if not name:
+                    continue
+                condition = bp.get("condition")
+                hit_condition = bp.get("hitCondition")
+                log_message = bp.get("logMessage")
+
+                try:
                     self.debugger.function_breakpoints.append(name)
-            return cast("list[dict[str, Any]]", [{"verified": True} for _ in breakpoints])
+                except Exception:
+                    # If attribute missing or wrong type, try to set fresh list
+                    try:
+                        self.debugger.function_breakpoints = [name]  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+
+                fbm = getattr(self.debugger, "function_breakpoint_meta", None)
+                if isinstance(fbm, dict):
+                    meta = fbm.get(name, {})
+                    meta.setdefault("hit", 0)
+                    meta["condition"] = condition
+                    meta["hitCondition"] = hit_condition
+                    meta["logMessage"] = log_message
+                    fbm[name] = meta
+
+            return cast("list[Breakpoint]", [{"verified": True} for _ in breakpoints])
 
     def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:
@@ -138,7 +163,9 @@ class InProcessDebugger:
     # Variables/Stack/Evaluate
     # These follow the launcher semantics, but return dicts directly.
 
-    def stack_trace(self, thread_id: int, start_frame: int = 0, levels: int = 0) -> StackTraceResponseBody:
+    def stack_trace(
+        self, thread_id: int, start_frame: int = 0, levels: int = 0
+    ) -> StackTraceResponseBody:
         dbg = self.debugger
         if thread_id not in getattr(dbg, "frames_by_thread", {}):
             return cast("StackTraceResponseBody", {"stackFrames": [], "totalFrames": 0})
@@ -150,10 +177,13 @@ class InProcessDebugger:
             frames_to_send = frames[start_frame:end_frame]
         else:
             frames_to_send = frames[start_frame:]
-        return cast("StackTraceResponseBody", {
-            "stackFrames": frames_to_send,
-            "totalFrames": total_frames,
-        })
+        return cast(
+            "StackTraceResponseBody",
+            {
+                "stackFrames": frames_to_send,
+                "totalFrames": total_frames,
+            },
+        )
 
     def variables(
         self,
@@ -176,15 +206,17 @@ class InProcessDebugger:
             variables: list[dict[str, Any]] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
-                    variables.append(self._make_var(name, value))
+                    variables.append(dbg.make_variable_object(name, value))
             elif frame and scope == "globals":
                 for name, value in frame.f_globals.items():
-                    variables.append(self._make_var(name, value))
+                    variables.append(dbg.make_variable_object(name, value))
             # The `make_variable_object` helper returns Variable-shaped dicts
             return cast("VariablesResponseBody", {"variables": variables})
         return cast("VariablesResponseBody", {"variables": []})
 
-    def set_variable(self, variables_reference: int, name: str, value: str) -> SetVariableResponseBody | dict[str, Any]:
+    def set_variable(
+        self, variables_reference: int, name: str, value: str
+    ) -> SetVariableResponseBody | dict[str, Any]:
         dbg = self.debugger
         var_ref = variables_reference
         if var_ref not in dbg.var_refs:
@@ -236,13 +268,3 @@ class InProcessDebugger:
                 "type": "error",
                 "variablesReference": 0,
             }
-
-    # ---- Helpers ----
-
-    def _make_var(self, name: str, value: Any) -> dict[str, Any]:
-        """Delegates to shared `make_variable_object` to build variable dicts.
-
-        Passes the in-process debugger so the helper can allocate var refs.
-        """
-        dbg = getattr(self, "debugger", None)
-        return make_variable_object(name, value, dbg)

@@ -77,7 +77,9 @@ async def test_start_stop_tcp(monkeypatch):
 
     # Wait for port to be published by the adapter thread
     result_port = await asyncio.get_running_loop().run_in_executor(
-        None, fut.result, 2.0  # 2 seconds timeout via concurrent Future API
+        None,
+        fut.result,
+        2.0,  # 2 seconds timeout via concurrent Future API
     )
     assert result_port == 55555
 

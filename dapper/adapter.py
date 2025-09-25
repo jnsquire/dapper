@@ -26,7 +26,7 @@ async def create_connection(
     connection_type: str,
     host: str = "localhost",
     port: int | None = None,
-    pipe_name: str | None = None
+    pipe_name: str | None = None,
 ) -> ConnectionBase | None:
     connection = None
     if connection_type == "tcp":

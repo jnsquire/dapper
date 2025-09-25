@@ -55,9 +55,7 @@ class BreakpointController:
         return asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     # ---- line/source breakpoints
-    def set_source(
-        self, path: str | Path, breakpoints: list[LineBreakpointSpec]
-    ) -> Any:
+    def set_source(self, path: str | Path, breakpoints: list[LineBreakpointSpec]) -> Any:
         return self._schedule(self.async_set_source(path, breakpoints))
 
     async def async_set_source(
@@ -77,9 +75,7 @@ class BreakpointController:
         return await self._debugger.set_breakpoints(path_str, bp_list)
 
     # ---- function breakpoints
-    def set_function(
-        self, breakpoints: list[FunctionBreakpointSpec]
-    ) -> Any:
+    def set_function(self, breakpoints: list[FunctionBreakpointSpec]) -> Any:
         return self._schedule(self.async_set_function(breakpoints))
 
     async def async_set_function(
@@ -97,9 +93,7 @@ class BreakpointController:
         return await self._debugger.set_function_breakpoints(bp_funcs)
 
     # ---- exception breakpoints
-    def set_exception(
-        self, filters: list[str]
-    ) -> Any:
+    def set_exception(self, filters: list[str]) -> Any:
         return self._schedule(self.async_set_exception(filters))
 
     async def async_set_exception(self, filters: list[str]) -> list[dict[str, Any]]:
@@ -112,14 +106,10 @@ class BreakpointController:
     async def async_data_info(self, *, name: str, frame_id: int) -> dict[str, Any]:
         return self._debugger.data_breakpoint_info(name=name, frame_id=frame_id)
 
-    def set_data(
-        self, breakpoints: list[DataBreakpointSpec]
-    ) -> Any:
+    def set_data(self, breakpoints: list[DataBreakpointSpec]) -> Any:
         return self._schedule(self.async_set_data(breakpoints))
 
-    async def async_set_data(
-        self, breakpoints: list[DataBreakpointSpec]
-    ) -> list[dict[str, Any]]:
+    async def async_set_data(self, breakpoints: list[DataBreakpointSpec]) -> list[dict[str, Any]]:
         bp_list: list[dict[str, Any]] = [
             {
                 "dataId": bp.data_id,

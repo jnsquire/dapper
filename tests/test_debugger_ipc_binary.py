@@ -32,7 +32,9 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
     PyDebugger._start_debuggee_process = _capture_start  # type: ignore[assignment]
 
     # Choose a transport that is supported on this OS to get IPC args populated
-    ipc_transport = "pipe" if os.name == "nt" else ("unix" if hasattr(_socket, "AF_UNIX") else "tcp")
+    ipc_transport = (
+        "pipe" if os.name == "nt" else ("unix" if hasattr(_socket, "AF_UNIX") else "tcp")
+    )
 
     try:
         await dbg.launch(

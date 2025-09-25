@@ -623,7 +623,7 @@ class PyDebugger:
                         kind, length = unpack_header(data[:HEADER_SIZE])
                     except Exception:
                         break
-                    payload = data[HEADER_SIZE:HEADER_SIZE + length]
+                    payload = data[HEADER_SIZE : HEADER_SIZE + length]
                     if kind == 1:
                         self._handle_debug_message(payload.decode("utf-8"))
                     continue
@@ -1018,7 +1018,13 @@ class PyDebugger:
             # a breakpoint-changed event so clients can react to changes.
             try:
                 bp_events = [
-                    {"reason": "changed", "breakpoint": {"verified": bp.get("verified", True), "line": bp.get("line")}}
+                    {
+                        "reason": "changed",
+                        "breakpoint": {
+                            "verified": bp.get("verified", True),
+                            "line": bp.get("line"),
+                        },
+                    }
                     for bp in bp_lines
                 ]
                 for be in bp_events:
@@ -1029,16 +1035,12 @@ class PyDebugger:
 
             # schedule a progressEnd
             self._schedule_coroutine(
-                self.server.send_event(
-                    "progressEnd", {"progressId": progress_id}
-                )
+                self.server.send_event("progressEnd", {"progressId": progress_id})
             )
 
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]
 
-    async def set_function_breakpoints(
-        self, breakpoints: list[dict[str, Any]]
-    ) -> list[Any]:
+    async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Any]:
         """Set breakpoints for functions"""
         bp_funcs = [
             {
@@ -2211,6 +2213,25 @@ class RequestHandler:
             "body": {"breakpoints": verified_breakpoints},
         }
 
+    async def _handle_set_function_breakpoints(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle setFunctionBreakpoints request.
+
+        This replaces all existing function breakpoints with the provided set,
+        mirroring DAP semantics. Returns verification info per breakpoint.
+        """
+        args = request.get("arguments", {})
+        breakpoints = args.get("breakpoints", [])
+
+        verified = await self.server.debugger.set_function_breakpoints(breakpoints)
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "setFunctionBreakpoints",
+            "body": {"breakpoints": verified},
+        }
+
     async def _handle_continue(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle continue request."""
         thread_id = request["arguments"]["threadId"]
@@ -2712,7 +2733,9 @@ class DebugAdapterServer:
         self, request: dict[str, Any], body: dict[str, Any] | None = None
     ) -> None:
         """Send a success response to a request"""
-        response = self.protocol_handler.create_response(cast("GenericRequest", request), True, body)
+        response = self.protocol_handler.create_response(
+            cast("GenericRequest", request), True, body
+        )
         await self.send_message(cast("dict[str, Any]", response))
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:

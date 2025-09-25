@@ -5,6 +5,7 @@ DebuggerBDB class and related helpers for debug launcher.
 from __future__ import annotations
 
 import bdb
+import contextlib
 import importlib
 import logging
 import re
@@ -237,6 +238,9 @@ class DebuggerBDB(bdb.Bdb):
         self.frame_id_to_frame = {}
         self.next_var_ref = 1000
         self.var_refs = {}
+        # Optional: adapter/launcher may store configured data breakpoints here
+        # for simple bookkeeping. Not required for core BDB operation.
+        self.data_breakpoints: list[dict[str, Any]] | None = None
         self.current_exception_info = {}
         self.breakpoint_meta = {}
         # Data breakpoint Phase 2 (lightweight): watch names & last values per frame
@@ -325,6 +329,100 @@ class DebuggerBDB(bdb.Bdb):
         for n in self.data_watch_names:
             if n in current_locals:
                 self._last_global_watch_values[n] = current_locals[n]
+
+    # ---------------- Variable object helper -----------------
+    def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
+
+        This mirrors the module-level helper previously stored in debug_shared.
+        When used via this method, variablesReference bookkeeping will use this
+        debugger instance's next_var_ref and var_refs.
+        """
+        # Helper implementations copied from debug_shared module-level helpers
+        def _format_value_str(v: Any, max_len: int) -> str:
+            try:
+                s = repr(v)
+            except Exception:
+                return "<Error getting value>"
+            else:
+                if len(s) > max_len:
+                    return s[:max_len] + "..."
+                return s
+
+        def _allocate_var_ref(v: Any) -> int:
+            if not (hasattr(v, "__dict__") or isinstance(v, (dict, list, tuple))):
+                return 0
+            try:
+                ref = self.next_var_ref
+                self.next_var_ref = ref + 1
+                self.var_refs[ref] = ("object", v)
+            except Exception:
+                return 0
+            else:
+                return ref
+
+        def _detect_kind_and_attrs(v: Any) -> tuple[str, list[str]]:
+            attrs: list[str] = []
+            if callable(v):
+                attrs.append("hasSideEffects")
+                return "method", attrs
+            if isinstance(v, type):
+                return "class", attrs
+            if isinstance(v, (list, tuple, dict, set)):
+                return "data", attrs
+            if isinstance(v, (str, bytes)):
+                sval = v.decode() if isinstance(v, bytes) else v
+                if isinstance(sval, str) and ("\n" in sval or len(sval) > max_string_length):
+                    attrs.append("rawString")
+                return "data", attrs
+            return "data", attrs
+
+        def _visibility(n: Any) -> str:
+            try:
+                return "private" if str(n).startswith("_") else "public"
+            except Exception:
+                return "public"
+
+        def _detect_has_data_breakpoint(n: Any, fr: Any | None) -> bool:
+            name_str = str(n)
+            # DebuggerBDB style
+            dw_names = getattr(self, "data_watch_names", None)
+            if isinstance(dw_names, (set, list)) and name_str in dw_names:
+                return True
+            dw_meta = getattr(self, "data_watch_meta", None)
+            if isinstance(dw_meta, dict) and name_str in dw_meta:
+                return True
+            # Frame-based mapping
+            frame_watches = getattr(self, "_frame_watches", None)
+            if fr is not None and isinstance(frame_watches, dict):
+                for data_ids in frame_watches.values():
+                    for did in data_ids:
+                        if isinstance(did, str) and (f":var:{name_str}" in did or name_str in did):
+                            return True
+            return False
+
+        val_str = _format_value_str(value, max_string_length)
+        var_ref = _allocate_var_ref(value)
+        type_name = type(value).__name__
+        kind, attrs = _detect_kind_and_attrs(value)
+        if _detect_has_data_breakpoint(name, frame) and "hasDataBreakpoint" not in attrs:
+            attrs.append("hasDataBreakpoint")
+        presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
+
+        return {
+            "name": str(name),
+            "value": val_str,
+            "type": type_name,
+            "variablesReference": var_ref,
+            "presentationHint": presentation,
+        }
+
+    # Backwards-compatible alias: some callers expect a create_variable_object
+    # helper on debugger instances (historical launcher helper). Delegate to
+    # the richer make_variable_object implementation above so behavior is
+    # consistent across adapter and launcher paths.
+    def create_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
         """Evaluate conditions and hitConditions for a changed variable."""
@@ -555,6 +653,35 @@ class DebuggerBDB(bdb.Bdb):
     def clear_all_function_breakpoints(self):
         self.function_breakpoints = []
         self.function_breakpoint_meta.clear()
+
+    # ---------------- Breakpoint housekeeping helpers -----------------
+    def clear_breaks_for_file(self, path: str) -> None:
+        """Clear all standard breakpoints for a given file and related metadata.
+
+        Iterates bdb's internal break table and clears every breakpoint for
+        the specified filename. Also clears adapter-side breakpoint metadata
+        for that file.
+        """
+        try:
+            # bdb maintains a mapping filename -> list[int] of line numbers
+            lines = self.breaks.get(path, [])  # type: ignore[attr-defined]
+        except Exception:
+            lines = []
+        for ln in lines:
+            # Best-effort clearing of breakpoints per line
+            if ln is None:
+                continue
+            try:
+                iln = int(ln)
+            except Exception:
+                continue
+            with contextlib.suppress(Exception):
+                self.clear_break(path, iln)
+        # Clear DAP-specific metadata for this file, if any
+        try:
+            self.clear_break_meta_for_file(path)
+        except Exception:
+            pass
 
     def user_call(self, frame, argument_list):  # noqa: ARG002
         if not self.function_breakpoints and not self.function_breakpoint_meta:

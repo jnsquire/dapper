@@ -118,7 +118,9 @@ def test_supported_commands_used(capture_messages):
     prov = SupportedProvider({"pong"})
     ds.state.register_command_provider(prov, priority=0)
     ds.state.dispatch_debug_command({"id": 11, "command": "pong", "arguments": {}})
-    assert capture_messages == [("response", {"id": 11, "success": True, "body": {"handled": "pong"}})]
+    assert capture_messages == [
+        ("response", {"id": 11, "success": True, "body": {"handled": "pong"}})
+    ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -144,7 +146,9 @@ def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages):
     ds.state.register_command_provider(CantHandle(), priority=10)
     ds.state.register_command_provider(second, priority=0)
     ds.state.dispatch_debug_command({"id": 123, "command": "ping", "arguments": {}})
-    assert capture_messages == [("response", {"id": 123, "success": True, "body": {"who": "second"}})]
+    assert capture_messages == [
+        ("response", {"id": 123, "success": True, "body": {"who": "second"}})
+    ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -159,7 +163,9 @@ def test_can_handle_exception_is_ignored_and_unknown_emitted(capture_messages):
 
     ds.state.register_command_provider(BadCan(), priority=0)
     ds.state.dispatch_debug_command({"id": 321, "command": "xyz", "arguments": {}})
-    assert capture_messages == [("response", {"id": 321, "success": False, "message": "Unknown command: xyz"})]
+    assert capture_messages == [
+        ("response", {"id": 321, "success": False, "message": "Unknown command: xyz"})
+    ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -168,7 +174,9 @@ def test_unregister_removes_provider(capture_messages):
     ds.state.register_command_provider(prov, priority=0)
     ds.state.unregister_command_provider(prov)
     ds.state.dispatch_debug_command({"id": 1, "command": "ping", "arguments": {}})
-    assert capture_messages == [("response", {"id": 1, "success": False, "message": "Unknown command: ping"})]
+    assert capture_messages == [
+        ("response", {"id": 1, "success": False, "message": "Unknown command: ping"})
+    ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -187,7 +195,9 @@ def test_can_handle_overrides_supported_commands(capture_messages):
     ds.state.register_command_provider(Both(), priority=10)
     ds.state.register_command_provider(fallback, priority=0)
     ds.state.dispatch_debug_command({"id": 2, "command": "ping", "arguments": {}})
-    assert capture_messages == [("response", {"id": 2, "success": True, "body": {"who": "fallback"}})]
+    assert capture_messages == [
+        ("response", {"id": 2, "success": True, "body": {"who": "fallback"}})
+    ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -225,14 +235,3 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages):
     ds.state.register_command_provider(m, priority=0)
     ds.state.dispatch_debug_command({"id": 4, "command": "ping", "arguments": {}})
     assert capture_messages == [("response", {"id": 4, "success": True})]
-
-
-@pytest.mark.usefixtures("isolated_registry")
-def test_back_compat_handle_debug_command_attribute(capture_messages):
-    prov = AlwaysProvider(result={"success": True})
-    ds.state.register_command_provider(prov, priority=0)
-    # Back-compat path calls the same dispatcher by default
-    handler = ds.state.handle_debug_command
-    assert callable(handler)
-    handler({"id": 5, "command": "ping", "arguments": {}})
-    assert capture_messages == [("response", {"id": 5, "success": True})]

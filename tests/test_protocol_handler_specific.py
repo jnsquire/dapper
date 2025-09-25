@@ -19,6 +19,7 @@ def handler() -> ProtocolHandler:
 # parse_message error paths
 # -----------------------------
 
+
 def test_parse_message_non_object(handler: ProtocolHandler) -> None:
     msg = json.dumps(["not", "an", "object"])  # valid JSON array, not an object
     with pytest.raises(ProtocolError) as exc:
@@ -61,6 +62,7 @@ def test_parse_message_event_missing_event_field(handler: ProtocolHandler) -> No
 # create_response variants
 # -----------------------------
 
+
 def test_create_error_response_wrapper(handler: ProtocolHandler) -> None:
     req = handler.create_request("evaluate", {"expression": "x"})
     err = handler.create_error_response(req, "Boom")
@@ -89,6 +91,7 @@ def test_create_response_without_error_message(handler: ProtocolHandler) -> None
 # -----------------------------
 # Specialized request creators
 # -----------------------------
+
 
 def test_create_initialize_request(handler: ProtocolHandler) -> None:
     r = handler.create_initialize_request("client", "adapter")
@@ -163,6 +166,7 @@ def test_create_scopes_variables_evaluate(handler: ProtocolHandler) -> None:
 # Specialized event creators
 # -----------------------------
 
+
 def test_create_initialized_and_stopped(handler: ProtocolHandler) -> None:
     e1 = handler.create_initialized_event()
     assert e1["type"] == "event"
@@ -173,9 +177,9 @@ def test_create_initialized_and_stopped(handler: ProtocolHandler) -> None:
     assert e2["event"] == "stopped"
     body = e2["body"]
     assert body["reason"] == "breakpoint"
-    assert body["threadId"] == 1 # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert body["allThreadsStopped"] is False # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert body["text"] == "hit" # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert body["threadId"] == 1  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert body["allThreadsStopped"] is False  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert body["text"] == "hit"  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     e3 = handler.create_stopped_event("step", thread_id=2)
     assert "text" not in e3["body"]
@@ -192,7 +196,7 @@ def test_create_exited_terminated(handler: ProtocolHandler) -> None:
 
     e3 = handler.create_terminated_event(restart=True)
     assert e3["event"] == "terminated"
-    assert e3["body"]["restart"] is True # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert e3["body"]["restart"] is True  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
 def test_create_thread_output_breakpoint(handler: ProtocolHandler) -> None:
@@ -202,10 +206,10 @@ def test_create_thread_output_breakpoint(handler: ProtocolHandler) -> None:
 
     eo_default = handler.create_output_event("hi")
     assert eo_default["event"] == "output"
-    assert eo_default["body"]["category"] == "console" # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert eo_default["body"]["category"] == "console"  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     eo_custom = handler.create_output_event("hello", category="stdout")
-    assert eo_custom["body"]["category"] == "stdout" # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert eo_custom["body"]["category"] == "stdout"  # pyright: ignore[reportTypedDictNotRequiredAccess]
     assert eo_custom["body"]["output"] == "hello"
 
     eb = handler.create_breakpoint_event("new", {"id": 1, "line": 10})

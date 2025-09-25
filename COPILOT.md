@@ -100,6 +100,13 @@ uv run black dapper tests
 uv run flake8 dapper tests
 ```
 
+A short note for contributors: this project currently treats internal APIs as
+free to change without backward-compatibility guarantees. When you change
+internal function/method signatures or move helpers between modules, prefer
+clear commit messages and update tests rather than adding compatibility
+shims. The minimal test above is a lightweight, executable reminder of that
+stance.
+
 ## Architecture Notes
 - **Event-driven**: Uses asyncio for non-blocking operations
 - **Thread-safe**: Separate threads for subprocess I/O

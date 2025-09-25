@@ -28,7 +28,6 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ✅ **Next**: Step over to next line
 - ✅ **Step In**: Step into function calls
 - ✅ **Step Out**: Step out of current function
-- ❌ **Step Back**: Step backwards in execution (reverse debugging)
 - ❌ **Reverse Continue**: Continue backwards in execution
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
 

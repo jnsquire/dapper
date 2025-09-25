@@ -57,8 +57,7 @@ def receive_debug_commands() -> None:
                     command = json.loads(command_json)
                     with state.command_lock:
                         state.command_queue.append(command)
-                    if state.handle_debug_command is not None:
-                        state.handle_debug_command(command)
+                    state.dispatch_debug_command(command)
                 except Exception as e:
                     send_debug_message("error", message=f"Error receiving command: {e!s}")
                     traceback.print_exc()
@@ -73,8 +72,7 @@ def receive_debug_commands() -> None:
                     command = json.loads(command_json)
                     with state.command_lock:
                         state.command_queue.append(command)
-                    if state.handle_debug_command is not None:
-                        state.handle_debug_command(command)
+                    state.dispatch_debug_command(command)
                 except Exception as e:
                     send_debug_message("error", message=f"Error receiving command: {e!s}")
                     traceback.print_exc()
@@ -84,6 +82,5 @@ def process_queued_commands():
     with state.command_lock:
         commands = state.command_queue.copy()
         state.command_queue.clear()
-    if state.handle_debug_command is not None:
-        for cmd in commands:
-            state.handle_debug_command(cmd)
+    for cmd in commands:
+        state.dispatch_debug_command(cmd)

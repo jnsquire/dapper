@@ -18,6 +18,8 @@ from dapper.ipc_binary import pack_frame  # lightweight util
 if TYPE_CHECKING:
     import io
 
+    from dapper.debugger_protocol import DebuggerLike
+
 # Maximum length of strings to be sent over the wire
 MAX_STRING_LENGTH = 1000
 
@@ -66,7 +68,9 @@ class SessionState:
         if getattr(self, "_initialized", False):
             return
 
-        self.debugger: Any | None = None
+        # Debugger instance: use structural protocol so tests can provide
+        # simple dummy implementations that satisfy the expected surface.
+        self.debugger: DebuggerLike | None = None
         self.stop_at_entry: bool = False
         self.no_debug: bool = False
         self.command_queue: list[Any] = []
@@ -88,9 +92,6 @@ class SessionState:
         # Command dispatch provider registry and back-compat handler shim
         self._providers: list[tuple[int, Any]] = []  # list of (priority, provider)
         self._providers_lock = threading.RLock()
-        # Back-compat attribute; callers may assign, but by default we point to
-        # our session-aware dispatcher.
-        self.handle_debug_command: Any | None = self.dispatch_debug_command
 
         # Mapping of sourceReference -> metadata (path/name)
         self.source_references: dict[int, SourceReferenceMeta] = {}
@@ -385,7 +386,12 @@ def _detect_has_data_breakpoint(n: Any, debugger: Any | None, fr: Any | None) ->
 
 
 def make_variable_object(
-    name: Any, value: Any, dbg: Any | None = None, frame: Any | None = None, *, max_string_length: int = MAX_STRING_LENGTH
+    name: Any,
+    value: Any,
+    dbg: Any | None = None,
+    frame: Any | None = None,
+    *,
+    max_string_length: int = MAX_STRING_LENGTH,
 ) -> dict[str, Any]:
     """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 

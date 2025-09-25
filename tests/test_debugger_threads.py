@@ -37,7 +37,6 @@ class TestDebuggerThreads(BaseDebuggerTest):
         assert 1 in thread_ids
         assert 2 in thread_ids
 
-
     async def test_thread_stopped_state(self):
         """Test thread stopped state management"""
         thread = PyDebuggerThread(1, "Test Thread")

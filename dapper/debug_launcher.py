@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from typing import cast
 
+from dapper.debug_shared import make_variable_object
 from dapper.debug_shared import state
 from dapper.debugger_bdb import DebuggerBDB
 from dapper.ipc_binary import HEADER_SIZE
@@ -145,7 +146,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         except Exception as e:
             send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = data[HEADER_SIZE:HEADER_SIZE + length]
+        payload = data[HEADER_SIZE : HEADER_SIZE + length]
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -312,9 +313,17 @@ def handle_set_breakpoints(arguments):
 
     if path and state.debugger:
         # Clear existing breakpoints and metadata for this file
-        state.debugger.clear_break(path)
-        if hasattr(state.debugger, "clear_break_meta_for_file"):
-            state.debugger.clear_break_meta_for_file(path)
+        try:
+            state.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
+        except Exception:
+            # Fallbacks for older implementations
+            try:
+                state.debugger.clear_break(path)  # type: ignore[misc]
+            except Exception:
+                try:
+                    state.debugger.clear_break_meta_for_file(path)
+                except Exception:
+                    pass
 
         # Set new breakpoints and record metadata (hitCondition / logMessage)
         for bp in bps:
@@ -328,14 +337,13 @@ def handle_set_breakpoints(arguments):
                 state.debugger.set_break(path, line, cond=condition)
 
                 # Record DAP-specific metadata for runtime gating/logging
-                if hasattr(state.debugger, "record_breakpoint"):
-                    state.debugger.record_breakpoint(
-                        path,
-                        int(line),
-                        condition=condition,
-                        hit_condition=hit_condition,
-                        log_message=log_message,
-                    )
+                state.debugger.record_breakpoint(
+                    path,
+                    int(line),
+                    condition=condition,
+                    hit_condition=hit_condition,
+                    log_message=log_message,
+                )
 
         # Send response with verified breakpoints
         verified_bps = [{"verified": True, "line": bp.get("line")} for bp in bps]
@@ -349,15 +357,7 @@ def handle_set_function_breakpoints(arguments):
 
     if state.debugger:
         # Clear existing function breakpoints and associated metadata
-        if hasattr(state.debugger, "clear_all_function_breakpoints"):
-            state.debugger.clear_all_function_breakpoints()
-        else:  # Fallback: reset structures if helper is unavailable
-            state.debugger.function_breakpoints = []
-            try:
-                # Clear per-function metadata if available
-                state.debugger.function_breakpoint_meta.clear()
-            except Exception:
-                pass
+        state.debugger.clear_all_function_breakpoints()
 
         # Set new function breakpoints and record their metadata
         for bp in bps:
@@ -691,34 +691,28 @@ def _convert_string_to_value(value_str: str):
 
 
 def create_variable_object(name, value):
-    """Create a variable object for DAP"""
+    """Create a variable object for DAP.
 
-    # Create a simple representation of the value
-    try:
-        val_str = repr(value)
-        if len(val_str) > MAX_STRING_LENGTH:
-            val_str = val_str[:MAX_STRING_LENGTH] + "..."
-    except Exception:
-        val_str = "<Error getting value>"
+    Prefer the debugger instance helper if present (either
+    `create_variable_object` or `make_variable_object`). If absent, delegate
+    to the shared module-level helper to keep behavior consistent.
+    """
+    dbg = state.debugger
+    if dbg is not None:
+        for attr in ("create_variable_object", "make_variable_object"):
+            fn = getattr(dbg, attr, None)
+            if callable(fn):
+                try:
+                    res = fn(name, value)
+                    if isinstance(res, dict):
+                        return res
+                except Exception:
+                    # If the helper fails, try the next option or fall back
+                    # to the shared helper below.
+                    pass
 
-    # Create a variable reference for complex objects
-    var_ref = 0
-    if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
-        dbg = state.debugger
-        if dbg is not None:
-            var_ref = dbg.next_var_ref
-            dbg.next_var_ref += 1
-            dbg.var_refs[var_ref] = ("object", value)
-
-    # Get type
-    type_name = type(value).__name__
-
-    return {
-        "name": str(name),
-        "value": val_str,
-        "type": type_name,
-        "variablesReference": var_ref,
-    }
+    # Final fallback: use the shared helper which mirrors the legacy logic
+    return make_variable_object(name, value, dbg)
 
 
 def handle_evaluate(arguments):
@@ -879,9 +873,7 @@ def handle_set_data_breakpoints(arguments):
             pass
 
     # Return verified list (conservative: mark all as verified=False if none)
-    verified = [
-        {"verified": True, "id": bp.get("dataId") or bp.get("name")} for bp in bps
-    ]
+    verified = [{"verified": True, "id": bp.get("dataId") or bp.get("name")} for bp in bps]
 
     return {"success": True, "body": {"breakpoints": verified}}
 
@@ -1132,7 +1124,9 @@ def setup_ipc_from_args(args: Any) -> None:
         if args.ipc == "pipe":
             _setup_ipc_pipe(args.ipc_pipe, args.ipc_binary)
         else:
-            _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary)
+            _setup_ipc_socket(
+                args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary
+            )
     except Exception:
         # If IPC fails, proceed with stdio
         state.ipc_enabled = False

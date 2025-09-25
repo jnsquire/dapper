@@ -176,6 +176,18 @@ dapper/
 └── README.md
 ```
 
+## Project Policies
+
+These are current, informal policies the team follows during development.
+
+- API stability: Don't worry about backward compatibility of internal
+   interfaces when making changes — there are no outside users right now.
+   This means it's acceptable to change function/method signatures,
+   rename internal helpers, or move responsibilities between modules
+   without maintaining deprecated shims. Still aim to keep changes
+   well-documented in commit messages and update tests accordingly.
+
+
 ## Testing Strategy
 
 The test suite is organized into functional areas:

@@ -77,9 +77,21 @@ def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
     bps = arguments.get("breakpoints", [])
     path = source.get("path")
     if path and state.debugger:
-        state.debugger.clear_break(path)
-        if hasattr(state.debugger, "clear_break_meta_for_file"):
-            state.debugger.clear_break_meta_for_file(path)
+        # Clear all breakpoints for this file and its metadata
+        try:
+            state.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
+        except Exception:
+            # Fallbacks for older implementations
+            # 1) Older debuggers may expose clear_break(path) without lineno
+            try:
+                state.debugger.clear_break(path)  # type: ignore[misc]
+            except Exception:
+                # 2) As a last resort, clear only stored metadata
+                try:
+                    state.debugger.clear_break_meta_for_file(path)
+                except Exception:
+                    pass
+
         for bp in bps:
             line = bp.get("line")
             condition = bp.get("condition")
@@ -87,14 +99,13 @@ def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
             log_message = bp.get("logMessage")
             if line:
                 state.debugger.set_break(path, line, cond=condition)
-                if hasattr(state.debugger, "record_breakpoint"):
-                    state.debugger.record_breakpoint(
-                        path,
-                        int(line),
-                        condition=condition,
-                        hit_condition=hit_condition,
-                        log_message=log_message,
-                    )
+                state.debugger.record_breakpoint(
+                    path,
+                    int(line),
+                    condition=condition,
+                    hit_condition=hit_condition,
+                    log_message=log_message,
+                )
         verified_bps = [{"verified": True, "line": bp.get("line")} for bp in bps]
         send_debug_message(
             "breakpoints",
@@ -107,14 +118,8 @@ def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
 def handle_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) -> None:
     bps = arguments.get("breakpoints", [])
     if state.debugger:
-        if hasattr(state.debugger, "clear_all_function_breakpoints"):
-            state.debugger.clear_all_function_breakpoints()
-        else:
-            state.debugger.function_breakpoints = []
-            try:
-                state.debugger.function_breakpoint_meta.clear()
-            except Exception:
-                pass
+        state.debugger.clear_all_function_breakpoints()
+
         for bp in bps:
             name = bp.get("name")
             if not name:
@@ -369,9 +374,19 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
 
 
 def create_variable_object(name, value):
-    # Use shared helper to construct variable-shaped dict; pass debugger so
-    # that the helper can allocate variablesReference when appropriate.
-    dbg = state.debugger if hasattr(state, "debugger") else None
+    # Prefer debugger-provided helper when available (DebuggerBDB.make_variable_object)
+    dbg = state.debugger
+    if dbg is not None:
+        fn = getattr(dbg, "make_variable_object", None)
+        if callable(fn):
+            try:
+                res = fn(name, value)
+                if isinstance(res, dict):
+                    return res
+            except Exception:
+                # Fall through to module helper on error
+                pass
+    # Fallback to module-level helper
     return make_variable_object(name, value, dbg)
 
 
@@ -655,7 +670,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module:start_module + module_count]
+            modules = all_modules[start_module : start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

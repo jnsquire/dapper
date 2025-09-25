@@ -41,6 +41,7 @@ async def test_binary_ipc_frame_roundtrip_exited_event():
 
     def _noop_start(_self: PyDebugger, _args: list[str]) -> None:  # type: ignore[override]
         return
+
     original = PyDebugger._start_debuggee_process  # type: ignore[attr-defined]
     PyDebugger._start_debuggee_process = _noop_start  # type: ignore[assignment]
 

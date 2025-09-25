@@ -47,7 +47,9 @@ class ProtocolFactory:
         self.seq_counter += 1
         return seq
 
-    def create_request(self, command: str, arguments: dict[str, Any] | None = None) -> GenericRequest:
+    def create_request(
+        self, command: str, arguments: dict[str, Any] | None = None
+    ) -> GenericRequest:
         request_dict: dict[str, Any] = dict(seq=self._next_seq(), type="request")
         request_dict["command"] = command
         if arguments is not None:
@@ -132,7 +134,9 @@ class ProtocolFactory:
         request = self.create_request("configurationDone")
         return cast("GenericRequest", request)
 
-    def create_set_breakpoints_request(self, source: dict[str, Any], breakpoints: list) -> GenericRequest:
+    def create_set_breakpoints_request(
+        self, source: dict[str, Any], breakpoints: list
+    ) -> GenericRequest:
         args = {"source": source, "breakpoints": breakpoints}
         request = self.create_request("setBreakpoints", args)
         return cast("GenericRequest", request)
@@ -146,7 +150,9 @@ class ProtocolFactory:
         request = self.create_request("threads")
         return cast("GenericRequest", request)
 
-    def create_stack_trace_request(self, thread_id: int, start_frame: int = 0, levels: int = 20) -> GenericRequest:
+    def create_stack_trace_request(
+        self, thread_id: int, start_frame: int = 0, levels: int = 20
+    ) -> GenericRequest:
         args = {"threadId": thread_id, "startFrame": start_frame, "levels": levels}
         request = self.create_request("stackTrace", args)
         return cast("GenericRequest", request)
@@ -161,7 +167,9 @@ class ProtocolFactory:
         request = self.create_request("variables", args)
         return cast("GenericRequest", request)
 
-    def create_evaluate_request(self, expression: str, frame_id: int | None = None) -> GenericRequest:
+    def create_evaluate_request(
+        self, expression: str, frame_id: int | None = None
+    ) -> GenericRequest:
         args = {"expression": expression}
         if frame_id is not None:
             args["frameId"] = cast("Any", frame_id)
@@ -175,7 +183,9 @@ class ProtocolFactory:
         event = self.create_event("initialized")
         return cast("GenericEvent", event)
 
-    def create_stopped_event(self, reason: str, thread_id: int, text: str | None = None) -> GenericEvent:
+    def create_stopped_event(
+        self, reason: str, thread_id: int, text: str | None = None
+    ) -> GenericEvent:
         body = {"reason": reason, "threadId": thread_id, "allThreadsStopped": False}
         if text is not None:
             body["text"] = text
@@ -204,7 +214,9 @@ class ProtocolFactory:
         event = self.create_event("output", body)
         return cast("GenericEvent", event)
 
-    def create_breakpoint_event(self, reason: str, breakpoint_info: dict[str, Any]) -> GenericEvent:
+    def create_breakpoint_event(
+        self, reason: str, breakpoint_info: dict[str, Any]
+    ) -> GenericEvent:
         body = {"reason": reason, "breakpoint": breakpoint_info}
         event = self.create_event("breakpoint", body)
         return cast("GenericEvent", event)
@@ -292,7 +304,9 @@ class ProtocolHandler:
 
         return cast("GenericEvent", message)
 
-    def create_request(self, command: str, arguments: dict[str, Any] | None = None) -> GenericRequest:
+    def create_request(
+        self, command: str, arguments: dict[str, Any] | None = None
+    ) -> GenericRequest:
         return self._factory.create_request(command, arguments)
 
     def create_response(
@@ -323,7 +337,9 @@ class ProtocolHandler:
     def create_configuration_done_request(self) -> GenericRequest:
         return self._factory.create_configuration_done_request()
 
-    def create_set_breakpoints_request(self, source: dict[str, Any], breakpoints: list) -> GenericRequest:
+    def create_set_breakpoints_request(
+        self, source: dict[str, Any], breakpoints: list
+    ) -> GenericRequest:
         return self._factory.create_set_breakpoints_request(source, breakpoints)
 
     def create_continue_request(self, thread_id: int) -> GenericRequest:
@@ -332,7 +348,9 @@ class ProtocolHandler:
     def create_threads_request(self) -> GenericRequest:
         return self._factory.create_threads_request()
 
-    def create_stack_trace_request(self, thread_id: int, start_frame: int = 0, levels: int = 20) -> GenericRequest:
+    def create_stack_trace_request(
+        self, thread_id: int, start_frame: int = 0, levels: int = 20
+    ) -> GenericRequest:
         return self._factory.create_stack_trace_request(thread_id, start_frame, levels)
 
     def create_scopes_request(self, frame_id: int) -> GenericRequest:
@@ -341,7 +359,9 @@ class ProtocolHandler:
     def create_variables_request(self, variables_reference: int) -> GenericRequest:
         return self._factory.create_variables_request(variables_reference)
 
-    def create_evaluate_request(self, expression: str, frame_id: int | None = None) -> GenericRequest:
+    def create_evaluate_request(
+        self, expression: str, frame_id: int | None = None
+    ) -> GenericRequest:
         return self._factory.create_evaluate_request(expression, frame_id)
 
     # Event creation methods
@@ -349,7 +369,9 @@ class ProtocolHandler:
     def create_initialized_event(self) -> GenericEvent:
         return self._factory.create_initialized_event()
 
-    def create_stopped_event(self, reason: str, thread_id: int, text: str | None = None) -> GenericEvent:
+    def create_stopped_event(
+        self, reason: str, thread_id: int, text: str | None = None
+    ) -> GenericEvent:
         return self._factory.create_stopped_event(reason, thread_id, text)
 
     def create_exited_event(self, exit_code: int) -> GenericEvent:
@@ -364,5 +386,7 @@ class ProtocolHandler:
     def create_output_event(self, output: str, category: str = "console") -> GenericEvent:
         return self._factory.create_output_event(output, category)
 
-    def create_breakpoint_event(self, reason: str, breakpoint_info: dict[str, Any]) -> GenericEvent:
+    def create_breakpoint_event(
+        self, reason: str, breakpoint_info: dict[str, Any]
+    ) -> GenericEvent:
         return self._factory.create_breakpoint_event(reason, breakpoint_info)

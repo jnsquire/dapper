@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import Any
 
 from dapper import debug_launcher
 from dapper import debug_shared
@@ -12,12 +13,96 @@ if TYPE_CHECKING:
 class DummyDebugger:
     def __init__(self):
         self.next_var_ref = 1000
-        self.var_refs = {}
-        self.frames_by_thread = {}
-        self.frame_id_to_frame = {}
-        self.threads = {}
-        self.data_breakpoints = []
-        self.current_exception_info = {}
+        self.var_refs: dict[int, Any] = {}
+        self.frames_by_thread: dict[int, list] = {}
+        self.frame_id_to_frame: dict[int, Any] = {}
+        self.threads: dict[int, Any] = {}
+        self.data_breakpoints: list[dict[str, Any]] | None = []
+        self.current_exception_info: dict[str, Any] = {}
+        self.current_frame: Any | None = None
+        self.stepping: bool = False
+        self.cleared: list[str] = []
+        self.breaks: dict[str, list[tuple[int, Any | None]]] = {}
+        # Breakpoint bookkeeping
+        self.function_breakpoints: list[str] = []
+        self.function_breakpoint_meta: dict[str, dict[str, Any]] = {}
+        self.breakpoint_meta: dict[tuple[str, int], dict[str, Any]] = {}
+        self.exception_breakpoints_raised = False
+        self.exception_breakpoints_uncaught = False
+        self.stopped_thread_ids: set[int] = set()
+
+    def set_break(
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,
+        cond: Any | None = None,
+        funcname: str | None = None,
+    ) -> Any | None:  # type: ignore[override]
+        _ = temporary, funcname
+        arr = self.breaks.get(filename)
+        if arr is None:
+            self.breaks[filename] = [(int(lineno), cond)]
+        else:
+            arr.append((int(lineno), cond))
+        return None
+
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: Any | None = None,
+        hit_condition: Any | None = None,
+        log_message: Any | None = None,
+    ) -> None:
+        self.breakpoint_meta[(path, line)] = {
+            "condition": condition,
+            "hit_condition": hit_condition,
+            "log_message": log_message,
+        }
+
+    def clear_breaks_for_file(self, path: str) -> None:
+        # No-op for the dummy
+        pass
+
+    def clear_break(self, filename: str, lineno: int) -> Any | None:
+        _ = lineno, filename
+        return None
+
+    def clear_break_meta_for_file(self, path: str) -> None:
+        to_del = [k for k in list(self.breakpoint_meta.keys()) if k[0] == path]
+        for k in to_del:
+            self.breakpoint_meta.pop(k, None)
+
+    def clear_all_function_breakpoints(self) -> None:
+        self.function_breakpoints = []
+        self.function_breakpoint_meta.clear()
+
+    def set_continue(self) -> None:
+        _ = None
+
+    def set_next(self, frame: Any) -> None:
+        _ = frame
+
+    def set_step(self) -> None:
+        _ = None
+
+    def set_return(self, frame: Any) -> None:
+        _ = frame
+
+    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> Any:
+        _ = cmd, args, kwargs
+        return None
+
+    def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        # Delegate to debug_shared helper for consistent behavior in tests
+        from dapper import debug_shared  # noqa: PLC0415
+
+        return debug_shared.make_variable_object(name, value, self, frame, max_string_length=max_string_length)
+
+    def create_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+        return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
 
 # Create a realistic mock frame object with a code object and line info
@@ -29,7 +114,14 @@ class MockCode:
 
 
 class MockFrame:
-    def __init__(self, _locals: dict | None = None, _globals: dict | None = None, name="test_func", filename="<test>", lineno=1):
+    def __init__(
+        self,
+        _locals: dict | None = None,
+        _globals: dict | None = None,
+        name="test_func",
+        filename="<test>",
+        lineno=1,
+    ):
         self.f_locals = dict(_locals or {})
         self.f_globals = dict(_globals or {})
         self.f_code = MockCode(name=name, filename=filename, firstlineno=lineno)
@@ -73,7 +165,13 @@ def test_handle_scopes_and_variables():
     s = debug_shared.state
     dbg = DummyDebugger()
 
-    frame = MockFrame(_locals={"a": 1, "b": [1, 2, 3]}, _globals={"g": "x"}, name="test_func", filename="sample.py", lineno=10)
+    frame = MockFrame(
+        _locals={"a": 1, "b": [1, 2, 3]},
+        _globals={"g": "x"},
+        name="test_func",
+        filename="sample.py",
+        lineno=10,
+    )
 
     # Register frame
     dbg.frame_id_to_frame[1] = frame
