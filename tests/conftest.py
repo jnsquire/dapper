@@ -116,7 +116,9 @@ def event_loop():
             pending = [t for t in asyncio.all_tasks(running) if not t.done()]
         finally:
             if pending:
-                results = running.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                results = running.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
                 for result in results:
                     if isinstance(result, Exception):
                         logger.error(f"Unhandled exception during event loop teardown: {result}")
@@ -125,5 +127,3 @@ def event_loop():
                 asyncio.set_event_loop(None)
             except Exception:
                 logger.exception("Suppressed exception when resetting event loop")
-
-

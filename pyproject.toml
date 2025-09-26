@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dapper"
-version = "0.1.0"
+version = "0.3.0"
 description = "Debug Adapter Protocol implementation for Python"
 readme = "README.md"
 authors = [
@@ -22,32 +22,15 @@ classifiers = [
 "Homepage" = "https://github.com/jnsquire/dapper"
 "Bug Tracker" = "https://github.com/jnsquire/dapper/issues"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_classes = "Test*"
-python_functions = "test_*"
-addopts = "--cov=dapper --cov-report=term-missing --cov-report=html --cov-report=xml"
-
 [tool.coverage.run]
-source = ["dapper"]
+branch = true
+relative_files = true
 omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__pycache__/*",
-    "*/venv/*",
-    "*/.venv/*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
+    "tests/*",
+    "testing/*",
+    "examples/*",
+    "dapper/__init__.py",
+    "dapper/_version.py",
 ]
 
 [tool.ruff]
@@ -170,4 +153,9 @@ dev = [
     "pytest-cov>=4.0.0",
     "coverage>=7.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-xdist>=3.0.0",
 ]
+
+[tool.flake8]
+max-line-length = 99
+extend-ignore = ["E203", "TRY300"]

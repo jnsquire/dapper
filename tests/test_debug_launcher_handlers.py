@@ -95,13 +95,19 @@ class DummyDebugger:
         _ = cmd, args, kwargs
         return None
 
-    def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+    def make_variable_object(
+        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+    ) -> dict[str, Any]:
         # Delegate to debug_shared helper for consistent behavior in tests
         from dapper import debug_shared  # noqa: PLC0415
 
-        return debug_shared.make_variable_object(name, value, self, frame, max_string_length=max_string_length)
+        return debug_shared.make_variable_object(
+            name, value, self, frame, max_string_length=max_string_length
+        )
 
-    def create_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+    def create_variable_object(
+        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+    ) -> dict[str, Any]:
         return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
 

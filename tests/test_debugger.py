@@ -276,14 +276,14 @@ async def test_launch_with_args(debugger):
     try:
         with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
             await debugger.launch("test_program.py", args, stop_on_entry=False, no_debug=False)
+            # Wait a tiny bit to allow run_coroutine_threadsafe to enqueue exit task
+            await asyncio.sleep(0.05)
 
-        # Verify that the arguments were passed to Popen
         call_args = mock_popen.call_args
         assert "test_program.py" in str(call_args[0][0])
         assert "arg1" in str(call_args[0][0])
         assert "arg2" in str(call_args[0][0])
     finally:
-        # Ensure debugger is properly shut down
         await debugger.shutdown()
 
 

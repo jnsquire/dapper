@@ -328,3 +328,56 @@ async def test_modules_request(mock_debugger_class):
         assert "id" in first_module
         assert "name" in first_module
         assert isinstance(first_module.get("isUserCode"), bool)
+
+
+@pytest.mark.asyncio
+async def test_next_seq_and_send_message_behaviour():
+    # Ensure next_seq increments and send_message respects connection state
+    conn = MockConnection()
+    server = DebugAdapterServer(conn, asyncio.get_event_loop())
+
+    # next_seq increments
+    n1 = server.next_seq
+    n2 = server.next_seq
+    assert n2 == n1 + 1
+
+    # When connection is disconnected, send_message should not raise and not write
+    conn._is_connected = False
+    await server.send_message({"type": "event", "event": "test"})
+    assert conn.written_messages == []
+
+
+@pytest.mark.asyncio
+async def test_send_response_and_error_response_with_protocol(monkeypatch):
+    conn = MockConnection()
+    server = DebugAdapterServer(conn, asyncio.get_event_loop())
+
+    # Patch protocol_handler.create_response to return a predictable dict
+    def fake_create_response(request, success, body=None, message=None):
+        return {
+            "type": "response",
+            "command": request.get("command"),
+            "success": success,
+            "body": body or {},
+            "message": message,
+        }
+
+    monkeypatch.setattr(
+        server,
+        "protocol_handler",
+        type("PH", (), {"create_response": staticmethod(fake_create_response)}),
+    )
+
+    req = {"seq": 99, "type": "request", "command": "doIt"}
+    await server.send_response(req, {"ok": True})
+    # one message written
+    assert conn.written_messages
+    resp = conn.written_messages[-1]
+    assert resp["command"] == "doIt"
+    assert resp["success"] is True
+
+    # error response
+    await server.send_error_response(req, "bad")
+    resp2 = conn.written_messages[-1]
+    assert resp2["success"] is False
+    assert resp2.get("message") == "bad"

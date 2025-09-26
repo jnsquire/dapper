@@ -41,7 +41,31 @@ Request wiring:
 Resource management:
 
 - The adapter owns the listener and cleans up on shutdown (closing sockets/files and unlinking `AF_UNIX` paths).
-- Reader threads catch and log exceptions; `_schedule_coroutine(...)` ensures events are forwarded on the adapter loop.
+- Reader threads catch and log exceptions; `spawn_threadsafe(lambda: ...)` (factory form) ensures events are forwarded on the adapter loop without creating coroutine objects off-loop.
+- All transient IPC state (listener sockets, pipe handles, r/w files, unix path, binary flag) is centralized in an `IPCContext` dataclass (`dapper/ipc_context.py`). The debugger exposes legacy private attributes (e.g. `_ipc_listen_sock`) via a property bridge to avoid churn; internal code increasingly prefers `self.ipc.<field>`.
+
+### IPCContext
+
+`IPCContext` groups related fields that were previously individual attributes on `PyDebugger`:
+
+| Field | Purpose |
+|-------|---------|
+| `enabled` | Whether an IPC channel is currently active |
+| `listen_sock` | Passive listening socket (UNIX/TCP) |
+| `sock` | Accepted active socket connection |
+| `rfile` / `wfile` | File-like wrappers around the active socket/pipe (text or binary) |
+| `pipe_listener` | Windows named pipe listener (AF_PIPE) |
+| `pipe_conn` | Accepted named pipe connection |
+| `unix_path` | Filesystem path for AF_UNIX socket (for cleanup) |
+| `binary` | Whether binary framed IPC (`--ipc-binary`) is in use |
+
+Encapsulation benefits:
+
+- Clear lifecycle ownership (initialize in `launch`, cleaned in `_cleanup_ipc_resources`).
+- Reduced attribute sprawl in `server.py` (improved readability & type hinting).
+- Easier to evolve framing/transport logic without widening `PyDebugger`'s surface.
+
+Backward compatibility is maintained through properties so tests referencing `_ipc_*` continue to pass. New code should prefer the `ipc` object directly.
 
 ## Concurrency model
 
@@ -61,12 +85,27 @@ Resource management:
 
 ## Key helpers and patterns
 
-### `_schedule_coroutine(coro_or_callable)`
+### Task scheduling helpers: `spawn` and `spawn_threadsafe`
 
-- Accepts either an awaitable or a zero-argument callable returning an awaitable.
-- If called on `self.loop`, it creates the awaitable immediately and schedules it with `loop.create_task(...)`.
-- If called from another thread, it attempts to `call_soon_threadsafe` a small runner that creates and schedules the awaitable on `self.loop`. If that fails it falls back to `asyncio.run_coroutine_threadsafe(...)`.
-- Purpose: ensure coroutine objects are created and scheduled on the correct loop to avoid "coroutine was never awaited" warnings and cross-loop race conditions.
+`spawn(factory)`
+* Use when you are already running on the debugger's own event loop (`self.loop`).
+* `factory` MUST be a zero-argument callable returning a coroutine object. The coroutine is created and immediately scheduled with `loop.create_task(...)`.
+* Returns the created `asyncio.Task` (or `None` on failure) and tracks it in an internal `_bg_tasks` set for lifecycle/shutdown management.
+
+`spawn_threadsafe(factory)`
+* Use from any other thread (I/O reader threads, subprocess wait thread, tests) or when you are not sure you are on the debugger loop.
+* Accepts the same zero-argument coroutine factory. The factory is invoked only on a loop that is already running, preventing creation of "orphan" coroutine objects on the wrong thread.
+* Behavior:
+   - If the debugger loop is running: schedules a small `_submit` via `loop.call_soon_threadsafe`, then invokes the factory on the debugger loop.
+   - If the debugger loop is NOT running but there is a currently running (pytest-managed) loop: executes immediately on that current loop (useful for tests that assert synchronous side-effects like `send_event` calls).
+   - If the loop is closed or scheduling fails, the failure is logged at debug level and otherwise ignored.
+
+Design goals:
+* Never create coroutine objects off their target loop thread.
+* Preserve deterministic visibility for tests relying on immediate event dispatch.
+* Centralize task tracking and error handling.
+
+Internal helper `_schedule_factory(factory, loop)` backs both public helpers, ensuring a single code path for task creation and tracking.
 
 ### Cross-loop shutdown helpers
 
@@ -105,19 +144,13 @@ After scheduling exceptions across loops the shutdown routine polls a small grac
 
 ## Recommended incremental fixes (safe)
 
-1. Defensively call `get_running_loop()` in `_schedule_coroutine` (minimal change).
-2. Ensure all thread entrypoints (`_start_debuggee_process`, `_read_output`) catch/log exceptions (they mostly do already).
-3. Optionally add a small configurable shutdown wait parameter and/or implement an explicit acknowledgement when scheduling work on other loops during shutdown.
+1. Ensure thread entrypoints (`_start_debuggee_process`, `_read_output`) catch/log exceptions (they do).
+2. Use factory-based scheduling (`spawn_threadsafe`) to avoid creating coroutine objects off-loop.
+3. Optionally add a small configurable shutdown wait parameter and/or implement an acknowledgement Future for cross-loop shutdown (future enhancement).
 
 ## Example minimal patch
 
-Replace the immediate call to `asyncio.get_running_loop()` in `_schedule_coroutine` with a safe-suppress form to avoid thread exceptions:
-
-```py
-current_loop = None
-with contextlib.suppress(RuntimeError):
-    current_loop = asyncio.get_running_loop()
-```
+The helpers internally use a defensive `get_running_loop()` wrapped in a `try/except` to avoid `RuntimeError` in threads without a running loop.
 
 ## Testing guidance
 

@@ -76,6 +76,26 @@ uv build
 python -m build
 ```
 
+### Asynchronous Task Scheduling Helpers
+
+The debugger codebase avoids creating coroutine objects off the target event loop thread. Two helper APIs exist in `PyDebugger` (see `dapper/server.py`) to keep this consistent:
+
+`spawn(factory)`
+* Call only when you know you're already running on the debugger's loop (`debugger.loop`).
+* `factory` is a zero-argument callable returning a coroutine object.
+* Returns the created `asyncio.Task` (tracked internally) or `None` if creation fails.
+
+`spawn_threadsafe(factory)`
+* Use everywhere else (threads reading stdout/stderr, process wait threads, tests, or uncertain context).
+* Schedules the factory for execution on the debugger loop without first creating the coroutine off-loop.
+* Special test-friendly behavior: if the debugger loop is not yet running but another loop is active (pytest's loop), it executes immediately on that active loop so mocks observing `send_event` see results synchronously.
+
+Guidelines:
+* Prefer passing a factory (`lambda: some_coro(arg)`) instead of a pre-created coroutine object.
+* Do not use `asyncio.run_coroutine_threadsafe` directly unless you require the returned `Future` for synchronization; otherwise defer to `spawn_threadsafe` to centralize task tracking and error handling.
+* If you remove tasks manually, also discard them from the `_bg_tasks` set to prevent memory growth.
+* IPC-related attributes now live in `dapper/ipc_context.py` (`IPCContext`). Existing private `_ipc_*` names on `PyDebugger` are bridged via properties; prefer `debugger.ipc.binary` etc. in new code.
+
 ## Git Workflow and Commit Guidelines
 
 This project follows Git best practices to maintain a clean and meaningful commit history.

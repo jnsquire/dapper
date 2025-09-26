@@ -6,8 +6,89 @@ from unittest.mock import patch
 import pytest
 
 from dapper.server import DebugAdapterServer
+from dapper.server import PyDebugger
 from tests.test_server import AsyncCallRecorder
 from tests.test_server import MockConnection
+
+
+def test_write_command_to_channel_ipc_pipe_text():
+    p = PyDebugger(server=None)
+    calls = []
+
+    class PipeConn:
+        def send(self, s):
+            calls.append(("send", s))
+
+    p._ipc_enabled = True
+    p._ipc_pipe_conn = PipeConn()
+    p._ipc_binary = False
+
+    p._write_command_to_channel("abc")
+    # Break down assertion (PT018): verify list populated, action name, and payload marker
+    assert calls, "Expected at least one call to pipe send"
+    assert calls[0][0] == "send", f"Unexpected method {calls[0][0]!r}"
+    assert "DBGCMD:abc" in calls[0][1], f"Missing DBGCMD marker in {calls[0][1]!r}"
+
+
+def test_write_command_to_channel_ipc_pipe_binary():
+    p = PyDebugger(server=None)
+    calls = []
+
+    class PipeConn:
+        def send_bytes(self, b):
+            calls.append(("send_bytes", b))
+
+    p._ipc_enabled = True
+    p._ipc_pipe_conn = PipeConn()
+    p._ipc_binary = True
+
+    p._write_command_to_channel("xyz")
+    assert calls, "Expected at least one call to pipe send_bytes"
+    assert calls[0][0] == "send_bytes", f"Unexpected method {calls[0][0]!r}"
+
+
+def test_write_command_to_channel_ipc_wfile_text():
+    p = PyDebugger(server=None)
+    calls = []
+
+    class WFile:
+        def write(self, s):
+            calls.append(("write", s))
+
+        def flush(self):
+            calls.append(("flush", None))
+
+    p._ipc_enabled = True
+    p._ipc_pipe_conn = None
+    p._ipc_wfile = WFile()
+    p._ipc_binary = False
+
+    p._write_command_to_channel("bbb")
+    assert any("DBGCMD:bbb" in c[1] for c in calls if c[0] == "write")
+
+
+def test_write_command_to_channel_fallback_to_stdin():
+    p = PyDebugger(server=None)
+
+    class Stdin:
+        def __init__(self):
+            self.written = []
+
+        def write(self, s):
+            self.written.append(s)
+
+        def flush(self):
+            pass
+
+    class Proc:
+        def __init__(self):
+            self.stdin = Stdin()
+
+    p._ipc_enabled = False
+    p.process = Proc()
+
+    p._write_command_to_channel("kkk")
+    assert any("DBGCMD:kkk" in s for s in p.process.stdin.written)
 
 
 @pytest.mark.asyncio

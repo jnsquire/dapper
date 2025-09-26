@@ -30,8 +30,9 @@ class BaseDebuggerTest:
                 return _CompletedAwaitable()
 
         self.mock_server.send_event = AsyncRecorder()
-        # Use current event loop instead of creating a new one
-        self.loop = asyncio.get_event_loop()
+        # Create a dedicated fresh loop for isolation (avoids deprecated get_event_loop)
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
         self.debugger = PyDebugger(self.mock_server, self.loop)
 
     def teardown_method(self):
@@ -40,3 +41,11 @@ class BaseDebuggerTest:
             # Shutdown the debugger - no need to close loop since we're
             # using current
             self.loop.run_until_complete(self.debugger.shutdown())
+        # Close and unset the loop to avoid leakage across tests
+        try:
+            self.loop.close()
+        finally:
+            try:
+                asyncio.set_event_loop(None)  # type: ignore[arg-type]
+            except Exception:
+                pass

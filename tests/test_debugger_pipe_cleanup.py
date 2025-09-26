@@ -33,8 +33,8 @@ async def test_pipe_endpoints_closed_on_cleanup() -> None:
     dbg._ipc_pipe_conn = conn  # type: ignore[attr-defined]
     dbg._ipc_pipe_listener = listener  # type: ignore[attr-defined]
 
-    # Call cleanup
-    dbg._cleanup_ipc_resources()
+    # Call new IPC context cleanup (legacy alias removed)
+    dbg.ipc.cleanup()
 
     # Verify close was called on both
     conn.close.assert_called_once()

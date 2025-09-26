@@ -331,13 +331,16 @@ class DebuggerBDB(bdb.Bdb):
                 self._last_global_watch_values[n] = current_locals[n]
 
     # ---------------- Variable object helper -----------------
-    def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+    def make_variable_object(
+        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+    ) -> dict[str, Any]:
         """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
         This mirrors the module-level helper previously stored in debug_shared.
         When used via this method, variablesReference bookkeeping will use this
         debugger instance's next_var_ref and var_refs.
         """
+
         # Helper implementations copied from debug_shared module-level helpers
         def _format_value_str(v: Any, max_len: int) -> str:
             try:
@@ -421,7 +424,9 @@ class DebuggerBDB(bdb.Bdb):
     # helper on debugger instances (historical launcher helper). Delegate to
     # the richer make_variable_object implementation above so behavior is
     # consistent across adapter and launcher paths.
-    def create_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000) -> dict[str, Any]:
+    def create_variable_object(
+        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+    ) -> dict[str, Any]:
         return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):

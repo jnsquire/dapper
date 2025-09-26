@@ -29,10 +29,8 @@ from typing import Any
 from typing import Callable
 from typing import cast
 
-from dapper.ipc_binary import HEADER_SIZE
 from dapper.ipc_binary import pack_frame
-from dapper.ipc_binary import read_exact
-from dapper.ipc_binary import unpack_header
+from dapper.ipc_context import IPCContext
 from dapper.protocol import ProtocolHandler
 
 if TYPE_CHECKING:
@@ -47,6 +45,34 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Event loop acquisition helpers
+# ---------------------------------------------------------------------------
+def _acquire_event_loop(
+    preferred: asyncio.AbstractEventLoop | None = None,
+) -> tuple[asyncio.AbstractEventLoop, bool]:
+    """Return an event loop avoiding deprecated APIs.
+
+    Order of preference:
+    1. A caller-supplied loop (never marked owned).
+    2. A currently running loop (``asyncio.get_running_loop``).
+    3. A freshly created loop (marked owned so the debugger can close it).
+
+    We intentionally avoid ``asyncio.get_event_loop`` to silence deprecation
+    warnings under Python 3.12+ when no loop is set for the current thread.
+    """
+    if preferred is not None:
+        return preferred, False
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is not None:
+        return running, False
+    new_loop = asyncio.new_event_loop()
+    return new_loop, True
 
 
 class PyDebuggerThread:
@@ -98,17 +124,7 @@ class PyDebugger:
         # Prefer the caller-provided loop; otherwise reuse the current event loop.
         # Avoid creating ad-hoc event loops by default to prevent leaks in tests
         # and to integrate cleanly with pytest-asyncio.
-        if loop is None:
-            try:
-                self.loop = asyncio.get_event_loop()
-                self._owns_loop = False
-            except RuntimeError:
-                # No current loop set; fall back to creating one we own.
-                self.loop = asyncio.new_event_loop()
-                self._owns_loop = True
-        else:
-            self.loop = loop
-            self._owns_loop = False
+        self.loop, self._owns_loop = _acquire_event_loop(loop)
 
         # Core state
         self.threads: dict[int, PyDebuggerThread] = {}
@@ -141,28 +157,182 @@ class PyDebugger:
         # Test mode flag (used by tests to start debuggee in a real thread)
         self._test_mode = False
 
-        # Command tracking for request-response communication
+        # Command tracking for request/response
         self._next_command_id = 1
         self._pending_commands: dict[int, asyncio.Future] = {}
         # In-process debugging support (optional/opt-in)
         self.in_process = False
         self._inproc: InProcessDebugger | None = None
 
-        # Optional IPC transport to the launcher (subprocess mode)
+        # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
-        self._ipc_enabled: bool = False
-        self._ipc_listen_sock = None
-        self._ipc_sock = None
-        self._ipc_rfile = None
-        self._ipc_wfile = None
-        self._ipc_pipe_listener = None  # type: mp_conn.Listener | None
-        self._ipc_pipe_conn = None  # type: mp_conn.Connection | None
-        self._ipc_unix_path = None  # type: Path | None
-        self._ipc_binary = False
+        self.ipc = IPCContext()
 
         # Data breakpoint containers
         self._data_watches = {}
         self._frame_watches = {}
+
+    # -----------------------------
+    # IPC context property bridge
+    # -----------------------------
+    @property
+    def _ipc_enabled(self) -> bool:
+        return self.ipc.enabled
+
+    @_ipc_enabled.setter
+    def _ipc_enabled(self, value: bool) -> None:
+        self.ipc.enabled = value
+
+    @property
+    def _ipc_listen_sock(self):  # type: ignore[override]
+        return self.ipc.listen_sock
+
+    @_ipc_listen_sock.setter  # type: ignore[override]
+    def _ipc_listen_sock(self, value) -> None:
+        self.ipc.listen_sock = value
+
+    @property
+    def _ipc_sock(self):  # type: ignore[override]
+        return self.ipc.sock
+
+    @_ipc_sock.setter  # type: ignore[override]
+    def _ipc_sock(self, value) -> None:
+        self.ipc.sock = value
+
+    @property
+    def _ipc_rfile(self):  # type: ignore[override]
+        return self.ipc.rfile
+
+    @_ipc_rfile.setter  # type: ignore[override]
+    def _ipc_rfile(self, value) -> None:
+        self.ipc.rfile = value
+
+    @property
+    def _ipc_wfile(self):  # type: ignore[override]
+        return self.ipc.wfile
+
+    @_ipc_wfile.setter  # type: ignore[override]
+    def _ipc_wfile(self, value) -> None:
+        self.ipc.wfile = value
+
+    @property
+    def _ipc_pipe_listener(self):  # type: ignore[override]
+        return self.ipc.pipe_listener
+
+    @_ipc_pipe_listener.setter  # type: ignore[override]
+    def _ipc_pipe_listener(self, value) -> None:
+        self.ipc.pipe_listener = value
+
+    @property
+    def _ipc_pipe_conn(self):  # type: ignore[override]
+        return self.ipc.pipe_conn
+
+    @_ipc_pipe_conn.setter  # type: ignore[override]
+    def _ipc_pipe_conn(self, value) -> None:
+        self.ipc.pipe_conn = value
+
+    @property
+    def _ipc_unix_path(self) -> Path | None:
+        return self.ipc.unix_path
+
+    @_ipc_unix_path.setter
+    def _ipc_unix_path(self, value: Path | None) -> None:
+        self.ipc.unix_path = value
+
+    @property
+    def _ipc_binary(self) -> bool:
+        return self.ipc.binary
+
+    @_ipc_binary.setter
+    def _ipc_binary(self, value: bool) -> None:
+        self.ipc.binary = value
+
+    # ------------------------------------------------------------------
+    # Task spawning helpers (new API replacing _schedule_coroutine)
+    # ------------------------------------------------------------------
+    def _schedule_factory(self, factory: Callable[[], Awaitable[Any]], loop: asyncio.AbstractEventLoop) -> None:
+        """Internal: invoke factory and create a tracked task on given loop.
+
+        Any exception or non-coroutine return is logged at debug level and ignored.
+        """
+        try:
+            aw = factory()
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("factory invocation failed", exc_info=True)
+            return
+        if not inspect.iscoroutine(aw):  # pragma: no cover - defensive
+            logger.debug("factory did not return coroutine: %r", aw)
+            return
+        try:
+            task = loop.create_task(aw)
+            self._bg_tasks.add(task)
+            task.add_done_callback(self._bg_tasks.discard)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("failed to create task", exc_info=True)
+
+    def spawn(self, factory: Callable[[], Awaitable[Any]]) -> asyncio.Task | None:
+        """Create and track a task on the debugger loop when already on it.
+
+        If called off-loop it falls back to thread-safe spawning and returns None.
+        The factory MUST be a zero-arg callable returning an awaitable; this
+        guarantees coroutine objects are only created inside the loop thread.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if current_loop is None:
+            self.spawn_threadsafe(factory)
+            return None
+        if current_loop is not self.loop:
+            self.spawn_threadsafe(factory)
+            return None
+        try:
+            aw = factory()
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("spawn factory invocation failed", exc_info=True)
+            return None
+        else:
+            if not inspect.iscoroutine(aw):  # pragma: no cover - defensive
+                logger.debug("spawn factory did not return coroutine")
+                return None
+            try:
+                task = asyncio.create_task(aw)
+            except Exception:  # pragma: no cover - defensive
+                logger.debug("spawn task creation failed", exc_info=True)
+                return None
+            self._bg_tasks.add(task)
+            task.add_done_callback(self._bg_tasks.discard)
+            return task
+
+    def spawn_threadsafe(self, factory: Callable[[], Awaitable[Any]]) -> None:
+        """Thread-safe scheduling of a factory without off-loop coroutine creation.
+
+        Behavior:
+          * If debugger loop running: enqueue submission via call_soon_threadsafe.
+          * If debugger loop not running but another loop is (typical in tests):
+            run immediately on that loop for synchronous visibility.
+          * Otherwise: attempt thread-safe scheduling (may no-op if loop closed).
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        # Immediate path for test environment (debugger loop not yet running).
+        if current_loop and not self.loop.is_running() and current_loop is not self.loop:
+            self._schedule_factory(factory, current_loop)
+            return
+
+        # Normal path: submit to debugger loop (even if not running yet; call_soon_threadsafe queues).
+        def _submit() -> None:
+            self._schedule_factory(factory, self.loop)
+
+        try:
+            self.loop.call_soon_threadsafe(_submit)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("spawn_threadsafe drop (loop closed)")
 
     # ------------------------------------------------------------------
     # Data Breakpoint (Watchpoint) Support (Phase 1: bookkeeping only)
@@ -240,8 +410,8 @@ class PyDebugger:
         return
 
     def _forward_event(self, event_name: str, payload: dict[str, Any]) -> None:
-        """Forward an event to the client, scheduling on the debugger loop."""
-        self._schedule_coroutine(self.server.send_event(event_name, payload))
+        """Forward an event (defer creation unless immediate path in spawn_threadsafe)."""
+        self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
 
     async def launch(
         self,
@@ -449,7 +619,7 @@ class PyDebugger:
                             self._handle_debug_message(msg[5:].strip())
                 finally:
                     self._ipc_enabled = False
-                    self._cleanup_ipc_resources()
+                    self.ipc.cleanup()
 
             threading.Thread(target=_reader, daemon=True).start()
         elif transport == "unix":
@@ -481,7 +651,7 @@ class PyDebugger:
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
                     self._ipc_enabled = False
-                    self._cleanup_ipc_resources()
+                    self.ipc.cleanup()
 
             threading.Thread(target=_reader_sock, daemon=True).start()
         elif transport == "tcp":
@@ -513,7 +683,7 @@ class PyDebugger:
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
                     self._ipc_enabled = False
-                    self._cleanup_ipc_resources()
+                    self.ipc.cleanup()
 
             threading.Thread(target=_reader_tcp, daemon=True).start()
         else:
@@ -597,101 +767,17 @@ class PyDebugger:
         """Accept one IPC connection then stream DBGP lines to handler."""
         try:
             if self._ipc_pipe_listener is not None:
-                self._ipc_accept_and_read_pipe()
+                self.ipc.accept_and_read_pipe(self._handle_debug_message)
                 return
-
             if self._ipc_listen_sock is not None:
-                self._ipc_accept_and_read_socket()
+                self.ipc.accept_and_read_socket(self._handle_debug_message)
         except Exception:
             logger.exception("IPC reader error")
         finally:
             self._ipc_enabled = False
-            self._cleanup_ipc_resources()
+            self.ipc.cleanup()
 
-    def _ipc_accept_and_read_pipe(self) -> None:
-        """Accept and read from a named pipe connection."""
-        conn = self._ipc_pipe_listener.accept()  # type: ignore[union-attr]
-        self._ipc_pipe_conn = conn
-        self._ipc_enabled = True
-        while True:
-            try:
-                if self._ipc_binary:
-                    data = conn.recv_bytes()
-                    if not data:
-                        break
-                    try:
-                        kind, length = unpack_header(data[:HEADER_SIZE])
-                    except Exception:
-                        break
-                    payload = data[HEADER_SIZE : HEADER_SIZE + length]
-                    if kind == 1:
-                        self._handle_debug_message(payload.decode("utf-8"))
-                    continue
-                msg = conn.recv()
-            except (EOFError, OSError):
-                break
-            if isinstance(msg, str) and msg.startswith("DBGP:"):
-                self._handle_debug_message(msg[5:].strip())
-
-    def _ipc_accept_and_read_socket(self) -> None:
-        """Accept and read from a TCP/UNIX socket connection."""
-        listen_sock = self._ipc_listen_sock
-        assert listen_sock is not None
-        conn2, _ = listen_sock.accept()
-        self._ipc_sock = conn2
-        if self._ipc_binary:
-            self._ipc_rfile = conn2.makefile("rb", buffering=0)
-            self._ipc_wfile = conn2.makefile("wb", buffering=0)
-        else:
-            self._ipc_rfile = conn2.makefile("r", encoding="utf-8", newline="")
-            self._ipc_wfile = conn2.makefile("w", encoding="utf-8", newline="")
-        self._ipc_enabled = True
-        while True:
-            if self._ipc_binary:
-                # Read header then payload
-                header = read_exact(self._ipc_rfile, HEADER_SIZE)  # type: ignore[arg-type]
-                if not header:
-                    break
-                try:
-                    kind, length = unpack_header(header)
-                except Exception:
-                    break
-                payload = read_exact(self._ipc_rfile, length)  # type: ignore[arg-type]
-                if not payload:
-                    break
-                if kind == 1:
-                    self._handle_debug_message(payload.decode("utf-8"))
-                continue
-            line = self._ipc_rfile.readline()  # type: ignore[union-attr]
-            if not line:
-                break
-            line_s = cast("str", line)
-            if line_s.startswith("DBGP:"):
-                self._handle_debug_message(line_s[5:].strip())
-
-    def _cleanup_ipc_resources(self) -> None:
-        """Close IPC resources quietly and clean up files."""
-        for f in (self._ipc_rfile, self._ipc_wfile):
-            with contextlib.suppress(Exception):
-                f.close()  # type: ignore[union-attr]
-
-        with contextlib.suppress(Exception):
-            if self._ipc_sock is not None:
-                self._ipc_sock.close()
-        with contextlib.suppress(Exception):
-            if self._ipc_listen_sock is not None:
-                self._ipc_listen_sock.close()
-
-        with contextlib.suppress(Exception):
-            if self._ipc_unix_path:
-                self._ipc_unix_path.unlink()
-
-        with contextlib.suppress(Exception):
-            if self._ipc_pipe_conn is not None:
-                self._ipc_pipe_conn.close()
-        with contextlib.suppress(Exception):
-            if self._ipc_pipe_listener is not None:
-                self._ipc_pipe_listener.close()
+    # Legacy IPC helper methods removed; direct calls use ipc.* now.
 
     def _start_debuggee_process(self, debug_args: list[str]) -> None:
         """Start the debuggee process in a separate thread."""
@@ -723,11 +809,14 @@ class PyDebugger:
             if not self.is_terminated:
                 self.is_terminated = True
 
-            self._schedule_coroutine(self._handle_program_exit(exit_code))
+            # Thread-safe scheduling of the program exit handler; avoid creating
+            # a bare coroutine object that could trigger 'never awaited' warnings.
+            # Factory-based thread-safe scheduling (no off-loop coroutine creation)
+            self.spawn_threadsafe(lambda c=exit_code: self._handle_program_exit(c))
         except Exception:
             logger.exception("Error starting debuggee")
             self.is_terminated = True
-            self._schedule_coroutine(self._handle_program_exit(1))
+            self.spawn_threadsafe(lambda: self._handle_program_exit(1))
 
     def _read_output(self, stream, category: str) -> None:
         """Read output from the debuggee's stdout/stderr streams."""
@@ -740,8 +829,11 @@ class PyDebugger:
                 if line.startswith("DBGP:"):
                     self._handle_debug_message(line[5:].strip())
                 else:
-                    self._schedule_coroutine(
-                        self.server.send_event("output", {"category": category, "output": line})
+                    # Always schedule via factory to defer coroutine creation to loop thread
+                    self.spawn_threadsafe(
+                        lambda line_text=line, cat=category: self.server.send_event(
+                            "output", {"category": cat, "output": line_text}
+                        )
                     )
         except Exception:
             logger.exception("Error reading %s", category)
@@ -775,9 +867,7 @@ class PyDebugger:
                 with contextlib.suppress(Exception):
                     self.stopped_event.set()
 
-        awaitable = self.server.send_event("stopped", stop_event)
-        if awaitable is not None:
-            self._schedule_coroutine(awaitable)
+        self.spawn_threadsafe(lambda: self.server.send_event("stopped", stop_event))
 
     def _handle_event_thread(self, data: dict[str, Any]) -> None:
         """Handle thread started/exited events and forward to client."""
@@ -801,7 +891,8 @@ class PyDebugger:
         """Handle debuggee exited event and schedule cleanup."""
         exit_code = data.get("exitCode", 0)
         self.is_terminated = True
-        self._schedule_coroutine(self._handle_program_exit(exit_code))
+        # Use unified spawn_threadsafe with factory to avoid constructing coroutine off-loop
+        self.spawn_threadsafe(lambda c=exit_code: self._handle_program_exit(c))
 
     def _handle_event_stacktrace(self, data: dict[str, Any]) -> None:
         """Cache stack trace data from the debuggee."""
@@ -1006,9 +1097,9 @@ class PyDebugger:
                 progress_id = f"setBreakpoints:{path}"
 
             # schedule progressStart and progressEnd around the outgoing command
-            self._schedule_coroutine(
-                self.server.send_event(
-                    "progressStart", {"progressId": progress_id, "title": "Setting breakpoints"}
+            self.spawn_threadsafe(
+                lambda pid=progress_id: self.server.send_event(
+                    "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
                 )
             )
 
@@ -1034,8 +1125,10 @@ class PyDebugger:
                 logger.debug("Failed to forward breakpoint events")
 
             # schedule a progressEnd
-            self._schedule_coroutine(
-                self.server.send_event("progressEnd", {"progressId": progress_id})
+            self.spawn_threadsafe(
+                lambda pid=progress_id: self.server.send_event(
+                    "progressEnd", {"progressId": pid}
+                )
             )
 
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]
@@ -1254,24 +1347,7 @@ class PyDebugger:
                 with contextlib.suppress(Exception):
                     stdin.flush()
 
-    def _schedule_coroutine(self, obj: Any) -> None:
-        """Schedule a coroutine, Future, or a factory producing one on the debugger loop."""
-
-        def _submit() -> None:
-            try:
-                # ensure_future accepts coroutine or Future
-                if inspect.iscoroutine(obj) or isinstance(obj, asyncio.Future):
-                    task = asyncio.ensure_future(obj)
-                    # keep a reference so it isn't GC'd prematurely
-                    self._bg_tasks.add(task)
-                    task.add_done_callback(self._bg_tasks.discard)
-            except Exception:
-                logger.debug("failed to schedule coroutine", exc_info=True)
-
-        try:
-            self.loop.call_soon_threadsafe(_submit)
-        except Exception:
-            logger.debug("failed to submit coroutine to loop", exc_info=True)
+    # (old _schedule_coroutine implementation removed; use spawn/spawn_threadsafe)
 
     async def continue_execution(self, thread_id: int) -> dict[str, Any]:
         """Continue execution of the specified thread"""
@@ -1817,6 +1893,14 @@ class PyDebugger:
         if isinstance(message, dict):
             message = json.dumps(message)
         self._handle_debug_message(message)
+        # Give the loop a chance to run any tasks spawned by the handler so
+        # tests that assert immediately after this call observe the effects.
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is self.loop:
+            await asyncio.sleep(0)
 
     async def handle_program_exit(self, exit_code: int) -> None:
         """Handle program exit (alias for _handle_program_exit)"""
@@ -1999,7 +2083,7 @@ class PyDebugger:
                 logger.debug("error closing process stdio")
 
             try:
-                self._cleanup_ipc_resources()
+                self.ipc.cleanup()
             except Exception:
                 logger.debug("error cleaning up IPC resources during shutdown")
 
@@ -2620,7 +2704,8 @@ class DebugAdapterServer:
     ):
         self.connection = connection
         self.request_handler = RequestHandler(self)
-        self.loop = loop or asyncio.get_event_loop()
+        # Prefer caller-supplied or running loop; create one only if needed.
+        self.loop, _owns = _acquire_event_loop(loop)  # _owns unused here
         self.debugger = PyDebugger(self, self.loop)
         self.running = False
         self.sequence_number = 0

@@ -9,7 +9,6 @@ import asyncio
 import logging
 import sys
 from typing import TYPE_CHECKING
-from typing import Optional
 
 from dapper.connections.pipe import NamedPipeServerConnection
 from dapper.connections.tcp import TCPServerConnection
