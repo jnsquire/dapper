@@ -44,7 +44,7 @@ async def test_unix_socket_path_is_removed_on_cleanup(
     assert unix_path.exists()
 
     # Set debugger's path and call the cleanup helper
-    dbg._ipc_unix_path = unix_path  # type: ignore[attr-defined]
+    dbg.ipc.unix_path = unix_path
     dbg.ipc.cleanup()
 
     # File should be removed

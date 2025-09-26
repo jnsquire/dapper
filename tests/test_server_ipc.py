@@ -19,9 +19,9 @@ def test_write_command_to_channel_ipc_pipe_text():
         def send(self, s):
             calls.append(("send", s))
 
-    p._ipc_enabled = True
-    p._ipc_pipe_conn = PipeConn()
-    p._ipc_binary = False
+    p.ipc.enabled = True
+    p.ipc.pipe_conn = PipeConn()
+    p.ipc.binary = False
 
     p._write_command_to_channel("abc")
     # Break down assertion (PT018): verify list populated, action name, and payload marker
@@ -38,9 +38,9 @@ def test_write_command_to_channel_ipc_pipe_binary():
         def send_bytes(self, b):
             calls.append(("send_bytes", b))
 
-    p._ipc_enabled = True
-    p._ipc_pipe_conn = PipeConn()
-    p._ipc_binary = True
+    p.ipc.enabled = True
+    p.ipc.pipe_conn = PipeConn()
+    p.ipc.binary = True
 
     p._write_command_to_channel("xyz")
     assert calls, "Expected at least one call to pipe send_bytes"
@@ -58,10 +58,10 @@ def test_write_command_to_channel_ipc_wfile_text():
         def flush(self):
             calls.append(("flush", None))
 
-    p._ipc_enabled = True
-    p._ipc_pipe_conn = None
-    p._ipc_wfile = WFile()
-    p._ipc_binary = False
+    p.ipc.enabled = True
+    p.ipc.pipe_conn = None
+    p.ipc.wfile = WFile()
+    p.ipc.binary = False
 
     p._write_command_to_channel("bbb")
     assert any("DBGCMD:bbb" in c[1] for c in calls if c[0] == "write")
@@ -84,7 +84,7 @@ def test_write_command_to_channel_fallback_to_stdin():
         def __init__(self):
             self.stdin = Stdin()
 
-    p._ipc_enabled = False
+    p.ipc.enabled = False
     p.process = Proc()
 
     p._write_command_to_channel("kkk")

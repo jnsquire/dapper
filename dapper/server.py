@@ -172,81 +172,6 @@ class PyDebugger:
         self._data_watches = {}
         self._frame_watches = {}
 
-    # -----------------------------
-    # IPC context property bridge
-    # -----------------------------
-    @property
-    def _ipc_enabled(self) -> bool:
-        return self.ipc.enabled
-
-    @_ipc_enabled.setter
-    def _ipc_enabled(self, value: bool) -> None:
-        self.ipc.enabled = value
-
-    @property
-    def _ipc_listen_sock(self):  # type: ignore[override]
-        return self.ipc.listen_sock
-
-    @_ipc_listen_sock.setter  # type: ignore[override]
-    def _ipc_listen_sock(self, value) -> None:
-        self.ipc.listen_sock = value
-
-    @property
-    def _ipc_sock(self):  # type: ignore[override]
-        return self.ipc.sock
-
-    @_ipc_sock.setter  # type: ignore[override]
-    def _ipc_sock(self, value) -> None:
-        self.ipc.sock = value
-
-    @property
-    def _ipc_rfile(self):  # type: ignore[override]
-        return self.ipc.rfile
-
-    @_ipc_rfile.setter  # type: ignore[override]
-    def _ipc_rfile(self, value) -> None:
-        self.ipc.rfile = value
-
-    @property
-    def _ipc_wfile(self):  # type: ignore[override]
-        return self.ipc.wfile
-
-    @_ipc_wfile.setter  # type: ignore[override]
-    def _ipc_wfile(self, value) -> None:
-        self.ipc.wfile = value
-
-    @property
-    def _ipc_pipe_listener(self):  # type: ignore[override]
-        return self.ipc.pipe_listener
-
-    @_ipc_pipe_listener.setter  # type: ignore[override]
-    def _ipc_pipe_listener(self, value) -> None:
-        self.ipc.pipe_listener = value
-
-    @property
-    def _ipc_pipe_conn(self):  # type: ignore[override]
-        return self.ipc.pipe_conn
-
-    @_ipc_pipe_conn.setter  # type: ignore[override]
-    def _ipc_pipe_conn(self, value) -> None:
-        self.ipc.pipe_conn = value
-
-    @property
-    def _ipc_unix_path(self) -> Path | None:
-        return self.ipc.unix_path
-
-    @_ipc_unix_path.setter
-    def _ipc_unix_path(self, value: Path | None) -> None:
-        self.ipc.unix_path = value
-
-    @property
-    def _ipc_binary(self) -> bool:
-        return self.ipc.binary
-
-    @_ipc_binary.setter
-    def _ipc_binary(self, value: bool) -> None:
-        self.ipc.binary = value
-
     # ------------------------------------------------------------------
     # Task spawning helpers (new API replacing _schedule_coroutine)
     # ------------------------------------------------------------------
@@ -461,10 +386,10 @@ class PyDebugger:
 
         # If IPC is requested, prepare a listener and pass coordinates.
         self._use_ipc = bool(use_ipc)
-        self._ipc_binary = bool(use_binary_ipc)
+        self.ipc.binary = bool(use_binary_ipc)
         if self._use_ipc:
             self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
-            if self._ipc_binary:
+            if self.ipc.binary:
                 debug_args.append("--ipc-binary")
 
         logger.info("Launching program: %s", self.program_path)
@@ -484,9 +409,7 @@ class PyDebugger:
                 await asyncio.to_thread(self._start_debuggee_process, debug_args)
 
         # If IPC is enabled, accept the connection from the launcher
-        if self._use_ipc and (
-            self._ipc_listen_sock is not None or self._ipc_pipe_listener is not None
-        ):
+        if self._use_ipc and (self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None):
             threading.Thread(target=self._run_ipc_accept_and_read, daemon=True).start()
 
         self.program_running = True
@@ -600,25 +523,25 @@ class PyDebugger:
                 msg = "ipcPipeName required for pipe attach"
                 raise RuntimeError(msg)
             try:
-                self._ipc_pipe_conn = mp_conn.Client(address=ipc_pipe_name, family="AF_PIPE")
+                self.ipc.pipe_conn = mp_conn.Client(address=ipc_pipe_name, family="AF_PIPE")
             except Exception as exc:  # pragma: no cover - depends on OS
                 msg = "failed to connect pipe"
                 raise RuntimeError(msg) from exc
-            self._ipc_pipe_listener = None
-            self._ipc_enabled = True
+            self.ipc.pipe_listener = None
+            self.ipc.enabled = True
 
             def _reader():
                 try:
                     while True:
                         try:
-                            conn = cast("mp_conn.Connection", self._ipc_pipe_conn)
+                            conn = cast("mp_conn.Connection", self.ipc.pipe_conn)
                             msg = conn.recv()
                         except (EOFError, OSError):
                             break
                         if isinstance(msg, str) and msg.startswith("DBGP:"):
                             self._handle_debug_message(msg[5:].strip())
                 finally:
-                    self._ipc_enabled = False
+                    self.ipc.enabled = False
                     self.ipc.cleanup()
 
             threading.Thread(target=_reader, daemon=True).start()
@@ -633,15 +556,15 @@ class PyDebugger:
             except Exception as exc:  # pragma: no cover - platform dependent
                 msg = "failed to connect unix socket"
                 raise RuntimeError(msg) from exc
-            self._ipc_sock = sock
-            self._ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-            self._ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
-            self._ipc_enabled = True
+            self.ipc.sock = sock
+            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
+            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
+            self.ipc.enabled = True
 
             def _reader_sock():
                 try:
                     while True:
-                        rfile = self._ipc_rfile
+                        rfile = self.ipc.rfile
                         assert rfile is not None
                         line = rfile.readline()
                         if not line:
@@ -650,7 +573,7 @@ class PyDebugger:
                         if line_s.startswith("DBGP:"):
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
-                    self._ipc_enabled = False
+                    self.ipc.enabled = False
                     self.ipc.cleanup()
 
             threading.Thread(target=_reader_sock, daemon=True).start()
@@ -665,15 +588,15 @@ class PyDebugger:
             except Exception as exc:
                 msg = "failed to connect tcp socket"
                 raise RuntimeError(msg) from exc
-            self._ipc_sock = sock
-            self._ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-            self._ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
-            self._ipc_enabled = True
+            self.ipc.sock = sock
+            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
+            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
+            self.ipc.enabled = True
 
             def _reader_tcp():
                 try:
                     while True:
-                        rfile = self._ipc_rfile
+                        rfile = self.ipc.rfile
                         assert rfile is not None
                         line = rfile.readline()
                         if not line:
@@ -682,7 +605,7 @@ class PyDebugger:
                         if line_s.startswith("DBGP:"):
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
-                    self._ipc_enabled = False
+                    self.ipc.enabled = False
                     self.ipc.cleanup()
 
             threading.Thread(target=_reader_tcp, daemon=True).start()
@@ -718,10 +641,10 @@ class PyDebugger:
                 ipc_pipe_name or rf"\\.\pipe\dapper-{os.getpid()}-{int(time.time() * 1000)}"
             )
             try:
-                self._ipc_pipe_listener = mp_conn.Listener(address=pipe_name, family="AF_PIPE")
+                self.ipc.pipe_listener = mp_conn.Listener(address=pipe_name, family="AF_PIPE")
             except Exception:
                 logger.exception("Failed to create named pipe listener")
-                self._ipc_pipe_listener = None
+                self.ipc.pipe_listener = None
             else:
                 debug_args.extend(["--ipc", "pipe", "--ipc-pipe", pipe_name])
             return
@@ -739,8 +662,8 @@ class PyDebugger:
             except Exception:
                 logger.exception("Failed to create UNIX socket; fallback to TCP")
             else:
-                self._ipc_listen_sock = listen
-                self._ipc_unix_path = unix_path
+                self.ipc.listen_sock = listen
+                self.ipc.unix_path = unix_path
                 debug_args.extend(["--ipc", "unix", "--ipc-path", str(unix_path)])
                 return
 
@@ -751,7 +674,7 @@ class PyDebugger:
         listen.bind((host, 0))
         listen.listen(1)
         _addr, port = listen.getsockname()
-        self._ipc_listen_sock = listen
+        self.ipc.listen_sock = listen
         debug_args.extend(
             [
                 "--ipc",
@@ -766,15 +689,15 @@ class PyDebugger:
     def _run_ipc_accept_and_read(self) -> None:
         """Accept one IPC connection then stream DBGP lines to handler."""
         try:
-            if self._ipc_pipe_listener is not None:
+            if self.ipc.pipe_listener is not None:
                 self.ipc.accept_and_read_pipe(self._handle_debug_message)
                 return
-            if self._ipc_listen_sock is not None:
+            if self.ipc.listen_sock is not None:
                 self.ipc.accept_and_read_socket(self._handle_debug_message)
         except Exception:
             logger.exception("IPC reader error")
         finally:
-            self._ipc_enabled = False
+            self.ipc.enabled = False
             self.ipc.cleanup()
 
     # Legacy IPC helper methods removed; direct calls use ipc.* now.
@@ -1323,21 +1246,21 @@ class PyDebugger:
 
     def _write_command_to_channel(self, cmd_str: str) -> None:
         """Safely write a DBGCMD line to the active IPC or stdio channel."""
-        if self._ipc_enabled and self._ipc_pipe_conn is not None:
+        if self.ipc.enabled and self.ipc.pipe_conn is not None:
             with contextlib.suppress(Exception):
-                if self._ipc_binary:
-                    self._ipc_pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
+                if self.ipc.binary:
+                    self.ipc.pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
                 else:
-                    self._ipc_pipe_conn.send(f"DBGCMD:{cmd_str}")
+                    self.ipc.pipe_conn.send(f"DBGCMD:{cmd_str}")
             return
-        if self._ipc_enabled and self._ipc_wfile is not None:
+        if self.ipc.enabled and self.ipc.wfile is not None:
             with contextlib.suppress(Exception):
-                if self._ipc_binary:
-                    self._ipc_wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
-                    self._ipc_wfile.flush()  # type: ignore[call-arg]
+                if self.ipc.binary:
+                    self.ipc.wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
+                    self.ipc.wfile.flush()  # type: ignore[call-arg]
                 else:
-                    self._ipc_wfile.write(f"DBGCMD:{cmd_str}\n")  # type: ignore[arg-type]
-                    self._ipc_wfile.flush()
+                    self.ipc.wfile.write(f"DBGCMD:{cmd_str}\n")  # type: ignore[arg-type]
+                    self.ipc.wfile.flush()
             return
 
         stdin = getattr(self.process, "stdin", None)

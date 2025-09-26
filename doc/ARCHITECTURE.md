@@ -42,7 +42,7 @@ Resource management:
 
 - The adapter owns the listener and cleans up on shutdown (closing sockets/files and unlinking `AF_UNIX` paths).
 - Reader threads catch and log exceptions; `spawn_threadsafe(lambda: ...)` (factory form) ensures events are forwarded on the adapter loop without creating coroutine objects off-loop.
-- All transient IPC state (listener sockets, pipe handles, r/w files, unix path, binary flag) is centralized in an `IPCContext` dataclass (`dapper/ipc_context.py`). The debugger exposes legacy private attributes (e.g. `_ipc_listen_sock`) via a property bridge to avoid churn; internal code increasingly prefers `self.ipc.<field>`.
+- All transient IPC state (listener sockets, pipe handles, r/w files, unix path, binary flag) is centralized in an `IPCContext` dataclass (`dapper/ipc_context.py`). Implementation and tests now access these directly via `self.ipc.<field>`; the former `_ipc_*` bridge has been fully removed.
 
 ### IPCContext
 
@@ -61,11 +61,10 @@ Resource management:
 
 Encapsulation benefits:
 
-- Clear lifecycle ownership (initialize in `launch`, cleaned in `_cleanup_ipc_resources`).
+- Clear lifecycle ownership (initialized in `launch`, cleaned via `ipc.cleanup()` during shutdown or error paths).
 - Reduced attribute sprawl in `server.py` (improved readability & type hinting).
 - Easier to evolve framing/transport logic without widening `PyDebugger`'s surface.
 
-Backward compatibility is maintained through properties so tests referencing `_ipc_*` continue to pass. New code should prefer the `ipc` object directly.
 
 ## Concurrency model
 
