@@ -31,6 +31,8 @@ omit = [
     "examples/*",
     "dapper/__init__.py",
     "dapper/_version.py",
+    "run_coverage.py",
+    "setup.py",
 ]
 
 [tool.ruff]

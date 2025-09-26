@@ -2,20 +2,18 @@
 Launcher, argument parsing, IPC setup, and main routine for debug launcher.
 """
 
+from __future__ import annotations
+
 import argparse
-import contextlib
-import io
 import logging
 import os
-import socket
 import sys
 import threading
-from multiprocessing import connection as _mpc
 from pathlib import Path
 
-from dapper.debug_adapter_comm import receive_debug_commands
-from dapper.debug_adapter_comm import state
+from dapper.debug_adapter_comm import receive_debug_commands, state
 from dapper.debugger_bdb import DebuggerBDB
+from dapper.launcher_ipc import _setup_ipc_pipe, _setup_ipc_socket
 
 
 def parse_args():
@@ -53,54 +51,13 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
     if args.ipc:
         try:
+            success = False
             if args.ipc == "pipe" and os.name == "nt" and args.ipc_pipe:
-                conn = _mpc.Client(address=args.ipc_pipe, family="AF_PIPE")
-                state.ipc_enabled = True
-
-                class _PipeIO(io.TextIOBase):
-                    def __init__(self, conn=conn):
-                        self.conn = conn
-
-                    def write(self, s: str) -> int:
-                        self.conn.send(s)
-                        return len(s)
-
-                    def flush(self) -> None:
-                        return
-
-                    def readline(self, size: int = -1) -> str:
-                        try:
-                            data = self.conn.recv()
-                        except (EOFError, OSError):
-                            return ""
-                        s = data
-                        if size is not None and size >= 0:
-                            return s[:size]
-                        return s
-
-                    def close(self) -> None:
-                        with contextlib.suppress(Exception):
-                            self.conn.close()
-
-                state.ipc_rfile = _PipeIO()
-                state.ipc_wfile = _PipeIO()
+                success = _setup_ipc_pipe(args.ipc_pipe)
             else:
-                sock = None
-                if args.ipc == "unix":
-                    af_unix = getattr(os, "AF_UNIX", None)
-                    if af_unix and args.ipc_path:
-                        sock = socket.socket(af_unix, socket.SOCK_STREAM)
-                        sock.connect(args.ipc_path)
-                else:
-                    host = args.ipc_host or "127.0.0.1"
-                    port = int(args.ipc_port)
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.connect((host, port))
-                if sock is not None:
-                    state.ipc_sock = sock
-                    state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-                    state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
-                    state.ipc_enabled = True
+                success = _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path)
+            if not success:
+                state.ipc_enabled = False
         except Exception:
             state.ipc_enabled = False
     command_thread = threading.Thread(target=receive_debug_commands, daemon=True)

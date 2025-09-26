@@ -45,12 +45,16 @@ state.register_command_provider(DapMappingProvider(COMMAND_HANDLERS), priority=1
 
 
 def receive_debug_commands() -> None:
+    """
+    Continuously reads debug commands from either an IPC file or stdin, parses them,
+    and dispatches them for processing until termination is requested.
+    """
     if state.ipc_enabled and state.ipc_rfile is not None:
         reader = state.ipc_rfile
         while not state.is_terminated:
             line = reader.readline()
             if not line:
-                os._exit(0)
+                sys.exit(0)
             if line.startswith("DBGCMD:"):
                 command_json = line[7:].strip()
                 try:
