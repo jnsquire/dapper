@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
-import io
 import json
 import logging
 import os
@@ -40,44 +39,6 @@ MAX_STRING_LENGTH = 1000
 VAR_REF_TUPLE_SIZE = 2  # Variable references are stored as 2-element tuples
 
 
-class PipeIO(io.TextIOBase):
-    """Combined reader/writer over a multiprocessing Connection.
-
-    Provides a minimal TextIO-like surface: readline(), write(), flush(), close().
-    This replaces separate PipeReader and PipeWriter classes and is intentionally
-    small to match the needs of this module and the launcher.
-    """
-
-    def __init__(self, conn: _mpc.Connection):
-        self.conn = conn
-
-    # Writer API -------------------------------------------------
-    def write(self, s: str) -> int:  # return number of characters written
-        # The connection may raise; let callers handle exceptions or they are
-        # suppressed by callers that perform contextlib.suppress.
-        self.conn.send(s)
-        return len(s)
-
-    def flush(self) -> None:
-        return
-
-    # Reader API -------------------------------------------------
-    def readline(self, size: int = -1) -> str:
-        try:
-            data = self.conn.recv()
-        except (EOFError, OSError):
-            return ""
-        s = cast("str", data)
-        if size is not None and size >= 0:
-            return s[:size]
-        return s
-
-    # Common -----------------------------------------------------
-    def close(self) -> None:
-        with contextlib.suppress(Exception):
-            self.conn.close()
-
-
 def send_debug_message(event_type: str, **kwargs) -> None:
     """
     Send a debug message to the debug adapter.
@@ -91,18 +52,17 @@ def send_debug_message(event_type: str, **kwargs) -> None:
             payload = json.dumps(message).encode("utf-8")
             frame = pack_frame(1, payload)
             # Prefer pipe conn if available
-            conn = getattr(state, "ipc_pipe_conn", None)
+            conn = state.ipc_pipe_conn
             if conn is not None:
-                with contextlib.suppress(Exception):
-                    conn.send_bytes(frame)
-                    return
-            wfile = getattr(state, "ipc_wfile", None)
+                conn.send_bytes(frame)
+
+            wfile = state.ipc_wfile
             if wfile is not None:
                 with contextlib.suppress(Exception):
                     wfile.write(frame)  # type: ignore[arg-type]
-                    with contextlib.suppress(Exception):
-                        wfile.flush()  # type: ignore[call-arg]
+                    wfile.flush()  # type: ignore[call-arg]
                     return
+
         # Text IPC fallback
         if state.ipc_wfile is not None:
             try:
@@ -125,8 +85,7 @@ KIND_COMMAND = 2
 def _handle_command_bytes(payload: bytes) -> None:
     try:
         command = json.loads(payload.decode("utf-8"))
-        with state.command_lock:
-            state.command_queue.append(command)
+        state.command_queue.put(command)
         handle_debug_command(command)
     except Exception as e:
         send_debug_message("error", message=f"Error receiving command: {e!s}")
@@ -177,8 +136,7 @@ def _recv_text(reader: Any) -> None:
             command_json = line[7:].strip()
             try:
                 command = json.loads(command_json)
-                with state.command_lock:
-                    state.command_queue.append(command)
+                state.command_queue.put(command)
                 handle_debug_command(command)
             except Exception as e:
                 send_debug_message("error", message=f"Error receiving command: {e!s}")
@@ -191,47 +149,32 @@ def receive_debug_commands() -> None:
     These are prefixed with DBGCMD: to distinguish them from regular input.
     """
     # read-only access to state.is_terminated
-    if state.ipc_enabled and state.ipc_rfile is not None:
+    if state.ipc_enabled:
         # Binary IPC path
-        if getattr(state, "ipc_binary", False):
-            conn = getattr(state, "ipc_pipe_conn", None)
-            if conn is not None:
-                _recv_binary_from_pipe(conn)
-                return
-            _recv_binary_from_stream(state.ipc_rfile)
+        conn = state.ipc_pipe_conn
+        if conn is not None:
+            _recv_binary_from_pipe(conn)
             return
-        # Text IPC path
-        _recv_text(state.ipc_rfile)
-    else:
-        while not state.is_terminated:
-            line = sys.stdin.readline()
-            if not line:
-                # End of input stream, debug adapter has closed connection
-                os._exit(0)
+        _recv_binary_from_stream(state.ipc_rfile)
+        return
 
-            if line.startswith("DBGCMD:"):
-                command_json = line[7:].strip()
-                try:
-                    command = json.loads(command_json)
+    while not state.is_terminated:
+        line = sys.stdin.readline()
+        if not line:
+            # End of input stream, debug adapter has closed connection
+            os._exit(0)
 
-                    with state.command_lock:
-                        state.command_queue.append(command)
+        if line.startswith("DBGCMD:"):
+            command_json = line[7:].strip()
+            try:
+                command = json.loads(command_json)
 
-                    handle_debug_command(command)
-                except Exception as e:
-                    send_debug_message("error", message=f"Error receiving command: {e!s}")
-                    traceback.print_exc()
+                state.command_queue.put(command)
 
-
-def process_queued_commands():
-    """Process any queued commands from the debug adapter"""
-    # operate on the module state queue
-    with state.command_lock:
-        commands = state.command_queue.copy()
-        state.command_queue.clear()
-
-    for cmd in commands:
-        handle_debug_command(cmd)
+                handle_debug_command(command)
+            except Exception as e:
+                send_debug_message("error", message=f"Error receiving command: {e!s}")
+                traceback.print_exc()
 
 
 def handle_debug_command(command: dict[str, Any]) -> None:
@@ -1053,7 +996,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def _setup_ipc_pipe(ipc_pipe: str | None, use_binary: bool) -> None:
+def _setup_ipc_pipe(ipc_pipe: str | None) -> None:
     """Initialize Windows named pipe IPC.
 
     On success, populates state.ipc_* fields and enables IPC. On failure, raises.
@@ -1064,13 +1007,7 @@ def _setup_ipc_pipe(ipc_pipe: str | None, use_binary: bool) -> None:
 
     conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
     state.ipc_enabled = True
-    if use_binary:
-        state.ipc_binary = True
-        state.ipc_pipe_conn = conn
-    else:
-        # Wrap in text IO for compatibility with text mode
-        state.ipc_rfile = PipeIO(conn)
-        state.ipc_wfile = PipeIO(conn)
+    state.ipc_pipe_conn = conn
 
 
 def _setup_ipc_socket(
@@ -1078,7 +1015,6 @@ def _setup_ipc_socket(
     host: str | None,
     port: int | None,
     path: str | None,
-    use_binary: bool,
 ) -> None:
     """Initialize TCP/UNIX socket IPC and configure state.
 
@@ -1103,13 +1039,8 @@ def _setup_ipc_socket(
         sock.connect((h, int(port)))
 
     state.ipc_sock = sock
-    if use_binary:
-        state.ipc_binary = True
-        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
-        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
-    else:
-        state.ipc_rfile = sock.makefile("r", encoding="utf-8", newline="")
-        state.ipc_wfile = sock.makefile("w", encoding="utf-8", newline="")
+    state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+    state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
     state.ipc_enabled = True
 
 
@@ -1122,7 +1053,7 @@ def setup_ipc_from_args(args: Any) -> None:
         return
     try:
         if args.ipc == "pipe":
-            _setup_ipc_pipe(args.ipc_pipe, args.ipc_binary)
+            _setup_ipc_pipe(args.ipc_pipe)
         else:
             _setup_ipc_socket(
                 args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary

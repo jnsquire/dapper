@@ -42,30 +42,32 @@ class IPCContext:
 
         Mirrors previous PyDebugger._cleanup_ipc_resources implementation.
         """
+        surpressed = contextlib.suppress(Exception)
+
         # Close r/w files
         for f in (self.rfile, self.wfile):
-            with contextlib.suppress(Exception):
+            with surpressed:
                 if f is not None:
                     f.close()
 
         # Close sockets / listeners
-        with contextlib.suppress(Exception):
+        with surpressed:
             if self.sock is not None:
                 self.sock.close()
-        with contextlib.suppress(Exception):
+        with surpressed:
             if self.listen_sock is not None:
                 self.listen_sock.close()
 
         # Unlink unix path
-        with contextlib.suppress(Exception):
+        with surpressed:
             if self.unix_path:
                 self.unix_path.unlink()
 
         # Close pipe endpoints
-        with contextlib.suppress(Exception):
+        with surpressed:
             if self.pipe_conn is not None:
                 self.pipe_conn.close()
-        with contextlib.suppress(Exception):
+        with surpressed:
             if self.pipe_listener is not None:
                 self.pipe_listener.close()
 
@@ -108,15 +110,15 @@ class IPCContext:
         """Accept and read from a TCP/UNIX socket connection (blocking loop)."""
         if self.listen_sock is None:  # defensive
             return
-        conn2, _ = self.listen_sock.accept()
-        self.sock = conn2
+        conn, _ = self.listen_sock.accept()
+        self.sock = conn
         makefile_args = ("rb", "wb") if self.binary else ("r", "w")
         if self.binary:
-            self.rfile = conn2.makefile(makefile_args[0], buffering=0)  # type: ignore[arg-type]
-            self.wfile = conn2.makefile(makefile_args[1], buffering=0)  # type: ignore[arg-type]
+            self.rfile = conn.makefile(makefile_args[0], buffering=0)  # type: ignore[arg-type]
+            self.wfile = conn.makefile(makefile_args[1], buffering=0)  # type: ignore[arg-type]
         else:
-            self.rfile = conn2.makefile(makefile_args[0], encoding="utf-8", newline="")
-            self.wfile = conn2.makefile(makefile_args[1], encoding="utf-8", newline="")
+            self.rfile = conn.makefile(makefile_args[0], encoding="utf-8", newline="")
+            self.wfile = conn.makefile(makefile_args[1], encoding="utf-8", newline="")
         self.enabled = True
         if self.binary:
             self._read_binary_stream(handle_debug_message)

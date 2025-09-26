@@ -14,7 +14,7 @@ from multiprocessing import connection as _mpc
 from dapper.debug_adapter_comm import state
 
 
-class _PipeIO(io.TextIOBase):
+class PipeIO(io.TextIOBase):
     def __init__(self, conn: _mpc.Connection) -> None:
         self.conn = conn
 
@@ -40,16 +40,15 @@ class _PipeIO(io.TextIOBase):
             self.conn.close()
 
 
-def _setup_ipc_pipe(pipe_name: str) -> bool:
+def _setup_ipc_pipe(pipe_name: str):
     try:
         conn = _mpc.Client(address=pipe_name, family="AF_PIPE")
-        state.ipc_rfile = _PipeIO(conn)
-        state.ipc_wfile = _PipeIO(conn)
-        state.ipc_enabled = True
     except Exception:
         return False
-    else:
-        return True
+    state.ipc_rfile = PipeIO(conn)
+    state.ipc_wfile = PipeIO(conn)
+    state.ipc_enabled = True
+    return True
 
 
 def _connect_unix_socket(path: str | None):
@@ -85,8 +84,7 @@ def _connect_tcp_socket(host: str | None, port: int | None):
         sock.connect((_host, _port))
     except Exception:
         if sock is not None:
-            with contextlib.suppress(Exception):
-                sock.close()
+            sock.close()
         return None
     else:
         return sock
@@ -97,8 +95,6 @@ def _setup_ipc_socket(transport: str | None, host: str | None, port: int | None,
         sock = None
         if transport == "unix":
             sock = _connect_unix_socket(path)
-            if sock is None:
-                sock = _connect_tcp_socket(host, port)
         else:
             sock = _connect_tcp_socket(host, port)
         if sock is not None:

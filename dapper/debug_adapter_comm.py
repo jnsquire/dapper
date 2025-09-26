@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import traceback
+from queue import Empty
 
 from dapper.dap_command_handlers import COMMAND_HANDLERS
 from dapper.debug_shared import send_debug_message
@@ -59,8 +60,7 @@ def receive_debug_commands() -> None:
                 command_json = line[7:].strip()
                 try:
                     command = json.loads(command_json)
-                    with state.command_lock:
-                        state.command_queue.append(command)
+                    state.command_queue.put(command)
                     state.dispatch_debug_command(command)
                 except Exception as e:
                     send_debug_message("error", message=f"Error receiving command: {e!s}")
@@ -74,8 +74,7 @@ def receive_debug_commands() -> None:
                 command_json = line[7:].strip()
                 try:
                     command = json.loads(command_json)
-                    with state.command_lock:
-                        state.command_queue.append(command)
+                    state.command_queue.put(command)
                     state.dispatch_debug_command(command)
                 except Exception as e:
                     send_debug_message("error", message=f"Error receiving command: {e!s}")
@@ -83,8 +82,9 @@ def receive_debug_commands() -> None:
 
 
 def process_queued_commands():
-    with state.command_lock:
-        commands = state.command_queue.copy()
-        state.command_queue.clear()
-    for cmd in commands:
-        state.dispatch_debug_command(cmd)
+    while True:
+        try:
+            cmd = state.command_queue.get_nowait()
+            state.dispatch_debug_command(cmd)
+        except Empty:  # noqa: PERF203
+            break

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from queue import Queue
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -146,7 +147,7 @@ def setup_function(_func):
     s.ipc_enabled = False
     s.ipc_rfile = None
     s.ipc_wfile = None
-    s.command_queue.clear()
+    s.command_queue = Queue()
 
 
 def test_handle_initialize_minimal():

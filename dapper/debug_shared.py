@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import queue
 import sys
 import threading
 from pathlib import Path
@@ -73,15 +74,13 @@ class SessionState:
         self.debugger: DebuggerLike | None = None
         self.stop_at_entry: bool = False
         self.no_debug: bool = False
-        self.command_queue: list[Any] = []
-        self.command_lock = threading.Lock()
+        # Use a thread-safe FIFO queue for commands
+        self.command_queue: queue.Queue[Any] = queue.Queue()
         self.is_terminated: bool = False
         self.ipc_enabled: bool = False
         self.ipc_sock: Any | None = None
         self.ipc_rfile: io.TextIOBase | None = None
         self.ipc_wfile: io.TextIOBase | None = None
-        # Binary IPC mode (adapter<->launcher); when True, use length-prefixed frames
-        self.ipc_binary: bool = False
         # Optional direct pipe connection object for binary send/recv on Windows
         self.ipc_pipe_conn: Any | None = None
 
@@ -269,13 +268,13 @@ def send_debug_message(event_type: str, **kwargs) -> None:
             payload = json.dumps(message).encode("utf-8")
             frame = pack_frame(1, payload)
             # Prefer pipe conn if available
-            conn = getattr(state, "ipc_pipe_conn", None)
+            conn = state.ipc_pipe_conn
             if conn is not None:
                 with contextlib.suppress(Exception):
                     conn.send_bytes(frame)
                     return
             # Else try binary file
-            wfile = getattr(state, "ipc_wfile", None)
+            wfile = state.ipc_wfile
             if wfile is not None:
                 with contextlib.suppress(Exception):
                     # Assume binary BufferedWriter
@@ -293,8 +292,7 @@ def send_debug_message(event_type: str, **kwargs) -> None:
             else:
                 return
     send_logger.debug(json.dumps(message))
-    with contextlib.suppress(Exception):
-        sys.stdout.flush()
+    sys.stdout.flush()
 
 
 # Module-level helpers extracted from make_variable_object to reduce function size

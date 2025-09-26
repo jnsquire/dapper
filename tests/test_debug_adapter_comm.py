@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+from queue import Queue
 
 from dapper import debug_adapter_comm as dac
 
@@ -47,7 +48,7 @@ def test_receive_debug_commands_ipc(monkeypatch):
     s = dac.state
     s.is_terminated = False
     s.ipc_enabled = True
-    s.command_queue = []
+    s.command_queue = Queue()
 
     # fake reader that returns a DBGCMD line once
     cmd = {"command": "dummy", "seq": 1}
@@ -70,32 +71,34 @@ def test_receive_debug_commands_ipc(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return None
 
-    monkeypatch.setattr(s, "command_lock", DummyLock())
     monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
 
     # run receiver (should process one command and return)
     dac.receive_debug_commands()
     assert called
     assert called[0]["command"] == "dummy"
-    assert s.command_queue
-    assert s.command_queue[0]["command"] == "dummy"
+    # queue should have at least one item
+    assert not s.command_queue.empty()
+    got = s.command_queue.get_nowait()
+    assert got["command"] == "dummy"
 
 
 def test_process_queued_commands(monkeypatch):
     s = dac.state
-    s.command_queue = [{"command": "a"}, {"command": "b"}]
+    s.command_queue = Queue()
+    s.command_queue.put({"command": "a"})
+    s.command_queue.put({"command": "b"})
 
     called = []
 
     def fake_dispatch(c):
         called.append(c)
 
-    monkeypatch.setattr(s, "command_lock", DummyLock())
     monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
 
     dac.process_queued_commands()
     assert len(called) == 2
-    assert s.command_queue == []
+    assert s.command_queue.empty()
 
 
 def test_receive_debug_commands_stdin_fallback(monkeypatch):
@@ -103,7 +106,7 @@ def test_receive_debug_commands_stdin_fallback(monkeypatch):
     s.is_terminated = False
     s.ipc_enabled = False
     s.ipc_rfile = None
-    s.command_queue = []
+    s.command_queue = Queue()
 
     cmd = {"command": "stdin_cmd", "seq": 9}
     line = "DBGCMD:" + json.dumps(cmd) + "\n"
@@ -117,22 +120,22 @@ def test_receive_debug_commands_stdin_fallback(monkeypatch):
         called.append(c)
         s.is_terminated = True
 
-    monkeypatch.setattr(s, "command_lock", DummyLock())
     monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
 
     dac.receive_debug_commands()
 
     assert called
     assert called[0]["command"] == "stdin_cmd"
-    assert s.command_queue
-    assert s.command_queue[0]["command"] == "stdin_cmd"
+    assert not s.command_queue.empty()
+    got = s.command_queue.get_nowait()
+    assert got["command"] == "stdin_cmd"
 
 
 def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
     s = dac.state
     s.is_terminated = False
     s.ipc_enabled = True
-    s.command_queue = []
+    s.command_queue = Queue()
 
     # malformed JSON after DBGCMD:
     line = "DBGCMD:{ not-a-json }\n"
@@ -145,8 +148,6 @@ def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
         called.append((event_type, kwargs))
         s.is_terminated = True
 
-    # ensure command_lock exists to satisfy context manager usage if reached
-    monkeypatch.setattr(s, "command_lock", DummyLock())
     # patch the module-level send_debug_message used in receive_debug_commands
     monkeypatch.setattr(dac, "send_debug_message", fake_send)
 
