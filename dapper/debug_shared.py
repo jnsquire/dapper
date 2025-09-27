@@ -18,8 +18,16 @@ from dapper.ipc_binary import pack_frame  # lightweight util
 
 if TYPE_CHECKING:
     import io
+    from typing import Protocol
 
     from dapper.debugger_protocol import DebuggerLike
+
+    class CommandProvider(Protocol):
+        def can_handle(self, command: str) -> bool: ...
+
+        def supported_commands(self) -> Any: ...
+
+        def handle(self, session: SessionState, command: str, arguments: dict[str, Any], full_command: dict[str, Any]) -> dict | None: ...
 
 # Maximum length of strings to be sent over the wire
 MAX_STRING_LENGTH = 1000
@@ -88,8 +96,8 @@ class SessionState:
         # instead of monkeypatching the send_debug_message function.
         self.on_debug_message = EventEmitter()
 
-        # Command dispatch provider registry and back-compat handler shim
-        self._providers: list[tuple[int, Any]] = []  # list of (priority, provider)
+        # Command dispatch provider registry
+        self._providers: list[tuple[int, CommandProvider]] = []  # list of (priority, provider)
         self._providers_lock = threading.RLock()
 
         # Mapping of sourceReference -> metadata (path/name)
@@ -104,7 +112,7 @@ class SessionState:
     # ------------------------------------------------------------------
     # Command provider registration and dispatch
     # ------------------------------------------------------------------
-    def register_command_provider(self, provider: Any, *, priority: int = 0) -> None:
+    def register_command_provider(self, provider: CommandProvider, *, priority: int = 0) -> None:
         """Register a provider that can handle debug commands.
 
         Providers are consulted in descending priority order. The provider
@@ -120,7 +128,7 @@ class SessionState:
             # Highest priority first
             self._providers.sort(key=lambda p: p[0], reverse=True)
 
-    def unregister_command_provider(self, provider: Any) -> None:
+    def unregister_command_provider(self, provider: CommandProvider) -> None:
         with self._providers_lock:
             self._providers = [(pri, p) for (pri, p) in self._providers if p is not provider]
 
@@ -136,13 +144,10 @@ class SessionState:
 
         providers = self._providers_snapshot()
         for provider in providers:
-            if not self._provider_can_handle(provider, name):
-                continue
-            handle = getattr(provider, "handle", None)
-            if not callable(handle):
+            if not provider.can_handle(name):
                 continue
             try:
-                result = handle(self, name, arguments, command)
+                result = provider.handle(self, name, arguments, command)
             except Exception as exc:  # pragma: no cover - defensive
                 self._send_error_for_exception(command, name, exc)
                 return
@@ -152,29 +157,10 @@ class SessionState:
         self._send_unknown_command(command, name)
 
     # ---- helpers to reduce complexity
-    def _providers_snapshot(self) -> list[Any]:
+    def _providers_snapshot(self) -> list[CommandProvider]:
         with self._providers_lock:
             return [p for _, p in list(self._providers)]
 
-    @staticmethod
-    def _provider_can_handle(provider: Any, name: str) -> bool:
-        can_handle = getattr(provider, "can_handle", None)
-        if callable(can_handle):
-            try:
-                return bool(can_handle(name))
-            except Exception:
-                return False
-        supported = getattr(provider, "supported_commands", None)
-        if callable(supported):
-            try:
-                supp = supported()
-            except Exception:
-                return False
-            else:
-                if isinstance(supp, (list, tuple, set)):
-                    return name in supp
-                return False
-        return False
 
     @staticmethod
     def _send_response_for_result(command: dict[str, Any], result: Any) -> None:
@@ -307,7 +293,7 @@ def _format_value_str(v: Any, max_string_length: int) -> str:
         return s
 
 
-def _allocate_var_ref(v: Any, debugger: Any | None) -> int:
+def _allocate_var_ref(v: Any, debugger: DebuggerLike | None) -> int:
     if debugger is None:
         return 0
     if not (hasattr(v, "__dict__") or isinstance(v, (dict, list, tuple))):
@@ -346,7 +332,7 @@ def _visibility(n: Any) -> str:
         return "public"
 
 
-def _detect_has_data_breakpoint(n: Any, debugger: Any | None, fr: Any | None) -> bool:
+def _detect_has_data_breakpoint(n: Any, debugger: DebuggerLike | None, fr: Any | None) -> bool:
     """Best-effort detection across different debugger bookkeeping shapes.
 
     This intentionally avoids repeated getattr calls and keeps exception
@@ -386,7 +372,7 @@ def _detect_has_data_breakpoint(n: Any, debugger: Any | None, fr: Any | None) ->
 def make_variable_object(
     name: Any,
     value: Any,
-    dbg: Any | None = None,
+    dbg: DebuggerLike | None = None,
     frame: Any | None = None,
     *,
     max_string_length: int = MAX_STRING_LENGTH,
