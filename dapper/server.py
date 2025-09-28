@@ -14,6 +14,7 @@ import inspect
 import json
 import linecache
 import logging
+import mimetypes
 import os
 import re
 import socket as _socket
@@ -28,6 +29,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import cast
+
+from dapper import debug_shared
 
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_context import IPCContext
@@ -47,15 +50,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Module-level registry mapping function objects -> event name
-_payload_registry: dict[Callable[..., dict[str, Any]], str] = {}
+# Module-level registry mapping event name -> function object
+_payload_registry: dict[str, Callable[..., dict[str, Any]]] = {}
 
 
 # Decorator used to mark payload-producing methods with an event name.
 def payload(event_name: str):
     def _decorator(func: Callable[..., dict[str, Any]]):
-        # Register in module-level registry instead of mutating the function
-        _payload_registry[func] = event_name
+        # Register in module-level registry keyed by event name
+        _payload_registry[event_name] = func
         return func
 
     return _decorator
@@ -66,9 +69,13 @@ def payload(event_name: str):
 def register_payloads(cls: type):
     mapping: dict[str, str] = {}
     for name, member in cls.__dict__.items():
-        if callable(member) and member in _payload_registry:
-            evt = _payload_registry[member]
-            mapping[evt] = name
+        if not callable(member):
+            continue
+        # Find the event name whose registered function matches this member
+        for evt, func in _payload_registry.items():
+            if func is member:
+                mapping[evt] = name
+                break
     cls.payload_dispatch = mapping
     return cls
 
@@ -2535,6 +2542,205 @@ class RequestHandler:
             "success": True,
             "command": "loadedSources",
             "body": {"sources": loaded_sources},
+        }
+
+    async def _resolve_by_ref(self, source_reference: int) -> tuple[str | None, str | None]:
+        """Resolve source content and optional path by sourceReference.
+
+        Returns (content, path) where either may be None on failure.
+        """
+        dbg = self.server.debugger
+        content: str | None = None
+        path: str | None = None
+
+        # Try debugger-provided getter first (sync or async)
+        getter = getattr(dbg, "get_source_content_by_ref", None)
+        if callable(getter):
+            try:
+                res = getter(source_reference)
+                res_val = await res if inspect.isawaitable(res) else res
+                # Only accept string content; otherwise fall back
+                content = res_val if isinstance(res_val, str) else None
+            except Exception:
+                content = None
+
+        # Fallback to shared state
+        if content is None:
+            try:
+                content = debug_shared.state.get_source_content_by_ref(source_reference)
+            except Exception:
+                content = None
+
+        # Try to recover path from meta
+        getter_meta = getattr(dbg, "get_source_meta", None)
+        try:
+            if callable(getter_meta):
+                meta = getter_meta(source_reference)
+            else:
+                meta = debug_shared.state.get_source_meta(source_reference)
+            if inspect.isawaitable(meta):
+                meta = await meta
+            if isinstance(meta, dict):
+                path = meta.get("path") or path
+        except Exception:
+            # ignore meta errors
+            pass
+
+        return content, path
+
+    async def _resolve_by_path(self, path: str) -> str | None:
+        """Resolve source content by path, prefer debugger helper then shared state."""
+        dbg = self.server.debugger
+        content: str | None = None
+
+        getter = getattr(dbg, "get_source_content_by_path", None)
+        if callable(getter):
+            try:
+                res = getter(path)
+                res_val = await res if inspect.isawaitable(res) else res
+                # Only accept string content; otherwise fall back
+                content = res_val if isinstance(res_val, str) else None
+            except Exception:
+                content = None
+
+        if content is None:
+            try:
+                content = debug_shared.state.get_source_content_by_path(path)
+            except Exception:
+                content = None
+
+        return content
+
+    def _guess_mime_type(self, path: str | None, content: str) -> str | None:
+        """Return a conservative mimeType for textual content when possible."""
+        if not path:
+            return None
+        if "\x00" in content:
+            return None
+
+        guessed, _ = mimetypes.guess_type(path)
+        if guessed:
+            return guessed
+        if path.endswith((".py", ".pyw", ".txt", ".md")):
+            return "text/plain; charset=utf-8"
+        return None
+
+    async def _handle_source(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle source request: return source content by path or sourceReference.
+
+        This mirrors the behavior of the module-level handler in
+        `dapper.dap_command_handlers` but runs in the async server context.
+        """
+        args = request.get("arguments", {}) or {}
+        source = args.get("source") or {}
+        source_reference = source.get("sourceReference") or args.get("sourceReference")
+        path = source.get("path") or args.get("path")
+
+        content: str | None = None
+
+        if source_reference and isinstance(source_reference, int) and source_reference > 0:
+            content, recovered_path = await self._resolve_by_ref(source_reference)
+            if recovered_path and not path:
+                path = recovered_path
+        elif path:
+            content = await self._resolve_by_path(path)
+
+        if content is None:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "source",
+                "message": "Could not load source content",
+            }
+
+        mime_type = self._guess_mime_type(path, content)
+
+        body: dict[str, Any] = {"content": content}
+        if mime_type:
+            body["mimeType"] = mime_type
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "source",
+            "body": body,
+        }
+
+    async def _handle_module_source(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle moduleSource request: return source content for a given module id.
+
+        The server's `modules` response uses stringified id(module) as the
+        module id. This handler accepts either that id or a module name and
+        returns file contents for the module if available.
+        """
+        args = request.get("arguments", {}) or {}
+        module_id = args.get("moduleId") or args.get("module")
+        if not module_id:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Missing moduleId",
+            }
+
+        found = None
+        for name, mod in list(sys.modules.items()):
+            if mod is None:
+                continue
+            try:
+                if str(id(mod)) == str(module_id) or name == module_id:
+                    found = mod
+                    break
+            except Exception:
+                continue
+
+        if found is None:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Module not found",
+            }
+
+        path = getattr(found, "__file__", None)
+        if not path:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Module has no file path",
+            }
+
+        try:
+            with Path(path).open("rb") as f:
+                data = f.read()
+            # Try to decode as utf-8; if it fails preserve bytes as latin-1 to
+            # keep a 1:1 mapping so NUL bytes survive for downstream checks.
+            try:
+                content = data.decode("utf-8")
+            except Exception:
+                content = data.decode("latin-1")
+        except Exception as e:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": f"Failed to read module source: {e!s}",
+            }
+
+        body: dict[str, Any] = {"content": content}
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "moduleSource",
+            "body": body,
         }
 
     async def _handle_modules(self, request: dict[str, Any]) -> dict[str, Any]:
