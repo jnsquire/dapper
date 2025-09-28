@@ -6,6 +6,7 @@ import contextlib
 import itertools
 import json
 import logging
+import os
 import queue
 import sys
 import threading
@@ -15,6 +16,7 @@ from typing import Any
 from typing import TypedDict
 from typing import cast
 
+from dapper.debugger_bdb import DebuggerBDB
 from dapper.events import EventEmitter
 from dapper.ipc_binary import pack_frame  # lightweight util
 
@@ -239,6 +241,57 @@ class SessionState:
             return Path(path).read_text(encoding="utf-8", errors="ignore")
         except Exception:
             return None
+
+    def setup_process_state(self, args: Any) -> None:
+        """Configure process-global state from parsed launcher arguments.
+
+        This was previously a top-level helper. Moving it onto the
+        SessionState instance keeps process configuration close to the
+        state it mutates. Heavy imports are performed locally to avoid
+        import-time cycles.
+        """
+        # set flags
+        self.stop_at_entry = getattr(args, "stop_on_entry", False)
+        self.no_debug = getattr(args, "no_debug", False)
+
+        logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
+
+        # attempt IPC setup (imports deferred to avoid circular imports)
+        if getattr(args, "ipc", None):
+            try:
+                from dapper.launcher_ipc import _setup_ipc_pipe  # noqa: PLC0415
+                from dapper.launcher_ipc import _setup_ipc_socket  # noqa: PLC0415
+
+                if args.ipc == "pipe" and os.name == "nt" and getattr(args, "ipc_pipe", None):
+                    _setup_ipc_pipe(args.ipc_pipe)
+                else:
+                    _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path)
+            except Exception:
+                # keep running without IPC if setup failed
+                self.ipc_enabled = False
+
+        # start the command receiving thread
+        try:
+            # TODO Fix this, needed to avoid circular import
+            from dapper.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
+
+            command_thread = threading.Thread(target=receive_debug_commands, daemon=True)
+            command_thread.start()
+        except Exception:
+            # best-effort; if thread cannot be started leave state as-is
+            pass
+
+        # attach a debugger instance
+        try:
+            self.debugger = DebuggerBDB()
+            if self.stop_at_entry:
+                try:
+                    self.debugger.stop_on_entry = True
+                except Exception:
+                    pass
+        except Exception:
+            # if debugger construction fails, leave debugger as None
+            self.debugger = None
 
 
 # Module-level singleton instance used throughout the codebase

@@ -5,17 +5,10 @@ Launcher, argument parsing, IPC setup, and main routine for debug launcher.
 from __future__ import annotations
 
 import argparse
-import logging
-import os
 import sys
-import threading
 from pathlib import Path
 
-from dapper.debug_adapter_comm import receive_debug_commands
-from dapper.debug_adapter_comm import state
-from dapper.debugger_bdb import DebuggerBDB
-from dapper.launcher_ipc import _setup_ipc_pipe
-from dapper.launcher_ipc import _setup_ipc_socket
+from dapper.debug_shared import state
 
 
 def _load_program_source(program_path, args):
@@ -59,22 +52,9 @@ def main():
     args = parse_args()
     program_path = args.program
     program_args = args.arg
-    state.stop_at_entry = args.stop_on_entry
-    state.no_debug = args.no_debug
-    logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
-    if args.ipc:
-        try:
-            if args.ipc == "pipe" and os.name == "nt" and args.ipc_pipe:
-                _setup_ipc_pipe(args.ipc_pipe)
-            else:
-                _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path)
-        except Exception:
-            state.ipc_enabled = False
-    command_thread = threading.Thread(target=receive_debug_commands, daemon=True)
-    command_thread.start()
-    state.debugger = DebuggerBDB()
-    if state.stop_at_entry:
-        state.debugger.stop_on_entry = True
+
+    # Configure process-global state (logging, IPC, command thread, debugger)
+    state.setup_process_state(args)
 
     program_code = _load_program_source(program_path, program_args)
     ns = {"__name__": "__main__"}
@@ -82,7 +62,11 @@ def main():
     if state.no_debug:
         exec(program_code, ns)
     else:
-        state.debugger.run(program_code, ns)
+        dbg = state.debugger
+        if dbg is None:
+            msg = "Debugger not initialized"
+            raise RuntimeError(msg)
+        dbg.run(program_code, ns)
 
 
 if __name__ == "__main__":
