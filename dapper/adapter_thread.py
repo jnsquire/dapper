@@ -21,15 +21,18 @@ Notes:
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 from dapper.breakpoints_controller import BreakpointController
 from dapper.connections.pipe import NamedPipeServerConnection
 from dapper.connections.tcp import TCPServerConnection
 from dapper.events import EventEmitter
 from dapper.server import DebugAdapterServer
+
+if TYPE_CHECKING:
+    import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -58,52 +61,24 @@ class AdapterThread:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: DebugAdapterServer | None = None
         self._started = threading.Event()
+        # Event used to signal when the adapter thread has stopped.
         self._stopped = threading.Event()
 
         # Event/future used to publish the bound port for TCP listeners.
         self.on_port_assigned = EventEmitter()
+
         # Future to deliver the assigned TCP port to callers. Created lazily.
-        self._port_future: concurrent.futures.Future[int] | None = None
-        # Background task observing port; kept to avoid GC
+        # Background task observing port; reference is kept to prevent garbage collection
+        # before the task completes, ensuring port assignment notification is not interrupted.
+        self._port_observer_task: asyncio.Task | None = None
         self._port_observer_task: asyncio.Task | None = None
         # Breakpoint controller (exposed after server is constructed)
         self.breakpoints: BreakpointController | None = None
-
-    def get_port_future(self) -> concurrent.futures.Future[int]:
-        """Return a concurrent.futures.Future that will be completed with the
-        TCP port number once the adapter has bound to a port.
-
-        The future is created lazily and may be completed from the adapter
-        thread when the bound port becomes available. If the port is already
-        known when called, the returned future will already be resolved.
-        """
-        if self._port_future is None:
-            self._port_future = concurrent.futures.Future()
-            # If the server already exists and has a port, set it now
-            try:
-                conn = getattr(self._server, "connection", None)
-                if conn is not None and getattr(conn, "port", None):
-                    self._port_future.set_result(int(conn.port))
-            except Exception:
-                # Safe to ignore; the background thread will fulfill later
-                logger.debug("Could not set port future immediately")
-        return self._port_future
-
-    def _set_port_from_loop(self, port: int) -> None:
-        """Internal helper called from the adapter thread/loop to publish
-        the bound port to any waiting futures/listeners.
-        """
-        try:
-            if self._port_future is None:
-                self._port_future = concurrent.futures.Future()
-            if not self._port_future.done():
-                self._port_future.set_result(port)
-        except Exception:
-            logger.debug("failed to complete port future", exc_info=True)
-        try:
-            self.on_port_assigned.emit(port)
-        except Exception:
-            logger.debug("failed to emit on_port_assigned", exc_info=True)
+        # Background task for stopping the server; kept to avoid GC
+        self._stop_task: asyncio.Task | None = None
+        # Server task (created when starting the server)
+        self._server_task: asyncio.Task | None = None
+        self._port_future: concurrent.futures.Future[int] | None = None
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -170,7 +145,7 @@ class AdapterThread:
                             await connection.start_listening()
                             port = getattr(connection, "port", None)
                             if port:
-                                self._set_port_from_loop(int(port))
+                                self.on_port_assigned.emit(port)
                         except Exception:
                             logger.exception("Error starting TCP listener to obtain port")
 
@@ -220,6 +195,8 @@ class AdapterThread:
 
         Schedules `server.stop()` on the adapter loop (if available), then
         stops the loop. Optionally join the thread.
+
+        If the adapter thread is not started or already stopped, this method is a no-op.
         """
         loop = self._loop
         server = self._server
@@ -227,22 +204,24 @@ class AdapterThread:
         if loop is not None:
             try:
                 if server is not None:
-                    # Schedule server.stop() coroutine on the loop
-                    def _schedule_stop() -> None:
-                        async def _stop() -> None:
-                            try:
-                                await server.stop()
-                            except Exception:
-                                logger.exception("Error stopping server")
+                    # Schedule server.stop() coroutine on the loop from another thread.
+                    # Use run_coroutine_threadsafe which returns a concurrent.futures.Future.
+                    try:
+                        fut = asyncio.run_coroutine_threadsafe(server.stop(), loop)
+                        # Keep a reference to allow cancellation/inspection and avoid GC
+                        self._stop_task = fut  # type: ignore[assignment]
+                    except Exception:
+                        logger.exception("Error scheduling server.stop()")
 
-                        t = asyncio.create_task(_stop())
-                        # Keep a reference to prevent GC
-                        self._stop_task = t  # type: ignore[attr-defined]
-
-                    loop.call_soon_threadsafe(_schedule_stop)
-
-                # Stop the loop itself after giving server.stop a chance
-                loop.call_later(0.05, loop.stop)  # type: ignore[attr-defined]
+                # Schedule loop.stop() to run inside the loop thread after a short delay.
+                # The short delay (0.05s) ensures any pending tasks (such as server.stop())
+                # have a chance to complete before the loop is stopped.
+                # call_soon_threadsafe is used to safely schedule loop.call_later from another thread,
+                # ensuring the delayed stop is created on the loop's own thread.
+                try:
+                    loop.call_soon_threadsafe(loop.call_later, 0.05, loop.stop)
+                except Exception:
+                    logger.debug("Error scheduling loop stop")
             except Exception:
                 logger.debug("Error scheduling loop stop")
 

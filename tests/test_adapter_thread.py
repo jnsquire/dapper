@@ -9,6 +9,24 @@ import pytest
 import dapper.adapter_thread as adapter_thread_mod
 
 
+class PortTimeoutError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Timed out waiting for port assignment")
+
+
+async def _wait_for_port(runner: adapter_thread_mod.AdapterThread, timeout: float = 2.0) -> int:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        server = runner.server
+        conn = server.connection if server else None
+        port = getattr(conn, "port", None)
+        if port:
+            return port
+        await asyncio.sleep(0.01)
+    raise PortTimeoutError
+
+
 class _FakeTCPConnection:
     def __init__(self, host: str = "localhost", port: int = 4711) -> None:
         self.host = host
@@ -68,19 +86,10 @@ async def test_start_stop_tcp(monkeypatch):
     monkeypatch.setattr(adapter_thread_mod, "DebugAdapterServer", _FakeServer)
 
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", host="127.0.0.1", port=None)
-
-    # Request the port future before starting; it should resolve after start
-    fut = runner.get_port_future()
-    assert not fut.done()
-
     runner.start()
 
     # Wait for port to be published by the adapter thread
-    result_port = await asyncio.get_running_loop().run_in_executor(
-        None,
-        fut.result,
-        2.0,  # 2 seconds timeout via concurrent Future API
-    )
+    result_port = await _wait_for_port(runner)
     assert result_port == 55555
 
     # Ensure thread and loop are active
@@ -131,13 +140,11 @@ async def test_port_future_resolves_when_server_created(monkeypatch):
     monkeypatch.setattr(adapter_thread_mod, "DebugAdapterServer", _FakeServer)
 
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", port=None)
-    # Get future before starting to ensure lazy creation path is covered
-    fut = runner.get_port_future()
-    assert not fut.done()
 
     runner.start()
 
+    port = await _wait_for_port(runner)
+
     # Future should resolve to 55555 after the adapter thread starts listening
-    result_port = await asyncio.get_running_loop().run_in_executor(None, fut.result, 2.0)
-    assert result_port == 55555
+    assert port == 55555
     runner.stop()

@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.debug_shared import make_variable_object
@@ -20,6 +21,7 @@ from dapper.debug_shared import state
 from dapper.protocol_types import Source
 
 if TYPE_CHECKING:
+    from dapper.debugger_protocol import Variable
     from dapper.protocol_types import ConfigurationDoneArguments
     from dapper.protocol_types import ContinueArguments
     from dapper.protocol_types import EvaluateArguments
@@ -373,7 +375,7 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
     return value_str
 
 
-def create_variable_object(name, value):
+def create_variable_object(name, value) -> Variable:
     # Prefer debugger-provided helper when available (DebuggerBDB.make_variable_object)
     dbg = state.debugger
     if dbg is not None:
@@ -382,12 +384,12 @@ def create_variable_object(name, value):
             try:
                 res = fn(name, value)
                 if isinstance(res, dict):
-                    return res
+                    return cast("Variable", res)
             except Exception:
                 # Fall through to module helper on error
                 pass
     # Fallback to module-level helper
-    return make_variable_object(name, value, dbg)
+    return cast("Variable", make_variable_object(name, value, dbg))
 
 
 @command_handler("evaluate")
@@ -670,7 +672,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module : start_module + module_count]
+            modules = all_modules[start_module:start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

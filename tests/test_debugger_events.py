@@ -1,9 +1,15 @@
 import asyncio
 import unittest
 
+from dapper.server import PyDebugger
 from dapper.server import PyDebuggerThread
 
 from .test_debugger_base import BaseDebuggerTest
+
+
+# Run the loop to allow the scheduled event to be sent
+def _run_loop_once(debugger: PyDebugger):
+    debugger.loop.run_until_complete(asyncio.sleep(0))
 
 
 class AsyncRecorder:
@@ -63,8 +69,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
         message = '{"event": "continued", "threadId": 1, "allThreadsContinued": true}'
         self.debugger._handle_debug_message(message)
 
-        # Run the loop to allow the scheduled event to be sent
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that continued event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -81,7 +86,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
         )
         self.debugger._handle_debug_message(message)
 
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that exception event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -103,7 +108,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
             '"breakpoint": {"id": 1, "verified": true, "line": 10}}'
         )
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that breakpoint event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -124,7 +129,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
             '"path": "/path/to/test.py"}}'
         )
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that module event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -148,7 +153,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
             '"systemProcessId": 1234, "isLocalProcess": true}'
         )
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that process event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -171,7 +176,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
             '"path": "/path/to/test.py"}}'
         )
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that loadedSource event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -191,7 +196,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         message = '{"event": "stopped", "threadId": 1, "reason": "breakpoint"}'
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # After handling stopped event, stopped_event should be set
         assert self.debugger.stopped_event.is_set()
@@ -205,7 +210,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         message = '{"event": "thread", "threadId": 1, "reason": "exited"}'
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that thread was removed
         assert 1 not in self.debugger.threads
@@ -221,7 +226,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         message = '{"event": "thread", "threadId": 2, "reason": "started"}'
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Check that thread was added
         assert 2 in self.debugger.threads
@@ -243,7 +248,7 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         message = '{"event": "unknown_event", "data": "test"}'
         self.debugger._handle_debug_message(message)
-        self.debugger.loop.run_until_complete(asyncio.sleep(0))
+        _run_loop_once(self.debugger)
 
         # Should not send any event for unknown event types
         self.debugger.server.send_event.assert_not_called()

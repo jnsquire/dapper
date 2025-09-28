@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future as _CFuture
 
     from dapper.connections import ConnectionBase
+    from dapper.debugger_protocol import Variable
     from dapper.protocol_types import ExceptionInfoRequest
     from dapper.protocol_types import GenericRequest
     from dapper.protocol_types import Source
@@ -887,7 +888,9 @@ class PyDebugger:
         with self.lock:
             thread = self.threads.get(thread_id)
             if thread is None:
-                self.threads[thread_id] = thread = PyDebuggerThread(thread_id, f"Thread {thread_id}")
+                self.threads[thread_id] = thread = PyDebuggerThread(
+                    thread_id, f"Thread {thread_id}"
+                )
             thread.is_stopped = True
             thread.stop_reason = reason
 
@@ -1647,7 +1650,7 @@ class PyDebugger:
         filter_type: str | None = None,
         start: int = 0,
         count: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Variable]:
         """Get variables for a scope or object"""
         if self.in_process and self._inproc is not None:
             try:
@@ -1657,7 +1660,7 @@ class PyDebugger:
                     _start=start if start else None,
                     _count=count if count else None,
                 )
-                return cast("list[dict[str, Any]]", body.get("variables", []))
+                return cast("list[Variable]", body.get("variables", []))
             except Exception:
                 logger.exception("in-process variables failed")
                 return []
@@ -1676,14 +1679,14 @@ class PyDebugger:
         response = await self._send_command_to_debuggee(command, expect_response=True)
 
         if response and "body" in response and "variables" in response["body"]:
-            return response["body"]["variables"]
+            return cast("list[Variable]", response["body"]["variables"])
 
-        variables = []
+        variables: list[Variable] = []
         with self.lock:
             if var_ref in self.var_refs and isinstance(self.var_refs[var_ref], list):
-                variables = self.var_refs[var_ref]
+                variables = cast("list[Variable]", self.var_refs[var_ref])
 
-        return cast("list[dict[str, Any]]", variables)
+        return variables
 
     async def set_variable(
         self,

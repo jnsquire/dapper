@@ -13,9 +13,14 @@ import sys
 import threading
 import traceback
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper.debug_helpers import frame_may_handle_exception
+
+if TYPE_CHECKING:
+    from dapper.debugger_protocol import Variable
 
 # Cached resolvers for the two external helpers. We prefer the launcher
 # helpers when that module is present (tests commonly patch
@@ -302,7 +307,7 @@ class DebuggerBDB(bdb.Bdb):
     # ---------------- Variable object helper -----------------
     def make_variable_object(
         self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> dict[str, Any]:
+    ) -> Variable:
         """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
         This mirrors the module-level helper previously stored in debug_shared.
@@ -381,13 +386,13 @@ class DebuggerBDB(bdb.Bdb):
             attrs.append("hasDataBreakpoint")
         presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
 
-        return {
+        return cast("Variable", {
             "name": str(name),
             "value": val_str,
             "type": type_name,
             "variablesReference": var_ref,
             "presentationHint": presentation,
-        }
+        })
 
     # Backwards-compatible alias: some callers expect a create_variable_object
     # helper on debugger instances (historical launcher helper). Delegate to
@@ -395,7 +400,7 @@ class DebuggerBDB(bdb.Bdb):
     # consistent across adapter and launcher paths.
     def create_variable_object(
         self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> dict[str, Any]:
+    ) -> Variable:
         return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):

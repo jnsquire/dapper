@@ -52,7 +52,9 @@ def frame_may_handle_exception(f: types.FrameType) -> bool | None:
     return res
 
 
-def frame_has_exception_table_handler(code: types.CodeType | None, lineno: int | None) -> bool | None:
+def frame_has_exception_table_handler(
+    code: types.CodeType | None, lineno: int | None
+) -> bool | None:
     result: bool | None = None
     try:
         ex_table = getattr(code, "co_exceptiontable", None)

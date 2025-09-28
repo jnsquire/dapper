@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
+from typing import cast
 
 from dapper.events import EventEmitter
 from dapper.ipc_binary import pack_frame  # lightweight util
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from dapper.debugger_protocol import DebuggerLike
+    from dapper.debugger_protocol import Variable
 
     class CommandProvider(Protocol):
         def can_handle(self, command: str) -> bool: ...
@@ -387,7 +389,7 @@ def make_variable_object(
     frame: Any | None = None,
     *,
     max_string_length: int = MAX_STRING_LENGTH,
-) -> dict[str, Any]:
+) -> Variable:
     """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
     If `dbg` is provided and the value is a structured object (has __dict__ or is a dict/list/tuple),
@@ -405,10 +407,10 @@ def make_variable_object(
         attrs.append("hasDataBreakpoint")
     presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
 
-    return {
+    return cast("Variable", {
         "name": str(name),
         "value": val_str,
         "type": type_name,
         "variablesReference": var_ref,
         "presentationHint": presentation,
-    }
+    })
