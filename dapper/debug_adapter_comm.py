@@ -7,10 +7,16 @@ import os
 import sys
 import traceback
 from queue import Empty
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import cast
 
 from dapper.dap_command_handlers import COMMAND_HANDLERS
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
+
+if TYPE_CHECKING:
+    from dapper.debug_shared import SessionState
 
 
 class DapMappingProvider:
@@ -33,7 +39,12 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    def handle(self, _session, command: str, arguments, _full_command):
+    def handle(self, session: "SessionState", command: str, arguments: dict[str, Any], full_command: dict[str, Any]):
+        # The underlying mapping handlers only accept `arguments` so delegate
+        # and translate their return shape to the protocol expected by
+        # register_command_provider.
+        _ = session  # parameter kept for protocol compatibility
+        _ = full_command
         func = self._mapping.get(command)
         if not callable(func):
             return {"success": False, "message": f"Unknown command: {command}"}
@@ -42,7 +53,7 @@ class DapMappingProvider:
 
 
 # Register the mapping provider at a reasonable default priority.
-state.register_command_provider(DapMappingProvider(COMMAND_HANDLERS), priority=100)
+state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
 
 
 def receive_debug_commands() -> None:

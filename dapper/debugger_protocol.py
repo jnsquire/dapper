@@ -111,17 +111,7 @@ class DebuggerLike(Protocol):
         frame: Any | None = None,
         *,
         max_string_length: int = 1000,
-    ) -> dict[str, Any]: ...
-
-    # Historical launcher helper name; accept both to be lenient for callers/tests
-    def create_variable_object(
-        self,
-        name: Any,
-        value: Any,
-        frame: Any | None = None,
-        *,
-        max_string_length: int = 1000,
-    ) -> dict[str, Any]: ...
+    ) -> Variable: ...
 
 
 __all__ = ["DebuggerLike"]

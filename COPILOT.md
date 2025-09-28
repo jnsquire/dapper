@@ -41,7 +41,7 @@ Testing guidance
 Type & API notes
 - Use type hints wherever the intended type is clear.
 - Use TypedDicts in preference to dict types.
-- Prefer debugger-provided `create_variable_object`/`make_variable_object` when available; `debug_shared.create_variable_object` is a safe fallback.
+- Prefer debugger-provided `make_variable_object` when available; `debug_shared.make_variable_object` is the safe fallback.
 
 Temporary scripts
 - Put short repros and one-off scripts in `tools/temp_scripts/`.

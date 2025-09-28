@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper import dap_command_handlers as handlers
 from dapper import debug_shared
+
+if TYPE_CHECKING:
+    from dapper.debugger_protocol import Variable
 
 
 class DummyDebugger:
@@ -38,7 +43,7 @@ class DummyDebugger:
         self.breaks: dict[str, list[tuple[int, Any | None]]] = {}
         self.recorded: list[tuple[str, int, dict]] = []
         self.stopped_thread_ids: set[int] = set()
-
+    
     def set_break(
         self,
         filename: str,
@@ -115,19 +120,17 @@ class DummyDebugger:
 
     def make_variable_object(
         self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> dict[str, Any]:
+    ) -> Variable:
         # Delegate to shared helper to produce a realistic variable object
         from dapper import debug_shared  # noqa: PLC0415
 
-        return debug_shared.make_variable_object(
-            name, value, self, frame, max_string_length=max_string_length
-        )
+        return cast("Variable", debug_shared.make_variable_object(name, value, self, frame, max_string_length=max_string_length))
 
     def create_variable_object(
         self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> dict[str, Any]:
+    ) -> Variable:
         # Backwards-compatible alias used by some callers
-        return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
+        return cast("Variable", self.make_variable_object(name, value, frame, max_string_length=max_string_length))
 
 
 def capture_send(monkeypatch):

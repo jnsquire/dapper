@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.debug_shared import make_variable_object
+from dapper import debug_shared as _d_shared
 from dapper.debug_shared import state
 from dapper.debugger_bdb import DebuggerBDB
 from dapper.ipc_binary import HEADER_SIZE
@@ -31,6 +31,7 @@ from dapper.ipc_binary import unpack_header
 
 if TYPE_CHECKING:
     from dapper.debugger_protocol import DebuggerLike
+    from dapper.debugger_protocol import Variable
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 MAX_STRING_LENGTH = 1000
 VAR_REF_TUPLE_SIZE = 2  # Variable references are stored as 2-element tuples
+SIMPLE_FN_ARGCOUNT = 2
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
@@ -109,7 +111,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         except Exception as e:
             send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = data[HEADER_SIZE : HEADER_SIZE + length]
+        payload = data[HEADER_SIZE:HEADER_SIZE + length]
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -435,27 +437,105 @@ def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     var_ref = arguments.get("variablesReference")
 
-    if dbg and var_ref in dbg.var_refs:
+    if dbg and isinstance(var_ref, int) and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
+        variables: list[Variable] = []
 
-        if isinstance(frame_info, tuple):
-            frame_id, scope = frame_info
-            frame = dbg.frame_id_to_frame.get(frame_id)
-            variables = []
+        # frame_info can be one of: ("object", obj), (frame_id, "locals"|"globals"), or a cached list
+        # Handle tuple shapes explicitly to narrow types for the type checker
+        if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
+            first, second = frame_info
 
-            if frame and scope == "locals":
-                for name, value in frame.f_locals.items():
-                    # Create variable object for each local
-                    var_obj = create_variable_object(name, value)
-                    variables.append(var_obj)
+            # object reference: iterate its members
+            if first == "object":
+                parent_obj = second
+                # support dict/list/object attribute iteration similar to _set_object_member
+                if isinstance(parent_obj, dict):
+                    for name, value in parent_obj.items():
+                        fn = getattr(dbg, "make_variable_object", None)
+                        if callable(fn):
+                            try:
+                                var_obj = fn(name, value)
+                                if isinstance(var_obj, dict):
+                                    variables.append(cast("Variable", var_obj))
+                                    continue
+                            except Exception:
+                                pass
+                        variables.append(_d_shared.make_variable_object(name, value, dbg))
+                elif isinstance(parent_obj, list):
+                    for idx, value in enumerate(parent_obj):
+                        name = str(idx)
+                        fn = getattr(dbg, "make_variable_object", None)
+                        if callable(fn):
+                            try:
+                                var_obj = fn(name, value)
+                                if isinstance(var_obj, dict):
+                                    variables.append(cast("Variable", var_obj))
+                                    continue
+                            except Exception:
+                                pass
+                        variables.append(_d_shared.make_variable_object(name, value, dbg))
+                else:
+                    # Generic object: inspect attributes
+                    for name in dir(parent_obj):
+                        if name.startswith("_"):
+                            continue
+                        try:
+                            value = getattr(parent_obj, name)
+                        except Exception:
+                            continue
+                        fn = getattr(dbg, "make_variable_object", None)
+                        if callable(fn):
+                            try:
+                                var_obj = fn(name, value)
+                                if isinstance(var_obj, dict):
+                                    variables.append(cast("Variable", var_obj))
+                                    continue
+                            except Exception:
+                                pass
+                        variables.append(_d_shared.make_variable_object(name, value, dbg))
 
-            elif frame and scope == "globals":
-                for name, value in frame.f_globals.items():
-                    # Create variable object for each global
-                    var_obj = create_variable_object(name, value)
-                    variables.append(var_obj)
+            # scope reference (frame_id, "locals"|"globals")
+            elif isinstance(first, int) and second in ("locals", "globals"):
+                # Narrow first to int for the type checker
+                assert isinstance(first, int)
+                frame_id: int = first
+                scope: str = second
+                frame = dbg.frame_id_to_frame.get(frame_id)
 
-            send_debug_message("variables", variablesReference=var_ref, variables=variables)
+                if frame and scope == "locals":
+                    for name, value in frame.f_locals.items():
+                        fn = getattr(dbg, "make_variable_object", None)
+                        if callable(fn):
+                            try:
+                                var_obj = fn(name, value)
+                                if isinstance(var_obj, dict):
+                                    variables.append(cast("Variable", var_obj))
+                                    continue
+                            except Exception:
+                                pass
+                        variables.append(_d_shared.make_variable_object(name, value, dbg))
+
+                elif frame and scope == "globals":
+                    for name, value in frame.f_globals.items():
+                        fn = getattr(dbg, "make_variable_object", None)
+                        if callable(fn):
+                            try:
+                                var_obj = fn(name, value)
+                                if isinstance(var_obj, dict):
+                                    variables.append(cast("Variable", var_obj))
+                                    continue
+                            except Exception:
+                                pass
+                        variables.append(_d_shared.make_variable_object(name, value, dbg))
+
+        # cached list of Variables
+        if isinstance(frame_info, list):
+            for var_obj in frame_info:
+                if isinstance(var_obj, dict):
+                    variables.append(cast("Variable", var_obj))
+
+        send_debug_message("variables", variablesReference=var_ref, variables=variables)
 
 
 def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
@@ -465,33 +545,33 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
     name = arguments.get("name")
     value = arguments.get("value")
 
-    if dbg and var_ref in dbg.var_refs:
+    if dbg and isinstance(var_ref, int) and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
 
-        # Variable references are stored as tuples with 2 elements
+        # Handle tuple forms explicitly to narrow to object vs scope refs
         if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
             first, second = frame_info
 
-            # Check if this is an object reference
+            # object reference
             if first == "object":
-                # This is an object reference, set attribute or item
                 parent_obj = second
                 return _set_object_member(parent_obj, name, value)
-            # This is a scope reference (frame_id, scope_type)
-            frame_id, scope = first, second
-            frame = dbg.frame_id_to_frame.get(frame_id)
 
-            if frame:
-                return _set_scope_variable(frame, scope, name, value)
+            # scope reference
+            if isinstance(first, int) and second in ("locals", "globals"):
+                # Narrow to int for the type checker
+                assert isinstance(first, int)
+                frame_id: int = first
+                scope: str = second
+                frame = dbg.frame_id_to_frame.get(frame_id)
+                if frame:
+                    return _set_scope_variable(frame, scope, cast("Any", name), cast("Any", value))
 
     # Invalid variable reference
-    return {
-        "success": False,
-        "message": f"Invalid variable reference: {var_ref}",
-    }
+    return {"success": False, "message": f"Invalid variable reference: {var_ref}", }
 
 
-def _set_scope_variable(frame, scope, name, value):
+def _set_scope_variable(frame, scope: str, name: Any, value: Any):
     """Set a variable in a frame scope (locals or globals)"""
     try:
         # Enhanced value conversion with frame context
@@ -506,22 +586,38 @@ def _set_scope_variable(frame, scope, name, value):
             return {"success": False, "message": f"Unknown scope: {scope}"}
 
         # Create variable object for the response
-        var_obj = create_variable_object(name, new_value)
+        dbg = state.debugger
+        fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
+        var_obj = None
+        if callable(fn):
+            try:
+                # Some debuggers may accept (name, value) or (name, value, frame)
+                if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT:
+                    var_obj = fn(name, new_value, frame)
+                else:
+                    var_obj = fn(name, new_value)
+            except Exception:
+                var_obj = None
 
+        # Only accept mapping-like results from debugger helper
+        if not isinstance(var_obj, dict):
+            var_obj = None
+
+        if not var_obj:
+            var_obj = _d_shared.make_variable_object(name, new_value, dbg, frame)
+
+        var_obj = cast("Variable", var_obj)
         return {
             "success": True,
             "body": {
-                "value": var_obj["value"],
-                "type": var_obj["type"],
-                "variablesReference": var_obj["variablesReference"],
+                "value": cast("dict", var_obj)["value"],
+                "type": cast("dict", var_obj)["type"],
+                "variablesReference": cast("dict", var_obj)["variablesReference"],
             },
         }
 
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to set variable '{name}': {e!s}",
-        }
+        return {"success": False, "message": f"Failed to set variable '{name}': {e!s}", }
 
 
 def _set_object_member(parent_obj, name, value):
@@ -570,14 +666,26 @@ def _set_object_member(parent_obj, name, value):
                 }
 
         # Create variable object for the response
-        var_obj = create_variable_object(name, new_value)
+        fn = getattr(state.debugger, "make_variable_object", None)
+        var_obj = None
+        if callable(fn):
+            try:
+                var_obj = fn(name, new_value)
+                # Only accept mapping-like results from debugger helper
+                if not isinstance(var_obj, dict):
+                    var_obj = None
+            except Exception:
+                var_obj = None
+        if not var_obj:
+            var_obj = _d_shared.make_variable_object(name, new_value, state.debugger, None)
 
+        var_obj = cast("Variable", var_obj)
         return {
             "success": True,
             "body": {
-                "value": var_obj["value"],
-                "type": var_obj["type"],
-                "variablesReference": var_obj["variablesReference"],
+                "value": cast("dict", var_obj)["value"],
+                "type": cast("dict", var_obj)["type"],
+                "variablesReference": cast("dict", var_obj)["variablesReference"],
             },
         }
 
@@ -644,29 +752,7 @@ def _convert_string_to_value(value_str: str):
     return _convert_value_with_context(value_str)
 
 
-def create_variable_object(name, value):
-    """Create a variable object for DAP.
-
-    Prefer the debugger instance helper if present (either
-    `create_variable_object` or `make_variable_object`). If absent, delegate
-    to the shared module-level helper to keep behavior consistent.
-    """
-    dbg = state.debugger
-    if dbg is not None:
-        for attr in ("create_variable_object", "make_variable_object"):
-            fn = getattr(dbg, attr, None)
-            if callable(fn):
-                try:
-                    res = fn(name, value)
-                    if isinstance(res, dict):
-                        return res
-                except Exception:
-                    # If the helper fails, try the next option or fall back
-                    # to the shared helper below.
-                    pass
-
-    # Final fallback: use the shared helper which mirrors the legacy logic
-    return make_variable_object(name, value, dbg)
+# create_variable_object removed: use debug_shared.make_variable_object instead
 
 
 def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):

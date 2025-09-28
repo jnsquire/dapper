@@ -21,6 +21,8 @@ from dapper.events import EventEmitter
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    # TypedDict for variable-shaped dicts
+    from dapper.debugger_protocol import Variable
     from dapper.protocol_types import Breakpoint
     from dapper.protocol_types import ContinueResponseBody
     from dapper.protocol_types import EvaluateResponseBody
@@ -209,13 +211,13 @@ class InProcessDebugger:
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
             frame = dbg.frame_id_to_frame.get(frame_id)
-            variables: list[dict[str, Any]] = []
+            variables: list[Variable] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
-                    variables.append(dbg.make_variable_object(name, value))
+                    variables.append(cast("Variable", dbg.make_variable_object(name, value)))
             elif frame and scope == "globals":
                 for name, value in frame.f_globals.items():
-                    variables.append(dbg.make_variable_object(name, value))
+                    variables.append(cast("Variable", dbg.make_variable_object(name, value)))
             # The `make_variable_object` helper returns Variable-shaped dicts
             return cast("VariablesResponseBody", {"variables": variables})
         return cast("VariablesResponseBody", {"variables": []})

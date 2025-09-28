@@ -8,10 +8,10 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 from dapper.debug_launcher import _convert_string_to_value
-from dapper.debug_launcher import create_variable_object
 
 # Import the specific functions we want to test
 from dapper.debug_launcher import handle_set_variable
+from dapper.debug_shared import make_variable_object
 
 
 class TestSetVariable(unittest.TestCase):
@@ -53,7 +53,7 @@ class TestSetVariable(unittest.TestCase):
         mock_state.debugger = self.mock_debugger
 
         # Test simple value
-        var_obj = create_variable_object("test_var", 42)
+        var_obj = make_variable_object("test_var", 42)
         assert var_obj["name"] == "test_var"
         assert var_obj["value"] == "42"
         assert var_obj["type"] == "int"

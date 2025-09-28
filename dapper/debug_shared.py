@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 
         def handle(
             self,
-            session: SessionState,
+            session: Any,
             command: str,
             arguments: dict[str, Any],
-            full_command: dict[str, Any],
+            full_command: Any,
         ) -> dict | None: ...
 
 
@@ -45,6 +45,9 @@ VAR_REF_TUPLE_SIZE = 2
 
 # Threshold for considering a string 'raw' (long/multiline)
 STRING_RAW_THRESHOLD = 80
+
+# Number of positional args for the simple make_variable_object signature
+MAKE_VAR_SIMPLE_ARGCOUNT = 2
 
 send_logger = logging.getLogger(__name__ + ".send")
 logger = logging.getLogger(__name__)
@@ -84,7 +87,6 @@ class SessionState:
         # Avoid reinitializing on subsequent __new__ returns
         if getattr(self, "_initialized", False):
             return
-
         # Debugger instance: use structural protocol so tests can provide
         # simple dummy implementations that satisfy the expected surface.
         self.debugger: DebuggerLike | None = None
@@ -122,7 +124,7 @@ class SessionState:
     # ------------------------------------------------------------------
     # Command provider registration and dispatch
     # ------------------------------------------------------------------
-    def register_command_provider(self, provider: CommandProvider, *, priority: int = 0) -> None:
+    def register_command_provider(self, provider: Any, *, priority: int = 0) -> None:
         """Register a provider that can handle debug commands.
 
         Providers are consulted in descending priority order. The provider
@@ -259,7 +261,7 @@ def send_debug_message(event_type: str, **kwargs) -> None:
     # Prefer IPC when enabled; fall back to logging/flush.
     if state.ipc_enabled:
         # Binary IPC path
-        if state.ipc_binary:
+        if getattr(state, "ipc_binary", False):
             payload = json.dumps(message).encode("utf-8")
             frame = pack_frame(1, payload)
             # Prefer pipe conn if available
@@ -392,15 +394,19 @@ def _make_variable_object_impl(
 ) -> Variable:
     """Internal implementation that builds the Variable-shaped dict.
 
-    This returns a plain dict cast to ``Variable`` to avoid invoking
-    TypedDict constructors at runtime.
+    This function uses the module-level helpers to format the value string,
+    allocate variable references on the debugger (when present), and
+    produce the presentationHint structure expected by clients.
     """
+
     val_str = _format_value_str(value, max_string_length)
     var_ref = _allocate_var_ref(value, dbg)
     type_name = type(value).__name__
     kind, attrs = _detect_kind_and_attrs(value)
     if _detect_has_data_breakpoint(name, dbg, frame) and "hasDataBreakpoint" not in attrs:
         attrs.append("hasDataBreakpoint")
+
+    presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
 
     return cast(
         "Variable",
@@ -409,50 +415,12 @@ def _make_variable_object_impl(
             "value": val_str,
             "type": type_name,
             "variablesReference": var_ref,
-            "presentationHint": {
-                "kind": kind,
-                "attributes": attrs,
-                "visibility": _visibility(name),
-            },
+            "presentationHint": presentation,
         },
     )
 
 
-def create_variable_object(
-    name: Any,
-    value: Any,
-    dbg: DebuggerLike | None = None,
-    frame: Any | None = None,
-    *,
-    max_string_length: int = MAX_STRING_LENGTH,
-) -> Variable:
-    """Public helper that prefers debugger-provided implementations.
-
-    It will call ``dbg.create_variable_object`` or ``dbg.make_variable_object`` if
-    provided by the debugger. Otherwise it falls back to the internal
-    implementation above. This lets debuggers provide richer/optimized
-    implementations while keeping a safe fallback.
-    """
-    if dbg is not None:
-        for attr in ("create_variable_object", "make_variable_object"):
-            fn = getattr(dbg, attr, None)
-            if callable(fn):
-                try:
-                    # Try to call debugger-provided helper. Accept either
-                    # the (name, value) signature or the extended one.
-                    res = fn(name, value) if fn.__code__.co_argcount <= 2 else fn(
-                        name, value, frame, max_string_length=max_string_length
-                    )
-                    if isinstance(res, dict):
-                        return cast("Variable", res)
-                except Exception:
-                    # Ignore debugger helper failures and fall back
-                    # to the internal implementation.
-                    pass
-
-    return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)
-
-
+# Public helper: prefer debugger-provided `make_variable_object` then fallback
 def make_variable_object(
     name: Any,
     value: Any,
@@ -461,8 +429,29 @@ def make_variable_object(
     *,
     max_string_length: int = MAX_STRING_LENGTH,
 ) -> Variable:
-    """Backwards-compatible wrapper kept for callers that import
-    ``make_variable_object`` from this module. Delegates to
-    ``create_variable_object``.
+    """Build the Variable-shaped dict, preferring a debugger implementation.
+
+    If the active debugger exposes `make_variable_object`, call it (accepting
+    either a simple (name, value) signature or an extended one). If that
+    fails or is absent, fall back to the internal implementation.
     """
-    return create_variable_object(name, value, dbg, frame, max_string_length=max_string_length)
+    if dbg is not None:
+        fn = getattr(dbg, "make_variable_object", None)
+        if callable(fn):
+            try:
+                res = (
+                    fn(name, value)
+                    if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount <= MAKE_VAR_SIMPLE_ARGCOUNT
+                    else fn(name, value, frame, max_string_length=max_string_length)
+                )
+                if isinstance(res, dict):
+                    return cast("Variable", res)
+            except Exception:
+                # Ignore debugger helper failures and fall back to the internal implementation.
+                pass
+
+    return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)
+
+
+# keep a short alias name for older code that imports make_variable_object
+# (the implementation lives above)

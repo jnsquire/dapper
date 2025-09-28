@@ -397,14 +397,7 @@ class DebuggerBDB(bdb.Bdb):
             },
         )
 
-    # Backwards-compatible alias: some callers expect a create_variable_object
-    # helper on debugger instances (historical launcher helper). Delegate to
-    # the richer make_variable_object implementation above so behavior is
-    # consistent across adapter and launcher paths.
-    def create_variable_object(
-        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> Variable:
-        return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
+    # Note: create_variable_object alias removed. Use `make_variable_object` on debugger instances.
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
         """Evaluate conditions and hitConditions for a changed variable."""

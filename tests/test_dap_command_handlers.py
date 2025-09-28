@@ -1,61 +1,105 @@
+from __future__ import annotations
+
 import linecache
 import sys
 import threading
 import types
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
+from typing import Any
 from typing import cast
 
 from dapper import dap_command_handlers as dch
+from dapper import debug_shared
+
+if TYPE_CHECKING:
+    from dapper.debugger_protocol import DebuggerLike
+    from dapper.debugger_protocol import Variable
+    from dapper.protocol_types import ExceptionInfoArguments
+
+    # DAP argument shapes used by handlers (only for type-checking)
+    from dapper.protocol_types import SetBreakpointsArguments
+    from dapper.protocol_types import SetExceptionBreakpointsArguments
+    from dapper.protocol_types import SetFunctionBreakpointsArguments
 
 
 class DummyDebugger:
     def __init__(self):
-        self.cleared = []
-        self.breaks = []
-        self.function_breakpoints = []
-        self.function_breakpoint_meta = {}
-        self.exception_breakpoints_raised = False
-        self.exception_breakpoints_uncaught = False
-        self.stopped_thread_ids = set()
-        self._continued = False
-        self.stepping = False
-        self.current_frame = None
-        self.frames_by_thread = {}
-        self.var_refs = {}
-        self.frame_id_to_frame = {}
-        self.next_var_ref = 1
-        self.current_exception_info = {}
-        self.program_path = None
+        self.cleared: list[object] = []
+        self.breaks: list[tuple[str, int, object | None]] = []
+        self.function_breakpoints: list[str] = []
+        self.function_breakpoint_meta: dict[str, dict[str, object]] = {}
+        self.exception_breakpoints_raised: bool = False
+        self.exception_breakpoints_uncaught: bool = False
+        self.stopped_thread_ids: set[int] = set()
+        self._continued: bool = False
+        self.stepping: bool = False
+        self.current_frame: Any | None = None
+        self.frames_by_thread: dict[int, list] = {}
+        self.var_refs: dict[int, DebuggerLike.VarRef] = {}
+        self.frame_id_to_frame: dict[int, Any] = {}
+        self.next_var_ref: int = 1
+        self.current_exception_info: dict[Any, Any] = {}
+        self.program_path: Any | None = None
+        # Additional attributes to satisfy DebuggerLike
+        self.threads: dict[int, Any] = {}
+        self.data_breakpoints: list[dict[str, Any]] | None = []
+        self.breakpoint_meta: dict[tuple[str, int], dict] = {}
 
-    def clear_breaks_for_file(self, path):
+    def set_break(
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,
+        cond: Any | None = None,
+        funcname: str | None = None,
+    ) -> Any | None:
+        _ = temporary, funcname
+        self.breaks.append((filename, int(lineno), cond))
+        return None
+
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: Any | None = None,
+        hit_condition: Any | None = None,
+        log_message: Any | None = None,
+    ) -> None:
+        self.breaks.append((path, int(line), {"condition": condition, "hit_condition": hit_condition, "log_message": log_message}))
+
+    def clear_breaks_for_file(self, path: str) -> None:
         self.cleared.append(path)
 
-    def clear_break(self, path):
-        self.cleared.append(("alt", path))
+    def clear_break(self, filename: str, lineno: int) -> Any | None:
+        self.cleared.append(("clear", filename, int(lineno)))
+        return None
 
-    def clear_break_meta_for_file(self, path):
-        self.cleared.append(("meta", path))
+    def clear_break_meta_for_file(self, path: str) -> None:
+        to_del = [k for k in list(self.breakpoint_meta.keys()) if k[0] == path]
+        for k in to_del:
+            self.breakpoint_meta.pop(k, None)
 
-    def set_break(self, path, line, cond=None):
-        self.breaks.append((path, line, cond))
-
-    def record_breakpoint(self, path, line, **kwargs):
-        self.breaks.append((path, int(line), kwargs))
-
-    def clear_all_function_breakpoints(self):
+    def clear_all_function_breakpoints(self) -> None:
         self.function_breakpoints.clear()
+        self.function_breakpoint_meta.clear()
 
-    def set_continue(self):
+    def set_continue(self) -> None:
         self._continued = True
 
-    def set_next(self, frame):
+    def set_next(self, frame: Any) -> None:
         self._next = frame
 
-    def set_step(self):
+    def set_step(self) -> None:
         self._step = True
 
-    def set_return(self, frame):
+    def set_return(self, frame: Any) -> None:
         self._return = frame
+
+    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> Any:
+        _ = cmd, args, kwargs
+        return None
 
 
 def test_convert_value_with_context_literal_and_bool_and_none():
@@ -94,7 +138,7 @@ def test_set_object_member_dict_list_tuple_and_attribute():
 
     # attribute on object
     class DummyObj:
-        pass
+        z: Any
 
     o = DummyObj()
     res = dch._set_object_member(o, "z", "7")
@@ -130,18 +174,18 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
 
     # setBreakpoints
     args = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
-    dch.handle_set_breakpoints(args)
+    dch.handle_set_breakpoints(cast("SetBreakpointsArguments", args))
     assert ("file.py", 10, None) in dbg.breaks
 
     # setFunctionBreakpoints
     args = {"breakpoints": [{"name": "foo", "condition": "c", "hitCondition": 1}]}
-    dch.handle_set_function_breakpoints(args)
+    dch.handle_set_function_breakpoints(cast("SetFunctionBreakpointsArguments", args))
     assert "foo" in dbg.function_breakpoints
     assert dbg.function_breakpoint_meta.get("foo", {}).get("condition") == "c"
 
     # setExceptionBreakpoints
     args = {"filters": ["raised", "uncaught"]}
-    dch.handle_set_exception_breakpoints(args)
+    dch.handle_set_exception_breakpoints(cast("SetExceptionBreakpointsArguments", args))
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is True
 
@@ -180,11 +224,11 @@ def test_variables_and_set_variable(monkeypatch):
     dbg.var_refs[7] = (1, "locals")
     monkeypatch.setattr(dch.state, "debugger", dbg)
 
-    # stub create_variable_object to predictable output
-    def fake_create_variable_object(_name, value):
-        return {"value": str(value), "type": type(value).__name__, "variablesReference": 0}
+    # stub make_variable_object to predictable output
+    def fake_make_variable_object(_name, value):
+        return cast("Variable", {"value": str(value), "type": type(value).__name__, "variablesReference": 0})
 
-    monkeypatch.setattr(dch, "create_variable_object", fake_create_variable_object)
+    monkeypatch.setattr(dch, "make_variable_object", fake_make_variable_object)
 
     calls = []
 
@@ -272,14 +316,14 @@ def test_handle_exception_info_variants(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder4)
 
     # missing threadId
-    dch.handle_exception_info(cast("dict", {}))
+    dch.handle_exception_info(cast("ExceptionInfoArguments", {}))
     assert calls
     assert calls[-1][0] == "error"
 
     # debugger not initialized
     monkeypatch.setattr(dch.state, "debugger", None)
     calls.clear()
-    dch.handle_exception_info({"threadId": 1})
+    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 1}))
     assert calls
     assert calls[-1][0] == "error"
 
@@ -287,7 +331,7 @@ def test_handle_exception_info_variants(monkeypatch):
     dbg = DummyDebugger()
     monkeypatch.setattr(dch.state, "debugger", dbg)
     calls.clear()
-    dch.handle_exception_info({"threadId": 2})
+    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 2}))
     assert calls
     assert calls[-1][0] == "error"
 
@@ -299,7 +343,7 @@ def test_handle_exception_info_variants(monkeypatch):
         "details": {},
     }
     calls.clear()
-    dch.handle_exception_info({"threadId": 3})
+    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 3}))
     assert calls
     assert calls[-1][0] == "exceptionInfo"
 
@@ -307,23 +351,27 @@ def test_handle_exception_info_variants(monkeypatch):
 def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
     # override returns dict
     class DbgWithMake(DummyDebugger):
-        def make_variable_object(self, _name, _value):
-            return {"value": f"dbg:{_value}", "type": "int", "variablesReference": 0}
+        def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000):
+            # reference parameters to satisfy linters and preserve protocol shape
+            _ = (name, frame, max_string_length)
+            return cast("Variable", {"value": f"dbg:{value}", "type": "int", "variablesReference": 0})
 
     dbg = DbgWithMake()
     monkeypatch.setattr(dch.state, "debugger", dbg)
-    res = dch.create_variable_object("n", 5)
+    res = debug_shared.make_variable_object("n", 5, dbg)
     assert isinstance(res, dict)
     assert res["value"].startswith("dbg:")
 
     # make_variable_object raises -> fallback to module helper
     class DbgBad(DummyDebugger):
-        def make_variable_object(self, _name, _value):
+        def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000):
+            # reference parameters to satisfy linters and preserve protocol shape
+            _ = (name, value, frame, max_string_length)
             msg = "fail"
             raise RuntimeError(msg)
 
     monkeypatch.setattr(dch.state, "debugger", DbgBad())
-    res2 = dch.create_variable_object("n", 6)
+    res2 = debug_shared.make_variable_object("n", 6, dbg)
     assert isinstance(res2, dict)
 
 

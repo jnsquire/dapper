@@ -14,10 +14,15 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper import debug_shared as _ds
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
 from dapper.protocol_types import Source
+
+# small constant to make argcount checks clearer / lint-friendly
+_SIMPLE_MAKE_VAR_ARGCOUNT = 2
+
 
 if TYPE_CHECKING:
     from dapper.debugger_protocol import Variable
@@ -42,6 +47,9 @@ if TYPE_CHECKING:
 
 # Command mapping table - will be populated by the @command_handler decorator
 COMMAND_HANDLERS = {}
+
+# Back-compat: expose make_variable_object at module level for tests and older callsites
+make_variable_object = _ds.make_variable_object
 
 
 def command_handler(command_name):
@@ -223,18 +231,37 @@ def handle_variables(arguments: VariablesArguments) -> None:
     dbg = state.debugger
     if dbg and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
-        if isinstance(frame_info, tuple):
-            frame_id, scope = frame_info
-            frame = dbg.frame_id_to_frame.get(frame_id)
-            variables = []
+        variables = []
+        # frame_info can have multiple shapes; handle scope-backed refs here
+        if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE and isinstance(frame_info[0], int):
+            frame_id, scope = cast("tuple", frame_info)
+            frame = dbg.frame_id_to_frame.get(cast("int", frame_id))
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
-                    var_obj = create_variable_object(name, value)
-                    variables.append(var_obj)
+                    fn = getattr(dbg, "make_variable_object", None)
+                    if callable(fn):
+                        try:
+                            # accept simple or extended signature
+                            var_obj = fn(name, value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, value, frame)
+                            if isinstance(var_obj, dict):
+                                variables.append(cast("Variable", var_obj))
+                                continue
+                        except Exception:
+                            pass
+                    # fallback to shared helper
+                    variables.append(_ds.make_variable_object(name, value, dbg, frame))
             elif frame and scope == "globals":
                 for name, value in frame.f_globals.items():
-                    var_obj = create_variable_object(name, value)
-                    variables.append(var_obj)
+                    fn = getattr(dbg, "make_variable_object", None)
+                    if callable(fn):
+                        try:
+                            var_obj = fn(name, value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, value, frame)
+                            if isinstance(var_obj, dict):
+                                variables.append(cast("Variable", var_obj))
+                                continue
+                        except Exception:
+                            pass
+                    variables.append(_ds.make_variable_object(name, value, dbg, frame))
             send_debug_message(
                 "variables",
                 variablesReference=var_ref,
@@ -277,13 +304,24 @@ def _set_scope_variable(frame, scope, name, value):
             frame.f_globals[name] = new_value
         else:
             return {"success": False, "message": f"Unknown scope: {scope}"}
-        var_obj = create_variable_object(name, new_value)
+        fn = getattr(state.debugger, "make_variable_object", None)
+        if callable(fn):
+            try:
+                var_obj = fn(name, new_value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, new_value, frame)
+            except Exception:
+                var_obj = None
+        else:
+            var_obj = None
+        if not var_obj:
+            var_obj = _ds.make_variable_object(name, new_value, state.debugger, frame)
+        # var_obj can be various types; ensure mapping access is safe for the body
+        vobj = cast("dict[str, Any]", var_obj)
         return {
             "success": True,
             "body": {
-                "value": var_obj["value"],
-                "type": var_obj["type"],
-                "variablesReference": var_obj["variablesReference"],
+                "value": vobj["value"],
+                "type": vobj["type"],
+                "variablesReference": vobj["variablesReference"],
             },
         }
     except Exception as e:
@@ -328,13 +366,23 @@ def _set_object_member(parent_obj, name, value):
                     "success": False,
                     "message": (f"Cannot set attribute '{name}' on {type(parent_obj).__name__}"),
                 }
-        var_obj = create_variable_object(name, new_value)
+        dbg = state.debugger
+        fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
+        var_obj = None
+        if callable(fn):
+            try:
+                var_obj = fn(name, new_value)
+            except Exception:
+                var_obj = None
+        if not var_obj:
+            var_obj = _ds.make_variable_object(name, new_value, dbg)
+        vobj = cast("dict[str, Any]", var_obj)
         return {
             "success": True,
             "body": {
-                "value": var_obj["value"],
-                "type": var_obj["type"],
-                "variablesReference": var_obj["variablesReference"],
+                "value": vobj["value"],
+                "type": vobj["type"],
+                "variablesReference": vobj["variablesReference"],
             },
         }
     except Exception as e:
@@ -373,32 +421,10 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
             pass
     return value_str
 
-
-def create_variable_object(name, value) -> Variable:
-    """Create a Variable-shaped dict.
-
-    Prefer debugger-provided implementations (either `create_variable_object`
-    or `make_variable_object`) when available on the active debugger. If the
-    debugger does not provide one, fall back to the shared module helper via a
-    local import to avoid circular imports at module load time.
-    """
-    dbg = state.debugger
-    if dbg is not None:
-        # Prefer an explicit create_variable_object, then make_variable_object
-        for attr in ("create_variable_object", "make_variable_object"):
-            fn = getattr(dbg, attr, None)
-            if callable(fn):
-                try:
-                    res = fn(name, value)
-                    if isinstance(res, dict):
-                        return cast("Variable", res)
-                except Exception:
-                    # If the debugger implementation errors, try the next option
-                    pass
-    # Fallback to the shared helper; import locally to avoid import cycles
-    from dapper import debug_shared as _debug_shared
-
-    return _debug_shared.make_variable_object(name, value, dbg)
+# The canonical helper for creating Variable-shaped dicts is provided in
+# dapper.debug_shared.make_variable_object. Callers should prefer using the
+# debugger instance's `make_variable_object` when available (it may accept an
+# optional frame argument); otherwise import and call the shared helper.
 
 
 @command_handler("evaluate")
