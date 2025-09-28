@@ -79,7 +79,9 @@ def test_ipc_context_cleanup_no_resources() -> None:
     ctx.cleanup()  # nothing attached, just ensure no exception
 
 
-@pytest.mark.skipif(os.name == "nt", reason="UNIX domain socket not typical on Windows in this test")
+@pytest.mark.skipif(
+    os.name == "nt", reason="UNIX domain socket not typical on Windows in this test"
+)
 def test_ipc_context_cleanup_real_unix_path(tmp_path: Path) -> None:
     # Light-weight integration: create a real path and ensure it is removed.
     ctx = IPCContext()

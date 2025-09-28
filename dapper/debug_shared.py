@@ -25,9 +25,14 @@ if TYPE_CHECKING:
     class CommandProvider(Protocol):
         def can_handle(self, command: str) -> bool: ...
 
-        def supported_commands(self) -> Any: ...
+        def handle(
+            self,
+            session: SessionState,
+            command: str,
+            arguments: dict[str, Any],
+            full_command: dict[str, Any],
+        ) -> dict | None: ...
 
-        def handle(self, session: SessionState, command: str, arguments: dict[str, Any], full_command: dict[str, Any]) -> dict | None: ...
 
 # Maximum length of strings to be sent over the wire
 MAX_STRING_LENGTH = 1000
@@ -86,6 +91,8 @@ class SessionState:
         self.command_queue: queue.Queue[Any] = queue.Queue()
         self.is_terminated: bool = False
         self.ipc_enabled: bool = False
+        # Whether IPC uses binary framing; default False
+        self.ipc_binary: bool = False
         self.ipc_sock: Any | None = None
         self.ipc_rfile: io.TextIOBase | None = None
         self.ipc_wfile: io.TextIOBase | None = None
@@ -146,6 +153,7 @@ class SessionState:
         for provider in providers:
             if not provider.can_handle(name):
                 continue
+
             try:
                 result = provider.handle(self, name, arguments, command)
             except Exception as exc:  # pragma: no cover - defensive
@@ -160,7 +168,6 @@ class SessionState:
     def _providers_snapshot(self) -> list[CommandProvider]:
         with self._providers_lock:
             return [p for _, p in list(self._providers)]
-
 
     @staticmethod
     def _send_response_for_result(command: dict[str, Any], result: Any) -> None:
@@ -326,6 +333,10 @@ def _detect_kind_and_attrs(v: Any) -> tuple[str, list[str]]:
 
 
 def _visibility(n: Any) -> str:
+    """
+    Determines the visibility of a variable or attribute name.
+    Returns 'private' if the name starts with an underscore, otherwise 'public'.
+    """
     try:
         return "private" if str(n).startswith("_") else "public"
     except Exception:

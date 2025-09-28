@@ -3,6 +3,7 @@
 Contains a minimal Pipe IO wrapper and helpers to connect unix/tcp sockets
 and wire `state.ipc_*` similarly to the original launcher logic.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -90,7 +91,9 @@ def _connect_tcp_socket(host: str | None, port: int | None):
         return sock
 
 
-def _setup_ipc_socket(transport: str | None, host: str | None, port: int | None, path: str | None) -> bool:
+def _setup_ipc_socket(
+    transport: str | None, host: str | None, port: int | None, path: str | None
+) -> bool:
     try:
         sock = None
         if transport == "unix":

@@ -30,11 +30,12 @@ async def test_pipe_endpoints_closed_on_cleanup() -> None:
     # Create mocks for pipe connection and listener
     conn = Mock()
     listener = Mock()
-    dbg.ipc.pipe_conn = conn
-    dbg.ipc.pipe_listener = listener
+    # Use helpers to register the listener and pipe connection
+    dbg.set_ipc_pipe_listener(listener)
+    dbg.enable_ipc_pipe_connection(conn, binary=False)
 
-    # Call new IPC context cleanup (legacy alias removed)
-    dbg.ipc.cleanup()
+    # Use the debugger helper to perform IPC shutdown/cleanup
+    dbg.disable_ipc()
 
     # Verify close was called on both
     conn.close.assert_called_once()

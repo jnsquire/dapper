@@ -27,7 +27,6 @@ _impl_cache: dict[str, Any | None] = {
     "cached_send": None,
     "cached_process": None,
     "registered_send": None,
-    "registered_process": None,
 }
 
 
@@ -90,49 +89,22 @@ def process_queued_commands():
     Works similarly to send_debug_message: prefer launcher helper if present,
     otherwise use adapter comm helper.
     """
-    # Prefer explicit registered helper first
-    registered = _impl_cache.get("registered_process")
-    if registered is not None:
-        return registered()
-
-    mod = sys.modules.get("dapper.debug_launcher")
-    if mod is not None:
+    # Use the single adapter-side implementation. Import lazily to avoid
+    # circular imports when this module is imported early in tests.
+    try:
+        mod = importlib.import_module("dapper.debug_adapter_comm")
         fn = getattr(mod, "process_queued_commands", None)
         if callable(fn):
-            if fn is not _impl_cache.get("cached_process"):
-                _impl_cache["cached_process"] = fn
-            impl = _impl_cache.get("cached_process")
-            assert impl is not None
-            return impl()
+            return fn()
+    except Exception:
+        # Fall through to error below
+        pass
 
-    impl = _impl_cache.get("cached_process")
-    if impl is None or getattr(impl, "__module__", "") == "dapper.debug_adapter_comm":
-        try:
-            mod_fallback = importlib.import_module("dapper.debug_adapter_comm")
-            _fallback = getattr(mod_fallback, "process_queued_commands", None)
-            if callable(_fallback):
-                if impl is not _fallback:
-                    _impl_cache["cached_process"] = _fallback
-                impl = _impl_cache.get("cached_process")
-        except Exception:
-            try:
-                mod2 = importlib.import_module("dapper.debug_adapter_comm")
-                fn2 = getattr(mod2, "process_queued_commands", None)
-                if callable(fn2):
-                    _impl_cache["cached_process"] = fn2
-                    impl = fn2
-            except Exception:
-                _impl_cache["cached_process"] = None
-                impl = None
-
-    if impl is None:
-        msg = "No process_queued_commands implementation available"
-        raise RuntimeError(msg)
-
-    return impl()
+    msg = "No process_queued_commands implementation available"
+    raise RuntimeError(msg)
 
 
-def register_debug_helpers(send_fn=None, process_fn=None):
+def register_debug_helpers(send_fn=None):
     """Register explicit debug helper functions.
 
     Tests can call this to inject mocks directly (preferred over patching
@@ -140,8 +112,6 @@ def register_debug_helpers(send_fn=None, process_fn=None):
     """
     if send_fn is not None:
         _impl_cache["registered_send"] = send_fn
-    if process_fn is not None:
-        _impl_cache["registered_process"] = process_fn
 
 
 def unregister_debug_helpers():
@@ -149,7 +119,6 @@ def unregister_debug_helpers():
     the normal resolution behavior (launcher helper or adapter comm).
     """
     _impl_cache["registered_send"] = None
-    _impl_cache["registered_process"] = None
 
 
 # Module logger for diagnostic messages (merged from alternate implementation)
@@ -688,9 +657,13 @@ class DebuggerBDB(bdb.Bdb):
         except Exception:
             pass
 
-    def user_call(self, frame, argument_list):  # noqa: ARG002
+    def user_call(self, frame, argument_list):
+        # Reference argument_list to avoid static analyzers reporting it as unused
+        _ = argument_list
+
         if not self.function_breakpoints and not self.function_breakpoint_meta:
             return
+
         candidates = get_function_candidate_names(frame)
         match_name = None
         for name in self.function_breakpoints:

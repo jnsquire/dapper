@@ -151,7 +151,8 @@ def setup_function(_func):
 
 
 def test_handle_initialize_minimal():
-    res = debug_launcher.handle_initialize({})
+    # pass a dummy debugger instance as the first parameter
+    res = debug_launcher.handle_initialize(DummyDebugger(), {})
     assert isinstance(res, dict)
     assert res["success"] is True
     body = res["body"]
@@ -163,7 +164,7 @@ def test_handle_threads_empty():
     s = debug_shared.state
     s.debugger = DummyDebugger()
     # No threads
-    res = debug_launcher.handle_threads({})
+    res = debug_launcher.handle_threads(s.debugger, {})
     assert res["success"] is True
     assert res["body"]["threads"] == []
 
@@ -185,14 +186,14 @@ def test_handle_scopes_and_variables():
     s.debugger = dbg
 
     # Request scopes for frame id 1
-    res = debug_launcher.handle_scopes({"frameId": 1})
+    res = debug_launcher.handle_scopes(dbg, {"frameId": 1})
     assert res["success"] is True
     scopes = res["body"]["scopes"]
     assert any(s.get("name") == "Locals" for s in scopes)
     # Now request variables for locals scope
     locals_ref = next(s.get("variablesReference") for s in scopes if s.get("name") == "Locals")
 
-    vars_res = debug_launcher.handle_variables({"variablesReference": locals_ref})
+    vars_res = debug_launcher.handle_variables(dbg, {"variablesReference": locals_ref})
     # handle_variables sends a message rather than returning a value; ensure no exception
     assert vars_res is None
 
@@ -201,7 +202,8 @@ def test_handle_source_reads_file(tmp_path: Path):
     # Create a temp file
     p = tmp_path / "sample.txt"
     p.write_text("hello world", encoding="utf-8")
-    res = debug_launcher.handle_source({"path": str(p)})
+    # source handler doesn't use the debugger but still expects it as first arg
+    res = debug_launcher.handle_source(DummyDebugger(), {"path": str(p)})
     assert res["success"] is True
     assert "hello world" in res["body"]["content"]
 
@@ -212,12 +214,12 @@ def test_set_data_breakpoints_and_info():
     s.debugger = dbg
 
     bps = [{"name": "x", "dataId": "d1"}, {"name": "y"}]
-    res = debug_launcher.handle_set_data_breakpoints({"breakpoints": bps})
+    res = debug_launcher.handle_set_data_breakpoints(dbg, {"breakpoints": bps})
     assert res["success"] is True
     body = res["body"]
     assert "breakpoints" in body
     # dataBreakpointInfo
-    info = debug_launcher.handle_data_breakpoint_info({"name": "x"})
+    info = debug_launcher.handle_data_breakpoint_info(dbg, {"name": "x"})
     assert info["success"] is True
     assert info["body"]["dataId"] == "x"
 

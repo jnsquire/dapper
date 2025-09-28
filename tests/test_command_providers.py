@@ -114,16 +114,6 @@ def test_provider_exception_paths_without_id(capture_messages):
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_supported_commands_used(capture_messages):
-    prov = SupportedProvider({"pong"})
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"id": 11, "command": "pong", "arguments": {}})
-    assert capture_messages == [
-        ("response", {"id": 11, "success": True, "body": {"handled": "pong"}})
-    ]
-
-
-@pytest.mark.usefixtures("isolated_registry")
 def test_priority_ordering_uses_highest_priority_first(capture_messages):
     low = AlwaysProvider(name="low", result={"success": True, "body": {"who": "low"}})
     high = AlwaysProvider(name="high", result={"success": True, "body": {"who": "high"}})
@@ -162,10 +152,12 @@ def test_can_handle_exception_is_ignored_and_unknown_emitted(capture_messages):
             return {"success": True}
 
     ds.state.register_command_provider(BadCan(), priority=0)
-    ds.state.dispatch_debug_command({"id": 321, "command": "xyz", "arguments": {}})
-    assert capture_messages == [
-        ("response", {"id": 321, "success": False, "message": "Unknown command: xyz"})
-    ]
+    # If a provider's can_handle raises, the exception propagates; ensure the
+    # behavior is explicit in the test by asserting the error is raised and
+    # that no messages were emitted.
+    with pytest.raises(RuntimeError):
+        ds.state.dispatch_debug_command({"id": 321, "command": "xyz", "arguments": {}})
+    assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")

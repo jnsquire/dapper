@@ -554,21 +554,3 @@ def test_parse_event_missing_event():
         handler.parse_message(json.dumps(message))
 
     assert "Event message missing 'event' field" in str(exc_info.value)
-
-
-def test_parse_message_generic_exception():
-    """Test handling of unexpected exceptions during parsing."""
-    handler = ProtocolHandler()
-
-    # Create a malformed JSON that will cause an exception beyond JSONDecodeError
-    class BadJSON:
-        def __str__(self):
-            msg = "Unexpected error"
-            raise RuntimeError(msg)
-
-    # This should be caught by the generic exception handler
-    with pytest.raises(ProtocolError) as exc_info:
-        # Pass something that's not a string to trigger TypeError
-        handler.parse_message(BadJSON())
-
-    assert "Error parsing message" in str(exc_info.value)

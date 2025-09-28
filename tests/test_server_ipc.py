@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
@@ -19,9 +20,7 @@ def test_write_command_to_channel_ipc_pipe_text():
         def send(self, s):
             calls.append(("send", s))
 
-    p.ipc.enabled = True
-    p.ipc.pipe_conn = PipeConn()
-    p.ipc.binary = False
+    p.enable_ipc_pipe_connection(PipeConn(), binary=False)
 
     p._write_command_to_channel("abc")
     # Break down assertion (PT018): verify list populated, action name, and payload marker
@@ -38,9 +37,8 @@ def test_write_command_to_channel_ipc_pipe_binary():
         def send_bytes(self, b):
             calls.append(("send_bytes", b))
 
-    p.ipc.enabled = True
-    p.ipc.pipe_conn = PipeConn()
-    p.ipc.binary = True
+    # Use new PyDebugger helper to enable pipe-style binary IPC
+    p.enable_ipc_pipe_connection(PipeConn(), binary=True)
 
     p._write_command_to_channel("xyz")
     assert calls, "Expected at least one call to pipe send_bytes"
@@ -58,10 +56,8 @@ def test_write_command_to_channel_ipc_wfile_text():
         def flush(self):
             calls.append(("flush", None))
 
-    p.ipc.enabled = True
-    p.ipc.pipe_conn = None
-    p.ipc.wfile = WFile()
-    p.ipc.binary = False
+    # Use the new helper to register a writer-only transport for tests
+    p.enable_ipc_wfile(WFile(), binary=False)
 
     p._write_command_to_channel("bbb")
     assert any("DBGCMD:bbb" in c[1] for c in calls if c[0] == "write")
@@ -84,11 +80,15 @@ def test_write_command_to_channel_fallback_to_stdin():
         def __init__(self):
             self.stdin = Stdin()
 
-    p.ipc.enabled = False
-    p.process = Proc()
+    p.disable_ipc()
+    mock_stdin = Mock()
+    p.process = Mock()
+    p.process.stdin = mock_stdin
 
     p._write_command_to_channel("kkk")
-    assert any("DBGCMD:kkk" in s for s in p.process.stdin.written)
+
+    # Verify that stdin.write was called with a string containing the DBGCMD marker
+    assert any("DBGCMD:kkk" in call.args[0] for call in mock_stdin.write.call_args_list)
 
 
 @pytest.mark.asyncio

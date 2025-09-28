@@ -17,6 +17,7 @@ import threading
 import traceback
 from multiprocessing import connection as _mpc
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -27,6 +28,9 @@ from dapper.ipc_binary import HEADER_SIZE
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_binary import read_exact
 from dapper.ipc_binary import unpack_header
+
+if TYPE_CHECKING:
+    from dapper.debugger_protocol import DebuggerLike
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -105,7 +109,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         except Exception as e:
             send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = data[HEADER_SIZE:HEADER_SIZE + length]
+        payload = data[HEADER_SIZE : HEADER_SIZE + length]
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -184,6 +188,9 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         # Queue commands until debugger is initialized
         return
 
+    # Pass the debugger instance explicitly to handlers
+    dbg = state.debugger
+
     command_type = command.get("command", "")
     arguments = command.get("arguments", {})
 
@@ -208,9 +215,9 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         "setDataBreakpoints": handle_set_data_breakpoints,
         "dataBreakpointInfo": handle_data_breakpoint_info,
         "exceptionInfo": handle_exception_info,
-        "configurationDone": lambda _: handle_configuration_done(),
-        "terminate": lambda _: handle_terminate(),
-        "disconnect": lambda _: handle_terminate(),
+        "configurationDone": handle_configuration_done,
+        "terminate": handle_terminate,
+        "disconnect": handle_terminate,
         "restart": handle_restart,
     }
 
@@ -221,7 +228,7 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         return
 
     try:
-        result = handler(arguments)
+        result = handler(dbg, arguments)
 
         # If the handler returns a response dict, send it as a response
         if isinstance(result, dict) and "success" in result:
@@ -248,23 +255,24 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         traceback.print_exc()
 
 
-def handle_set_breakpoints(arguments):
+def handle_set_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setBreakpoints command"""
+    arguments = arguments or {}
     source = arguments.get("source", {})
     bps = arguments.get("breakpoints", [])
     path = source.get("path")
 
-    if path and state.debugger:
+    if path and dbg:
         # Clear existing breakpoints and metadata for this file
         try:
-            state.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
+            dbg.clear_breaks_for_file(path)  # type: ignore[attr-defined]
         except Exception:
             # Fallbacks for older implementations
             try:
-                state.debugger.clear_break(path)  # type: ignore[misc]
+                dbg.clear_break(path)  # type: ignore[misc]
             except Exception:
                 try:
-                    state.debugger.clear_break_meta_for_file(path)
+                    dbg.clear_break_meta_for_file(path)
                 except Exception:
                     pass
 
@@ -277,10 +285,10 @@ def handle_set_breakpoints(arguments):
 
             if line:
                 # Set a BDB breakpoint; BDB enforces the 'condition'
-                state.debugger.set_break(path, line, cond=condition)
+                dbg.set_break(path, line, cond=condition)
 
                 # Record DAP-specific metadata for runtime gating/logging
-                state.debugger.record_breakpoint(
+                dbg.record_breakpoint(
                     path,
                     int(line),
                     condition=condition,
@@ -294,13 +302,14 @@ def handle_set_breakpoints(arguments):
         send_debug_message("breakpoints", source=source, breakpoints=verified_bps)
 
 
-def handle_set_function_breakpoints(arguments):
+def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setFunctionBreakpoints command"""
+    arguments = arguments or {}
     bps = arguments.get("breakpoints", [])
 
-    if state.debugger:
+    if dbg:
         # Clear existing function breakpoints and associated metadata
-        state.debugger.clear_all_function_breakpoints()
+        dbg.clear_all_function_breakpoints()
 
         # Set new function breakpoints and record their metadata
         for bp in bps:
@@ -313,10 +322,10 @@ def handle_set_function_breakpoints(arguments):
             # Some clients may send logMessage for function bps (non-standard)
             log_message = bp.get("logMessage")
 
-            state.debugger.function_breakpoints.append(name)
+            dbg.function_breakpoints.append(name)
             # Record DAP-style metadata if supported
             try:
-                fbm = state.debugger.function_breakpoint_meta
+                fbm = dbg.function_breakpoint_meta
             except Exception:
                 fbm = None
             if isinstance(fbm, dict):
@@ -328,25 +337,26 @@ def handle_set_function_breakpoints(arguments):
                 fbm[name] = mb
 
 
-def handle_set_exception_breakpoints(arguments):
+def handle_set_exception_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setExceptionBreakpoints command"""
+    arguments = arguments or {}
     filters = arguments.get("filters", [])
 
-    if state.debugger:
+    if dbg:
         # New boolean flags on debugger implementations
         try:
-            state.debugger.exception_breakpoints_raised = "raised" in filters
-            state.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+            dbg.exception_breakpoints_raised = "raised" in filters
+            dbg.exception_breakpoints_uncaught = "uncaught" in filters
         except Exception:
             # If debugger doesn't expose boolean attrs, ignore silently
             pass
 
 
-def handle_continue(arguments):
+def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle continue command"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    dbg = state.debugger
     if dbg and thread_id in dbg.stopped_thread_ids:
         dbg.stopped_thread_ids.remove(thread_id)
 
@@ -354,52 +364,53 @@ def handle_continue(arguments):
             dbg.set_continue()
 
 
-def handle_next(arguments):
+def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle next command (step over)"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    dbg = state.debugger
     if dbg and thread_id == threading.get_ident():
         dbg.stepping = True
         if dbg.current_frame is not None:
             dbg.set_next(dbg.current_frame)
 
 
-def handle_step_in(arguments):
+def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle stepIn command"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    dbg = state.debugger
     if dbg and thread_id == threading.get_ident():
         dbg.stepping = True
         dbg.set_step()
 
 
-def handle_step_out(arguments):
+def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle stepOut command"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    dbg = state.debugger
     if dbg and thread_id == threading.get_ident():
         dbg.stepping = True
         if dbg.current_frame is not None:
             dbg.set_return(dbg.current_frame)
 
 
-def handle_pause(arguments):
+def handle_pause(_dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle pause command"""
+    arguments = arguments or {}
     arguments.get("threadId")
     # This is tricky in Python - we can't easily interrupt a running thread.
     # A real implementation would use Python's settrace to handle this.
 
 
-def handle_stack_trace(arguments):
+def handle_stack_trace(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle stackTrace command"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
     start_frame = arguments.get("startFrame", 0)
     levels = arguments.get("levels", 0)
 
-    dbg = state.debugger
     if dbg and thread_id in dbg.frames_by_thread:
         frames = dbg.frames_by_thread[thread_id]
         total_frames = len(frames)
@@ -419,11 +430,11 @@ def handle_stack_trace(arguments):
         )
 
 
-def handle_variables(arguments):
+def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle variables command"""
+    arguments = arguments or {}
     var_ref = arguments.get("variablesReference")
 
-    dbg = state.debugger
     if dbg and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
 
@@ -447,13 +458,13 @@ def handle_variables(arguments):
             send_debug_message("variables", variablesReference=var_ref, variables=variables)
 
 
-def handle_set_variable(arguments):
+def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setVariable command with enhanced complex variable support"""
+    arguments = arguments or {}
     var_ref = arguments.get("variablesReference")
     name = arguments.get("name")
     value = arguments.get("value")
 
-    dbg = state.debugger
     if dbg and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
 
@@ -658,8 +669,9 @@ def create_variable_object(name, value):
     return make_variable_object(name, value, dbg)
 
 
-def handle_evaluate(arguments):
+def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle evaluate command"""
+    arguments = arguments or {}
     expression = arguments.get("expression")
     frame_id = arguments.get("frameId")
     arguments.get("context", "")
@@ -667,21 +679,24 @@ def handle_evaluate(arguments):
     result = "<evaluation not implemented>"
     var_ref = 0
 
-    dbg = state.debugger
     if frame_id and dbg and frame_id in dbg.frame_id_to_frame:
-        frame = dbg.frame_id_to_frame[frame_id]
-        try:
-            # Evaluate in frame's context
-            value = eval(expression, frame.f_globals, frame.f_locals)
-            result = repr(value)
+        # Evaluate in frame's context only if we have a string expression
+        if isinstance(expression, str):
+            try:
+                frame = dbg.frame_id_to_frame[frame_id]
+                value = eval(expression, frame.f_globals, frame.f_locals)
+                result = repr(value)
 
-            # Create variable reference if complex object
-            if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
-                var_ref = dbg.next_var_ref
-                dbg.next_var_ref += 1
-                dbg.var_refs[var_ref] = ("object", value)
-        except Exception as e:
-            result = f"<Error: {e!s}>"
+                # Create variable reference if complex object
+                if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
+                    var_ref = dbg.next_var_ref
+                    dbg.next_var_ref += 1
+                    dbg.var_refs[var_ref] = ("object", value)
+            except Exception as e:
+                result = f"<Error: {e!s}>"
+        else:
+            _msg = "expression must be a string"
+            raise TypeError(_msg)
 
     send_debug_message(
         "evaluate",
@@ -691,15 +706,15 @@ def handle_evaluate(arguments):
     )
 
 
-def handle_exception_info(arguments):
+def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle exceptionInfo command"""
+    arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
     if thread_id is None:
         send_debug_message("error", message="Missing required argument 'threadId'")
         return
 
-    dbg = state.debugger
     if not dbg:
         send_debug_message("error", message="Debugger not initialized")
         return
@@ -722,12 +737,12 @@ def handle_exception_info(arguments):
         )
 
 
-def handle_configuration_done():
+def handle_configuration_done(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle configurationDone command"""
     # Nothing to do here, just acknowledge
 
 
-def handle_terminate():
+def handle_terminate(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle terminate command"""
     # Mark termination on the module state
     state.is_terminated = True
@@ -735,7 +750,7 @@ def handle_terminate():
     os._exit(0)
 
 
-def handle_initialize(_arguments):
+def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle initialize command (minimal capabilities response)."""
     # Return a conservative set of capabilities the debuggee can support.
     caps = {
@@ -747,9 +762,8 @@ def handle_initialize(_arguments):
     return {"success": True, "body": caps}
 
 
-def handle_threads(_arguments):
+def handle_threads(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle threads request: return current threads list."""
-    dbg = state.debugger
     threads_list = []
     if dbg:
         for tid, name in getattr(dbg, "threads", {}).items():
@@ -758,14 +772,13 @@ def handle_threads(_arguments):
     return {"success": True, "body": {"threads": threads_list}}
 
 
-def handle_scopes(arguments):
+def handle_scopes(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle scopes request for a given frameId.
 
     This returns locals and globals scopes with variablesReference ids set up
     so the existing `handle_variables` can be used to fetch them.
     """
     frame_id = arguments.get("frameId")
-    dbg = state.debugger
     if not dbg or frame_id not in dbg.frame_id_to_frame:
         return {"success": False, "message": "Invalid frameId"}
 
@@ -786,8 +799,9 @@ def handle_scopes(arguments):
     return {"success": True, "body": {"scopes": scopes}}
 
 
-def handle_source(arguments):
+def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle source request: return file contents for a given source path."""
+    arguments = arguments or {}
     source = arguments.get("source") or {}
     path = source.get("path") or arguments.get("path")
     if not path:
@@ -802,13 +816,13 @@ def handle_source(arguments):
     return {"success": True, "body": {"content": content}}
 
 
-def handle_set_data_breakpoints(arguments):
+def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setDataBreakpoints (minimal support).
 
     Stores a list of configured data breakpoints on the debugger instance.
     """
+    arguments = arguments or {}
     bps = arguments.get("breakpoints", [])
-    dbg = state.debugger
     if dbg is not None:
         try:
             dbg.data_breakpoints = bps
@@ -821,8 +835,9 @@ def handle_set_data_breakpoints(arguments):
     return {"success": True, "body": {"breakpoints": verified}}
 
 
-def handle_data_breakpoint_info(arguments):
+def handle_data_breakpoint_info(_dbg: DebuggerLike, arguments: dict[str, Any]):
     """Return minimal info about a data breakpoint target."""
+    arguments = arguments or {}
     name = arguments.get("name")
     if not name:
         return {"success": False, "message": "Missing name"}
@@ -831,7 +846,7 @@ def handle_data_breakpoint_info(arguments):
     return {"success": True, "body": {"dataId": name, "canPersist": False}}
 
 
-def handle_restart(_arguments):
+def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Attempt to restart the debuggee process.
 
     This implementation attempts to re-exec the current Python interpreter with
@@ -1015,6 +1030,7 @@ def _setup_ipc_socket(
     host: str | None,
     port: int | None,
     path: str | None,
+    ipc_binary: bool = False,
 ) -> None:
     """Initialize TCP/UNIX socket IPC and configure state.
 
@@ -1042,6 +1058,8 @@ def _setup_ipc_socket(
     state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
     state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
     state.ipc_enabled = True
+    # record whether binary frames are used
+    state.ipc_binary = bool(ipc_binary)
 
 
 def setup_ipc_from_args(args: Any) -> None:

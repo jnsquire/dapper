@@ -74,8 +74,7 @@ class TestSetVariable(unittest.TestCase):
         # Test arguments
         arguments = {"variablesReference": var_ref, "name": "x", "value": "99"}
 
-        # Call handler
-        result = handle_set_variable(arguments)
+        result = handle_set_variable(self.mock_debugger, arguments)
 
         # Verify result
         assert result["success"]
@@ -105,8 +104,8 @@ class TestSetVariable(unittest.TestCase):
             "value": "'test_string'",
         }
 
-        # Call handler
-        result = handle_set_variable(arguments)
+        # Call handler (pass debugger as first arg)
+        result = handle_set_variable(self.mock_debugger, arguments)
 
         # Verify result
         assert result["success"]
@@ -125,8 +124,8 @@ class TestSetVariable(unittest.TestCase):
         # Test arguments with invalid reference
         arguments = {"variablesReference": 9999, "name": "x", "value": "42"}
 
-        # Call handler
-        result = handle_set_variable(arguments)
+        # Call handler (pass debugger as first arg)
+        result = handle_set_variable(self.mock_debugger, arguments)
 
         # Verify error result
         assert not result["success"]

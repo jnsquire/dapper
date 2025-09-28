@@ -135,7 +135,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
             "value": "'new_value'",
         }
 
-        result = handle_set_variable(arguments)
+        result = handle_set_variable(self.mock_debugger, arguments)
 
         assert result["success"]
         assert test_dict["new_key"] == "new_value"

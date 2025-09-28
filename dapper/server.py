@@ -47,6 +47,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Module-level registry mapping function objects -> event name
+_payload_registry: dict[Callable[..., dict[str, Any]], str] = {}
+
+
+# Decorator used to mark payload-producing methods with an event name.
+def payload(event_name: str):
+    def _decorator(func: Callable[..., dict[str, Any]]):
+        # Register in module-level registry instead of mutating the function
+        _payload_registry[func] = event_name
+        return func
+
+    return _decorator
+
+
+# Class decorator that collects all methods marked with @payload and builds
+# a class-level mapping event_name -> method_name for fast dispatch.
+def register_payloads(cls: type):
+    mapping: dict[str, str] = {}
+    for name, member in cls.__dict__.items():
+        if callable(member) and member in _payload_registry:
+            evt = _payload_registry[member]
+            mapping[evt] = name
+    cls.payload_dispatch = mapping
+    return cls
+
+
 # ---------------------------------------------------------------------------
 # Event loop acquisition helpers
 # ---------------------------------------------------------------------------
@@ -84,6 +110,67 @@ class PyDebuggerThread:
         self.frames = []
         self.is_stopped = False
         self.stop_reason = ""
+
+
+@register_payloads
+class DebugDataExtractor(dict):
+    """Helper to extract and format event payloads from generic dicts."""
+
+    @payload("output")
+    def output_payload(self) -> dict[str, Any]:
+        return {
+            "category": self.get("category", "console"),
+            "output": self.get("output", ""),
+            "source": self.get("source"),
+            "line": self.get("line"),
+            "column": self.get("column"),
+        }
+
+    @payload("continued")
+    def continued_payload(self) -> dict[str, Any]:
+        return {
+            "threadId": self.get("threadId", 1),
+            "allThreadsContinued": self.get("allThreadsContinued", True),
+        }
+
+    @payload("exception")
+    def exception_payload(self) -> dict[str, Any]:
+        return {
+            "exceptionId": self.get("exceptionId", "Exception"),
+            "description": self.get("description", ""),
+            "breakMode": self.get("breakMode", "always"),
+            "threadId": self.get("threadId", 1),
+        }
+
+    @payload("breakpoint")
+    def breakpoint_payload(self) -> dict[str, Any]:
+        return {
+            "reason": self.get("reason", "changed"),
+            "breakpoint": self.get("breakpoint", {}),
+        }
+
+    @payload("module")
+    def module_payload(self) -> dict[str, Any]:
+        return {
+            "reason": self.get("reason", "new"),
+            "module": self.get("module", {}),
+        }
+
+    @payload("process")
+    def process_payload(self) -> dict[str, Any]:
+        return {
+            "name": self.get("name", ""),
+            "systemProcessId": self.get("systemProcessId"),
+            "isLocalProcess": self.get("isLocalProcess", True),
+            "startMethod": self.get("startMethod", "launch"),
+        }
+
+    @payload("loadedSource")
+    def loaded_source_payload(self) -> dict[str, Any]:
+        return {
+            "reason": self.get("reason", "new"),
+            "source": self.get("source", {}),
+        }
 
 
 class PyDebugger:
@@ -175,7 +262,9 @@ class PyDebugger:
     # ------------------------------------------------------------------
     # Task spawning helpers (new API replacing _schedule_coroutine)
     # ------------------------------------------------------------------
-    def _schedule_factory(self, factory: Callable[[], Awaitable[Any]], loop: asyncio.AbstractEventLoop) -> None:
+    def _schedule_factory(
+        self, factory: Callable[[], Awaitable[Any]], loop: asyncio.AbstractEventLoop
+    ) -> None:
         """Internal: invoke factory and create a tracked task on given loop.
 
         Any exception or non-coroutine return is logged at debug level and ignored.
@@ -330,7 +419,7 @@ class PyDebugger:
             logger.debug("Failed bridging data watches to BDB", exc_info=True)
         return results
 
-    def _check_data_watches_for_frame(self, frame_id: int, frame_locals: dict[str, Any]) -> None:  # noqa: ARG002
+    def _check_data_watches_for_frame(self, frame_id: int, _frame_locals: dict[str, Any]) -> None:  # noqa: ARG002
         """(Future) Detect variable changes for watches tied to frame_id."""
         return
 
@@ -386,7 +475,7 @@ class PyDebugger:
 
         # If IPC is requested, prepare a listener and pass coordinates.
         self._use_ipc = bool(use_ipc)
-        self.ipc.binary = bool(use_binary_ipc)
+        self.set_ipc_binary(bool(use_binary_ipc))
         if self._use_ipc:
             self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
             if self.ipc.binary:
@@ -409,7 +498,9 @@ class PyDebugger:
                 await asyncio.to_thread(self._start_debuggee_process, debug_args)
 
         # If IPC is enabled, accept the connection from the launcher
-        if self._use_ipc and (self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None):
+        if self._use_ipc and (
+            self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None
+        ):
             threading.Thread(target=self._run_ipc_accept_and_read, daemon=True).start()
 
         self.program_running = True
@@ -523,12 +614,12 @@ class PyDebugger:
                 msg = "ipcPipeName required for pipe attach"
                 raise RuntimeError(msg)
             try:
-                self.ipc.pipe_conn = mp_conn.Client(address=ipc_pipe_name, family="AF_PIPE")
+                conn = mp_conn.Client(address=ipc_pipe_name, family="AF_PIPE")
             except Exception as exc:  # pragma: no cover - depends on OS
                 msg = "failed to connect pipe"
                 raise RuntimeError(msg) from exc
-            self.ipc.pipe_listener = None
-            self.ipc.enabled = True
+            # Use helper to centralize state changes
+            self.enable_ipc_pipe_connection(conn, binary=False)
 
             def _reader():
                 try:
@@ -541,8 +632,7 @@ class PyDebugger:
                         if isinstance(msg, str) and msg.startswith("DBGP:"):
                             self._handle_debug_message(msg[5:].strip())
                 finally:
-                    self.ipc.enabled = False
-                    self.ipc.cleanup()
+                    self.disable_ipc()
 
             threading.Thread(target=_reader, daemon=True).start()
         elif transport == "unix":
@@ -556,10 +646,8 @@ class PyDebugger:
             except Exception as exc:  # pragma: no cover - platform dependent
                 msg = "failed to connect unix socket"
                 raise RuntimeError(msg) from exc
-            self.ipc.sock = sock
-            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
-            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
-            self.ipc.enabled = True
+            # Use helper that configures rfile/wfile and flags
+            self.enable_ipc_socket_from_connected(sock, binary=False)
 
             def _reader_sock():
                 try:
@@ -573,8 +661,7 @@ class PyDebugger:
                         if line_s.startswith("DBGP:"):
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
-                    self.ipc.enabled = False
-                    self.ipc.cleanup()
+                    self.disable_ipc()
 
             threading.Thread(target=_reader_sock, daemon=True).start()
         elif transport == "tcp":
@@ -588,10 +675,8 @@ class PyDebugger:
             except Exception as exc:
                 msg = "failed to connect tcp socket"
                 raise RuntimeError(msg) from exc
-            self.ipc.sock = sock
-            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
-            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
-            self.ipc.enabled = True
+            # Centralized helper to set up the connected socket
+            self.enable_ipc_socket_from_connected(sock, binary=False)
 
             def _reader_tcp():
                 try:
@@ -605,8 +690,7 @@ class PyDebugger:
                         if line_s.startswith("DBGP:"):
                             self._handle_debug_message(line_s[5:].strip())
                 finally:
-                    self.ipc.enabled = False
-                    self.ipc.cleanup()
+                    self.disable_ipc()
 
             threading.Thread(target=_reader_tcp, daemon=True).start()
         else:
@@ -641,11 +725,12 @@ class PyDebugger:
                 ipc_pipe_name or rf"\\.\pipe\dapper-{os.getpid()}-{int(time.time() * 1000)}"
             )
             try:
-                self.ipc.pipe_listener = mp_conn.Listener(address=pipe_name, family="AF_PIPE")
+                listener = mp_conn.Listener(address=pipe_name, family="AF_PIPE")
             except Exception:
                 logger.exception("Failed to create named pipe listener")
-                self.ipc.pipe_listener = None
-            else:
+                listener = None
+            self.set_ipc_pipe_listener(listener)
+            if listener is not None:
                 debug_args.extend(["--ipc", "pipe", "--ipc-pipe", pipe_name])
             return
 
@@ -662,8 +747,7 @@ class PyDebugger:
             except Exception:
                 logger.exception("Failed to create UNIX socket; fallback to TCP")
             else:
-                self.ipc.listen_sock = listen
-                self.ipc.unix_path = unix_path
+                self.set_ipc_listen_socket(listen, unix_path)
                 debug_args.extend(["--ipc", "unix", "--ipc-path", str(unix_path)])
                 return
 
@@ -674,7 +758,7 @@ class PyDebugger:
         listen.bind((host, 0))
         listen.listen(1)
         _addr, port = listen.getsockname()
-        self.ipc.listen_sock = listen
+        self.set_ipc_listen_socket(listen)
         debug_args.extend(
             [
                 "--ipc",
@@ -697,8 +781,81 @@ class PyDebugger:
         except Exception:
             logger.exception("IPC reader error")
         finally:
+            # Ensure we clean up IPC resources before we exit
+            self.disable_ipc()
+
+    # ------------------------------------------------------------------
+    # IPC helper methods
+    # ------------------------------------------------------------------
+    def enable_ipc_pipe_connection(self, conn: Any, *, binary: bool = False) -> None:
+        """Enable IPC using an already-connected pipe connection.
+
+        This centralizes the common assignments previously performed by
+        callers which mutated the IPCContext directly (pipe_conn, binary,
+        enabled, pipe_listener).
+        """
+        # Preserve any previously-registered listener so disable_ipc/cleanup
+        # can close it. Tests expect the listener.close() to be called during
+        # cleanup even when a connection is active.
+        self.ipc.pipe_conn = conn
+        self.ipc.binary = bool(binary)
+        self.ipc.enabled = True
+
+    def enable_ipc_socket_from_connected(self, sock: Any, *, binary: bool = False) -> None:
+        """Enable IPC using an already-connected socket.
+
+        This will populate rfile/wfile appropriately for text or binary
+        transports and mark the IPC context enabled.
+        """
+        self.ipc.sock = sock
+        if binary:
+            # binary sockets use buffering=0 for raw bytes
+            self.ipc.rfile = sock.makefile("rb", buffering=0)  # type: ignore[arg-type]
+            self.ipc.wfile = sock.makefile("wb", buffering=0)  # type: ignore[arg-type]
+        else:
+            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
+            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
+        self.ipc.binary = bool(binary)
+        self.ipc.enabled = True
+
+    def set_ipc_pipe_listener(self, listener: Any) -> None:
+        """Register a pipe listener that will accept a single connection later."""
+        self.ipc.pipe_listener = listener
+
+    def set_ipc_listen_socket(self, listen_sock: Any, unix_path: Any | None = None) -> None:
+        """Register a listening socket that will accept a single connection later."""
+        self.ipc.listen_sock = listen_sock
+        if unix_path is not None:
+            self.ipc.unix_path = unix_path
+
+    def set_ipc_binary(self, binary: bool) -> None:
+        """Set the binary flag on the IPC context without enabling or disabling."""
+        self.ipc.binary = bool(binary)
+
+    def enable_ipc_wfile(self, wfile: Any, *, binary: bool = False) -> None:
+        """Enable IPC using an already-created writer file-like object.
+
+        This is a small helper used by tests to simulate an outgoing text/binary
+        channel without creating full socket/pipe objects. It centralizes the
+        common assignments so tests don't write into ``.ipc`` directly.
+        """
+        # Clear any listening/connection handles; this represents a connected
+        # writer-only transport for tests.
+        self.ipc.pipe_conn = None
+        self.ipc.pipe_listener = None
+        self.ipc.sock = None
+        self.ipc.rfile = None
+        self.ipc.wfile = wfile
+        self.ipc.binary = bool(binary)
+        self.ipc.enabled = True
+
+    def disable_ipc(self) -> None:
+        """Disable IPC and perform cleanup via the IPCContext helper."""
+        try:
             self.ipc.enabled = False
             self.ipc.cleanup()
+        except Exception:
+            logger.exception("error disabling ipc")
 
     # Legacy IPC helper methods removed; direct calls use ipc.* now.
 
@@ -832,14 +989,20 @@ class PyDebugger:
             self.var_refs[var_ref] = variables
 
     def _handle_debug_message(self, message: str) -> None:
-        """Handle a debug protocol message from the debuggee."""
+        """Handle a debug protocol message from the debuggee.
+
+        Uses a small DataWrapper to centralize safe access to the incoming
+        dict and helper methods that construct event payload dictionaries.
+        """
         try:
             data: dict[str, Any] = json.loads(message)
         except Exception:
             logger.exception("Error handling debug message")
             return
 
-        command_id = data.get("id")
+        wrapper = DebugDataExtractor(data)
+
+        command_id = wrapper.get("id")
         if command_id is not None and command_id in self._pending_commands:
             with self.lock:
                 future = self._pending_commands.pop(command_id, None)
@@ -848,7 +1011,7 @@ class PyDebugger:
                 self._resolve_pending_response(future, data)
             return
 
-        event_type: str | None = data.get("event")
+        event_type: str | None = wrapper.get("event")
 
         if event_type == "stopped":
             self._handle_event_stopped(data)
@@ -860,72 +1023,16 @@ class PyDebugger:
             self._handle_event_stacktrace(data)
         elif event_type == "variables":
             self._handle_event_variables(data)
-        else:
-
-            def _payload_output() -> dict[str, Any]:
-                return {
-                    "category": data.get("category", "console"),
-                    "output": data.get("output", ""),
-                    "source": data.get("source"),
-                    "line": data.get("line"),
-                    "column": data.get("column"),
-                }
-
-            dispatch: dict[str, tuple[Callable[[], dict[str, Any]], bool]] = {
-                "output": (_payload_output, False),
-                "continued": (
-                    lambda: {
-                        "threadId": data.get("threadId", 1),
-                        "allThreadsContinued": data.get("allThreadsContinued", True),
-                    },
-                    True,
-                ),
-                "exception": (
-                    lambda: {
-                        "exceptionId": data.get("exceptionId", "Exception"),
-                        "description": data.get("description", ""),
-                        "breakMode": data.get("breakMode", "always"),
-                        "threadId": data.get("threadId", 1),
-                    },
-                    True,
-                ),
-                "breakpoint": (
-                    lambda: {
-                        "reason": data.get("reason", "changed"),
-                        "breakpoint": data.get("breakpoint", {}),
-                    },
-                    True,
-                ),
-                "module": (
-                    lambda: {
-                        "reason": data.get("reason", "new"),
-                        "module": data.get("module", {}),
-                    },
-                    True,
-                ),
-                "process": (
-                    lambda: {
-                        "name": data.get("name", ""),
-                        "systemProcessId": data.get("systemProcessId"),
-                        "isLocalProcess": data.get("isLocalProcess", True),
-                        "startMethod": data.get("startMethod", "launch"),
-                    },
-                    True,
-                ),
-                "loadedSource": (
-                    lambda: {
-                        "reason": data.get("reason", "new"),
-                        "source": data.get("source", {}),
-                    },
-                    True,
-                ),
-            }
-
-            if event_type is not None:
-                handler = dispatch.get(event_type)
-                if handler is not None:
-                    payload_factory, immediate = handler
-                    self._forward_event(event_type, payload_factory())
+        # Use the registered payload mapping on DebugDataExtractor to
+        # resolve the method name for a given event and invoke it.
+        elif event_type is not None:
+            method_name = DebugDataExtractor.payload_dispatch.get(event_type)
+            if method_name is not None:
+                method = getattr(wrapper, method_name, None)
+                if callable(method):
+                    payload = method()
+                    # type: ignore[arg-type]
+                    self._forward_event(event_type, cast("dict[str, Any]", payload))
 
     def _resolve_pending_response(
         self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
@@ -1049,9 +1156,7 @@ class PyDebugger:
 
             # schedule a progressEnd
             self.spawn_threadsafe(
-                lambda pid=progress_id: self.server.send_event(
-                    "progressEnd", {"progressId": pid}
-                )
+                lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
             )
 
         return [{"verified": bp.get("verified", True)} for bp in bp_lines]

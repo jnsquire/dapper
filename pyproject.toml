@@ -161,3 +161,15 @@ dev = [
 [tool.flake8]
 max-line-length = 99
 extend-ignore = ["E203", "TRY300"]
+
+[tool.vulture]
+min_confidence = 60
+exclude = [
+    ".venv",
+    "tests",
+    "testing",
+    "examples",
+    "dapper/protocol_types.py",
+    "dapper/server.py",
+]
+sort_by_size = true
