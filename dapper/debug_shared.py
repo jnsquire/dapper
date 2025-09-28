@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import logging
 import queue
@@ -114,7 +115,7 @@ class SessionState:
         # Reverse mapping path -> ref id
         self._path_to_ref: dict[str, int] = {}
         # Session counter for allocating new ids
-        self.next_source_ref = 1
+        self.next_source_ref = itertools.count(1)
 
         self._initialized = True
 
@@ -208,13 +209,12 @@ class SessionState:
         existing = self.get_ref_for_path(path)
         if existing:
             return existing
-        ref = self.next_source_ref
+        ref = next(self.next_source_ref)
         try:
             self.source_references[ref] = {"path": path, "name": name}
         except Exception:
             self.source_references[ref] = {"path": path}
         self._path_to_ref[path] = ref
-        self.next_source_ref = ref + 1
         return ref
 
     def get_source_meta(self, ref: int) -> SourceReferenceMeta | None:
@@ -259,7 +259,7 @@ def send_debug_message(event_type: str, **kwargs) -> None:
     # Prefer IPC when enabled; fall back to logging/flush.
     if state.ipc_enabled:
         # Binary IPC path
-        if getattr(state, "ipc_binary", False):
+        if state.ipc_binary:
             payload = json.dumps(message).encode("utf-8")
             frame = pack_frame(1, payload)
             # Prefer pipe conn if available
@@ -382,6 +382,77 @@ def _detect_has_data_breakpoint(n: Any, debugger: DebuggerLike | None, fr: Any |
     return found
 
 
+def _make_variable_object_impl(
+    name: Any,
+    value: Any,
+    dbg: DebuggerLike | None = None,
+    frame: Any | None = None,
+    *,
+    max_string_length: int = MAX_STRING_LENGTH,
+) -> Variable:
+    """Internal implementation that builds the Variable-shaped dict.
+
+    This returns a plain dict cast to ``Variable`` to avoid invoking
+    TypedDict constructors at runtime.
+    """
+    val_str = _format_value_str(value, max_string_length)
+    var_ref = _allocate_var_ref(value, dbg)
+    type_name = type(value).__name__
+    kind, attrs = _detect_kind_and_attrs(value)
+    if _detect_has_data_breakpoint(name, dbg, frame) and "hasDataBreakpoint" not in attrs:
+        attrs.append("hasDataBreakpoint")
+
+    return cast(
+        "Variable",
+        {
+            "name": str(name),
+            "value": val_str,
+            "type": type_name,
+            "variablesReference": var_ref,
+            "presentationHint": {
+                "kind": kind,
+                "attributes": attrs,
+                "visibility": _visibility(name),
+            },
+        },
+    )
+
+
+def create_variable_object(
+    name: Any,
+    value: Any,
+    dbg: DebuggerLike | None = None,
+    frame: Any | None = None,
+    *,
+    max_string_length: int = MAX_STRING_LENGTH,
+) -> Variable:
+    """Public helper that prefers debugger-provided implementations.
+
+    It will call ``dbg.create_variable_object`` or ``dbg.make_variable_object`` if
+    provided by the debugger. Otherwise it falls back to the internal
+    implementation above. This lets debuggers provide richer/optimized
+    implementations while keeping a safe fallback.
+    """
+    if dbg is not None:
+        for attr in ("create_variable_object", "make_variable_object"):
+            fn = getattr(dbg, attr, None)
+            if callable(fn):
+                try:
+                    # Try to call debugger-provided helper. Accept either
+                    # the (name, value) signature or the extended one.
+                    res = fn(name, value) if fn.__code__.co_argcount <= 2 else fn(
+                        name, value, frame, max_string_length=max_string_length
+                    )
+                    if isinstance(res, dict):
+                        return cast("Variable", res)
+                except Exception:
+                    # Ignore debugger helper failures and fall back
+                    # to the internal implementation.
+                    pass
+
+    return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)
+
+
 def make_variable_object(
     name: Any,
     value: Any,
@@ -390,27 +461,8 @@ def make_variable_object(
     *,
     max_string_length: int = MAX_STRING_LENGTH,
 ) -> Variable:
-    """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
-
-    If `dbg` is provided and the value is a structured object (has __dict__ or is a dict/list/tuple),
-    this function will allocate a variablesReference on the debugger object using the
-    `next_var_ref` and `var_refs` attributes when available.
+    """Backwards-compatible wrapper kept for callers that import
+    ``make_variable_object`` from this module. Delegates to
+    ``create_variable_object``.
     """
-    # Use module-level helpers for formatting/allocation/detection
-
-    # Build the variable object using helpers
-    val_str = _format_value_str(value, max_string_length)
-    var_ref = _allocate_var_ref(value, dbg)
-    type_name = type(value).__name__
-    kind, attrs = _detect_kind_and_attrs(value)
-    if _detect_has_data_breakpoint(name, dbg, frame) and "hasDataBreakpoint" not in attrs:
-        attrs.append("hasDataBreakpoint")
-    presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
-
-    return cast("Variable", {
-        "name": str(name),
-        "value": val_str,
-        "type": type_name,
-        "variablesReference": var_ref,
-        "presentationHint": presentation,
-    })
+    return create_variable_object(name, value, dbg, frame, max_string_length=max_string_length)

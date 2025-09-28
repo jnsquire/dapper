@@ -15,7 +15,6 @@ from typing import Any
 from typing import cast
 
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
-from dapper.debug_shared import make_variable_object
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
 from dapper.protocol_types import Source
@@ -376,20 +375,30 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
 
 
 def create_variable_object(name, value) -> Variable:
-    # Prefer debugger-provided helper when available (DebuggerBDB.make_variable_object)
+    """Create a Variable-shaped dict.
+
+    Prefer debugger-provided implementations (either `create_variable_object`
+    or `make_variable_object`) when available on the active debugger. If the
+    debugger does not provide one, fall back to the shared module helper via a
+    local import to avoid circular imports at module load time.
+    """
     dbg = state.debugger
     if dbg is not None:
-        fn = getattr(dbg, "make_variable_object", None)
-        if callable(fn):
-            try:
-                res = fn(name, value)
-                if isinstance(res, dict):
-                    return cast("Variable", res)
-            except Exception:
-                # Fall through to module helper on error
-                pass
-    # Fallback to module-level helper
-    return cast("Variable", make_variable_object(name, value, dbg))
+        # Prefer an explicit create_variable_object, then make_variable_object
+        for attr in ("create_variable_object", "make_variable_object"):
+            fn = getattr(dbg, attr, None)
+            if callable(fn):
+                try:
+                    res = fn(name, value)
+                    if isinstance(res, dict):
+                        return cast("Variable", res)
+                except Exception:
+                    # If the debugger implementation errors, try the next option
+                    pass
+    # Fallback to the shared helper; import locally to avoid import cycles
+    from dapper import debug_shared as _debug_shared
+
+    return _debug_shared.make_variable_object(name, value, dbg)
 
 
 @command_handler("evaluate")

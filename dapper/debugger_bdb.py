@@ -386,13 +386,16 @@ class DebuggerBDB(bdb.Bdb):
             attrs.append("hasDataBreakpoint")
         presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
 
-        return cast("Variable", {
-            "name": str(name),
-            "value": val_str,
-            "type": type_name,
-            "variablesReference": var_ref,
-            "presentationHint": presentation,
-        })
+        return cast(
+            "Variable",
+            {
+                "name": str(name),
+                "value": val_str,
+                "type": type_name,
+                "variablesReference": var_ref,
+                "presentationHint": presentation,
+            },
+        )
 
     # Backwards-compatible alias: some callers expect a create_variable_object
     # helper on debugger instances (historical launcher helper). Delegate to
