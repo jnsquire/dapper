@@ -93,7 +93,7 @@ class InProcessDebugger:
             return results
 
     def set_function_breakpoints(
-        self, breakpoints: SourceBreakpoint
+        self, breakpoints: list[SourceBreakpoint]
     ) -> Sequence[SourceBreakpoint]:
         """Replace function breakpoints and record per-breakpoint metadata.
 
@@ -123,14 +123,15 @@ class InProcessDebugger:
                     except Exception:
                         pass
 
-                fbm = getattr(self.debugger, "function_breakpoint_meta", None)
-                if isinstance(fbm, dict):
-                    meta = fbm.get(name, {})
-                    meta.setdefault("hit", 0)
-                    meta["condition"] = condition
-                    meta["hitCondition"] = hit_condition
-                    meta["logMessage"] = log_message
-                    fbm[name] = meta
+                # The debugger is expected to expose a dict for
+                # function_breakpoint_meta; update it directly.
+                fbm = self.debugger.function_breakpoint_meta
+                meta = fbm.get(name, {})
+                meta.setdefault("hit", 0)
+                meta["condition"] = condition
+                meta["hitCondition"] = hit_condition
+                meta["logMessage"] = log_message
+                fbm[name] = meta
 
             return cast("list[SourceBreakpoint]", [{"verified": True} for _ in breakpoints])
 
