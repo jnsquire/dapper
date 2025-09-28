@@ -133,18 +133,32 @@ class InProcessDebugger:
                 meta["logMessage"] = log_message
                 fbm[name] = meta
 
-            return cast("list[SourceBreakpoint]", [{"verified": True} for _ in breakpoints])
+            # Build per-breakpoint verification results by checking whether
+            # the debugger's function_breakpoints list contains the name.
+            results: list[dict[str, Any]] = []
+            fb_list = getattr(self.debugger, "function_breakpoints", [])
+            for bp in breakpoints:
+                name = bp.get("name")
+                verified = False
+                if name and isinstance(fb_list, list):
+                    try:
+                        verified = name in fb_list
+                    except Exception:
+                        verified = False
+                results.append({"verified": verified})
+            return cast("list[SourceBreakpoint]", results)
 
-    def set_exception_breakpoints(self, filters: list[str]) -> list[SourceBreakpoint]:
+    def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:
             # Set boolean flags if present, fallback to dict otherwise
+            verified_all = True
             try:
                 self.debugger.exception_breakpoints_raised = "raised" in filters
                 self.debugger.exception_breakpoints_uncaught = "uncaught" in filters
             except Exception:
-                # If underlying debugger doesn't expose boolean attrs, ignore
-                pass
-            return cast("list[SourceBreakpoint]", [{"verified": True} for _ in filters])
+                # If setting flags fails, mark all as unverified
+                verified_all = False
+            return cast("list[Breakpoint]", [{"verified": verified_all} for _ in filters])
 
     def continue_(self, thread_id: int) -> ContinueResponseBody:
         with self.command_lock:

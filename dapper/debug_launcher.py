@@ -254,29 +254,49 @@ def handle_set_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
                     pass
 
         # Set new breakpoints and record metadata (hitCondition / logMessage)
+        verified_bps: list[dict[str, Any]] = []
         for bp in bps:
             line = bp.get("line")
             condition = bp.get("condition")
             hit_condition = bp.get("hitCondition")
             log_message = bp.get("logMessage")
 
+            verified = True
             if line:
-                # Set a BDB breakpoint; BDB enforces the 'condition'
-                dbg.set_break(path, line, cond=condition)
+                try:
+                    # Some debugger implementations may return a boolean to
+                    # indicate whether installing the breakpoint succeeded.
+                    res = dbg.set_break(path, line, cond=condition)
+                except Exception:
+                    verified = False
+                else:
+                    # If the debugger explicitly returns False, treat the
+                    # installation as unsuccessful. Treat True/None/other
+                    # values as success for backward compatibility.
+                    verified = res is not False
 
                 # Record DAP-specific metadata for runtime gating/logging
-                dbg.record_breakpoint(
-                    path,
-                    int(line),
-                    condition=condition,
-                    hit_condition=hit_condition,
-                    log_message=log_message,
-                )
+                try:
+                    dbg.record_breakpoint(
+                        path,
+                        int(line),
+                        condition=condition,
+                        hit_condition=hit_condition,
+                        log_message=log_message,
+                    )
+                except Exception:
+                    # If recording metadata fails, continue silently
+                    pass
 
-        # Send response with verified breakpoints
-        verified_bps = [{"verified": True, "line": bp.get("line")} for bp in bps]
+            verified_bps.append({"verified": verified, "line": line})
 
+        # Send response with verified breakpoints event for adapters
         send_debug_message("breakpoints", source=source, breakpoints=verified_bps)
+
+        # Also return a response dict so handlers invoked via handle_debug_command
+        # will produce a structured response when an id is present.
+        return {"success": True, "body": {"breakpoints": verified_bps}}
+    return None
 
 
 def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
@@ -313,6 +333,23 @@ def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]
                 mb["logMessage"] = log_message
                 fbm[name] = mb
 
+        # Build per-breakpoint verification results by checking whether
+        # the debugger's function_breakpoints list contains the name.
+        results: list[dict[str, Any]] = []
+        fb_list = getattr(dbg, "function_breakpoints", [])
+        for bp in bps:
+            name = bp.get("name")
+            verified = False
+            if name and isinstance(fb_list, list):
+                try:
+                    verified = name in fb_list
+                except Exception:
+                    verified = False
+            results.append({"verified": verified})
+
+        return {"success": True, "body": {"breakpoints": results}}
+    return None
+
 
 def handle_set_exception_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle setExceptionBreakpoints command"""
@@ -320,13 +357,17 @@ def handle_set_exception_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any
     filters = arguments.get("filters", [])
 
     if dbg:
-        # New boolean flags on debugger implementations
+        # New boolean flags on debugger implementations. Try to set them and
+        # return verification information per filter. If assignment fails,
+        # mark all as unverified.
+        verified_all = True
         try:
             dbg.exception_breakpoints_raised = "raised" in filters
             dbg.exception_breakpoints_uncaught = "uncaught" in filters
         except Exception:
-            # If debugger doesn't expose boolean attrs, ignore silently
-            pass
+            verified_all = False
+        return {"success": True, "body": {"breakpoints": [{"verified": verified_all} for _ in filters]}}
+    return None
 
 
 def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):

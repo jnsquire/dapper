@@ -1156,7 +1156,7 @@ class PyDebugger:
 
         return [{"verified": bp.get("verified", True)} for bp in bp_funcs]
 
-    async def set_exception_breakpoints(self, filters: list[str]) -> list[Any]:
+    async def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         """Set exception breakpoints"""
         self.exception_breakpoints_raised = "raised" in filters
         self.exception_breakpoints_uncaught = "uncaught" in filters
