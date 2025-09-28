@@ -39,13 +39,19 @@ STRING_RAW_THRESHOLD = 80
 
 class InProcessDebugger:
     """Lightweight wrapper around DebuggerBDB with explicit APIs.
+    Provides EventEmitter attributes for adapter/server callbacks used in
+    in-process mode so events can be forwarded without JSON/stdio. Register
+    listeners with the EventEmitter (e.g. `on_stopped.add_listener(...)`).
 
-    Event callbacks (callable attributes) can be set by the adapter to
-    forward DAP events without going through JSON/stdio.
+    Expected listener signatures:
+        - on_stopped(data: dict) -> None
+        - on_thread(data: dict) -> None
+        - on_exited(data: dict) -> None
+        - on_output(category: str, output: str) -> None
     """
 
     def __init__(self) -> None:
-        self.debugger = DebuggerBDB()
+        self.debugger: DebuggerBDB = DebuggerBDB()
         self.command_lock = threading.RLock()
 
         # Optional event callbacks (set by adapter).

@@ -31,7 +31,7 @@ from typing import Callable
 from typing import cast
 
 from dapper import debug_shared
-
+from dapper.inprocess_debugger import InProcessDebugger
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_context import IPCContext
 from dapper.protocol import ProtocolHandler
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from concurrent.futures import Future as _CFuture
 
     from dapper.connections import ConnectionBase
-    from dapper.inprocess_debugger import InProcessDebugger
     from dapper.protocol_types import ExceptionInfoRequest
     from dapper.protocol_types import GenericRequest
     from dapper.protocol_types import Source
@@ -291,42 +290,6 @@ class PyDebugger:
         except Exception:  # pragma: no cover - defensive
             logger.debug("failed to create task", exc_info=True)
 
-    def spawn(self, factory: Callable[[], Awaitable[Any]]) -> asyncio.Task | None:
-        """Create and track a task on the debugger loop when already on it.
-
-        If called off-loop it falls back to thread-safe spawning and returns None.
-        The factory MUST be a zero-arg callable returning an awaitable; this
-        guarantees coroutine objects are only created inside the loop thread.
-        """
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            current_loop = None
-
-        if current_loop is None:
-            self.spawn_threadsafe(factory)
-            return None
-        if current_loop is not self.loop:
-            self.spawn_threadsafe(factory)
-            return None
-        try:
-            aw = factory()
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("spawn factory invocation failed", exc_info=True)
-            return None
-        else:
-            if not inspect.iscoroutine(aw):  # pragma: no cover - defensive
-                logger.debug("spawn factory did not return coroutine")
-                return None
-            try:
-                task = asyncio.create_task(aw)
-            except Exception:  # pragma: no cover - defensive
-                logger.debug("spawn task creation failed", exc_info=True)
-                return None
-            self._bg_tasks.add(task)
-            task.add_done_callback(self._bg_tasks.discard)
-            return task
-
     def spawn_threadsafe(self, factory: Callable[[], Awaitable[Any]]) -> None:
         """Thread-safe scheduling of a factory without off-loop coroutine creation.
 
@@ -527,11 +490,9 @@ class PyDebugger:
 
     async def _launch_in_process(self) -> None:
         """Initialize in-process debugging bridge and emit process event."""
-        _inproc_cls = self._import_inprocess_cls()
-
         # Create the in-process bridge and attach event listeners
         self.in_process = True
-        self._inproc = _inproc_cls()
+        self._inproc = InProcessDebugger()
         self._inproc.on_stopped.add_listener(self._inproc_on_stopped)  # type: ignore[attr-defined]
         self._inproc.on_thread.add_listener(self._inproc_on_thread)  # type: ignore[attr-defined]
         self._inproc.on_exited.add_listener(self._inproc_on_exited)  # type: ignore[attr-defined]
@@ -550,15 +511,11 @@ class PyDebugger:
     def _import_inprocess_cls(self):
         """Import and return the InProcessDebugger class.
 
-        Raises RuntimeError with a clear message if import fails.
+        This function assumes the `dapper.inprocess_debugger` module is
+        available and will raise the underlying ImportError if not.
         """
-        try:
-            module = importlib.import_module("dapper.inprocess_debugger")
-        except Exception as exc:  # pragma: no cover - defensive import
-            msg = f"In-process debugging not available: {exc!s}"
-            raise RuntimeError(msg) from exc
-        else:
-            return module.InProcessDebugger  # type: ignore[attr-defined]
+        module = importlib.import_module("dapper.inprocess_debugger")
+        return module.InProcessDebugger  # type: ignore[attr-defined]
 
     def _make_inproc_callbacks(self):
         """Return a dict of event handlers that forward inproc events to the server."""
@@ -896,9 +853,6 @@ class PyDebugger:
             if not self.is_terminated:
                 self.is_terminated = True
 
-            # Thread-safe scheduling of the program exit handler; avoid creating
-            # a bare coroutine object that could trigger 'never awaited' warnings.
-            # Factory-based thread-safe scheduling (no off-loop coroutine creation)
             self.spawn_threadsafe(lambda c=exit_code: self._handle_program_exit(c))
         except Exception:
             logger.exception("Error starting debuggee")
@@ -931,11 +885,11 @@ class PyDebugger:
         reason = data.get("reason", "breakpoint")
 
         with self.lock:
-            if thread_id not in self.threads:
-                thread_name = f"Thread {thread_id}"
-                self.threads[thread_id] = PyDebuggerThread(thread_id, thread_name)
-            self.threads[thread_id].is_stopped = True
-            self.threads[thread_id].stop_reason = reason
+            thread = self.threads.get(thread_id)
+            if thread is None:
+                self.threads[thread_id] = thread = PyDebuggerThread(thread_id, f"Thread {thread_id}")
+            thread.is_stopped = True
+            thread.stop_reason = reason
 
         stop_event = {
             "reason": reason,

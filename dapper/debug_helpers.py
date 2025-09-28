@@ -43,7 +43,7 @@ def get_str(obj: Any, name: str, default: str | None = None):
     return safe_getattr(obj, name, default, str)
 
 
-def frame_may_handle_exception(f) -> bool | None:
+def frame_may_handle_exception(f: types.FrameType) -> bool | None:
     code = get_code(f, "f_code", None)
     lineno = get_int(f, "f_lineno", None)
     res = frame_has_exception_table_handler(code, lineno)
@@ -52,7 +52,7 @@ def frame_may_handle_exception(f) -> bool | None:
     return res
 
 
-def frame_has_exception_table_handler(code, lineno) -> bool | None:
+def frame_has_exception_table_handler(code: types.CodeType | None, lineno: int | None) -> bool | None:
     result: bool | None = None
     try:
         ex_table = getattr(code, "co_exceptiontable", None)
@@ -79,7 +79,7 @@ def frame_has_exception_table_handler(code, lineno) -> bool | None:
     return result
 
 
-def frame_has_ast_handler(code, lineno) -> bool | None:
+def frame_has_ast_handler(code: types.CodeType | None, lineno: int | None) -> bool | None:
     """
     Determines if the given code object has an AST handler for exceptions at the specified line number.
 

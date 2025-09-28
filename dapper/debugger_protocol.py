@@ -8,15 +8,41 @@ from the real DebuggerBDB.
 from __future__ import annotations
 
 from typing import Any
+from typing import Literal
 from typing import Protocol
+from typing import TypedDict
+from typing import Union
 from typing import runtime_checkable
+
+
+class PresentationHint(TypedDict, total=False):
+    kind: str
+    attributes: list[str]
+    visibility: str
+
+
+class Variable(TypedDict):
+    name: str
+    value: str
+    type: str
+    variablesReference: int
+    presentationHint: PresentationHint
 
 
 @runtime_checkable
 class DebuggerLike(Protocol):
     # Common attributes consumed by handlers/launcher/tests
     next_var_ref: int
-    var_refs: dict[int, Any]
+    # Variable reference bookkeeping can store several shapes:
+    # - ("object", value) for allocated object references
+    # - (frame_id, "locals"|"globals") for scope-backed refs
+    # - a list of variable-shaped dicts used when server caches variables
+    VarRefObject = tuple[Literal["object"], Any]
+    VarRefScope = tuple[int, Literal["locals", "globals"]]
+    VarRefList = list[Variable]
+    VarRef = Union[VarRefObject, VarRefScope, VarRefList]
+
+    var_refs: dict[int, VarRef]
     frame_id_to_frame: dict[int, Any]
     frames_by_thread: dict[int, list]
     threads: dict[int, Any]

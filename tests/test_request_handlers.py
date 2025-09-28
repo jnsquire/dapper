@@ -272,7 +272,9 @@ async def test_stack_trace(handler, mock_server):
 
 
 @pytest.mark.asyncio
-async def test_handle_source_prefers_debugger_helper_and_falls_back(handler, mock_server, monkeypatch, tmp_path):
+async def test_handle_source_prefers_debugger_helper_and_falls_back(
+    handler, mock_server, monkeypatch, tmp_path
+):
     """RequestHandler._handle_source should prefer debugger helper then fallback to state."""
     # prepare a temp file path
     p = tmp_path / "f.py"
@@ -281,7 +283,12 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(handler, moc
     # Case A: debugger provides get_source_content_by_path (async)
     mock_server.debugger.get_source_content_by_path = AsyncCallRecorder(return_value="dbg-content")
 
-    req = {"seq": 100, "type": "request", "command": "source", "arguments": {"source": {"path": str(p)}}}
+    req = {
+        "seq": 100,
+        "type": "request",
+        "command": "source",
+        "arguments": {"source": {"path": str(p)}},
+    }
     res = await handler._handle_source(req)
     assert res["success"] is True
     assert res["body"]["content"] == "dbg-content"
@@ -289,7 +296,7 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(handler, moc
     # Case B: debugger helper absent -> fallback to debug_shared.state
     delattr(mock_server.debugger, "get_source_content_by_path")
 
-    def state_getter(path):
+    def state_getter(_path):
         return "state-content"
 
     monkeypatch.setattr(debug_shared.state, "get_source_content_by_path", state_getter)
@@ -308,7 +315,12 @@ async def test_handle_module_source_reads_module_file(handler, tmp_path):
     m.__file__ = str(p)
     sys.modules["__unit_mymod__"] = m
 
-    req = {"seq": 200, "type": "request", "command": "moduleSource", "arguments": {"moduleId": "__unit_mymod__"}}
+    req = {
+        "seq": 200,
+        "type": "request",
+        "command": "moduleSource",
+        "arguments": {"moduleId": "__unit_mymod__"},
+    }
     res = await handler._handle_module_source(req)
     assert res["success"] is True
     assert "hello" in res["body"]["content"]

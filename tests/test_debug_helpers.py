@@ -1,5 +1,7 @@
 import types
 from pathlib import Path
+from typing import Any
+from typing import cast
 
 from dapper import debug_helpers as dh
 
@@ -95,4 +97,4 @@ def test_frame_may_handle_exception_uses_ast(tmp_path):
     # craft a simple frame-like object with f_code and f_lineno
     frame_like = types.SimpleNamespace(f_code=code, f_lineno=3)
 
-    assert dh.frame_may_handle_exception(frame_like) is True
+    assert dh.frame_may_handle_exception(cast("Any", frame_like)) is True
