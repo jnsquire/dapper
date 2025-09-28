@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-import dapper.debugger_protocol as dp
+from typing import TYPE_CHECKING
+
 from tests.dummy_debugger import DummyDebugger
+
+if TYPE_CHECKING:
+    import dapper.debugger_protocol as dp
 
 
 def test_runtime_protocol_check():
@@ -61,7 +65,11 @@ def test_make_variable_object_structure():
 
 def test_presentation_hint_and_variable_typeddict():
     # Create concrete typed-dicts and ensure they behave like mappings at runtime
-    ph: dp.PresentationHint = {"kind": "class", "attributes": ["readonly"], "visibility": "private"}
+    ph: dp.PresentationHint = {
+        "kind": "class",
+        "attributes": ["readonly"],
+        "visibility": "private",
+    }
     assert ph["kind"] == "class"
 
     var: dp.Variable = {

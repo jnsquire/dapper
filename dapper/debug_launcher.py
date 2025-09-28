@@ -155,16 +155,7 @@ def receive_debug_commands() -> None:
             os._exit(0)
 
         if line.startswith("DBGCMD:"):
-            command_json = line[7:].strip()
-            try:
-                command = json.loads(command_json)
-
-                state.command_queue.put(command)
-
-                handle_debug_command(command)
-            except Exception as e:
-                send_debug_message("error", message=f"Error receiving command: {e!s}")
-                traceback.print_exc()
+            _handle_command_bytes(line[7:].strip().encode("utf-8"))
 
 
 def handle_debug_command(command: dict[str, Any]) -> None:

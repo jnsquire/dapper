@@ -534,7 +534,9 @@ class DebuggerBDB(bdb.Bdb):
             is_uncaught = False
         thread_id = threading.get_ident()
         break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
-        if (is_uncaught and self.exception_breakpoints_uncaught) or self.exception_breakpoints_raised:
+        if (
+            is_uncaught and self.exception_breakpoints_uncaught
+        ) or self.exception_breakpoints_raised:
             break_on_exception = True
         else:
             break_on_exception = False

@@ -5,6 +5,7 @@ from typing import Any
 from typing import cast
 
 from dapper.inprocess_debugger import InProcessDebugger
+from tests.dummy_debugger import DummyDebugger
 
 
 class FakeFrame:
@@ -13,38 +14,16 @@ class FakeFrame:
         self.f_globals = globals_ or {}
 
 
-class FakeDebugger:
+# Use the shared DummyDebugger in tests for a fully-featured debugger-like
+# object. We subclass in tests when we need to tweak behavior (e.g. failing
+# set_break).
+class FakeDebugger(DummyDebugger):
     def __init__(self) -> None:
-        # simple stores used by InProcessDebugger
-        self.cleared_files = []
-        self.set_breaks = []
-        self.function_breakpoints = []
-        self.function_breakpoint_meta: dict = {}
-        self.exception_breakpoints_raised = False
-        self.exception_breakpoints_uncaught = False
-
-        self.stopped_thread_ids: list[int] = []
-        self._continued = False
-
-        self.frames_by_thread: dict[int, list] = {}
-        self.frame_id_to_frame: dict[int, FakeFrame] = {}
-        self.var_refs: dict[int, object] = {}
-
-    # helpers the InProcessDebugger calls
-    def clear_breaks_for_file(self, path: str) -> None:  # type: ignore[override]
-        self.cleared_files.append(path)
-
-    def set_break(self, path: str, line: int, cond: object | None = None) -> None:  # type: ignore[override]
-        self.set_breaks.append((path, line, cond))
-
-    def clear_all_function_breakpoints(self) -> None:
-        self.function_breakpoints = []
-
-    def set_continue(self) -> None:
-        self._continued = True
-
-    def make_variable_object(self, name: str, value: object) -> dict:
-        return {"name": name, "value": repr(value)}
+        super().__init__()
+        # Use simple frame mapping like previous tests
+        self.frames_by_thread = {}
+        self.frame_id_to_frame = {}
+        self.var_refs = {}
 
 
 def test_event_emitters_exist_and_work():
@@ -70,10 +49,30 @@ def test_set_breakpoints_delegates_to_debugger():
     # returned shape
     assert isinstance(bps, list)
     assert bps[0]["verified"] is True
-    # underlying debugger saw the clear and sets
-    assert fake.cleared_files == ["/tmp/foo.py"]
-    assert ("/tmp/foo.py", 10, None) in fake.set_breaks
-    assert ("/tmp/foo.py", 20, "x>0") in fake.set_breaks
+    # underlying debugger saw the clear and sets (DummyDebugger uses
+    # `cleared` and the `breaks` container)
+    assert fake.cleared == ["/tmp/foo.py"]
+    assert ("/tmp/foo.py", 10, None) in fake.breaks
+    assert ("/tmp/foo.py", 20, "x>0") in fake.breaks
+
+
+def test_set_breakpoints_handles_failed_install():
+    ip = InProcessDebugger()
+
+    class BadSetDebugger(FakeDebugger):
+        def set_break(self, path: str, line: int, cond: object | None = None) -> bool:  # type: ignore[override]
+            # Simulate failure for line 20 only
+            super().set_break(path, line, cond=cond)
+            return line != 20
+
+    fake = BadSetDebugger()
+    ip.debugger = cast("Any", fake)
+
+    bps = ip.set_breakpoints("/tmp/foo.py", [{"line": 10}, {"line": 20}])
+    assert isinstance(bps, list)
+    # first should be verified, second not
+    assert bps[0]["verified"] is True
+    assert bps[1]["verified"] is False
 
 
 def test_variables_and_stack_trace_and_evaluate_and_set_variable():
@@ -126,7 +125,7 @@ def test_continue_removes_thread_and_calls_set_continue():
     ip.debugger = cast("Any", fake)
 
     tid = threading.get_ident()
-    fake.stopped_thread_ids = [tid]
+    fake.stopped_thread_ids = {tid}
     resp = ip.continue_(tid)
     assert resp.get("allThreadsContinued") is True
     # stopped list should be emptied and set_continue called

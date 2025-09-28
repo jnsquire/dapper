@@ -35,6 +35,7 @@ from dapper.inprocess_debugger import InProcessDebugger
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_context import IPCContext
 from dapper.protocol import ProtocolHandler
+from dapper.protocol_types import Breakpoint
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -1127,7 +1128,7 @@ class PyDebugger:
 
     async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Any]:
         """Set breakpoints for functions"""
-        bp_funcs = [
+        bp_funcs: list[dict[str, Any]] = [
             {
                 "name": bp.get("name", ""),
                 "condition": bp.get("condition"),

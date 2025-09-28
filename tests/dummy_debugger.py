@@ -125,7 +125,8 @@ class DummyDebugger:
     ) -> Any | None:
         _ = temporary, funcname
         self.breaks.add(filename, int(lineno), cond)
-        return None
+        # Return True to indicate the breakpoint was successfully set.
+        return True
 
     def record_breakpoint(
         self,

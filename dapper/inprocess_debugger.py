@@ -64,7 +64,7 @@ class InProcessDebugger:
         self.on_exited = EventEmitter()
         self.on_output = EventEmitter()
 
-    def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
+    def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         with self.command_lock:
             # Clear existing breakpoints for this file (helper on DebuggerBDB)
@@ -72,18 +72,29 @@ class InProcessDebugger:
                 self.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
             except Exception:
                 pass
+            results: list[Breakpoint] = []
             for bp in breakpoints:
                 line = bp.get("line")
                 cond = bp.get("condition")
+                verified = True
                 if line:
-                    self.debugger.set_break(path, line, cond=cond)
-            # Return the minimal Breakpoint shape expected by the adapter/client
-            return cast(
-                "list[SourceBreakpoint]",
-                [{"verified": True, "line": bp.get("line")} for bp in breakpoints],
-            )
+                    try:
+                        # Some debugger implementations may return a boolean to
+                        # indicate whether installing the breakpoint succeeded.
+                        res = self.debugger.set_break(path, line, cond=cond)
+                    except Exception:
+                        verified = False
+                    else:
+                        # If the debugger explicitly returns False, treat the
+                        # installation as unsuccessful. Treat True/None/other
+                        # values as success for backward compatibility.
+                        verified = res is not False
+                results.append({"verified": verified, "line": line})
+            return results
 
-    def set_function_breakpoints(self, breakpoints: SourceBreakpoint) -> Sequence[SourceBreakpoint]:
+    def set_function_breakpoints(
+        self, breakpoints: SourceBreakpoint
+    ) -> Sequence[SourceBreakpoint]:
         """Replace function breakpoints and record per-breakpoint metadata.
 
         Mirrors the behavior in debug_launcher: clears existing function

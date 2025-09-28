@@ -18,7 +18,7 @@ from dapper import debug_shared as _ds
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
-from dapper.protocol_types import Source, SourceBreakpoint
+from dapper.protocol_types import Source
 
 # small constant to make argcount checks clearer / lint-friendly
 _SIMPLE_MAKE_VAR_ARGCOUNT = 2
