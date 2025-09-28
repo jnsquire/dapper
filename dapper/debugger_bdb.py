@@ -218,9 +218,13 @@ class DebuggerBDB(bdb.Bdb):
         self.current_exception_info = {}
         self.breakpoint_meta = {}
         # Data breakpoint Phase 2 (lightweight): watch names & last values per frame
-        self.data_watch_names: set[str] = set()
+        # Use types compatible with DebuggerLike: allow None or concrete types
+        self.data_watch_names: set[str] | list[str] | None = set()
         self._last_locals_by_frame: dict[int, dict[str, object]] = {}
-        self.data_watch_meta: dict[str, list[dict]] = {}
+        self.data_watch_meta: dict[str, Any] | None = {}
+        # PyDebugger/server style mappings
+        self._data_watches: dict[str, Any] | None = None
+        self._frame_watches: dict[int, list[str]] | None = None
         # Global fallback for tests / cases where new frame objects appear per line
         self._last_global_watch_values: dict[str, object] = {}
 
@@ -401,7 +405,7 @@ class DebuggerBDB(bdb.Bdb):
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
         """Evaluate conditions and hitConditions for a changed variable."""
-        metas = self.data_watch_meta.get(changed_name, [])
+        metas = (self.data_watch_meta or {}).get(changed_name, [])
 
         for m in metas:
             # Increment hit counter per meta (change-based hit)

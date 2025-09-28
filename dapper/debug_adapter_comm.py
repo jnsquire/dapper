@@ -39,12 +39,10 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    def handle(self, session: "SessionState", command: str, arguments: dict[str, Any], full_command: dict[str, Any]):
+    def handle(self, command: str, arguments: dict[str, Any]):
         # The underlying mapping handlers only accept `arguments` so delegate
         # and translate their return shape to the protocol expected by
         # register_command_provider.
-        _ = session  # parameter kept for protocol compatibility
-        _ = full_command
         func = self._mapping.get(command)
         if not callable(func):
             return {"success": False, "message": f"Unknown command: {command}"}

@@ -54,6 +54,21 @@ class DebuggerLike(Protocol):
 
     # Optional in practice; launcher writes to it when present
     data_breakpoints: list[dict[str, Any]] | None
+    # Optional flag on some debugger implementations used by launcher
+    stop_on_entry: bool
+    # Optional data-watch bookkeeping helpers used by _detect_has_data_breakpoint
+    # - data_watch_names: set or list of watched variable names
+    # - data_watch_meta: mapping of name -> metadata
+    # - _data_watches: dict of data-id-like keys (string) -> metadata
+    # - _frame_watches: mapping of frame_id -> list of dataId strings
+    # data_watch_names can be a set or list of watched variable names
+    data_watch_names: set[str] | list[str] | None
+    # metadata mapping for watched names (adapter may store lists of metas)
+    data_watch_meta: dict[str, Any] | None
+    # server-side mapping of dataId-like keys -> metadata
+    _data_watches: dict[str, Any] | None
+    # optional mapping of frame_id -> list[dataId strings]
+    _frame_watches: dict[int, list[str]] | None
 
     # Breakpoint APIs used by dap_command_handlers (match bdb.Bdb signatures)
     def set_break(

@@ -233,7 +233,11 @@ def handle_variables(arguments: VariablesArguments) -> None:
         frame_info = dbg.var_refs[var_ref]
         variables = []
         # frame_info can have multiple shapes; handle scope-backed refs here
-        if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE and isinstance(frame_info[0], int):
+        if (
+            isinstance(frame_info, tuple)
+            and len(frame_info) == VAR_REF_TUPLE_SIZE
+            and isinstance(frame_info[0], int)
+        ):
             frame_id, scope = cast("tuple", frame_info)
             frame = dbg.frame_id_to_frame.get(cast("int", frame_id))
             if frame and scope == "locals":
@@ -242,7 +246,11 @@ def handle_variables(arguments: VariablesArguments) -> None:
                     if callable(fn):
                         try:
                             # accept simple or extended signature
-                            var_obj = fn(name, value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, value, frame)
+                            var_obj = (
+                                fn(name, value)
+                                if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
+                                else fn(name, value, frame)
+                            )
                             if isinstance(var_obj, dict):
                                 variables.append(cast("Variable", var_obj))
                                 continue
@@ -255,7 +263,11 @@ def handle_variables(arguments: VariablesArguments) -> None:
                     fn = getattr(dbg, "make_variable_object", None)
                     if callable(fn):
                         try:
-                            var_obj = fn(name, value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, value, frame)
+                            var_obj = (
+                                fn(name, value)
+                                if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
+                                else fn(name, value, frame)
+                            )
                             if isinstance(var_obj, dict):
                                 variables.append(cast("Variable", var_obj))
                                 continue
@@ -307,7 +319,11 @@ def _set_scope_variable(frame, scope, name, value):
         fn = getattr(state.debugger, "make_variable_object", None)
         if callable(fn):
             try:
-                var_obj = fn(name, new_value) if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT else fn(name, new_value, frame)
+                var_obj = (
+                    fn(name, new_value)
+                    if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
+                    else fn(name, new_value, frame)
+                )
             except Exception:
                 var_obj = None
         else:
@@ -334,48 +350,47 @@ def _set_scope_variable(frame, scope, name, value):
 def _set_object_member(parent_obj, name, value):
     try:
         new_value = _convert_value_with_context(value, None, parent_obj)
+
         if isinstance(parent_obj, dict):
             parent_obj[name] = new_value
+
         elif isinstance(parent_obj, list):
             try:
                 index = int(name)
-                if 0 <= index < len(parent_obj):
-                    parent_obj[index] = new_value
-                else:
-                    return {
-                        "success": False,
-                        "message": f"List index {index} out of range",
-                    }
-            except ValueError:
+                parent_obj[index] = new_value
+            except (ValueError, IndexError):
                 return {
                     "success": False,
-                    "message": f"Invalid list index: {name}",
+                    "message": f"Invalid or out-of-range list index: {name}",
                 }
+
         elif isinstance(parent_obj, tuple):
             return {
                 "success": False,
                 "message": "Cannot modify tuple - tuples are immutable",
             }
-        elif hasattr(parent_obj, name):
-            setattr(parent_obj, name, new_value)
+
         else:
+            # Try to set attribute on arbitrary objects; handle failures uniformly.
             try:
                 setattr(parent_obj, name, new_value)
             except (AttributeError, TypeError):
                 return {
                     "success": False,
-                    "message": (f"Cannot set attribute '{name}' on {type(parent_obj).__name__}"),
+                    "message": f"Cannot set attribute '{name}' on {type(parent_obj).__name__}",
                 }
+
         dbg = state.debugger
         fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
-        var_obj = None
-        if callable(fn):
-            try:
+        try:
+            if callable(fn):
                 var_obj = fn(name, new_value)
-            except Exception:
-                var_obj = None
-        if not var_obj:
+            else:
+                var_obj = _ds.make_variable_object(name, new_value, dbg)
+        except Exception:
+            # Fall back to shared helper on any error from custom make_variable_object
             var_obj = _ds.make_variable_object(name, new_value, dbg)
+
         vobj = cast("dict[str, Any]", var_obj)
         return {
             "success": True,
@@ -420,6 +435,7 @@ def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
         except (ValueError, TypeError):
             pass
     return value_str
+
 
 # The canonical helper for creating Variable-shaped dicts is provided in
 # dapper.debug_shared.make_variable_object. Callers should prefer using the
@@ -561,16 +577,16 @@ def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
     sources: list[Source] = []
 
     # Add the main program source if it exists
-    if hasattr(state, "debugger") and state.debugger:
+    if state.debugger:
         program_path = getattr(state.debugger, "program_path", None)
         if program_path and program_path not in seen_paths:
             try:
                 program_file_path = Path(program_path).resolve()
                 abs_path = str(program_file_path)
                 if program_file_path.exists():
-                    source = Source(name=program_file_path.name, path=abs_path)
-                    source["origin"] = "main"
-                    sources.append(source)
+                    sources.append(
+                        Source(name=program_file_path.name, path=abs_path, origin="main")
+                    )
             except (OSError, TypeError):
                 pass
 
@@ -707,7 +723,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module:start_module + module_count]
+            modules = all_modules[start_module : start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

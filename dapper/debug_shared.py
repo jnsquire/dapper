@@ -420,7 +420,6 @@ def _make_variable_object_impl(
     )
 
 
-# Public helper: prefer debugger-provided `make_variable_object` then fallback
 def make_variable_object(
     name: Any,
     value: Any,
@@ -436,19 +435,9 @@ def make_variable_object(
     fails or is absent, fall back to the internal implementation.
     """
     if dbg is not None:
-        fn = getattr(dbg, "make_variable_object", None)
-        if callable(fn):
-            try:
-                res = (
-                    fn(name, value)
-                    if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount <= MAKE_VAR_SIMPLE_ARGCOUNT
-                    else fn(name, value, frame, max_string_length=max_string_length)
-                )
-                if isinstance(res, dict):
-                    return cast("Variable", res)
-            except Exception:
-                # Ignore debugger helper failures and fall back to the internal implementation.
-                pass
+        res = dbg.make_variable_object(name, value, frame, max_string_length=max_string_length)
+        if isinstance(res, dict):
+            return cast("Variable", res)
 
     return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)
 

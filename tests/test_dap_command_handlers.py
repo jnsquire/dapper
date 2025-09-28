@@ -11,9 +11,9 @@ from typing import cast
 
 from dapper import dap_command_handlers as dch
 from dapper import debug_shared
+from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import DebuggerLike
     from dapper.debugger_protocol import Variable
     from dapper.protocol_types import ExceptionInfoArguments
 
@@ -21,85 +21,6 @@ if TYPE_CHECKING:
     from dapper.protocol_types import SetBreakpointsArguments
     from dapper.protocol_types import SetExceptionBreakpointsArguments
     from dapper.protocol_types import SetFunctionBreakpointsArguments
-
-
-class DummyDebugger:
-    def __init__(self):
-        self.cleared: list[object] = []
-        self.breaks: list[tuple[str, int, object | None]] = []
-        self.function_breakpoints: list[str] = []
-        self.function_breakpoint_meta: dict[str, dict[str, object]] = {}
-        self.exception_breakpoints_raised: bool = False
-        self.exception_breakpoints_uncaught: bool = False
-        self.stopped_thread_ids: set[int] = set()
-        self._continued: bool = False
-        self.stepping: bool = False
-        self.current_frame: Any | None = None
-        self.frames_by_thread: dict[int, list] = {}
-        self.var_refs: dict[int, DebuggerLike.VarRef] = {}
-        self.frame_id_to_frame: dict[int, Any] = {}
-        self.next_var_ref: int = 1
-        self.current_exception_info: dict[Any, Any] = {}
-        self.program_path: Any | None = None
-        # Additional attributes to satisfy DebuggerLike
-        self.threads: dict[int, Any] = {}
-        self.data_breakpoints: list[dict[str, Any]] | None = []
-        self.breakpoint_meta: dict[tuple[str, int], dict] = {}
-
-    def set_break(
-        self,
-        filename: str,
-        lineno: int,
-        temporary: bool = False,
-        cond: Any | None = None,
-        funcname: str | None = None,
-    ) -> Any | None:
-        _ = temporary, funcname
-        self.breaks.append((filename, int(lineno), cond))
-        return None
-
-    def record_breakpoint(
-        self,
-        path: str,
-        line: int,
-        *,
-        condition: Any | None = None,
-        hit_condition: Any | None = None,
-        log_message: Any | None = None,
-    ) -> None:
-        self.breaks.append((path, int(line), {"condition": condition, "hit_condition": hit_condition, "log_message": log_message}))
-
-    def clear_breaks_for_file(self, path: str) -> None:
-        self.cleared.append(path)
-
-    def clear_break(self, filename: str, lineno: int) -> Any | None:
-        self.cleared.append(("clear", filename, int(lineno)))
-        return None
-
-    def clear_break_meta_for_file(self, path: str) -> None:
-        to_del = [k for k in list(self.breakpoint_meta.keys()) if k[0] == path]
-        for k in to_del:
-            self.breakpoint_meta.pop(k, None)
-
-    def clear_all_function_breakpoints(self) -> None:
-        self.function_breakpoints.clear()
-        self.function_breakpoint_meta.clear()
-
-    def set_continue(self) -> None:
-        self._continued = True
-
-    def set_next(self, frame: Any) -> None:
-        self._next = frame
-
-    def set_step(self) -> None:
-        self._step = True
-
-    def set_return(self, frame: Any) -> None:
-        self._return = frame
-
-    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> Any:
-        _ = cmd, args, kwargs
-        return None
 
 
 def test_convert_value_with_context_literal_and_bool_and_none():
@@ -226,7 +147,10 @@ def test_variables_and_set_variable(monkeypatch):
 
     # stub make_variable_object to predictable output
     def fake_make_variable_object(_name, value):
-        return cast("Variable", {"value": str(value), "type": type(value).__name__, "variablesReference": 0})
+        return cast(
+            "Variable",
+            {"value": str(value), "type": type(value).__name__, "variablesReference": 0},
+        )
 
     monkeypatch.setattr(dch, "make_variable_object", fake_make_variable_object)
 
@@ -351,10 +275,14 @@ def test_handle_exception_info_variants(monkeypatch):
 def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
     # override returns dict
     class DbgWithMake(DummyDebugger):
-        def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000):
+        def make_variable_object(
+            self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+        ):
             # reference parameters to satisfy linters and preserve protocol shape
             _ = (name, frame, max_string_length)
-            return cast("Variable", {"value": f"dbg:{value}", "type": "int", "variablesReference": 0})
+            return cast(
+                "Variable", {"value": f"dbg:{value}", "type": "int", "variablesReference": 0}
+            )
 
     dbg = DbgWithMake()
     monkeypatch.setattr(dch.state, "debugger", dbg)
@@ -364,7 +292,9 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
 
     # make_variable_object raises -> fallback to module helper
     class DbgBad(DummyDebugger):
-        def make_variable_object(self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000):
+        def make_variable_object(
+            self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+        ):
             # reference parameters to satisfy linters and preserve protocol shape
             _ = (name, value, frame, max_string_length)
             msg = "fail"

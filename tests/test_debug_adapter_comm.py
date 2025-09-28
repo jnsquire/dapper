@@ -23,7 +23,7 @@ def test_dap_mapping_provider_handle_variants():
     p = dac.DapMappingProvider(mapping)
     assert p.supported_commands() == {"ok"}
     assert p.can_handle("ok")
-    res = p.handle(None, "ok", {}, None)
+    res = p.handle("ok", {})
     assert isinstance(res, dict)
     assert res.get("success") is True
 
@@ -33,12 +33,12 @@ def test_dap_mapping_provider_handle_variants():
 
     mapping = {"noreply": noreply_handler}
     p = dac.DapMappingProvider(mapping)
-    assert p.handle(None, "noreply", {}, None) is None
+    assert p.handle("noreply", {}) is None
 
     # non-callable mapping entry
     mapping = {"bad": 123}
     p = dac.DapMappingProvider(mapping)
-    out = p.handle(None, "bad", {}, None)
+    out = p.handle("bad", {})
     assert isinstance(out, dict)
     assert out.get("success") is False
 
