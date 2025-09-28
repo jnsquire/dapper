@@ -111,7 +111,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         except Exception as e:
             send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = data[HEADER_SIZE : HEADER_SIZE + length]
+        payload = data[HEADER_SIZE:HEADER_SIZE + length]
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -131,22 +131,6 @@ def _recv_binary_from_stream(rfile: Any) -> None:
             os._exit(0)
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
-
-
-def _recv_text(reader: Any) -> None:
-    while not state.is_terminated:
-        line = reader.readline()
-        if not line:
-            os._exit(0)
-        if line.startswith("DBGCMD:"):
-            command_json = line[7:].strip()
-            try:
-                command = json.loads(command_json)
-                state.command_queue.put(command)
-                handle_debug_command(command)
-            except Exception as e:
-                send_debug_message("error", message=f"Error receiving command: {e!s}")
-                traceback.print_exc()
 
 
 def receive_debug_commands() -> None:

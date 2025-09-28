@@ -90,7 +90,7 @@ class IPCContext:
                         kind, length = unpack_header(data[:HEADER_SIZE])
                     except Exception:
                         break
-                    payload = data[HEADER_SIZE : HEADER_SIZE + length]
+                    payload = data[HEADER_SIZE:HEADER_SIZE + length]
                     if kind == 1:
                         try:
                             handle_debug_message(payload.decode("utf-8"))

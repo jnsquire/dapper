@@ -3,6 +3,8 @@ import json
 import sys
 from queue import Queue
 
+import pytest
+
 from dapper import debug_adapter_comm as dac
 
 
@@ -157,3 +159,33 @@ def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
     ev, kw = called[0]
     assert ev == "error"
     assert "Error receiving command" in kw.get("message", "")
+
+
+def test_dap_mapping_provider_supported_commands_errors_and_missing():
+    # mapping-like object whose keys() raises should be handled gracefully
+    class BadMapping:
+        def keys(self):
+            msg = "no keys"
+            raise RuntimeError(msg)
+
+    p = dac.DapMappingProvider(BadMapping())
+    assert p.supported_commands() == set()
+
+    # missing key (mapping.get returns None) should be treated as unknown
+    mapping = {}
+    p2 = dac.DapMappingProvider(mapping)
+    out = p2.handle("not-there", {})
+    assert isinstance(out, dict)
+    assert out.get("success") is False
+
+
+def test_dap_mapping_provider_handle_raises():
+    # handler that raises should propagate the exception from handle
+    def boom(_):
+        msg = "boom"
+        raise ValueError(msg)
+
+    mapping = {"boom": boom}
+    p = dac.DapMappingProvider(mapping)
+    with pytest.raises(ValueError, match="boom"):
+        p.handle("boom", {})

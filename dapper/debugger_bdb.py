@@ -366,17 +366,18 @@ class DebuggerBDB(bdb.Bdb):
 
         def _detect_has_data_breakpoint(n: Any, fr: Any | None) -> bool:
             name_str = str(n)
-            # DebuggerBDB style
-            dw_names = getattr(self, "data_watch_names", None)
+            # Direct attributes now assumed to exist
+            dw_names = self.data_watch_names
             if isinstance(dw_names, (set, list)) and name_str in dw_names:
                 return True
-            dw_meta = getattr(self, "data_watch_meta", None)
+            dw_meta = self.data_watch_meta
             if isinstance(dw_meta, dict) and name_str in dw_meta:
                 return True
-            # Frame-based mapping
-            frame_watches = getattr(self, "_frame_watches", None)
+            frame_watches = self._frame_watches
             if fr is not None and isinstance(frame_watches, dict):
                 for data_ids in frame_watches.values():
+                    if not isinstance(data_ids, list):
+                        continue
                     for did in data_ids:
                         if isinstance(did, str) and (f":var:{name_str}" in did or name_str in did):
                             return True
@@ -524,9 +525,7 @@ class DebuggerBDB(bdb.Bdb):
         self.set_continue()
 
     def user_exception(self, frame, exc_info):
-        if not getattr(self, "exception_breakpoints_raised", False) and not getattr(
-            self, "exception_breakpoints_uncaught", False
-        ):
+        if not self.exception_breakpoints_raised and not self.exception_breakpoints_uncaught:
             return
         exc_type, exc_value, exc_traceback = exc_info
         is_uncaught = True
@@ -534,12 +533,8 @@ class DebuggerBDB(bdb.Bdb):
         if res is True or res is None:
             is_uncaught = False
         thread_id = threading.get_ident()
-        break_mode = (
-            "always" if getattr(self, "exception_breakpoints_raised", False) else "unhandled"
-        )
-        if (is_uncaught and getattr(self, "exception_breakpoints_uncaught", False)) or getattr(
-            self, "exception_breakpoints_raised", False
-        ):
+        break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
+        if (is_uncaught and self.exception_breakpoints_uncaught) or self.exception_breakpoints_raised:
             break_on_exception = True
         else:
             break_on_exception = False

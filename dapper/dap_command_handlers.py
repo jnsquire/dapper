@@ -18,7 +18,7 @@ from dapper import debug_shared as _ds
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
-from dapper.protocol_types import Source
+from dapper.protocol_types import Source, SourceBreakpoint
 
 # small constant to make argcount checks clearer / lint-friendly
 _SIMPLE_MAKE_VAR_ARGCOUNT = 2
@@ -83,6 +83,8 @@ def handle_debug_command(command: dict[str, Any]) -> None:
 @command_handler("setBreakpoints")
 def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
     source = arguments.get("source", {})
+    # 'breakpoints' is expected to be a list of dict-like entries with
+    # optional fields such as line, condition, hitCondition and logMessage.
     bps = arguments.get("breakpoints", [])
     path = source.get("path")
     if path and state.debugger:
@@ -106,7 +108,7 @@ def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
             condition = bp.get("condition")
             hit_condition = bp.get("hitCondition")
             log_message = bp.get("logMessage")
-            if line:
+            if line is not None:
                 state.debugger.set_break(path, line, cond=condition)
                 state.debugger.record_breakpoint(
                     path,
@@ -723,7 +725,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module : start_module + module_count]
+            modules = all_modules[start_module:start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from dapper.protocol_types import ContinueResponseBody
     from dapper.protocol_types import EvaluateResponseBody
     from dapper.protocol_types import SetVariableResponseBody
+    from dapper.protocol_types import SourceBreakpoint
     from dapper.protocol_types import StackTraceResponseBody
     from dapper.protocol_types import VariablesResponseBody
 
@@ -63,7 +64,7 @@ class InProcessDebugger:
         self.on_exited = EventEmitter()
         self.on_output = EventEmitter()
 
-    def set_breakpoints(self, path: str, breakpoints: list[dict[str, Any]]) -> list[Breakpoint]:
+    def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
         """Set line breakpoints for a file."""
         with self.command_lock:
             # Clear existing breakpoints for this file (helper on DebuggerBDB)
@@ -78,11 +79,11 @@ class InProcessDebugger:
                     self.debugger.set_break(path, line, cond=cond)
             # Return the minimal Breakpoint shape expected by the adapter/client
             return cast(
-                "list[Breakpoint]",
+                "list[SourceBreakpoint]",
                 [{"verified": True, "line": bp.get("line")} for bp in breakpoints],
             )
 
-    def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> Sequence[Breakpoint]:
+    def set_function_breakpoints(self, breakpoints: SourceBreakpoint) -> Sequence[SourceBreakpoint]:
         """Replace function breakpoints and record per-breakpoint metadata.
 
         Mirrors the behavior in debug_launcher: clears existing function
@@ -120,9 +121,9 @@ class InProcessDebugger:
                     meta["logMessage"] = log_message
                     fbm[name] = meta
 
-            return cast("list[Breakpoint]", [{"verified": True} for _ in breakpoints])
+            return cast("list[SourceBreakpoint]", [{"verified": True} for _ in breakpoints])
 
-    def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
+    def set_exception_breakpoints(self, filters: list[str]) -> list[SourceBreakpoint]:
         with self.command_lock:
             # Set boolean flags if present, fallback to dict otherwise
             try:
@@ -131,7 +132,7 @@ class InProcessDebugger:
             except Exception:
                 # If underlying debugger doesn't expose boolean attrs, ignore
                 pass
-            return cast("list[Breakpoint]", [{"verified": True} for _ in filters])
+            return cast("list[SourceBreakpoint]", [{"verified": True} for _ in filters])
 
     def continue_(self, thread_id: int) -> ContinueResponseBody:
         with self.command_lock:
@@ -214,10 +215,10 @@ class InProcessDebugger:
             variables: list[Variable] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
-                    variables.append(cast("Variable", dbg.make_variable_object(name, value)))
+                    variables.append(dbg.make_variable_object(name, value))
             elif frame and scope == "globals":
                 for name, value in frame.f_globals.items():
-                    variables.append(cast("Variable", dbg.make_variable_object(name, value)))
+                    variables.append(dbg.make_variable_object(name, value))
             # The `make_variable_object` helper returns Variable-shaped dicts
             return cast("VariablesResponseBody", {"variables": variables})
         return cast("VariablesResponseBody", {"variables": []})
