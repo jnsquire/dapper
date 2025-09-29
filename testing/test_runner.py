@@ -129,7 +129,7 @@ For VS Code testing:
 4. In another terminal/VS Code instance, use "Test Dapper Debug Adapter"
 
 For command line testing:
-1. Terminal 1: python -m dapper.adapter --port 4711
+1. Terminal 1: python -m dapper --port 4711
 2. Terminal 2: python testing/test_dapper_client.py --program examples/sample_programs/simple_app.py
 
 Available test programs:

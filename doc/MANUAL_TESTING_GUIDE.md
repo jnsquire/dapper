@@ -8,7 +8,7 @@ This guide shows how to manually test your Dapper debug adapter by connecting to
 
 **Terminal 1** (Start debug adapter):
 ```bash
-python -m dapper.adapter --port 4711 --log-level DEBUG
+python -m dapper --port 4711 --log-level DEBUG
 ```
 
 **Terminal 2** (Test connection):
@@ -40,7 +40,7 @@ python test_dapper_client.py --program examples/sample_programs/simple_app.py
 Start your debug adapter in server mode:
 
 ```bash
-python -m dapper.adapter --port 4711 --log-level DEBUG
+python -m dapper --port 4711 --log-level DEBUG
 ```
 
 You should see output like:
@@ -120,7 +120,7 @@ python test_dapper_client.py --program examples/sample_programs/advanced_app.py
 
 ```bash
 # Start adapter on different port
-python -m dapper.adapter --port 5555
+python -m dapper --port 5555
 
 # Connect to different port
 python test_dapper_client.py --port 5555 --program examples/sample_programs/simple_app.py

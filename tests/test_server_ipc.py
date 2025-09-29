@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
 
+import dapper.server as server_module
 from dapper.server import DebugAdapterServer
 from dapper.server import PyDebugger
 from tests.test_server import AsyncCallRecorder
@@ -125,6 +127,66 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
     assert kwargs.get("use_ipc") is True
     assert kwargs.get("ipc_transport") == "pipe"
     assert kwargs.get("ipc_pipe_name") == r"\\.\pipe\dapper-test-pipe"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "nt", reason="Named pipes apply to Windows only")
+async def test_launch_generates_pipe_name_when_missing(monkeypatch):
+    captured_args: list[str] = []
+
+    def fake_start(self, debug_args):
+        captured_args.clear()
+        captured_args.extend(debug_args)
+        self.process = Mock(pid=4242)
+
+    class DummyThread:
+        def __init__(self, target=None, args=(), kwargs=None, daemon=False):
+            self._target = target
+            self._args = args
+            self._kwargs = kwargs or {}
+            self.daemon = daemon
+
+        def start(self):
+            if self._target is not None:
+                self._target(*self._args, **self._kwargs)
+
+    class DummyServer:
+        async def send_event(self, *_args, **_kwargs):
+            return None
+
+    loop = asyncio.get_event_loop()
+    debugger = server_module.PyDebugger(DummyServer(), loop)
+    debugger._test_mode = True  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False)
+
+    def _noop_ipc(_self):
+        return None
+
+    monkeypatch.setattr(server_module.PyDebugger, "_run_ipc_accept_and_read", _noop_ipc, raising=False)
+    monkeypatch.setattr(server_module.threading, "Thread", DummyThread)
+
+    await debugger.launch(
+        "test.py",
+        args=[],
+        use_ipc=True,
+        ipc_transport="pipe",
+    )
+
+    pipe_listener = debugger.ipc.pipe_listener
+    assert pipe_listener is not None, "Expected a named pipe listener to be created"
+    generated_pipe = getattr(pipe_listener, "address", None)
+    assert isinstance(generated_pipe, str)
+    assert generated_pipe.startswith(r"\\.\pipe\dapper-")
+    assert str(os.getpid()) in generated_pipe
+
+    assert captured_args, "Expected debuggee launch args to be captured"
+    assert "--ipc" in captured_args
+    assert "--ipc-pipe" in captured_args
+    ipc_index = captured_args.index("--ipc")
+    assert captured_args[ipc_index + 1] == "pipe"
+    pipe_arg_index = captured_args.index("--ipc-pipe")
+    assert captured_args[pipe_arg_index + 1] == generated_pipe
 
 
 @pytest.mark.asyncio

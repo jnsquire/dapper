@@ -37,13 +37,13 @@ uv pip install -e ".[dev]"
 ### Command Line
 
 ```bash
-python -m dapper.adapter --port 4711
+python -m dapper --port 4711
 ```
 
 Or using named pipes:
 
 ```bash
-python -m dapper.adapter --pipe debug_pipe
+python -m dapper --pipe debug_pipe
 ```
 
 ### In-Process Mode (Adapter-in-Thread)
@@ -184,7 +184,7 @@ VS Code attach configuration examples:
 
 ### Configuration in VS Code
 
-Add this to your launch.json:
+Add this to your launch.json (for a step-by-step walkthrough, see [Debug Python in VS Code with Dapper](doc/using-dapper-with-vscode.md)):
 
 ```json
 {
