@@ -1,4 +1,4 @@
-# Dapper AI - Debug Adapter Protocol for Python
+# Dapper - Debug Adapter Protocol for Python
 
 A Debug Adapter Protocol implementation in Python.
 
