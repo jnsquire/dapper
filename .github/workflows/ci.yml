@@ -36,8 +36,8 @@ jobs:
           python -m pip install --upgrade pip
           # Install the package in editable mode so tests can import it
           pip install -e .
-          # Install tools used by CI
-          pip install pyright ruff pytest pytest-cov pytest-xdist
+          # Install tools used by CI; pin ruff to match local development version
+          pip install pyright "ruff==0.12.12" pytest pytest-cov pytest-xdist
 
       - name: Lint (ruff)
         run: |
