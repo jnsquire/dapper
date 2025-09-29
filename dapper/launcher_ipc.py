@@ -1,4 +1,4 @@
-"""IPC helper utilities extracted from launcher_main.
+"""IPC helper utilities.
 
 Contains a minimal Pipe IO wrapper and helpers to connect unix/tcp sockets
 and wire `state.ipc_*` similarly to the original launcher logic.

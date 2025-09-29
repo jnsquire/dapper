@@ -35,7 +35,8 @@ if TYPE_CHECKING:
     from dapper.debugger_protocol import Variable
 
     # Import protocol TypedDicts for stronger return typing
-    from dapper.protocol_types import SetExceptionBreakpointsResponse  # type: ignore[misc]
+    from dapper.protocol_types import SetExceptionBreakpointsResponse
+    from dapper.protocol_types import SetFunctionBreakpointsArguments
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -115,7 +116,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         except Exception as e:
             send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = data[HEADER_SIZE:HEADER_SIZE + length]
+        payload = data[HEADER_SIZE : HEADER_SIZE + length]
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -303,7 +304,7 @@ def handle_set_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     return None
 
 
-def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: SetFunctionBreakpointsArguments):
     """Handle setFunctionBreakpoints command"""
     arguments = arguments or {}
     bps = arguments.get("breakpoints", [])

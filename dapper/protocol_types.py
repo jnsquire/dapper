@@ -658,7 +658,7 @@ class SetFunctionBreakpointsArguments(TypedDict):
 
     # Tests historically pass plain dicts here; accept either FunctionBreakpoint
     # TypedDict instances or plain dicts to reduce friction during runtime.
-    breakpoints: list[dict[str, Any]]  # The function names of the breakpoints
+    breakpoints: list[FunctionBreakpoint]  # The function names of the breakpoints
 
 
 class SetFunctionBreakpointsResponseBody(TypedDict):
