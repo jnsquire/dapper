@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from dapper.protocol_types import Breakpoint
     from dapper.protocol_types import ContinueResponseBody
     from dapper.protocol_types import EvaluateResponseBody
+    from dapper.protocol_types import FunctionBreakpoint
     from dapper.protocol_types import SetVariableResponseBody
     from dapper.protocol_types import SourceBreakpoint
     from dapper.protocol_types import StackTraceResponseBody
@@ -93,8 +94,8 @@ class InProcessDebugger:
             return results
 
     def set_function_breakpoints(
-        self, breakpoints: list[SourceBreakpoint]
-    ) -> Sequence[SourceBreakpoint]:
+        self, breakpoints: list[FunctionBreakpoint]
+    ) -> Sequence[FunctionBreakpoint]:
         """Replace function breakpoints and record per-breakpoint metadata.
 
         Mirrors the behavior in debug_launcher: clears existing function
@@ -135,7 +136,7 @@ class InProcessDebugger:
 
             # Build per-breakpoint verification results by checking whether
             # the debugger's function_breakpoints list contains the name.
-            results: list[dict[str, Any]] = []
+            results: list[FunctionBreakpoint] = []
             fb_list = getattr(self.debugger, "function_breakpoints", [])
             for bp in breakpoints:
                 name = bp.get("name")
@@ -146,7 +147,7 @@ class InProcessDebugger:
                     except Exception:
                         verified = False
                 results.append({"verified": verified})
-            return cast("list[SourceBreakpoint]", results)
+            return cast("list[FunctionBreakpoint]", results)
 
     def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:

@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from dapper.debugger_protocol import DebuggerLike
     from dapper.debugger_protocol import Variable
 
+    # Import protocol TypedDicts for stronger return typing
+    from dapper.protocol_types import SetExceptionBreakpointsResponse  # type: ignore[misc]
+
 """
 Debug launcher entry point. Delegates to split modules.
 """
@@ -351,23 +354,43 @@ def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]
     return None
 
 
-def handle_set_exception_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
-    """Handle setExceptionBreakpoints command"""
-    arguments = arguments or {}
-    filters = arguments.get("filters", [])
+def handle_set_exception_breakpoints(
+    dbg: DebuggerLike, arguments: dict[str, Any]
+) -> SetExceptionBreakpointsResponse | None:
+    """Handle setExceptionBreakpoints command
 
-    if dbg:
-        # New boolean flags on debugger implementations. Try to set them and
-        # return verification information per filter. If assignment fails,
-        # mark all as unverified.
-        verified_all = True
-        try:
-            dbg.exception_breakpoints_raised = "raised" in filters
-            dbg.exception_breakpoints_uncaught = "uncaught" in filters
-        except Exception:
-            verified_all = False
-        return {"success": True, "body": {"breakpoints": [{"verified": verified_all} for _ in filters]}}
-    return None
+    This function narrows the incoming `filters` value to a concrete
+    list[str] before using it. That strengthens static typing and avoids
+    passing ambiguous runtime values to the debugger.
+    """
+    arguments = arguments or {}
+    raw_filters = arguments.get("filters", [])
+
+    # Narrow to a list[str]. Accept list/tuple inputs and coerce elements
+    # to strings. Any other shape becomes an empty list.
+    if isinstance(raw_filters, (list, tuple)):
+        filters: list[str] = [str(f) for f in raw_filters]
+    else:
+        filters = []
+
+    if not dbg:
+        return None
+
+    # New boolean flags on debugger implementations. Try to set them and
+    # return verification information per filter. If assignment fails,
+    # mark all as unverified.
+    verified_all: bool = True
+    try:
+        dbg.exception_breakpoints_raised = "raised" in filters
+        dbg.exception_breakpoints_uncaught = "uncaught" in filters
+    except Exception:
+        verified_all = False
+
+    body = {"breakpoints": [{"verified": verified_all} for _ in filters]}
+    # Construct the response and cast it to the TypedDict declared in
+    # protocol_types so the type checker can verify the return type.
+    response: dict[str, Any] = {"success": True, "body": body}
+    return cast("SetExceptionBreakpointsResponse", response)
 
 
 def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):

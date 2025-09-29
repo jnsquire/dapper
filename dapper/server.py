@@ -35,7 +35,6 @@ from dapper.inprocess_debugger import InProcessDebugger
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_context import IPCContext
 from dapper.protocol import ProtocolHandler
-from dapper.protocol_types import Breakpoint
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -43,9 +42,12 @@ if TYPE_CHECKING:
 
     from dapper.connections import ConnectionBase
     from dapper.debugger_protocol import Variable
+    from dapper.protocol_types import Breakpoint
     from dapper.protocol_types import ExceptionInfoRequest
+    from dapper.protocol_types import FunctionBreakpoint
     from dapper.protocol_types import GenericRequest
     from dapper.protocol_types import Source
+    from dapper.protocol_types import SourceBreakpoint
 
 
 logger = logging.getLogger(__name__)
@@ -1053,32 +1055,52 @@ class PyDebugger:
             return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
         path = str(Path(path).resolve())
 
-        bp_lines: list[dict[str, Any]] = [
-            {
-                "line": bp.get("line", 0),
-                "condition": bp.get("condition"),
-                "hitCondition": bp.get("hitCondition"),
-                "logMessage": bp.get("logMessage"),
-                "verified": True,
-            }
-            for bp in breakpoints
-        ]
+        # Build a properly-typed list of SourceBreakpoint entries so that
+        # calls into typed debugger APIs accept the argument without
+        # invariant-list errors from the type checker.
+        # Build a typed spec list for calling into debugger APIs (no 'verified')
+        spec_list: list[SourceBreakpoint] = []
+        # Build a storage list that keeps the runtime 'verified' flag
+        storage_list: list[dict[str, Any]] = []
+        for bp in breakpoints:
+            line_val = int(bp.get("line", 0))
+            spec_entry: SourceBreakpoint = {"line": line_val}
+            cond = bp.get("condition")
+            if cond is not None:
+                spec_entry["condition"] = str(cond)
+            hc = bp.get("hitCondition")
+            if hc is not None:
+                spec_entry["hitCondition"] = str(hc)
+            lm = bp.get("logMessage")
+            if lm is not None:
+                spec_entry["logMessage"] = str(lm)
+            spec_list.append(spec_entry)
 
-        self.breakpoints[path] = bp_lines
+            storage_list.append(
+                {
+                    "line": line_val,
+                    "condition": cond,
+                    "hitCondition": hc,
+                    "logMessage": lm,
+                    "verified": True,
+                }
+            )
+
+        self.breakpoints[path] = storage_list
 
         if self.in_process and self._inproc is not None:
             try:
-                result = self._inproc.set_breakpoints(path, bp_lines)
+                result = self._inproc.set_breakpoints(path, spec_list)
                 return list(result)  # ensure a concrete list for the declared return type
             except Exception:
                 logger.exception("in-process set_breakpoints failed")
-                return [{"verified": False} for _ in bp_lines]
+                return [{"verified": False} for _ in storage_list]
         if self.process and not self.is_terminated:
             bp_command = {
                 "command": "setBreakpoints",
                 "arguments": {
                     "source": {"path": path},
-                    "breakpoints": bp_lines,
+                    "breakpoints": storage_list,
                 },
             }
             # Emit a progress start event for longer running operations so
@@ -1111,7 +1133,7 @@ class PyDebugger:
                             "line": bp.get("line"),
                         },
                     }
-                    for bp in bp_lines
+                    for bp in storage_list
                 ]
                 for be in bp_events:
                     # forward as an adapter-level 'breakpoint' event
@@ -1124,43 +1146,70 @@ class PyDebugger:
                 lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
             )
 
-        return [{"verified": bp.get("verified", True)} for bp in bp_lines]
+        return [{"verified": bp.get("verified", True)} for bp in storage_list]
 
     async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Any]:
         """Set breakpoints for functions"""
-        bp_funcs: list[dict[str, Any]] = [
-            {
-                "name": bp.get("name", ""),
-                "condition": bp.get("condition"),
-                "hitCondition": bp.get("hitCondition"),
-                "verified": True,
-            }
-            for bp in breakpoints
-        ]
+        spec_funcs: list[FunctionBreakpoint] = []
+        storage_funcs: list[dict[str, Any]] = []
+        for bp in breakpoints:
+            name = str(bp.get("name", ""))
+            spec_entry: FunctionBreakpoint = {"name": name}
+            cond = bp.get("condition")
+            if cond is not None:
+                spec_entry["condition"] = str(cond)
+            hc = bp.get("hitCondition")
+            if hc is not None:
+                spec_entry["hitCondition"] = str(hc)
+            spec_funcs.append(spec_entry)
 
-        self.function_breakpoints = bp_funcs
+            storage_funcs.append(
+                {
+                    "name": name,
+                    "condition": cond,
+                    "hitCondition": hc,
+                    "verified": True,
+                }
+            )
+
+        # Store runtime representation (with verified flag) for IPC and state
+        self.function_breakpoints = storage_funcs
 
         if self.in_process and self._inproc is not None:
             try:
-                result = self._inproc.set_function_breakpoints(bp_funcs)
+                result = self._inproc.set_function_breakpoints(spec_funcs)
                 return list(result)
             except Exception:
                 logger.exception("in-process set_function_breakpoints_failed")
-                return [{"verified": False} for _ in breakpoints]
+                return [{"verified": False} for _ in storage_funcs]
         if self.process and not self.is_terminated:
             bp_command = {
                 "command": "setFunctionBreakpoints",
-                "arguments": {"breakpoints": bp_funcs},
+                "arguments": {"breakpoints": storage_funcs},
             }
             await self._send_command_to_debuggee(bp_command)
 
-        return [{"verified": bp.get("verified", True)} for bp in bp_funcs]
+        return [{"verified": bp.get("verified", True)} for bp in storage_funcs]
 
-    async def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
-        """Set exception breakpoints"""
+    async def set_exception_breakpoints(
+        self,
+        filters: list[str],
+        filter_options: list[dict[str, Any]] | None = None,
+        exception_options: list[dict[str, Any]] | None = None,
+    ) -> list[Breakpoint]:
+        """Set exception breakpoints.
+
+        Accepts the DAP-shaped arguments: `filters`, optional `filterOptions`,
+        and optional `exceptionOptions`. For in-process debuggers we currently
+        only apply the boolean flags derived from `filters`; the optional
+        options are forwarded to an external debuggee process when present.
+        """
+        # Update runtime flags derived from the simple `filters` list.
         self.exception_breakpoints_raised = "raised" in filters
         self.exception_breakpoints_uncaught = "uncaught" in filters
 
+        # In-process path: underlying in-process APIs accept just the
+        # simple filters list for now (backwards compatible).
         if self.in_process and self._inproc is not None:
             try:
                 result = self._inproc.set_exception_breakpoints(filters)
@@ -1168,13 +1217,21 @@ class PyDebugger:
             except Exception:
                 logger.exception("in-process set_exception_breakpoints failed")
                 return [{"verified": False} for _ in filters]
+
+        # Remote/process path: forward the full arguments when present.
         if self.process and not self.is_terminated:
-            bp_command = {
-                "command": "setExceptionBreakpoints",
-                "arguments": {"filters": filters},
-            }
+            args: dict[str, Any] = {"filters": filters}
+            if filter_options is not None:
+                args["filterOptions"] = filter_options
+            if exception_options is not None:
+                args["exceptionOptions"] = exception_options
+
+            bp_command = {"command": "setExceptionBreakpoints", "arguments": args}
             await self._send_command_to_debuggee(bp_command)
 
+        # Best-effort: assume the breakpoints were set when no response is
+        # available (e.g., no in-process bridge). Callers rely on the
+        # returned list length matching `filters`.
         return [{"verified": True} for _ in filters]
 
     async def _send_command_to_debuggee(

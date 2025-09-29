@@ -137,6 +137,35 @@ class ExceptionBreakpointsFilter(TypedDict):
     conditionDescription: NotRequired[str]  # A help text providing information about the condition
 
 
+# Exception filter options as defined in the DAP schema.
+class ExceptionFilterOptions(TypedDict):
+    """An ExceptionFilterOptions is used to specify an exception filter together with a condition for setExceptionBreakpoints."""
+
+    filterId: str  # ID of an exception filter returned by the exceptionBreakpointFilters capability
+    condition: NotRequired[str]  # Expression for conditional exceptions
+    mode: NotRequired[str]  # One of the breakpointModes advertised by the adapter
+
+
+class ExceptionOptions(TypedDict):
+    """Assigns configuration options to a set of exceptions."""
+
+    # A path selecting exceptions (optional). Each segment is defined by
+    # ExceptionPathSegment below.
+    path: NotRequired[list[ExceptionPathSegment]]
+    # breakMode is required per the DAP schema (one of ExceptionBreakMode)
+    breakMode: str
+
+
+class ExceptionPathSegment(TypedDict):
+    """Represents a segment in an exception path used for matching."""
+
+    negate: NotRequired[bool]
+    names: list[str]
+
+
+ExceptionBreakMode = Literal["never", "always", "unhandled", "userUnhandled"]
+
+
 class Capabilities(TypedDict):
     """Information about the capabilities of a debug adapter."""
 
@@ -1077,11 +1106,42 @@ class SetExceptionBreakpointsArguments(TypedDict):
 
     filters: list[str]  # Set of exception filters specified by their ID
     filterOptions: NotRequired[
-        list[dict[str, Any]]
-    ]  # Configuration options for selected exceptions
+        list[ExceptionFilterOptions]
+    ]  # Configuration options for selected exceptions (optional)
     exceptionOptions: NotRequired[
-        list[dict[str, Any]]
-    ]  # Configuration options for selected exceptions
+        list[ExceptionOptions]
+    ]  # Configuration options for selected exceptions (optional)
+
+
+# SetExceptionBreakpoints Response
+class SetExceptionBreakpointsResponseBody(TypedDict):
+    """Response body for 'setExceptionBreakpoints' request."""
+
+    # Per the DAP schema the enclosing `body` and the `breakpoints`
+    # array are optional for backward compatibility. Reflect that
+    # by marking `breakpoints` as NotRequired here.
+    breakpoints: NotRequired[list[Breakpoint]]
+
+
+class SetExceptionBreakpointsRequest(TypedDict):
+    """Request packet for 'setExceptionBreakpoints'."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["setExceptionBreakpoints"]
+    arguments: SetExceptionBreakpointsArguments
+
+
+class SetExceptionBreakpointsResponse(TypedDict):
+    """Response to 'setExceptionBreakpoints' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setExceptionBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetExceptionBreakpointsResponseBody]
 
 
 # Pause Request
