@@ -141,7 +141,9 @@ class ExceptionBreakpointsFilter(TypedDict):
 class ExceptionFilterOptions(TypedDict):
     """An ExceptionFilterOptions is used to specify an exception filter together with a condition for setExceptionBreakpoints."""
 
-    filterId: str  # ID of an exception filter returned by the exceptionBreakpointFilters capability
+    filterId: (
+        str  # ID of an exception filter returned by the exceptionBreakpointFilters capability
+    )
     condition: NotRequired[str]  # Expression for conditional exceptions
     mode: NotRequired[str]  # One of the breakpointModes advertised by the adapter
 

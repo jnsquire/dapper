@@ -158,12 +158,16 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     debugger = server_module.PyDebugger(DummyServer(), loop)
     debugger._test_mode = True  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False)
+    monkeypatch.setattr(
+        server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False
+    )
 
     def _noop_ipc(_self):
         return None
 
-    monkeypatch.setattr(server_module.PyDebugger, "_run_ipc_accept_and_read", _noop_ipc, raising=False)
+    monkeypatch.setattr(
+        server_module.PyDebugger, "_run_ipc_accept_and_read", _noop_ipc, raising=False
+    )
     monkeypatch.setattr(server_module.threading, "Thread", DummyThread)
 
     await debugger.launch(

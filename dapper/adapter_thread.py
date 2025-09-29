@@ -21,18 +21,16 @@ Notes:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
-from typing import TYPE_CHECKING
+from typing import Any
 
 from dapper.breakpoints_controller import BreakpointController
 from dapper.connections.pipe import NamedPipeServerConnection
 from dapper.connections.tcp import TCPServerConnection
 from dapper.events import EventEmitter
 from dapper.server import DebugAdapterServer
-
-if TYPE_CHECKING:
-    import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +65,12 @@ class AdapterThread:
         # Event/future used to publish the bound port for TCP listeners.
         self.on_port_assigned = EventEmitter()
 
-        # Future to deliver the assigned TCP port to callers. Created lazily.
-        # Background task observing port; reference is kept to prevent garbage collection
-        # before the task completes, ensuring port assignment notification is not interrupted.
-        self._port_observer_task: asyncio.Task | None = None
-        self._port_observer_task: asyncio.Task | None = None
+        # Track background asyncio tasks and cross-thread futures so they can
+        # be cancelled or awaited during shutdown.
+        self._loop_tasks: list[asyncio.Task[Any]] = []
+        self._thread_futures: list[concurrent.futures.Future[Any]] = []
         # Breakpoint controller (exposed after server is constructed)
         self.breakpoints: BreakpointController | None = None
-        # Background task for stopping the server; kept to avoid GC
-        self._stop_task: asyncio.Task | None = None
-        # Server task (created when starting the server)
-        self._server_task: asyncio.Task | None = None
-        self._port_future: concurrent.futures.Future[int] | None = None
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -115,7 +107,8 @@ class AdapterThread:
                     self._stopped.set()
 
             task = loop.create_task(_start_server())
-            self._server_task = task  # type: ignore[attr-defined]
+            # Keep a reference to the server start task to avoid GC
+            self._loop_tasks.append(task)
             self._started.set()
 
         def _run() -> None:
@@ -150,7 +143,8 @@ class AdapterThread:
                             logger.exception("Error starting TCP listener to obtain port")
 
                     # keep a reference to avoid GC
-                    self._port_observer_task = loop.create_task(_start_listen_and_publish())
+                    t = loop.create_task(_start_listen_and_publish())
+                    self._loop_tasks.append(t)
 
                 # Kick off server start and mark as started once queued
                 _start_server_on_loop(loop)
@@ -201,30 +195,89 @@ class AdapterThread:
         loop = self._loop
         server = self._server
 
-        if loop is not None:
+        if loop is None:
+            # Nothing to do if thread/loop not started
+            self._join_thread(join, timeout)
+            return
+
+        # Schedule server.stop() if available
+        if server is not None:
             try:
-                if server is not None:
-                    # Schedule server.stop() coroutine on the loop from another thread.
-                    # Use run_coroutine_threadsafe which returns a concurrent.futures.Future.
-                    try:
-                        fut = asyncio.run_coroutine_threadsafe(server.stop(), loop)
-                        # Keep a reference to allow cancellation/inspection and avoid GC
-                        self._stop_task = fut  # type: ignore[assignment]
-                    except Exception:
-                        logger.exception("Error scheduling server.stop()")
-
-                # Schedule loop.stop() to run inside the loop thread after a short delay.
-                # The short delay (0.05s) ensures any pending tasks (such as server.stop())
-                # have a chance to complete before the loop is stopped.
-                # call_soon_threadsafe is used to safely schedule loop.call_later from another thread,
-                # ensuring the delayed stop is created on the loop's own thread.
-                try:
-                    loop.call_soon_threadsafe(loop.call_later, 0.05, loop.stop)
-                except Exception:
-                    logger.debug("Error scheduling loop stop")
+                fut = asyncio.run_coroutine_threadsafe(server.stop(), loop)
             except Exception:
-                logger.debug("Error scheduling loop stop")
+                logger.exception("Error scheduling server.stop()")
+            else:
+                # keep for potential cancellation/inspection
+                self._thread_futures.append(fut)
 
+        self._cancel_loop_tasks(loop, timeout)
+        self._cancel_thread_futures(timeout)
+
+        # Schedule loop.stop() after a short delay to allow pending callbacks
+        try:
+            loop.call_soon_threadsafe(loop.call_later, 0.05, loop.stop)
+        except Exception:
+            logger.debug("Error scheduling loop stop")
+
+        self._join_thread(join, timeout)
+
+    def _cancel_loop_tasks(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        timeout: float | None,
+    ) -> None:
+        if not self._loop_tasks:
+            return
+
+        tasks = list(self._loop_tasks)
+        self._loop_tasks.clear()
+
+        try:
+            for task in tasks:
+                loop.call_soon_threadsafe(task.cancel)
+        except Exception:
+            logger.debug("Error cancelling background tasks on loop")
+
+        async def _wait_for_all() -> None:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        try:
+            waiter = asyncio.run_coroutine_threadsafe(_wait_for_all(), loop)
+            waiter.result(timeout or 1.0)
+        except Exception:
+            logger.debug("Timeout or error waiting for background tasks to finish")
+
+    def _cancel_thread_futures(self, timeout: float | None) -> None:
+        if not self._thread_futures:
+            return
+
+        futures = list(self._thread_futures)
+        self._thread_futures.clear()
+
+        for future in futures:
+            if not future.done():
+                future.cancel()
+
+        wait_timeout = timeout or 1.0
+        done, not_done = concurrent.futures.wait(
+            futures,
+            timeout=wait_timeout,
+            return_when=concurrent.futures.ALL_COMPLETED,
+        )
+
+        if not_done:
+            logger.debug(
+                "Timeout waiting for %d background future(s) to finish",
+                len(not_done),
+            )
+
+        for future in done:
+            exc = future.exception()
+            if exc is None or isinstance(exc, concurrent.futures.CancelledError):
+                continue
+            logger.debug("Error waiting for background future to finish: %s", exc)
+
+    def _join_thread(self, join: bool, timeout: float | None) -> None:
         if join and self._thread is not None:
             self._thread.join(timeout=timeout)
             self._thread = None

@@ -7,6 +7,6 @@ __version__ = "0.1.0"
 
 
 def main() -> None:
-	"""Entry point that mirrors :func:`dapper.adapter.main`."""
+    """Entry point that mirrors :func:`dapper.adapter.main`."""
 
-	_adapter_main()
+    _adapter_main()
