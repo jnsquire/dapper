@@ -31,6 +31,7 @@ from dapper.ipc_binary import unpack_header
 
 if TYPE_CHECKING:
     from dapper.debugger_protocol import DebuggerLike
+    from dapper.debugger_protocol import ExceptionInfo
     from dapper.debugger_protocol import Variable
 
     # Import protocol TypedDicts for stronger return typing
@@ -818,7 +819,7 @@ def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
 
     # Get exception info for the thread
     if thread_id in dbg.current_exception_info:
-        exception_info = dbg.current_exception_info[thread_id]
+        exception_info: ExceptionInfo = dbg.current_exception_info[thread_id]
         # Structure matches ExceptionInfoResponseBody
         send_debug_message(
             "exceptionInfo",

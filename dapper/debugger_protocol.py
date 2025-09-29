@@ -29,6 +29,25 @@ class Variable(TypedDict):
     presentationHint: PresentationHint
 
 
+class ExceptionDetails(TypedDict):
+    """Structured details attached to a captured exception."""
+
+    message: str
+    typeName: str
+    fullTypeName: str
+    source: str
+    stackTrace: list[str]
+
+
+class ExceptionInfo(TypedDict):
+    """Top-level structure stored in `current_exception_info` per-thread."""
+
+    exceptionId: str
+    description: str
+    breakMode: str
+    details: ExceptionDetails
+
+
 @runtime_checkable
 class DebuggerLike(Protocol):
     # Common attributes consumed by handlers/launcher/tests
@@ -46,7 +65,10 @@ class DebuggerLike(Protocol):
     frame_id_to_frame: dict[int, Any]
     frames_by_thread: dict[int, list]
     threads: dict[int, Any]
-    current_exception_info: dict[str, Any]
+    # Map thread id (int) -> exception info payload. Use the structured
+    # `ExceptionInfo` TypedDict to provide better static guarantees to
+    # callers and IDEs.
+    current_exception_info: dict[int, ExceptionInfo]
     # Current frame for stepping APIs
     current_frame: Any | None
     # Whether currently stepping

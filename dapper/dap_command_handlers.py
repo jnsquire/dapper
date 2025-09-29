@@ -25,6 +25,7 @@ _SIMPLE_MAKE_VAR_ARGCOUNT = 2
 
 
 if TYPE_CHECKING:
+    from dapper.debugger_protocol import ExceptionInfo
     from dapper.debugger_protocol import Variable
     from dapper.protocol_types import ConfigurationDoneArguments
     from dapper.protocol_types import ContinueArguments
@@ -486,7 +487,7 @@ def handle_exception_info(arguments: ExceptionInfoArguments) -> None:
         send_debug_message("error", message="Debugger not initialized")
         return
     if thread_id in dbg.current_exception_info:
-        exception_info = dbg.current_exception_info[thread_id]
+        exception_info: ExceptionInfo = dbg.current_exception_info[thread_id]
         send_debug_message(
             "exceptionInfo",
             exceptionId=exception_info["exceptionId"],

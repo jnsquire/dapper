@@ -35,7 +35,7 @@ class TCPServerConnection(ConnectionBase):
             # (port=0) was requested. This makes the object reflect the real
             # listening port after start_server returns.
             srv = self.server
-            if srv is not None and getattr(srv, "sockets", None):
+            if srv is not None and srv.sockets:
                 try:
                     bound = srv.sockets[0].getsockname()
                     # getsockname() typically returns (host, port)

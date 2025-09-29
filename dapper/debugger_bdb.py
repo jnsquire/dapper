@@ -20,6 +20,7 @@ from typing import cast
 from dapper.debug_helpers import frame_may_handle_exception
 
 if TYPE_CHECKING:
+    from dapper.debugger_protocol import ExceptionInfo
     from dapper.debugger_protocol import Variable
 
 # Cached resolvers for the two external helpers. We prefer the launcher
@@ -215,7 +216,9 @@ class DebuggerBDB(bdb.Bdb):
         # Optional: adapter/launcher may store configured data breakpoints here
         # for simple bookkeeping. Not required for core BDB operation.
         self.data_breakpoints: list[dict[str, Any]] | None = None
-        self.current_exception_info = {}
+        # Mapping thread id -> structured exception info captured when we break on
+        # exceptions.
+        self.current_exception_info: dict[int, ExceptionInfo] = {}
         self.breakpoint_meta = {}
         # Data breakpoint Phase 2 (lightweight): watch names & last values per frame
         # Use types compatible with DebuggerLike: allow None or concrete types
@@ -389,7 +392,11 @@ class DebuggerBDB(bdb.Bdb):
         kind, attrs = _detect_kind_and_attrs(value)
         if _detect_has_data_breakpoint(name, frame) and "hasDataBreakpoint" not in attrs:
             attrs.append("hasDataBreakpoint")
-        presentation = {"kind": kind, "attributes": attrs, "visibility": _visibility(name)}
+        presentation = {
+            "kind": kind,
+            "attributes": attrs,
+            "visibility": _visibility(name),
+        }
 
         return cast(
             "Variable",
@@ -529,19 +536,27 @@ class DebuggerBDB(bdb.Bdb):
             return
         exc_type, exc_value, exc_traceback = exc_info
         is_uncaught = True
+        # Ask the helper whether the current frame will handle this exception. If it reports
+        # True (or "unknown" via None) we treat the exception as handled and skip uncaught logic.
         res = frame_may_handle_exception(frame)
         if res is True or res is None:
             is_uncaught = False
         thread_id = threading.get_ident()
         break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
+        # Decide whether we should interrupt execution. A configured "uncaught" breakpoint only
+        # triggers when the exception bubbles out of the current frame, while the "raised" mode
+        # triggers immediately.
         if (
             is_uncaught and self.exception_breakpoints_uncaught
         ) or self.exception_breakpoints_raised:
             break_on_exception = True
         else:
             break_on_exception = False
-        stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
+
         if break_on_exception:
+            # Cache the exception details so the adapter can surface comprehensive information
+            # (including formatted stack trace) in subsequent protocol requests.
+            stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
             self.current_exception_info[thread_id] = {
                 "exceptionId": exc_type.__name__,
                 "description": str(exc_value),
@@ -559,6 +574,8 @@ class DebuggerBDB(bdb.Bdb):
             self.stopped_thread_ids.add(thread_id)
             stack_frames = self._get_stack_frames(frame)
             self.frames_by_thread[thread_id] = stack_frames
+            # Notify the client that execution has paused. The adapter inspects the text/frames
+            # payload to populate the exception UI.
             send_debug_message(
                 "stopped",
                 threadId=thread_id,
@@ -568,6 +585,7 @@ class DebuggerBDB(bdb.Bdb):
             )
             process_queued_commands()
             try:
+                # Resume the interpreter once the client responds (mirrors line breakpoint flow).
                 self.set_continue()
             except Exception:
                 pass
