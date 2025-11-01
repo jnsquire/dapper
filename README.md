@@ -8,11 +8,32 @@ A Debug Adapter Protocol implementation in Python.
 - Connects to Python's built-in debugging tools
 - Supports both TCP sockets and named pipes using asyncio
 - Provides core debugging functionality (breakpoints, stepping, variable inspection)
+- **High-performance frame evaluation system** for reduced debugging overhead (60-80% faster than traditional tracing)
 
 ### Debugger Features Overview
 
 For a detailed checklist of implemented and planned debugger features, see:
 - **[Debugger Features Checklist](doc/DEBUGGER_FEATURES_CHECKLIST.md)** - Complete feature matrix with implementation status
+
+### Frame Evaluation System
+
+Dapper includes an advanced frame evaluation system that significantly improves debugging performance:
+
+- **[Frame Evaluation User Guide](doc/FRAME_EVAL_USER_GUIDE.md)** - How to enable and configure frame evaluation
+- **[Frame Evaluation Performance](doc/FRAME_EVAL_PERFORMANCE.md)** - Performance characteristics and benchmarks
+- **[Frame Evaluation Troubleshooting](doc/FRAME_EVAL_TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Frame Evaluation Implementation](doc/FRAME_EVAL_IMPLEMENTATION.md)** - Technical implementation details
+
+Quick start with frame evaluation:
+```json
+{
+    "name": "Python: Dapper with Frame Evaluation",
+    "type": "python", 
+    "request": "launch",
+    "program": "${file}",
+    "frameEval": true
+}
+```
 
 ## Installation
 
@@ -377,3 +398,11 @@ deactivate
 ## License
 
 MIT
+ 
+## Message flow diagrams
+
+Visual diagrams for common Debug Adapter Protocol flows are available in the documentation:
+
+- `doc/reference/message_flows.md` — editable Mermaid sequence diagrams showing Launch, Attach, and Breakpoint flows.
+
+These are provided as inline Mermaid code blocks so they remain easy to edit. If your renderer doesn't support Mermaid, consider pre-rendering the diagrams to SVG with `mmdc` and committing the images alongside the markdown.

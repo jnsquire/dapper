@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=42", "wheel", "Cython>=3.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dapper"
-version = "0.3.0"
+version = "0.4.0"
 description = "Debug Adapter Protocol implementation for Python"
 readme = "README.md"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Joel Squire", email = "joel@squire.org"}
 ]
 dependencies = [
     "pyright>=1.1.405",
@@ -18,6 +18,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+]
+[project.optional-dependencies]
+frame-eval = [
+    "Cython>=3.0",
 ]
 
 [project.urls]
@@ -158,6 +162,9 @@ dev = [
     "coverage>=7.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.0.0",
+    "mkdocs",
+    "mkdocs-mermaid2-plugin",
+    "Cython>=3.0",
 ]
 
 [tool.flake8]
@@ -175,3 +182,9 @@ exclude = [
     "dapper/server.py",
 ]
 sort_by_size = true
+
+[project.scripts]
+# Small developer convenience script so `uv run docs` can invoke the
+# local documentation update helper without requiring an installed package.
+docs = "dapper.dev_tools:update_docs"
+

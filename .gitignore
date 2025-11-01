@@ -39,3 +39,6 @@ debug_adapter.log
 .vscode/
 *.swp
 *.swo
+
+# docs
+site/

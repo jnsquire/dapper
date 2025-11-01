@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant Editor as Client (IDE)
+    participant Adapter as Debug Adapter
+    participant Debuggee as Debuggee (Program)
+
+    Editor->>Adapter: initialize(request)
+    Adapter-->>Editor: initialize(response)
+    Editor->>Adapter: launch(args)
+    Adapter->>Debuggee: start process / spawn
+    Debuggee-->>Adapter: process started
+    Adapter-->>Editor: launch(response)
+    Editor->>Adapter: configurationDone()
+    Adapter-->>Editor: configurationDone(response)
+    Editor->>Adapter: setBreakpoints(breakpoints)
+    Adapter-->>Editor: setBreakpoints(response)
+    Debuggee->>Adapter: stopped(event)
+    Adapter-->>Editor: stopped(event)

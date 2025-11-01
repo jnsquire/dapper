@@ -15,40 +15,71 @@ import json
 import linecache
 import logging
 import mimetypes
+import socket as _socket
 import os
 import re
-import socket as _socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from collections.abc import Awaitable, Callable, Sequence
 from multiprocessing import connection as mp_conn
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import Any
-from typing import Callable
-from typing import cast
+from typing import TYPE_CHECKING, Any, cast, Literal, TypedDict
+
+from typing_extensions import NotRequired
 
 from dapper import debug_shared
 from dapper.inprocess_debugger import InProcessDebugger
 from dapper.ipc_binary import pack_frame
 from dapper.ipc_context import IPCContext
 from dapper.protocol import ProtocolHandler
+from dapper.protocol_types import Source
+
+
+# Local type for breakpoint responses
+class BreakpointResponse(TypedDict, total=False):
+    """Type definition for a breakpoint response."""
+    verified: bool
+    message: NotRequired[str]
+    line: NotRequired[int]
+    condition: NotRequired[str]
+    hitCondition: NotRequired[str]
+    logMessage: NotRequired[str]
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    from collections.abc import Awaitable, Sequence
     from concurrent.futures import Future as _CFuture
+    from typing import TypedDict, Literal
 
     from dapper.connections import ConnectionBase
     from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import Breakpoint
-    from dapper.protocol_types import ExceptionInfoRequest
-    from dapper.protocol_types import FunctionBreakpoint
-    from dapper.protocol_types import GenericRequest
-    from dapper.protocol_types import Source
-    from dapper.protocol_types import SourceBreakpoint
+    from dapper.protocol_types import (
+        Breakpoint,
+        ExceptionInfoRequest,
+        Source,
+        SourceBreakpoint,
+        SourceBreakpoint as ProtocolSourceBreakpoint,
+    )
 
+    class GenericRequest(TypedDict):
+        command: str
+        type: Literal["request"]
+        seq: int
+
+# Type definitions for breakpoint handling
+class BreakpointDict(TypedDict, total=False):
+    """Type definition for a breakpoint response."""
+    verified: bool
+    message: str | None
+    line: int | None
+    condition: str | None
+    hitCondition: str | None
+    logMessage: str | None
+
+# Type aliases
+SourceDict = dict[str, Any]  # Dictionary representing source file information
 
 logger = logging.getLogger(__name__)
 
@@ -189,85 +220,57 @@ class PyDebugger:
     and communicates back to the DebugAdapterServer.
     """
 
-    # Instance attribute type hints (help static analysis tools)
-    threads: dict[int, PyDebuggerThread]
-    main_thread_id: int | None
-    next_thread_id: int
-    next_var_ref: int
-    var_refs: dict[int, object]
-    breakpoints: dict[str, list[dict]]
-    function_breakpoints: list[dict[str, Any]]
-    exception_breakpoints: dict[str, bool]
-    process: subprocess.Popen | None
-    debugger_thread: threading.Thread | None
-    is_terminated: bool
-    program_running: bool
-    stop_on_entry: bool
-    no_debug: bool
-    current_stack_frames: dict[int, list]
-    program_path: str | None
-    thread_exit_events: dict[int, object]
-    lock: threading.RLock
-    stopped_event: asyncio.Event
-    configuration_done: asyncio.Event
-    _bg_tasks: set[asyncio.Task]
-    _test_mode: bool
-    # Data breakpoint state
-    _data_watches: dict[str, dict[str, Any]]  # dataId -> watch metadata
-    _frame_watches: dict[int, list[str]]  # frameId -> list of dataIds
-
-    def __init__(self, server, loop: asyncio.AbstractEventLoop | None = None):
-        self.server = server
-        # Prefer the caller-provided loop; otherwise reuse the current event loop.
-        # Avoid creating ad-hoc event loops by default to prevent leaks in tests
-        # and to integrate cleanly with pytest-asyncio.
+    def __init__(self, server: object, loop: asyncio.AbstractEventLoop | None = None):
+        self.server: object = server
+        self.loop: asyncio.AbstractEventLoop
+        self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)
 
         # Core state
         self.threads: dict[int, PyDebuggerThread] = {}
         self.main_thread_id: int | None = None
-        self.next_thread_id = 1
-        self.next_var_ref = 1000
+        self.next_thread_id: int = 1
+        self.next_var_ref: int = 1000
         self.var_refs: dict[int, object] = {}
-        self.breakpoints: dict[str, list[dict]] = {}
+        self.breakpoints: dict[str, list[BreakpointDict]] = {}
         # store function breakpoints as list[dict] at runtime for flexibility
-        self.function_breakpoints = []
+        self.function_breakpoints: list[dict[str, Any]] = []
         # Exception breakpoint flags (two booleans for clarity)
-        self.exception_breakpoints_uncaught = False
-        self.exception_breakpoints_raised = False
-        self.process = None
-        self.debugger_thread = None
-        self.is_terminated = False
-        self.program_running = False
-        self.stop_on_entry = False
-        self.no_debug = False
+        self.exception_breakpoints_uncaught: bool = False
+        self.exception_breakpoints_raised: bool = False
+        self.process: subprocess.Popen | None = None
+        self.debugger_thread: threading.Thread | None = None
+        self.is_terminated: bool = False
+        self.program_running: bool = False
+        self.stop_on_entry: bool = False
+        self.no_debug: bool = False
         self.current_stack_frames: dict[int, list] = {}
         self.program_path: str | None = None
         self.thread_exit_events: dict[int, object] = {}
-        self.lock = threading.RLock()
-        self.stopped_event = asyncio.Event()
-        self.configuration_done = asyncio.Event()
+        self.lock: threading.RLock = threading.RLock()
+        self.stopped_event: asyncio.Event = asyncio.Event()
+        self.configuration_done: asyncio.Event = asyncio.Event()
 
         # Keep references to background tasks so they don't get GC'd
         self._bg_tasks: set[asyncio.Task] = set()
 
         # Test mode flag (used by tests to start debuggee in a real thread)
-        self._test_mode = False
+        self._test_mode: bool = False
 
         # Command tracking for request/response
-        self._next_command_id = 1
+        self._next_command_id: int = 1
         self._pending_commands: dict[int, asyncio.Future] = {}
         # In-process debugging support (optional/opt-in)
-        self.in_process = False
+        self.in_process: bool = False
         self._inproc: InProcessDebugger | None = None
 
         # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
-        self.ipc = IPCContext()
+        self.ipc: IPCContext = IPCContext()
 
         # Data breakpoint containers
-        self._data_watches = {}
-        self._frame_watches = {}
+        self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
+        self._frame_watches: dict[int, list[str]] = {}  # frameId -> list of dataIds
 
     # ------------------------------------------------------------------
     # Task spawning helpers (new API replacing _schedule_coroutine)
@@ -1046,22 +1049,30 @@ class PyDebugger:
             await self.server.send_event("exited", {"exitCode": exit_code})
             await self.server.send_event("terminated")
 
+
     async def set_breakpoints(
-        self, source: dict[str, Any] | str, breakpoints: list[dict[str, Any]]
-    ) -> list[Any]:
-        """Set breakpoints for a source file"""
+        self, 
+        source: SourceDict | str, 
+        breakpoints: Sequence[ProtocolSourceBreakpoint]
+    ) -> list[BreakpointResponse]:
+        """Set breakpoints for a source file.
+        
+        Args:
+            source: Either a path string or a dictionary containing at least a 'path' key
+            breakpoints: List of breakpoint specifications to set
+            
+        Returns:
+            List of breakpoint results with verification status
+        """
         path = source if isinstance(source, str) else source.get("path")
         if not path:
             return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
         path = str(Path(path).resolve())
 
-        # Build a properly-typed list of SourceBreakpoint entries so that
-        # calls into typed debugger APIs accept the argument without
-        # invariant-list errors from the type checker.
-        # Build a typed spec list for calling into debugger APIs (no 'verified')
+        # Build a properly-typed list of breakpoint entries for the debugger API
         spec_list: list[SourceBreakpoint] = []
-        # Build a storage list that keeps the runtime 'verified' flag
-        storage_list: list[dict[str, Any]] = []
+        # Build a storage list that includes the 'verified' flag for the response
+        storage_list: list[BreakpointDict] = []
         for bp in breakpoints:
             line_val = int(bp.get("line", 0))
             spec_entry: SourceBreakpoint = {"line": line_val}
@@ -1076,30 +1087,47 @@ class PyDebugger:
                 spec_entry["logMessage"] = str(lm)
             spec_list.append(spec_entry)
 
-            storage_list.append(
-                {
-                    "line": line_val,
-                    "condition": cond,
-                    "hitCondition": hc,
-                    "logMessage": lm,
-                    "verified": True,
-                }
-            )
+            # Create breakpoint response with all provided fields
+            bp_result: BreakpointDict = {
+                "line": line_val,
+                "verified": True
+            }
+            if cond is not None:
+                bp_result["condition"] = cond
+            if hc is not None:
+                bp_result["hitCondition"] = hc
+            if lm is not None:
+                bp_result["logMessage"] = lm
+            storage_list.append(bp_result)
 
+        # Store the dict version in breakpoints to avoid type issues
         self.breakpoints[path] = storage_list
 
         if self.in_process and self._inproc is not None:
             try:
                 result = self._inproc.set_breakpoints(path, spec_list)
-                return list(result)  # ensure a concrete list for the declared return type
+                # Convert protocol breakpoints to our response type
+                return [
+                    {
+                        "verified": bp.get("verified", False),
+                        "line": bp.get("line"),
+                        "condition": bp.get("condition"),
+                        "hitCondition": bp.get("hitCondition"),
+                        "logMessage": bp.get("logMessage")
+                    }
+                    for bp in result
+                ]
             except Exception:
                 logger.exception("in-process set_breakpoints failed")
                 return [{"verified": False} for _ in storage_list]
         if self.process and not self.is_terminated:
+            # Create a source dictionary as expected by the debugger protocol
+            source_dict = {"path": path}
+            # Create the command with proper typing
             bp_command = {
                 "command": "setBreakpoints",
                 "arguments": {
-                    "source": {"path": path},
+                    "source": source_dict,
                     "breakpoints": storage_list,
                 },
             }
@@ -1146,15 +1174,16 @@ class PyDebugger:
                 lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
             )
 
-        return [{"verified": bp.get("verified", True)} for bp in storage_list]
+        # Return the storage list which already has the correct Breakpoint type
+        return storage_list
 
-    async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Any]:
+    async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Set breakpoints for functions"""
-        spec_funcs: list[FunctionBreakpoint] = []
+        spec_funcs: list[dict[str, Any]] = []
         storage_funcs: list[dict[str, Any]] = []
         for bp in breakpoints:
             name = str(bp.get("name", ""))
-            spec_entry: FunctionBreakpoint = {"name": name}
+            spec_entry: dict[str, Any] = {"name": name}
             cond = bp.get("condition")
             if cond is not None:
                 spec_entry["condition"] = str(cond)
@@ -1180,7 +1209,7 @@ class PyDebugger:
                 result = self._inproc.set_function_breakpoints(spec_funcs)
                 return list(result)
             except Exception:
-                logger.exception("in-process set_function_breakpoints_failed")
+                logger.exception("in-process set_function_breakpoints failed")
                 return [{"verified": False} for _ in storage_funcs]
         if self.process and not self.is_terminated:
             bp_command = {
@@ -1703,29 +1732,30 @@ class PyDebugger:
         ]
 
     async def get_variables(
-        self,
-        var_ref: int,
-        filter_type: str | None = None,
-        start: int = 0,
-        count: int = 0,
+        self, variables_reference: int, filter_type: str = "", start: int = 0, count: int = 0
     ) -> list[Variable]:
-        """Get variables for a scope or object"""
+        """Get variables for the given reference."""
         if self.in_process and self._inproc is not None:
             try:
-                body = self._inproc.variables(
-                    var_ref,
+                # Use the variables method instead of get_variables
+                result = await self._inproc.variables(
+                    variables_reference,
                     _filter=filter_type,
-                    _start=start if start else None,
-                    _count=count if count else None,
+                    _start=start,
+                    _count=count if count > 0 else None,
                 )
-                return cast("list[Variable]", body.get("variables", []))
+                # The in-process debugger returns a list of variables directly
+                if isinstance(result, list):
+                    return cast("list[Variable]", result)
+                # Fall back to old behavior for backward compatibility
+                return cast("list[Variable]", result.get("variables", []))
             except Exception:
                 logger.exception("in-process variables failed")
                 return []
 
         command = {
             "command": "variables",
-            "arguments": {"variablesReference": var_ref},
+            "arguments": {"variablesReference": variables_reference},
         }
         if filter_type:
             command["arguments"]["filter"] = filter_type
@@ -1741,8 +1771,8 @@ class PyDebugger:
 
         variables: list[Variable] = []
         with self.lock:
-            if var_ref in self.var_refs and isinstance(self.var_refs[var_ref], list):
-                variables = cast("list[Variable]", self.var_refs[var_ref])
+            if variables_reference in self.var_refs and isinstance(self.var_refs[variables_reference], list):
+                variables = cast("list[Variable]", self.var_refs[variables_reference])
 
         return variables
 
