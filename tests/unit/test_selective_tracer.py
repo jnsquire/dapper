@@ -14,6 +14,7 @@ Test script for the selective frame tracing system."""
 import sys
 import threading
 import time
+
 sys.path.insert(0, ".")
 
 def sample_function():
@@ -60,9 +61,7 @@ def test_frame_trace_analyzer():
     print("=== Testing FrameTraceAnalyzer ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            FrameTraceAnalyzer,
-        )
+        from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
         
         analyzer = FrameTraceAnalyzer()
         
@@ -98,7 +97,7 @@ def test_frame_trace_analyzer():
         should_track = analyzer._should_track_file(test_file)
         print(f"Should track test file: {should_track}")
         
-        should_track_system = analyzer._should_track_file('<string>')
+        should_track_system = analyzer._should_track_file("<string>")
         print(f"Should track system file: {should_track_system}")
         
         print("✅ FrameTraceAnalyzer tests passed")
@@ -113,15 +112,13 @@ def test_selective_trace_dispatcher():
     print("\n=== Testing SelectiveTraceDispatcher ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            SelectiveTraceDispatcher,
-        )
+        from dapper._frame_eval.selective_tracer import SelectiveTraceDispatcher
         
         mock_trace = MockTraceFunction()
         dispatcher = SelectiveTraceDispatcher(mock_trace)
         
         # Test without debugger trace function
-        result = dispatcher.selective_trace_dispatch(None, 'line', None)
+        result = dispatcher.selective_trace_dispatch(None, "line", None)
         print(f"No trace function result: {result}")
         
         # Set debugger trace function
@@ -135,7 +132,7 @@ def test_selective_trace_dispatcher():
         test_frame = create_test_frame()
         
         # Test dispatch without breakpoints
-        result1 = dispatcher.selective_trace_dispatch(test_frame, 'line', None)
+        result1 = dispatcher.selective_trace_dispatch(test_frame, "line", None)
         print(f"Dispatch without breakpoints: {result1}")
         print(f"Mock trace calls: {mock_trace.call_count}")
         
@@ -144,7 +141,7 @@ def test_selective_trace_dispatcher():
         dispatcher.update_breakpoints(test_file, {test_frame.f_lineno})
         
         # Test dispatch with breakpoints
-        result2 = dispatcher.selective_trace_dispatch(test_frame, 'line', None)
+        result2 = dispatcher.selective_trace_dispatch(test_frame, "line", None)
         print(f"Dispatch with breakpoints: {result2}")
         print(f"Mock trace calls after breakpoints: {mock_trace.call_count}")
         
@@ -164,9 +161,7 @@ def test_frame_trace_manager():
     print("\n=== Testing FrameTraceManager ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            FrameTraceManager,
-        )
+        from dapper._frame_eval.selective_tracer import FrameTraceManager
         
         manager = FrameTraceManager()
         mock_trace = MockTraceFunction()
@@ -229,11 +224,9 @@ def test_integration_with_sys_settrace():
     print("\n=== Testing sys.settrace Integration ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            get_trace_manager,
-            enable_selective_tracing,
-            get_selective_trace_function,
-        )
+        from dapper._frame_eval.selective_tracer import enable_selective_tracing
+        from dapper._frame_eval.selective_tracer import get_selective_trace_function
+        from dapper._frame_eval.selective_tracer import get_trace_manager
         
         mock_trace = MockTraceFunction()
         
@@ -279,17 +272,14 @@ def test_performance_optimization():
     print("\n=== Testing Performance Optimization ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            get_trace_manager,
-            enable_selective_tracing,
-        )
+        from dapper._frame_eval.selective_tracer import enable_selective_tracing
+        from dapper._frame_eval.selective_tracer import get_trace_manager
         
         # Create mock trace function that counts calls
-        call_counter = {'count': 0}
+        call_counter = {"count": 0}
         
         def counting_trace(frame, event, arg):
-            call_counter['count'] += 1
-            return None
+            call_counter["count"] += 1
         
         # Enable selective tracing
         enable_selective_tracing(counting_trace)
@@ -305,11 +295,11 @@ def test_performance_optimization():
         old_trace = sys.gettrace()
         sys.settrace(manager.get_trace_function())
         
-        call_counter['count'] = 0
+        call_counter["count"] = 0
         start_time = time.time()
         result1 = test_without_breakpoints()
         time_without_bp = time.time() - start_time
-        calls_without_bp = call_counter['count']
+        calls_without_bp = call_counter["count"]
         
         print(f"Time without breakpoints: {time_without_bp:.4f}s")
         print(f"Trace calls without breakpoints: {calls_without_bp}")
@@ -317,11 +307,11 @@ def test_performance_optimization():
         # Test with breakpoints
         manager.add_breakpoint(__file__, test_without_breakpoints.__code__.co_firstlineno + 2)
         
-        call_counter['count'] = 0
+        call_counter["count"] = 0
         start_time = time.time()
         result2 = test_without_breakpoints()
         time_with_bp = time.time() - start_time
-        calls_with_bp = call_counter['count']
+        calls_with_bp = call_counter["count"]
         
         print(f"Time with breakpoints: {time_with_bp:.4f}s")
         print(f"Trace calls with breakpoints: {calls_with_bp}")
@@ -351,10 +341,7 @@ def test_multithreading():
     print("\n=== Testing Multithreading ===")
     
     try:
-        from dapper._frame_eval.selective_tracer import (
-            get_trace_manager,
-            enable_selective_tracing,
-        )
+        from dapper._frame_eval.selective_tracer import enable_selective_tracing
         
         results = []
         errors = []
@@ -374,9 +361,9 @@ def test_multithreading():
                 result = thread_function()
                 
                 results.append({
-                    'thread_id': thread_id,
-                    'result': result,
-                    'trace_calls': mock_trace.call_count,
+                    "thread_id": thread_id,
+                    "result": result,
+                    "trace_calls": mock_trace.call_count,
                 })
                 
             except Exception as e:

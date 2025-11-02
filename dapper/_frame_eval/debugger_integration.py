@@ -11,10 +11,13 @@ from __future__ import annotations
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Dict
+from typing import List
 
 if TYPE_CHECKING:
-    from types import FrameType
+
     from typing_extensions import TypedDict
 else:
     try:
@@ -23,25 +26,16 @@ else:
         from typing import TypedDict
 
 # Import our frame evaluation components
-from .cache_manager import (
-    get_thread_info,
-    set_func_code_info,
-    get_func_code_info,
-    clear_all_caches,
-    get_cache_statistics,
-)
-from .selective_tracer import (
-    get_trace_manager,
-    enable_selective_tracing,
-    disable_selective_tracing,
-    get_selective_trace_function,
-    update_breakpoints,
-)
-from .modify_bytecode import (
-    BytecodeModifier,
-    inject_breakpoint_bytecode,
-    remove_breakpoint_bytecode,
-)
+from .cache_manager import clear_all_caches
+from .cache_manager import get_cache_statistics
+from .cache_manager import set_func_code_info
+from .modify_bytecode import BytecodeModifier
+from .modify_bytecode import inject_breakpoint_bytecode
+from .selective_tracer import disable_selective_tracing
+from .selective_tracer import enable_selective_tracing
+from .selective_tracer import get_selective_trace_function
+from .selective_tracer import get_trace_manager
+from .selective_tracer import update_breakpoints
 
 
 class FrameEvalConfig(TypedDict):
@@ -131,7 +125,7 @@ class DebuggerFrameEvalBridge:
         original_user_line_func = original_user_line
         
         # Store the original _mock_user_line method if it exists
-        original_mock_user_line = getattr(debugger_instance, '_mock_user_line', None)
+        original_mock_user_line = getattr(debugger_instance, "_mock_user_line", None)
         print(f"[DEBUG] original_mock_user_line: {original_mock_user_line}")
         
         # Define the enhanced user_line function
@@ -165,7 +159,7 @@ class DebuggerFrameEvalBridge:
                             if self.config["fallback_on_error"] and original_user_line_func:
                                 print("[DEBUG] Falling back to original user_line")
                                 # Call the original _mock_user_line directly to update user_line_calls
-                                if hasattr(debugger_instance, '_mock_user_line'):
+                                if hasattr(debugger_instance, "_mock_user_line"):
                                     print("[DEBUG] Calling _mock_user_line directly")
                                     return debugger_instance._mock_user_line(frame)
                                 print("[DEBUG] Calling original_user_line_func")
@@ -178,7 +172,7 @@ class DebuggerFrameEvalBridge:
                     if self.config["fallback_on_error"] and original_user_line_func:
                         print("[DEBUG] Falling back to original user_line (outer)")
                         # Call the original _mock_user_line directly to update user_line_calls
-                        if hasattr(debugger_instance, '_mock_user_line'):
+                        if hasattr(debugger_instance, "_mock_user_line"):
                             print("[DEBUG] Calling _mock_user_line directly (outer)")
                             return debugger_instance._mock_user_line(frame)
                         print("[DEBUG] Calling original_user_line_func (outer)")
@@ -218,7 +212,7 @@ class DebuggerFrameEvalBridge:
                 self.integration_stats["integrations_enabled"] += 1
                 return True
                 
-        except Exception as e:
+        except Exception:
             # Clean up if an error occurs during integration
             if debugger_id in self.original_trace_functions:
                 del self.original_trace_functions[debugger_id]
@@ -270,7 +264,7 @@ class DebuggerFrameEvalBridge:
                         
                         return result
                         
-                    except Exception as e:
+                    except Exception:
                         if self.config["fallback_on_error"]:
                             self.integration_stats["errors_handled"] += 1
                             return original_set_breakpoints(source, breakpoints, **kwargs) if original_set_breakpoints else None
@@ -296,7 +290,7 @@ class DebuggerFrameEvalBridge:
                         if original_set_trace:
                             original_set_trace()
                             
-                    except Exception as e:
+                    except Exception:
                         if self.config["fallback_on_error"]:
                             self.integration_stats["errors_handled"] += 1
                             if original_set_trace:
@@ -310,7 +304,7 @@ class DebuggerFrameEvalBridge:
                 self.integration_stats["integrations_enabled"] += 1
                 return True
                 
-        except Exception as e:
+        except Exception:
             if self.config["fallback_on_error"]:
                 self.integration_stats["errors_handled"] += 1
                 return False
@@ -332,7 +326,7 @@ class DebuggerFrameEvalBridge:
             
             # Read the source file and compile it
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     source_code = f.read()
                 
                 # Compile the source code
@@ -511,7 +505,7 @@ def auto_integrate_debugger(debugger_instance) -> bool:
             return _integration_bridge.integrate_with_debugger_bdb(debugger_instance)
         
         # Check if it's a PyDebugger instance
-        elif hasattr(debugger_instance, "set_breakpoints") and hasattr(debugger_instance, "threads"):
+        if hasattr(debugger_instance, "set_breakpoints") and hasattr(debugger_instance, "threads"):
             return _integration_bridge.integrate_with_py_debugger(debugger_instance)
         
         # Unknown debugger type

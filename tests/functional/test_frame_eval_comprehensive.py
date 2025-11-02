@@ -3,27 +3,16 @@
 
 from __future__ import annotations
 
-import sys
 import threading
-import time
-from pathlib import Path
-from types import FrameType
 from typing import Any
-from typing import Dict
-from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import Mock
-from unittest.mock import patch
 
 import pytest
-from _pytest.fixtures import FixtureRequest
-from _pytest.monkeypatch import MonkeyPatch
-from pytest_mock import MockerFixture
 
 # Import the modules we're testing
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 from dapper._frame_eval.debugger_integration import FrameEvalConfig
-from dapper._frame_eval.debugger_integration import IntegrationStatistics
 from dapper._frame_eval.debugger_integration import auto_integrate_debugger
 from dapper._frame_eval.debugger_integration import configure_integration
 from dapper._frame_eval.debugger_integration import get_integration_bridge
@@ -126,7 +115,6 @@ def mock_cython_functions(monkeypatch):
     # Create a mock for frame_eval_func
     def mock_frame_eval_func(frame, event, arg):
         """Mock implementation of frame_eval_func."""
-        pass
     
     # Create a mock for get_frame_eval_stats
     def mock_get_frame_eval_stats():
@@ -144,10 +132,10 @@ def mock_cython_functions(monkeypatch):
         return MockThreadInfo()
     
     # Apply the mocks
-    monkeypatch.setattr('dapper._frame_eval._frame_evaluator.frame_eval_func', mock_frame_eval_func)
-    monkeypatch.setattr('dapper._frame_eval._frame_evaluator.get_frame_eval_stats', mock_get_frame_eval_stats)
-    monkeypatch.setattr('dapper._frame_eval._frame_evaluator.get_thread_info', mock_get_thread_info)
-    monkeypatch.setattr('dapper._frame_eval._frame_evaluator.stop_frame_eval', lambda: None)
+    monkeypatch.setattr("dapper._frame_eval._frame_evaluator.frame_eval_func", mock_frame_eval_func)
+    monkeypatch.setattr("dapper._frame_eval._frame_evaluator.get_frame_eval_stats", mock_get_frame_eval_stats)
+    monkeypatch.setattr("dapper._frame_eval._frame_evaluator.get_thread_info", mock_get_thread_info)
+    monkeypatch.setattr("dapper._frame_eval._frame_evaluator.stop_frame_eval", lambda: None)
 
 
 @pytest.mark.skipif(
@@ -172,7 +160,7 @@ class TestCythonIntegration:
             
         thread_info = get_thread_info()
         assert thread_info is not None
-        assert hasattr(thread_info, 'skip_all_frames')
+        assert hasattr(thread_info, "skip_all_frames")
 
     def test_frame_eval_stats_has_expected_structure(self, mock_cython_functions) -> None:
         """Test that frame evaluation stats have the expected structure."""
@@ -241,7 +229,7 @@ class TestCythonIntegration:
             
             # Assert - Check that frame evaluation is marked as inactive
             stats_after_stop = get_frame_eval_stats()
-            assert stats_after_stop.get('active') is False, \
+            assert stats_after_stop.get("active") is False, \
                 "Frame evaluation should be marked as inactive after stop_frame_eval()"
             
             # Act - Re-enable frame evaluation
@@ -249,7 +237,7 @@ class TestCythonIntegration:
             
             # Assert - Check that frame evaluation is marked as active again
             stats_after_start = get_frame_eval_stats()
-            assert stats_after_start.get('active') is True, \
+            assert stats_after_start.get("active") is True, \
                 "Frame evaluation should be marked as active after frame_eval_func()"
                 
         except Exception as e:
@@ -355,7 +343,7 @@ class TestDebuggerFrameEvalBridge:
         debugger_bdb.set_break = Mock()
         
         # Remove user_line to test the behavior when it's missing
-        if hasattr(debugger_bdb, 'user_line'):
+        if hasattr(debugger_bdb, "user_line"):
             del debugger_bdb.user_line
         
         result = self.bridge.integrate_with_debugger_bdb(debugger_bdb)
@@ -364,7 +352,7 @@ class TestDebuggerFrameEvalBridge:
         assert result is True
         
         # The debugger should now have a user_line method
-        assert hasattr(debugger_bdb, 'user_line')
+        assert hasattr(debugger_bdb, "user_line")
         assert callable(debugger_bdb.user_line)
         
         # The integration stats should be updated
@@ -401,7 +389,7 @@ class TestDebuggerFrameEvalBridge:
         debugger_py = Mock()
         debugger_py.set_breakpoints = Mock()
         # Remove optional threads attribute
-        if hasattr(debugger_py, 'threads'):
+        if hasattr(debugger_py, "threads"):
             del debugger_py.threads
         
         # The integration should still work without the threads attribute

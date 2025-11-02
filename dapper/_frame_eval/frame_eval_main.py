@@ -9,23 +9,21 @@ frame evaluation lifecycle.
 from __future__ import annotations
 
 import logging
-import sys
 import os
-import threading
 import platform
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-if TYPE_CHECKING:
-    # No forward references needed currently
-    pass
+import sys
+import threading
+from typing import Any
+from typing import Dict
+from typing import List
 
 # Module constants
 COMPATIBLE_PYTHON_VERSIONS = ["3.6", "3.7", "3.8", "3.9", "3.10"]
-SUPPORTED_PLATFORMS = ['Windows', 'Linux', 'Darwin']
-SUPPORTED_ARCHITECTURES = ['64bit', '32bit']
-INCOMPATIBLE_DEBUGGERS = ['pydevd', 'pdb', 'ipdb']
-INCOMPATIBLE_ENVIRONMENT_VARS = ['PYCHARM_HOSTED', 'VSCODE_PID']
-INCOMPATIBLE_COVERAGE_TOOLS = ['coverage', 'pytest_cov']
+SUPPORTED_PLATFORMS = ["Windows", "Linux", "Darwin"]
+SUPPORTED_ARCHITECTURES = ["64bit", "32bit"]
+INCOMPATIBLE_DEBUGGERS = ["pydevd", "pdb", "ipdb"]
+INCOMPATIBLE_ENVIRONMENT_VARS = ["PYCHARM_HOSTED", "VSCODE_PID"]
+INCOMPATIBLE_COVERAGE_TOOLS = ["coverage", "pytest_cov"]
 
 # Frame evaluation state
 _frame_eval_config: Dict[str, Any] = {}
@@ -64,16 +62,15 @@ def setup_frame_eval(config: Dict[str, Any]) -> bool:
             
             # Check compatibility
             compatibility = check_environment_compatibility()
-            if not compatibility['compatible']:
-                if config.get('fallback_to_tracing', True):
+            if not compatibility["compatible"]:
+                if config.get("fallback_to_tracing", True):
                     logger.warning(f"Frame evaluation not compatible: {compatibility['reason']}")
                     logger.info("Falling back to traditional tracing")
                     _frame_eval_config = config
                     _is_initialized = True
                     return True
-                else:
-                    logger.error("Frame evaluation not compatible and fallback not enabled")
-                    return False
+                logger.error("Frame evaluation not compatible and fallback not enabled")
+                return False
             
             # Store configuration
             _frame_eval_config = config.copy()
@@ -100,7 +97,7 @@ def should_use_frame_eval() -> bool:
     if not _is_initialized:
         return False
     
-    return _frame_eval_config.get('enabled', False)
+    return _frame_eval_config.get("enabled", False)
 
 
 def get_compatible_python_versions() -> List[str]:
@@ -128,45 +125,45 @@ def check_environment_compatibility() -> Dict[str, Any]:
         return _compatibility_cache[cache_key]
     
     compatibility = {
-        'compatible': False,
-        'reason': '',
-        'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        'platform': platform.platform(),
-        'architecture': platform.architecture()[0],
-        'implementation': platform.python_implementation(),
+        "compatible": False,
+        "reason": "",
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "platform": platform.platform(),
+        "architecture": platform.architecture()[0],
+        "implementation": platform.python_implementation(),
     }
     
     # Check Python version
     version_tuple = (sys.version_info.major, sys.version_info.minor)
     if version_tuple < (3, 6):
-        compatibility['reason'] = "Python version too old (requires 3.6+)"
+        compatibility["reason"] = "Python version too old (requires 3.6+)"
         _compatibility_cache[cache_key] = compatibility
         return compatibility
     
     if version_tuple > (3, 10):
-        compatibility['reason'] = "Python version too new (3.11+ not supported)"
+        compatibility["reason"] = "Python version too new (3.11+ not supported)"
         _compatibility_cache[cache_key] = compatibility
         return compatibility
     
     # Check for required C API features
     if not _check_c_api_compatibility():
-        compatibility['reason'] = "Required C API features not available"
+        compatibility["reason"] = "Required C API features not available"
         _compatibility_cache[cache_key] = compatibility
         return compatibility
     
     # Check platform-specific requirements
     if not _check_platform_compatibility():
-        compatibility['reason'] = "Platform not supported"
+        compatibility["reason"] = "Platform not supported"
         _compatibility_cache[cache_key] = compatibility
         return compatibility
     
     # Check for known incompatible environments
     if _is_incompatible_environment():
-        compatibility['reason'] = "Running in incompatible environment"
+        compatibility["reason"] = "Running in incompatible environment"
         _compatibility_cache[cache_key] = compatibility
         return compatibility
     
-    compatibility['compatible'] = True
+    compatibility["compatible"] = True
     _compatibility_cache[cache_key] = compatibility
     return compatibility
 
@@ -236,7 +233,6 @@ def shutdown_frame_eval() -> None:
         except (ImportError, RuntimeError, AttributeError) as e:
             logger.error(f"Error during frame evaluation shutdown: {e}")
             # Ignore errors during shutdown
-            pass
 
 
 def _validate_config(config: Dict[str, Any]) -> bool:
@@ -249,20 +245,20 @@ def _validate_config(config: Dict[str, Any]) -> bool:
     Returns:
         bool: True if configuration is valid
     """
-    required_keys = ['enabled']
+    required_keys = ["enabled"]
     for key in required_keys:
         if key not in config:
             return False
     
     # Validate boolean values
-    bool_keys = ['enabled', 'fallback_to_tracing', 'debug_mode']
+    bool_keys = ["enabled", "fallback_to_tracing", "debug_mode"]
     for key in bool_keys:
         if key in config and not isinstance(config[key], bool):
             return False
     
     # Validate numeric values
-    if 'cache_size' in config:
-        if not isinstance(config['cache_size'], int) or config['cache_size'] < 0:
+    if "cache_size" in config:
+        if not isinstance(config["cache_size"], int) or config["cache_size"] < 0:
             return False
     
     return True
@@ -315,7 +311,6 @@ def _cleanup_components() -> None:
         
     except (ImportError, RuntimeError, AttributeError) as e:
         logger.error(f"Error during component cleanup: {e}")
-        pass
 
 
 def _check_c_api_compatibility() -> bool:
@@ -387,24 +382,24 @@ def get_debug_info() -> Dict[str, Any]:
         dict: Debug information
     """
     return {
-        'initialized': _is_initialized,
-        'config': _frame_eval_config.copy(),
-        'compatibility': check_environment_compatibility(),
-        'python_info': {
-            'version': sys.version,
-            'version_info': sys.version_info,
-            'platform': platform.platform(),
-            'implementation': platform.python_implementation(),
-            'executable': sys.executable,
+        "initialized": _is_initialized,
+        "config": _frame_eval_config.copy(),
+        "compatibility": check_environment_compatibility(),
+        "python_info": {
+            "version": sys.version,
+            "version_info": sys.version_info,
+            "platform": platform.platform(),
+            "implementation": platform.python_implementation(),
+            "executable": sys.executable,
         },
-        'thread_info': {
-            'current_thread_id': threading.get_ident(),
-            'active_threads': threading.active_count(),
+        "thread_info": {
+            "current_thread_id": threading.get_ident(),
+            "active_threads": threading.active_count(),
         },
-        'environment': {
-            'path': sys.path[:3],  # First few entries
-            'modules': len(sys.modules),
-            'environment_vars': dict(list(os.environ.items())[:5]),  # First few
+        "environment": {
+            "path": sys.path[:3],  # First few entries
+            "modules": len(sys.modules),
+            "environment_vars": dict(list(os.environ.items())[:5]),  # First few
         }
     }
 
@@ -416,11 +411,11 @@ def _initialize_module():
     
     # Set default configuration
     _frame_eval_config = {
-        'enabled': False,
-        'fallback_to_tracing': True,
-        'debug_mode': False,
-        'cache_size': 1000,
-        'optimize_bytecode': True,
+        "enabled": False,
+        "fallback_to_tracing": True,
+        "debug_mode": False,
+        "cache_size": 1000,
+        "optimize_bytecode": True,
     }
 
 

@@ -11,12 +11,6 @@ if project_root not in sys.path:
 
 Tests for frame evaluation integration system."""
 
-import sys
-import threading
-import time
-from types import FrameType
-from typing import Any
-from typing import Dict
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -26,7 +20,6 @@ import pytest
 # Import the modules we're testing
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 from dapper._frame_eval.debugger_integration import FrameEvalConfig
-from dapper._frame_eval.debugger_integration import IntegrationStatistics
 from dapper._frame_eval.debugger_integration import auto_integrate_debugger
 from dapper._frame_eval.debugger_integration import get_integration_bridge
 from dapper._frame_eval.debugger_integration import get_integration_statistics
@@ -315,8 +308,8 @@ class TestPyDebuggerIntegration:
         assert self.bridge.integration_stats["integrations_enabled"] == 1
         
         # Verify methods were replaced with enhanced versions
-        assert 'enhanced_set_breakpoints' in str(self.mock_debugger.set_breakpoints)
-        assert 'enhanced_set_trace' in str(self.mock_debugger._set_trace_function)
+        assert "enhanced_set_breakpoints" in str(self.mock_debugger.set_breakpoints)
+        assert "enhanced_set_trace" in str(self.mock_debugger._set_trace_function)
     
     def test_integrate_with_py_debugger_disabled(self):
         """Test integration when bridge is disabled."""
@@ -432,7 +425,7 @@ class TestErrorHandling:
                 # Simulate an error during integration
                 debugger_instance.user_line(None)
                 return True
-            except Exception as e:
+            except Exception:
                 if self.bridge.config["fallback_on_error"]:
                     self.bridge.integration_stats["errors_handled"] += 1
                     return False
@@ -473,7 +466,7 @@ class TestErrorHandling:
                 # Simulate an error during integration
                 debugger_instance.user_line(None)
                 return True
-            except Exception as e:
+            except Exception:
                 if self.bridge.config["fallback_on_error"]:
                     self.bridge.integration_stats["errors_handled"] += 1
                     return False

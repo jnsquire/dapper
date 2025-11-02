@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from queue import Queue
 from typing import TYPE_CHECKING
-from typing import Any
-from typing import cast
 
 from dapper import debug_launcher
 from dapper import debug_shared
@@ -12,7 +10,6 @@ from tests.dummy_debugger import DummyDebugger
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from dapper.debugger_protocol import Variable
 
 
 # Create a realistic mock frame object with a code object and line info

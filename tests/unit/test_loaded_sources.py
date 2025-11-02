@@ -34,41 +34,17 @@ async def test_loaded_sources():
     try:
         # Start the server
         await connection.start_listening()
-        port = connection.port
-        logger.info(f"Debug adapter server started on port {port}")
-
         # Test the get_loaded_sources method directly
         loaded_sources = await debugger.get_loaded_sources()
 
-        logger.info(f"Found {len(loaded_sources)} loaded sources:")
-        for i, source in enumerate(loaded_sources[:MAX_DISPLAY_SOURCES]):
-            name = source.get("name", "<unknown>")
-            origin = source.get("origin", "unknown")
-            path = source.get("path", "")
-            logger.info(f"  {i + 1}. {name} ({origin})")
-            logger.info(f"      Path: {path}")
-
-        if len(loaded_sources) > MAX_DISPLAY_SOURCES:
-            logger.info(f"  ... and {len(loaded_sources) - MAX_DISPLAY_SOURCES} more")
-
-        # Verify we found some standard Python modules
+        # Get module names from loaded sources
         found_modules = {s.get("name") for s in loaded_sources if s.get("name")}
-        expected_modules = ["logging.py", "asyncio.py", "pathlib.py"]
-        found_expected = [mod for mod in expected_modules if mod in found_modules]
-
-        logger.info(f"Found expected standard library modules: {found_expected}")
-
+        
         # Verify this test file is included
         test_file_name = Path(__file__).name
-        if test_file_name in found_modules:
-            logger.info(f"✓ This test file ({test_file_name}) is correctly included")
-        else:
-            logger.warning(f"✗ This test file ({test_file_name}) is missing from loaded sources")
-
-        logger.info("✓ loadedSources test completed successfully!")
+        assert test_file_name in found_modules, f"Test file {test_file_name} is missing from loaded sources"
 
     except Exception:
-        logger.exception("Test failed")
         raise
     finally:
         # Clean up

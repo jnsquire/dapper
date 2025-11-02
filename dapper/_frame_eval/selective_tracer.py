@@ -8,18 +8,14 @@ by avoiding unnecessary trace function calls on frames without breakpoints.
 
 from __future__ import annotations
 
-import sys
 import threading
-import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Dict
-from typing import List
 from typing import Optional
 from typing import Set
-from typing import Tuple
 
 if TYPE_CHECKING:
     from types import FrameType
@@ -33,11 +29,9 @@ else:
 
 # Import our cache system
 from .cache_manager import get_breakpoints
-from .cache_manager import get_func_code_info
 from .cache_manager import get_thread_info
 from .cache_manager import invalidate_breakpoints
 from .cache_manager import set_breakpoints
-from .cache_manager import set_func_code_info
 
 
 class TraceDecision(TypedDict):

@@ -238,7 +238,7 @@ def test_debugger_like_protocol_attributes():
     assert isinstance(dbg.stepping, bool)
     
     # Test optional attributes (can be None)
-    assert dbg.current_frame is None or hasattr(dbg.current_frame, '__dict__')
+    assert dbg.current_frame is None or hasattr(dbg.current_frame, "__dict__")
     assert dbg.data_breakpoints is None or isinstance(dbg.data_breakpoints, list)
     assert isinstance(dbg.stop_on_entry, bool)
     
@@ -388,23 +388,21 @@ def test_debugger_like_protocol_exception_handling():
 
 def test_protocol_type_annotations():
     # Test that protocol type annotations work correctly at runtime
-    from dapper.debugger_protocol import (
-        PresentationHint, 
-        Variable, 
-        ExceptionDetails, 
-        ExceptionInfo,
-        DebuggerLike
-    )
+    from dapper.debugger_protocol import DebuggerLike
+    from dapper.debugger_protocol import ExceptionDetails
+    from dapper.debugger_protocol import ExceptionInfo
+    from dapper.debugger_protocol import PresentationHint
+    from dapper.debugger_protocol import Variable
     
     # Test that TypedDict classes are properly constructed
-    assert hasattr(PresentationHint, '__required_keys__')
-    assert hasattr(Variable, '__required_keys__')
-    assert hasattr(ExceptionDetails, '__required_keys__')
-    assert hasattr(ExceptionInfo, '__required_keys__')
+    assert hasattr(PresentationHint, "__required_keys__")
+    assert hasattr(Variable, "__required_keys__")
+    assert hasattr(ExceptionDetails, "__required_keys__")
+    assert hasattr(ExceptionInfo, "__required_keys__")
     
     # Test that Variable has all required keys
     required_var_keys = Variable.__required_keys__
-    expected_keys = {'name', 'value', 'type', 'variablesReference', 'presentationHint'}
+    expected_keys = {"name", "value", "type", "variablesReference", "presentationHint"}
     assert required_var_keys == expected_keys
     
     # Test that PresentationHint has no required keys (total=False)
@@ -416,4 +414,4 @@ def test_protocol_type_annotations():
     assert len(ExceptionInfo.__required_keys__) > 0
     
     # Test that DebuggerLike is runtime_checkable
-    assert hasattr(DebuggerLike, '__protocol_attrs__') or hasattr(DebuggerLike, '__orig_bases__')
+    assert hasattr(DebuggerLike, "__protocol_attrs__") or hasattr(DebuggerLike, "__orig_bases__")

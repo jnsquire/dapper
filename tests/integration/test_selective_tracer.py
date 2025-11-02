@@ -6,25 +6,16 @@ from pathlib import Path
 Tests for selective tracing system.
 """
 
-import sys
 import threading
-import time
-from types import FrameType
-from typing import Any
-from typing import Dict
-from typing import Set
-from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
 
 from dapper._frame_eval import cache_manager
-from dapper._frame_eval.cache_manager import set_breakpoints
 from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
 from dapper._frame_eval.selective_tracer import FrameTraceManager
 from dapper._frame_eval.selective_tracer import SelectiveTraceDispatcher
-from dapper._frame_eval.selective_tracer import _trace_manager
 from dapper._frame_eval.selective_tracer import disable_selective_tracing
 from dapper._frame_eval.selective_tracer import enable_selective_tracing
 from dapper._frame_eval.selective_tracer import get_selective_trace_function

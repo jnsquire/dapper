@@ -2,8 +2,8 @@
 """Test script for bytecode modification system."""
 
 import dis
-import types
 import sys
+import types
 from pathlib import Path
 
 # Add the project root to the Python path
@@ -29,15 +29,13 @@ def test_basic_functionality():
     print("=== Testing Basic Bytecode Modification ===")
     
     try:
-        from dapper._frame_eval.modify_bytecode import (
-            inject_breakpoint_bytecode,
-            remove_breakpoint_bytecode,
-            get_bytecode_info,
-            validate_bytecode,
-            optimize_bytecode,
-            get_cache_stats,
-            clear_bytecode_cache,
-        )
+        from dapper._frame_eval.modify_bytecode import clear_bytecode_cache
+        from dapper._frame_eval.modify_bytecode import get_bytecode_info
+        from dapper._frame_eval.modify_bytecode import get_cache_stats
+        from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
+        from dapper._frame_eval.modify_bytecode import optimize_bytecode
+        from dapper._frame_eval.modify_bytecode import remove_breakpoint_bytecode
+        from dapper._frame_eval.modify_bytecode import validate_bytecode
         
         # Get original code object
         original_code = sample_function.__code__
@@ -101,10 +99,8 @@ def test_advanced_functionality():
     print("\n=== Testing Advanced Bytecode Modification ===")
     
     try:
-        from dapper._frame_eval.modify_bytecode import (
-            BytecodeModifier,
-            set_optimization_enabled,
-        )
+        from dapper._frame_eval.modify_bytecode import BytecodeModifier
+        from dapper._frame_eval.modify_bytecode import set_optimization_enabled
         
         # Create a custom modifier
         modifier = BytecodeModifier()
@@ -148,16 +144,14 @@ def test_error_handling():
     print("\n=== Testing Error Handling ===")
     
     try:
-        from dapper._frame_eval.modify_bytecode import (
-            inject_breakpoint_bytecode,
-            validate_bytecode,
-            get_bytecode_info,
-        )
+        from dapper._frame_eval.modify_bytecode import get_bytecode_info
+        from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
+        from dapper._frame_eval.modify_bytecode import validate_bytecode
         
         # Test with invalid code object
         try:
             invalid_code = types.CodeType(
-                0, 0, 0, 0, 0, 0, b'', (), (), (), '', '', 0, b'', (), ()
+                0, 0, 0, 0, 0, 0, b"", (), (), (), "", "", 0, b"", (), ()
             )
             
             # This should handle gracefully
@@ -192,9 +186,7 @@ def test_instruction_analysis():
     print("\n=== Testing Instruction Analysis ===")
     
     try:
-        from dapper._frame_eval.modify_bytecode import (
-            BytecodeModifier,
-        )
+        from dapper._frame_eval.modify_bytecode import BytecodeModifier
         
         modifier = BytecodeModifier()
         
@@ -215,16 +207,16 @@ def test_instruction_analysis():
         if sys.version_info >= (3, 11):
             # Python 3.11+ requires line_number parameter
             fake_instructions = [
-                dis.Instruction('LOAD_CONST', 100, 0, 42, '42', 0, None, False, 1),
-                dis.Instruction('CALL_FUNCTION', 142, 1, 1, '', 2, None, False, 1),
-                dis.Instruction('POP_TOP', 1, None, None, '', 3, None, False, 1),
+                dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False, 1),
+                dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False, 1),
+                dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False, 1),
             ]
         else:
             # Python 3.10 and earlier
             fake_instructions = [
-                dis.Instruction('LOAD_CONST', 100, 0, 42, '42', 0, None, False),
-                dis.Instruction('CALL_FUNCTION', 142, 1, 1, '', 2, None, False),
-                dis.Instruction('POP_TOP', 1, None, None, '', 3, None, False),
+                dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False),
+                dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False),
+                dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False),
             ]
         
         is_breakpoint = modifier._is_breakpoint_sequence(fake_instructions, 0)
@@ -248,11 +240,10 @@ def test_performance():
     
     try:
         import time
-        from dapper._frame_eval.modify_bytecode import (
-            inject_breakpoint_bytecode,
-            clear_bytecode_cache,
-            get_cache_stats,
-        )
+
+        from dapper._frame_eval.modify_bytecode import clear_bytecode_cache
+        from dapper._frame_eval.modify_bytecode import get_cache_stats
+        from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
         
         original_code = sample_function.__code__
         breakpoint_lines = {3, 5}

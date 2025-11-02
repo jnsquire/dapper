@@ -3,22 +3,22 @@
 
 import os
 import re
-from pathlib import Path
+
 
 def update_imports(file_path):
     """Update imports in a test file."""
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
     
     # Check if the file already has the updated import pattern
-    if 'from pathlib import Path' in content and 'project_root = str(Path(__file__).parent.parent.parent)' in content:
+    if "from pathlib import Path" in content and "project_root = str(Path(__file__).parent.parent.parent)" in content:
         return False  # Already updated
     
     # Remove any existing sys.path manipulation
-    content = re.sub(r'^import sys\s+sys\.path\.insert\(0, ["\'].*?["\']\)\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^import sys\s+sys\.path\.insert\(0, ["\'].*?["\']\)\s+', "", content, flags=re.MULTILINE)
     
     # Add the new import pattern if not present
-    if 'from pathlib import Path' not in content:
+    if "from pathlib import Path" not in content:
         content = content.replace(
             '"""',
             '"""\n\nimport sys\nfrom pathlib import Path\n\n# Add the project root to the Python path\nproject_root = str(Path(__file__).parent.parent.parent)\nif project_root not in sys.path:\n    sys.path.insert(0, project_root)\n\n',
@@ -26,7 +26,7 @@ def update_imports(file_path):
         )
     
     # Write the updated content back to the file
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
     
     return True
@@ -34,11 +34,11 @@ def update_imports(file_path):
 def main():
     """Main function to update all test files."""
     test_dirs = [
-        'tests/unit',
-        'tests/integration',
-        'tests/functional',
-        'tests/e2e',
-        'tests'  # For test files directly in the tests directory
+        "tests/unit",
+        "tests/integration",
+        "tests/functional",
+        "tests/e2e",
+        "tests"  # For test files directly in the tests directory
     ]
     
     updated_files = []
@@ -49,7 +49,7 @@ def main():
             
         for root, _, files in os.walk(test_dir):
             for file in files:
-                if file.startswith('test_') and file.endswith('.py'):
+                if file.startswith("test_") and file.endswith(".py"):
                     file_path = os.path.join(root, file)
                     try:
                         if update_imports(file_path):

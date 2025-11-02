@@ -2,23 +2,16 @@
 
 from __future__ import annotations
 
-import os
-import sys
-import types
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import dapper._frame_eval.frame_tracing as ft
-from dapper._frame_eval.frame_tracing import (
-    CacheManager,
-    CodeWrapper,
-    FrameEvaluator,
-    FrameTracingConfig,
-    PathHandler,
-)
+from dapper._frame_eval.frame_tracing import CacheManager
+from dapper._frame_eval.frame_tracing import CodeWrapper
+from dapper._frame_eval.frame_tracing import FrameEvaluator
+from dapper._frame_eval.frame_tracing import FrameTracingConfig
+from dapper._frame_eval.frame_tracing import PathHandler
 
 
 class TestFrameTracingConfig:
@@ -70,7 +63,7 @@ class TestPathHandler:
     
     def test_normalize_path_error(self):
         """Test path normalization with error."""
-        with patch("os.path.isabs", side_effect=Exception("Test error")):
+        with patch.object(Path, "is_absolute", side_effect=Exception("Test error")):
             result = PathHandler.normalize_path("test.py")
             assert result == "test.py"
     

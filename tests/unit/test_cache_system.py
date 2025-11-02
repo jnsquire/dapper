@@ -12,9 +12,9 @@ if project_root not in sys.path:
 Test script for the frame evaluation caching system."""
 
 import sys
-import time
 import threading
-import types
+import time
+
 sys.path.insert(0, ".")
 
 def sample_function():
@@ -46,12 +46,10 @@ def test_func_code_cache():
     print("=== Testing FuncCodeInfo Cache ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            FuncCodeInfoCache,
-            get_func_code_info,
-            set_func_code_info,
-            remove_func_code_info,
-        )
+        from dapper._frame_eval.cache_manager import FuncCodeInfoCache
+        from dapper._frame_eval.cache_manager import get_func_code_info
+        from dapper._frame_eval.cache_manager import remove_func_code_info
+        from dapper._frame_eval.cache_manager import set_func_code_info
         
         # Create a cache instance
         cache = FuncCodeInfoCache(max_size=5, ttl=2)
@@ -115,11 +113,8 @@ def test_thread_local_cache():
     print("\n=== Testing Thread-Local Cache ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            ThreadLocalCache,
-            ThreadInfo,
-            get_thread_info,
-        )
+        from dapper._frame_eval.cache_manager import ThreadLocalCache
+        from dapper._frame_eval.cache_manager import get_thread_info
         
         cache = ThreadLocalCache()
         
@@ -169,12 +164,10 @@ def test_breakpoint_cache():
     print("\n=== Testing Breakpoint Cache ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            BreakpointCache,
-            get_breakpoints,
-            set_breakpoints,
-            invalidate_breakpoints,
-        )
+        from dapper._frame_eval.cache_manager import BreakpointCache
+        from dapper._frame_eval.cache_manager import get_breakpoints
+        from dapper._frame_eval.cache_manager import invalidate_breakpoints
+        from dapper._frame_eval.cache_manager import set_breakpoints
         
         cache = BreakpointCache(max_entries=3)
         
@@ -223,11 +216,9 @@ def test_multithreading():
     print("\n=== Testing Multithreading ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            get_thread_info,
-            set_func_code_info,
-            get_func_code_info,
-        )
+        from dapper._frame_eval.cache_manager import get_func_code_info
+        from dapper._frame_eval.cache_manager import get_thread_info
+        from dapper._frame_eval.cache_manager import set_func_code_info
         
         results = []
         errors = []
@@ -251,9 +242,9 @@ def test_multithreading():
                 thread_info.exit_frame_eval()
                 
                 results.append({
-                    'thread_id': thread_id,
-                    'cache_hit': cached_info is info,
-                    'frame_eval_count': thread_info.inside_frame_eval,
+                    "thread_id": thread_id,
+                    "cache_hit": cached_info is info,
+                    "frame_eval_count": thread_info.inside_frame_eval,
                 })
                 
             except Exception as e:
@@ -279,8 +270,8 @@ def test_multithreading():
                 print(f"  {error}")
         
         # Verify thread isolation
-        all_cache_hits = all(r['cache_hit'] for r in results)
-        all_frames_reset = all(r['frame_eval_count'] == 0 for r in results)
+        all_cache_hits = all(r["cache_hit"] for r in results)
+        all_frames_reset = all(r["frame_eval_count"] == 0 for r in results)
         
         print(f"All cache hits: {all_cache_hits}")
         print(f"All frames reset: {all_frames_reset}")
@@ -300,14 +291,12 @@ def test_cache_configuration():
     print("\n=== Testing Cache Configuration ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            configure_caches,
-            set_cache_enabled,
-            get_cache_statistics,
-            clear_all_caches,
-            cleanup_caches,
-            set_func_code_info,
-        )
+        from dapper._frame_eval.cache_manager import cleanup_caches
+        from dapper._frame_eval.cache_manager import clear_all_caches
+        from dapper._frame_eval.cache_manager import configure_caches
+        from dapper._frame_eval.cache_manager import get_cache_statistics
+        from dapper._frame_eval.cache_manager import set_cache_enabled
+        from dapper._frame_eval.cache_manager import set_func_code_info
         
         # Get initial stats
         initial_stats = get_cache_statistics()
@@ -365,11 +354,9 @@ def test_performance():
     print("\n=== Testing Cache Performance ===")
     
     try:
-        from dapper._frame_eval.cache_manager import (
-            get_func_code_info,
-            set_func_code_info,
-            get_cache_statistics,
-        )
+        from dapper._frame_eval.cache_manager import get_cache_statistics
+        from dapper._frame_eval.cache_manager import get_func_code_info
+        from dapper._frame_eval.cache_manager import set_func_code_info
         
         # Performance test setup
         num_operations = 1000

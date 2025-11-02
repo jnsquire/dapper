@@ -20,6 +20,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 [project.optional-dependencies]
+test = [
+    "pytest-mock>=3.15.1",
+]
+
 frame-eval = [
     "Cython>=3.0",
 ]
@@ -122,11 +126,24 @@ select = [
     "RUF",
 ]
 
-ignore = ["E501", "E741", "F401", "SIM105", "G004"]
+# Only ignore specific rules that we want to keep
+ignore = ["E501", "E741", "SIM105", "G004", "T201"]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided
 fixable = ["ALL"]
 unfixable = []
+
+# Enable more aggressive fixes
+[ruff.lint]
+# Enable auto-fix for unused imports
+unused-imports = { enabled = true, detect-unused-imports = true }
+
+# Configure isort for better import organization
+[ruff.isort]
+known-first-party = ["dapper"]
+force-single-line = true
+force-sort-within-sections = true
+order-by-type = true
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -148,12 +165,14 @@ max-args = 10
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use magic values, assertions, and imports
-"tests/**/*" = ["PLR2004", "S101", "TID252", "SLF001"]
-"testing/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "TRY300", "PLR0911", "PERF203"]
+"tests/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "INP001"]
+"testing/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "TRY300", "PLR0911", "PERF203", "INP001"]
 # Examples can be more lenient
 "examples/**/*" = ["INP001", "T201"]
 # Allow print statements in debug launcher for protocol messages
 "dapper/debug_launcher.py" = ["T201"]
+# Allow test files to have imports after code for test setup
+"tests/**/test_*.py" = ["E402"]
 
 [dependency-groups]
 dev = [

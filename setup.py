@@ -2,7 +2,9 @@ import os
 import sys
 from pathlib import Path
 
-from setuptools import Extension, find_packages, setup
+from setuptools import Extension
+from setuptools import find_packages
+from setuptools import setup
 from setuptools.command.build_ext import build_ext
 from setuptools.dist import Distribution
 
@@ -29,7 +31,7 @@ class BuildExt(build_ext):
                 if not ext.name.startswith("dapper._frame_eval")
             ]
             if not self.extensions:
-                print("Cython not available - skipping frame evaluation extensions")  # noqa: T201
+                print("Cython not available - skipping frame evaluation extensions")
                 return
         
         super().build_extensions()

@@ -9,7 +9,6 @@ data structures.
 from __future__ import annotations
 
 import ctypes
-import sys
 import threading
 import time
 import weakref
@@ -20,14 +19,11 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Set
-from typing import Tuple
-from typing import Union
 
 from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     from types import CodeType
-    from typing import Callable
 
 
 class GlobalCacheStats(TypedDict):
@@ -156,10 +152,8 @@ class FuncCodeInfoCache:
             except (ImportError, AttributeError):
                 # Fallback: try to use ctypes to access the C API directly
                 try:
-                    import sys
                     from ctypes import c_int
                     from ctypes import c_void_p
-                    from ctypes import py_object
                     
                     # Get the Python interpreter handle
                     python_api = ctypes.pythonapi

@@ -84,12 +84,12 @@ async def test_inprocess_variables_bridge():
     debugger._inproc = fake  # type: ignore[attr-defined]
 
     # Clear any previous calls
-    if hasattr(FakeBridge, 'called'):
-        delattr(FakeBridge, 'called')
+    if hasattr(FakeBridge, "called"):
+        delattr(FakeBridge, "called")
 
     result = await debugger.get_variables(123, filter_type="indexed", start=1, count=10)
 
-    assert hasattr(FakeBridge, 'called'), "FakeBridge.variables was not called"
+    assert hasattr(FakeBridge, "called"), "FakeBridge.variables was not called"
     assert FakeBridge.called == (123, "indexed", 1, 10)
     assert isinstance(result, list)
     assert result

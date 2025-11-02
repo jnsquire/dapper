@@ -6,16 +6,17 @@ This script helps with development by providing easy commands to build
 and test the frame evaluation extensions.
 """
 
-import os
-import sys
-import subprocess
 import argparse
+import os
+import subprocess
+import sys
 from pathlib import Path
+
 
 def run_command(cmd, cwd=None):
     """Run a command and return the result."""
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, shell=True, cwd=cwd, capture_output=True, text=True)
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -59,7 +60,7 @@ def build_development():
         "build_ext", "--inplace", "--verbose"
     ]
     
-    result = subprocess.run(cmd, env=env)
+    result = subprocess.run(cmd, check=False, env=env)
     return result.returncode == 0
 
 def build_production():
@@ -71,7 +72,7 @@ def build_production():
         "build_ext", "--inplace"
     ]
     
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, check=False)
     return result.returncode == 0
 
 def install_dev():
@@ -89,7 +90,7 @@ def test_frame_eval():
     print("Testing frame evaluation...")
     
     # Try to import and test basic functionality
-    test_code = '''
+    test_code = """
 import sys
 sys.path.insert(0, ".")
 
@@ -108,7 +109,7 @@ except ImportError as e:
     print(f"Import error: {e}")
 except Exception as e:
     print(f"Error: {e}")
-'''
+"""
     
     return run_command(f'{sys.executable} -c "{test_code}"')
 

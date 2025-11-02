@@ -14,6 +14,7 @@ Test script for debugger integration with frame evaluation system."""
 import sys
 import threading
 import time
+
 sys.path.insert(0, ".")
 
 class MockDebuggerBDB:
@@ -74,11 +75,9 @@ def test_debugger_bdb_integration():
     print("=== Testing DebuggerBDB Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            integrate_debugger_bdb,
-            remove_integration,
-            get_integration_statistics,
-        )
+        from dapper._frame_eval.debugger_integration import get_integration_statistics
+        from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+        from dapper._frame_eval.debugger_integration import remove_integration
         
         # Create mock debugger
         debugger = MockDebuggerBDB()
@@ -131,11 +130,9 @@ def test_py_debugger_integration():
     print("\n=== Testing PyDebugger Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            integrate_py_debugger,
-            remove_integration,
-            get_integration_statistics,
-        )
+        from dapper._frame_eval.debugger_integration import get_integration_statistics
+        from dapper._frame_eval.debugger_integration import integrate_py_debugger
+        from dapper._frame_eval.debugger_integration import remove_integration
         
         # Create mock debugger
         debugger = MockPyDebugger()
@@ -177,10 +174,8 @@ def test_auto_integration():
     print("\n=== Testing Auto Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            auto_integrate_debugger,
-            get_integration_statistics,
-        )
+        from dapper._frame_eval.debugger_integration import auto_integrate_debugger
+        from dapper._frame_eval.debugger_integration import get_integration_statistics
         
         # Test with DebuggerBDB
         debugger_bdb = MockDebuggerBDB()
@@ -214,11 +209,8 @@ def test_configuration():
     print("\n=== Testing Configuration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            configure_integration,
-            get_integration_statistics,
-            get_integration_bridge,
-        )
+        from dapper._frame_eval.debugger_integration import configure_integration
+        from dapper._frame_eval.debugger_integration import get_integration_bridge
         
         bridge = get_integration_bridge()
         
@@ -259,10 +251,8 @@ def test_performance_monitoring():
     print("\n=== Testing Performance Monitoring ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            get_integration_bridge,
-            get_integration_statistics,
-        )
+        from dapper._frame_eval.debugger_integration import get_integration_bridge
+        from dapper._frame_eval.debugger_integration import get_integration_statistics
         
         bridge = get_integration_bridge()
         
@@ -305,12 +295,8 @@ def test_selective_tracing_integration():
     print("\n=== Testing Selective Tracing Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            integrate_debugger_bdb,
-        )
-        from dapper._frame_eval.selective_tracer import (
-            get_trace_manager,
-        )
+        from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+        from dapper._frame_eval.selective_tracer import get_trace_manager
         
         # Create mock debugger
         debugger = MockDebuggerBDB()
@@ -352,10 +338,8 @@ def test_error_handling():
     print("\n=== Testing Error Handling ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            get_integration_bridge,
-            configure_integration,
-        )
+        from dapper._frame_eval.debugger_integration import configure_integration
+        from dapper._frame_eval.debugger_integration import get_integration_bridge
         
         bridge = get_integration_bridge()
         
@@ -399,9 +383,7 @@ def test_bytecode_optimization():
     print("\n=== Testing Bytecode Optimization ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import (
-            get_integration_bridge,
-        )
+        from dapper._frame_eval.debugger_integration import get_integration_bridge
         
         bridge = get_integration_bridge()
         
@@ -414,7 +396,7 @@ def test_bytecode_optimization():
         breakpoints = [{"line": 10}, {"line": 20}]
         
         # Create a temporary test file
-        test_content = '''
+        test_content = """
 def test_function():
     x = 1
     y = 2
@@ -424,7 +406,7 @@ def another_function():
     for i in range(5):
         print(i)
     return "done"
-'''
+"""
         
         test_file = "test_sample_temp.py"
         with open(test_file, "w") as f:

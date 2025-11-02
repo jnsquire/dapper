@@ -3,38 +3,33 @@
 Core tests for frame evaluation system focusing on critical functionality.
 """
 
-import sys
 import threading
-import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
+
+from dapper._frame_eval.cache_manager import cleanup_caches
+from dapper._frame_eval.cache_manager import clear_all_caches
+from dapper._frame_eval.cache_manager import get_breakpoints
+from dapper._frame_eval.cache_manager import get_cache_statistics
+
+# Import cache functions
+from dapper._frame_eval.cache_manager import get_func_code_info
+from dapper._frame_eval.cache_manager import remove_func_code_info
+from dapper._frame_eval.cache_manager import set_breakpoints
+from dapper._frame_eval.cache_manager import set_func_code_info
 
 # Import core components
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 
-# Import cache functions
-from dapper._frame_eval.cache_manager import (
-    get_func_code_info,
-    set_func_code_info,
-    remove_func_code_info,
-    get_breakpoints,
-    set_breakpoints,
-    clear_all_caches,
-    get_cache_statistics,
-    cleanup_caches,
-)
-
 # Import Cython modules for testing
 try:
-    from dapper._frame_eval._frame_evaluator import (
-        frame_eval_func,
-        stop_frame_eval,
-        get_thread_info,
-        get_frame_eval_stats,
-        ThreadInfo,
-        FuncCodeInfo,
-    )
+    from dapper._frame_eval._frame_evaluator import FuncCodeInfo
+    from dapper._frame_eval._frame_evaluator import ThreadInfo
+    from dapper._frame_eval._frame_evaluator import frame_eval_func
+    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
+    from dapper._frame_eval._frame_evaluator import get_thread_info
+    from dapper._frame_eval._frame_evaluator import stop_frame_eval
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
@@ -238,10 +233,10 @@ class TestCoreCythonFunctions:
         assert isinstance(thread_info, ThreadInfo)
         
         # Test that it has expected attributes
-        assert hasattr(thread_info, 'inside_frame_eval')
-        assert hasattr(thread_info, 'fully_initialized')
-        assert hasattr(thread_info, 'is_pydevd_thread')
-        assert hasattr(thread_info, 'skip_all_frames')
+        assert hasattr(thread_info, "inside_frame_eval")
+        assert hasattr(thread_info, "fully_initialized")
+        assert hasattr(thread_info, "is_pydevd_thread")
+        assert hasattr(thread_info, "skip_all_frames")
         
         # Test that attributes are accessible (even if not the expected values)
         _ = thread_info.inside_frame_eval
@@ -257,12 +252,12 @@ class TestCoreCythonFunctions:
         assert isinstance(stats, dict)
         
         # Test that it has expected keys
-        assert 'active' in stats
-        assert 'has_breakpoint_manager' in stats
+        assert "active" in stats
+        assert "has_breakpoint_manager" in stats
         
         # Test that values are expected types
-        assert isinstance(stats['active'], bool)
-        assert isinstance(stats['has_breakpoint_manager'], bool)
+        assert isinstance(stats["active"], bool)
+        assert isinstance(stats["has_breakpoint_manager"], bool)
     
     def test_frame_eval_activation_cycle(self):
         """Test frame evaluation activation cycle."""
@@ -278,9 +273,9 @@ class TestCoreCythonFunctions:
         inactive_stats = get_frame_eval_stats()
         
         # Test that functions don't crash and return expected types
-        assert isinstance(initial_stats['active'], bool)
-        assert isinstance(active_stats['active'], bool)
-        assert isinstance(inactive_stats['active'], bool)
+        assert isinstance(initial_stats["active"], bool)
+        assert isinstance(active_stats["active"], bool)
+        assert isinstance(inactive_stats["active"], bool)
     
     def test_multiple_thread_info_access(self):
         """Test accessing thread info from multiple threads."""
@@ -416,7 +411,7 @@ class TestCoreErrorHandling:
         assert result is True
         
         # Verify a user_line method was added
-        assert hasattr(incomplete_debugger, 'user_line')
+        assert hasattr(incomplete_debugger, "user_line")
         assert callable(incomplete_debugger.user_line)
     
     def test_statistics_access_safety(self):
@@ -428,7 +423,7 @@ class TestCoreErrorHandling:
         assert isinstance(stats, dict)
         
         # Should have all required sections
-        required_sections = ['config', 'integration_stats', 'performance_data', 'trace_manager_stats', 'cache_stats']
+        required_sections = ["config", "integration_stats", "performance_data", "trace_manager_stats", "cache_stats"]
         for section in required_sections:
             assert section in stats
 

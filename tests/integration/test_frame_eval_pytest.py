@@ -103,9 +103,6 @@ def test_breakpoint_cache():
     import tempfile
 
     from dapper._frame_eval.cache_manager import BreakpointCache
-    from dapper._frame_eval.cache_manager import get_breakpoints
-    from dapper._frame_eval.cache_manager import invalidate_breakpoints
-    from dapper._frame_eval.cache_manager import set_breakpoints
     
     # Create a temporary file for testing
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:

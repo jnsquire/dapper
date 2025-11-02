@@ -20,19 +20,18 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Optional
+    from typing import Any
+    from typing import Optional
 
 # Import main entry point
-from dapper._frame_eval.frame_eval_main import (
-    setup_frame_eval,
-    should_use_frame_eval,
-    get_compatible_python_versions,
-    check_environment_compatibility,
-    get_frame_eval_config,
-    update_frame_eval_config,
-    shutdown_frame_eval,
-    get_debug_info,
-)
+from dapper._frame_eval.frame_eval_main import check_environment_compatibility
+from dapper._frame_eval.frame_eval_main import get_compatible_python_versions
+from dapper._frame_eval.frame_eval_main import get_debug_info
+from dapper._frame_eval.frame_eval_main import get_frame_eval_config
+from dapper._frame_eval.frame_eval_main import setup_frame_eval
+from dapper._frame_eval.frame_eval_main import should_use_frame_eval
+from dapper._frame_eval.frame_eval_main import shutdown_frame_eval
+from dapper._frame_eval.frame_eval_main import update_frame_eval_config
 
 # Frame evaluation state
 _frame_eval_enabled = False
@@ -48,28 +47,28 @@ _thread_local = threading.local()
 # Export main functions
 __all__ = [
     # Main interface
-    'is_frame_eval_available',
-    'is_frame_eval_enabled', 
-    'enable_frame_eval',
-    'disable_frame_eval',
-    'get_frame_eval_status',
-    'initialize_frame_eval',
+    "is_frame_eval_available",
+    "is_frame_eval_enabled", 
+    "enable_frame_eval",
+    "disable_frame_eval",
+    "get_frame_eval_status",
+    "initialize_frame_eval",
     
     # Configuration and setup
-    'setup_frame_eval',
-    'should_use_frame_eval',
-    'get_compatible_python_versions',
-    'check_environment_compatibility',
-    'get_frame_eval_config',
-    'update_frame_eval_config',
-    'shutdown_frame_eval',
-    'get_debug_info',
+    "setup_frame_eval",
+    "should_use_frame_eval",
+    "get_compatible_python_versions",
+    "check_environment_compatibility",
+    "get_frame_eval_config",
+    "update_frame_eval_config",
+    "shutdown_frame_eval",
+    "get_debug_info",
     
     # Advanced functions
-    'get_frame_eval_stats',
-    'mark_thread_as_pydevd',
-    'unmark_thread_as_pydevd',
-    'set_thread_skip_all',
+    "get_frame_eval_stats",
+    "mark_thread_as_pydevd",
+    "unmark_thread_as_pydevd",
+    "set_thread_skip_all",
 ]
 
 
@@ -97,16 +96,14 @@ def enable_frame_eval() -> bool:
     
     try:
         # Import the Cython implementation
-        from dapper._frame_eval._cython_wrapper import (
-            frame_eval_func,
-            stop_frame_eval,
-            dummy_trace_dispatch,
-            clear_thread_local_info,
-            get_frame_eval_stats,
-            mark_thread_as_pydevd,
-            unmark_thread_as_pydevd,
-            set_thread_skip_all,
-        )
+        from dapper._frame_eval._cython_wrapper import clear_thread_local_info
+        from dapper._frame_eval._cython_wrapper import dummy_trace_dispatch
+        from dapper._frame_eval._cython_wrapper import frame_eval_func
+        from dapper._frame_eval._cython_wrapper import get_frame_eval_stats
+        from dapper._frame_eval._cython_wrapper import mark_thread_as_pydevd
+        from dapper._frame_eval._cython_wrapper import set_thread_skip_all
+        from dapper._frame_eval._cython_wrapper import stop_frame_eval
+        from dapper._frame_eval._cython_wrapper import unmark_thread_as_pydevd
         
         _frame_eval_func = frame_eval_func
         _stop_frame_eval = stop_frame_eval
@@ -195,7 +192,7 @@ def initialize_with_config(config: dict[str, Any]) -> bool:
     initialize_frame_eval()
     
     if not _frame_eval_available:
-        return config.get('fallback_to_tracing', True)
+        return config.get("fallback_to_tracing", True)
     
     # Set up with configuration
     return setup_frame_eval(config)

@@ -15,18 +15,24 @@ import json
 import linecache
 import logging
 import mimetypes
-import socket as _socket
 import os
 import re
+import socket as _socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable
+from collections.abc import Callable
+from collections.abc import Sequence
 from multiprocessing import connection as mp_conn
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast, Literal, TypedDict
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Literal
+from typing import TypedDict
+from typing import cast
 
 from typing_extensions import NotRequired
 
@@ -49,19 +55,19 @@ class BreakpointResponse(TypedDict, total=False):
     logMessage: NotRequired[str]
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Sequence
+    from collections.abc import Awaitable
+    from collections.abc import Sequence
     from concurrent.futures import Future as _CFuture
-    from typing import TypedDict, Literal
+    from typing import Literal
+    from typing import TypedDict
 
     from dapper.connections import ConnectionBase
     from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import (
-        Breakpoint,
-        ExceptionInfoRequest,
-        Source,
-        SourceBreakpoint,
-        SourceBreakpoint as ProtocolSourceBreakpoint,
-    )
+    from dapper.protocol_types import Breakpoint
+    from dapper.protocol_types import ExceptionInfoRequest
+    from dapper.protocol_types import Source
+    from dapper.protocol_types import SourceBreakpoint
+    from dapper.protocol_types import SourceBreakpoint as ProtocolSourceBreakpoint
 
     class GenericRequest(TypedDict):
         command: str

@@ -10,36 +10,40 @@ from __future__ import annotations
 import dis
 import sys
 import types
-import opcode
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Set, Union
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Set
+from typing import Tuple
 
 if TYPE_CHECKING:
     from types import CodeType
 
 # Python bytecode instruction constants - version compatible
-LOAD_CONST = dis.opmap['LOAD_CONST']
-POP_TOP = dis.opmap['POP_TOP']
-JUMP_ABSOLUTE = dis.opmap.get('JUMP_ABSOLUTE', 0)
-JUMP_FORWARD = dis.opmap.get('JUMP_FORWARD', 0)
-SETUP_FINALLY = dis.opmap.get('SETUP_FINALLY', 0)
-POP_BLOCK = dis.opmap.get('POP_BLOCK', 0)
-LOAD_GLOBAL = dis.opmap['LOAD_GLOBAL']
-STORE_FAST = dis.opmap['STORE_FAST']
-LOAD_FAST = dis.opmap['LOAD_FAST']
-COMPARE_OP = dis.opmap.get('COMPARE_OP', 0)
-POP_JUMP_IF_FALSE = dis.opmap.get('POP_JUMP_IF_FALSE', 0)
-POP_JUMP_IF_TRUE = dis.opmap.get('POP_JUMP_IF_TRUE', 0)
+LOAD_CONST = dis.opmap["LOAD_CONST"]
+POP_TOP = dis.opmap["POP_TOP"]
+JUMP_ABSOLUTE = dis.opmap.get("JUMP_ABSOLUTE", 0)
+JUMP_FORWARD = dis.opmap.get("JUMP_FORWARD", 0)
+SETUP_FINALLY = dis.opmap.get("SETUP_FINALLY", 0)
+POP_BLOCK = dis.opmap.get("POP_BLOCK", 0)
+LOAD_GLOBAL = dis.opmap["LOAD_GLOBAL"]
+STORE_FAST = dis.opmap["STORE_FAST"]
+LOAD_FAST = dis.opmap["LOAD_FAST"]
+COMPARE_OP = dis.opmap.get("COMPARE_OP", 0)
+POP_JUMP_IF_FALSE = dis.opmap.get("POP_JUMP_IF_FALSE", 0)
+POP_JUMP_IF_TRUE = dis.opmap.get("POP_JUMP_IF_TRUE", 0)
 
 # Handle different call instruction types across Python versions
 if sys.version_info >= (3, 11):
     # Python 3.11+ uses different call instructions
-    CALL_FUNCTION = dis.opmap.get('CALL', 0) or dis.opmap.get('CALL_FUNCTION', 0)
-    CACHE = dis.opmap.get('CACHE', 0)
-    RESUME = dis.opmap['RESUME']
-    LOAD_GLOBAL_CHECK = dis.opmap.get('LOAD_GLOBAL_CHECK', 0)
+    CALL_FUNCTION = dis.opmap.get("CALL", 0) or dis.opmap.get("CALL_FUNCTION", 0)
+    CACHE = dis.opmap.get("CACHE", 0)
+    RESUME = dis.opmap["RESUME"]
+    LOAD_GLOBAL_CHECK = dis.opmap.get("LOAD_GLOBAL_CHECK", 0)
 else:
     # Python 3.10 and earlier
-    CALL_FUNCTION = dis.opmap['CALL_FUNCTION']
+    CALL_FUNCTION = dis.opmap["CALL_FUNCTION"]
     CACHE = 0
     RESUME = 0
     LOAD_GLOBAL_CHECK = 0
@@ -158,8 +162,8 @@ __dapper_breakpoint_wrapper_{line}()
         # Compile the wrapper
         wrapper_code = compile(
             wrapper_source, 
-            f'<dapper_breakpoint_wrapper_{line}>', 
-            'exec'
+            f"<dapper_breakpoint_wrapper_{line}>", 
+            "exec"
         )
         
         return wrapper_code
@@ -237,7 +241,7 @@ __dapper_breakpoint_wrapper_{line}()
                 instr.starts_line in breakpoint_lines):
                 
                 # Prefer to inject after certain instruction types
-                if instr.opname in ('LOAD_CONST', 'LOAD_FAST', 'LOAD_GLOBAL', 'STORE_FAST'):
+                if instr.opname in ("LOAD_CONST", "LOAD_FAST", "LOAD_GLOBAL", "STORE_FAST"):
                     injection_points[instr.starts_line] = i + 1
                 else:
                     injection_points[instr.starts_line] = i
@@ -288,7 +292,7 @@ __dapper_breakpoint_wrapper_{line}()
         
         instructions = [
             dis.Instruction(
-                opname='LOAD_CONST',
+                opname="LOAD_CONST",
                 opcode=LOAD_CONST,
                 arg=0,
                 argval=line,
@@ -298,21 +302,21 @@ __dapper_breakpoint_wrapper_{line}()
                 is_jump_target=False
             ),
             dis.Instruction(
-                opname='CALL_FUNCTION',
+                opname="CALL_FUNCTION",
                 opcode=CALL_FUNCTION,
                 arg=1,
                 argval=1,
-                argrepr='',
+                argrepr="",
                 offset=2,
                 starts_line=None,
                 is_jump_target=False
             ),
             dis.Instruction(
-                opname='POP_TOP',
+                opname="POP_TOP",
                 opcode=POP_TOP,
                 arg=None,
                 argval=None,
-                argrepr='',
+                argrepr="",
                 offset=4,
                 starts_line=None,
                 is_jump_target=False
@@ -333,18 +337,18 @@ __dapper_breakpoint_wrapper_{line}()
             instr = instructions[i]
             
             # Skip certain debug instructions in optimized mode
-            if instr.opname == 'POP_TOP' and i > 0:
+            if instr.opname == "POP_TOP" and i > 0:
                 prev_instr = instructions[i - 1]
-                if (prev_instr.opname == 'LOAD_CONST' and 
+                if (prev_instr.opname == "LOAD_CONST" and 
                     prev_instr.argval is None):
                     # Skip LOAD_CONST None; POP_TOP sequence
                     i += 1
                     continue
             
             # Optimize consecutive LOAD_CONST operations
-            if instr.opname == 'LOAD_CONST' and i + 1 < len(instructions):
+            if instr.opname == "LOAD_CONST" and i + 1 < len(instructions):
                 next_instr = instructions[i + 1]
-                if (next_instr.opname == 'POP_TOP' and
+                if (next_instr.opname == "POP_TOP" and
                     next_instr.arg is None):
                     # Skip this optimization for now to maintain correctness
                     pass
@@ -367,10 +371,10 @@ __dapper_breakpoint_wrapper_{line}()
         instr2 = instructions[start_index + 1]
         instr3 = instructions[start_index + 2]
         
-        return (instr1.opname == 'LOAD_CONST' and
+        return (instr1.opname == "LOAD_CONST" and
                 isinstance(instr1.argval, int) and
-                instr2.opname == 'CALL_FUNCTION' and
-                instr3.opname == 'POP_TOP')
+                instr2.opname == "CALL_FUNCTION" and
+                instr3.opname == "POP_TOP")
     
     def _get_breakpoint_sequence_length(
         self, 
@@ -394,10 +398,10 @@ __dapper_breakpoint_wrapper_{line}()
             bytecode.append(instr.opcode)
             if instr.arg is not None:
                 if instr.arg >= 0:
-                    bytecode.extend(instr.arg.to_bytes(2, 'little'))
+                    bytecode.extend(instr.arg.to_bytes(2, "little"))
                 else:
                     # Handle negative arguments
-                    bytecode.extend((instr.arg & 0xFFFF).to_bytes(2, 'little'))
+                    bytecode.extend((instr.arg & 0xFFFF).to_bytes(2, "little"))
         
         # Extract constants and names
         constants = list(original_code.co_consts)
@@ -406,31 +410,30 @@ __dapper_breakpoint_wrapper_{line}()
         
         # Create new code object with appropriate parameters based on Python version
         code_args = {
-            'co_argcount': original_code.co_argcount,
-            'co_kwonlyargcount': original_code.co_kwonlyargcount,
-            'co_nlocals': original_code.co_nlocals,
-            'co_stacksize': original_code.co_stacksize + 2,  # Increase stack size for breakpoint calls
-            'co_flags': original_code.co_flags,
-            'co_code': bytes(bytecode),
-            'co_consts': tuple(constants),
-            'co_names': tuple(names),
-            'co_varnames': tuple(varnames),
-            'co_filename': original_code.co_filename,
-            'co_name': original_code.co_name,
-            'co_firstlineno': original_code.co_firstlineno,
-            'co_freevars': original_code.co_freevars,
-            'co_cellvars': original_code.co_cellvars
+            "co_argcount": original_code.co_argcount,
+            "co_kwonlyargcount": original_code.co_kwonlyargcount,
+            "co_nlocals": original_code.co_nlocals,
+            "co_stacksize": original_code.co_stacksize + 2,  # Increase stack size for breakpoint calls
+            "co_flags": original_code.co_flags,
+            "co_code": bytes(bytecode),
+            "co_consts": tuple(constants),
+            "co_names": tuple(names),
+            "co_varnames": tuple(varnames),
+            "co_filename": original_code.co_filename,
+            "co_name": original_code.co_name,
+            "co_firstlineno": original_code.co_firstlineno,
+            "co_freevars": original_code.co_freevars,
+            "co_cellvars": original_code.co_cellvars
         }
         
         # Handle version-specific parameters
         if sys.version_info >= (3, 8):
-            code_args['co_posonlyargcount'] = getattr(original_code, 'co_posonlyargcount', 0)
+            code_args["co_posonlyargcount"] = getattr(original_code, "co_posonlyargcount", 0)
             
         # For Python 3.10+, we need to handle the new code object creation
         if sys.version_info >= (3, 10):
             # Get line number information using co_lines() and convert to lnotab format
             # for backward compatibility with the code object constructor
-            import dis
             lnotab = bytearray()
             last_line = original_code.co_firstlineno
             last_byte = 0
@@ -453,74 +456,73 @@ __dapper_breakpoint_wrapper_{line}()
                     last_byte = start
                     last_line = line
             
-            code_args['co_linetable'] = bytes(lnotab)
-            code_args['co_lnotab'] = b''  # Keep for backward compatibility
+            code_args["co_linetable"] = bytes(lnotab)
+            code_args["co_lnotab"] = b""  # Keep for backward compatibility
         else:
             # For Python < 3.10, use the old co_lnotab
-            code_args['co_lnotab'] = original_code.co_lnotab
+            code_args["co_lnotab"] = original_code.co_lnotab
         
         # Create the code object with the appropriate arguments
         if sys.version_info >= (3, 10):
             # Python 3.10+ uses co_linetable instead of co_lnotab
             return types.CodeType(
-                code_args['co_argcount'],
-                code_args.get('co_posonlyargcount', 0),
-                code_args['co_kwonlyargcount'],
-                code_args['co_nlocals'],
-                code_args['co_stacksize'],
-                code_args['co_flags'],
-                code_args['co_code'],
-                code_args['co_consts'],
-                code_args['co_names'],
-                code_args['co_varnames'],
-                code_args['co_filename'],
-                code_args['co_name'],
-                code_args['co_firstlineno'],
-                code_args['co_linetable'],
-                code_args['co_freevars'],
-                code_args['co_cellvars'],
+                code_args["co_argcount"],
+                code_args.get("co_posonlyargcount", 0),
+                code_args["co_kwonlyargcount"],
+                code_args["co_nlocals"],
+                code_args["co_stacksize"],
+                code_args["co_flags"],
+                code_args["co_code"],
+                code_args["co_consts"],
+                code_args["co_names"],
+                code_args["co_varnames"],
+                code_args["co_filename"],
+                code_args["co_name"],
+                code_args["co_firstlineno"],
+                code_args["co_linetable"],
+                code_args["co_freevars"],
+                code_args["co_cellvars"],
                 # Python 3.11+ requires these additional arguments
-                original_code.co_positions() if hasattr(original_code, 'co_positions') else None,
-                original_code.co_exceptiontable if hasattr(original_code, 'co_exceptiontable') else b''
+                original_code.co_positions() if hasattr(original_code, "co_positions") else None,
+                original_code.co_exceptiontable if hasattr(original_code, "co_exceptiontable") else b""
             )
-        elif sys.version_info >= (3, 8):
+        if sys.version_info >= (3, 8):
             return types.CodeType(
-                code_args['co_argcount'],
-                code_args.get('co_posonlyargcount', 0),
-                code_args['co_kwonlyargcount'],
-                code_args['co_nlocals'],
-                code_args['co_stacksize'],
-                code_args['co_flags'],
-                code_args['co_code'],
-                code_args['co_consts'],
-                code_args['co_names'],
-                code_args['co_varnames'],
-                code_args['co_filename'],
-                code_args['co_name'],
-                code_args['co_firstlineno'],
-                code_args['co_lnotab'],
-                code_args['co_freevars'],
-                code_args['co_cellvars']
+                code_args["co_argcount"],
+                code_args.get("co_posonlyargcount", 0),
+                code_args["co_kwonlyargcount"],
+                code_args["co_nlocals"],
+                code_args["co_stacksize"],
+                code_args["co_flags"],
+                code_args["co_code"],
+                code_args["co_consts"],
+                code_args["co_names"],
+                code_args["co_varnames"],
+                code_args["co_filename"],
+                code_args["co_name"],
+                code_args["co_firstlineno"],
+                code_args["co_lnotab"],
+                code_args["co_freevars"],
+                code_args["co_cellvars"]
             )
-        else:
-            # Python 3.7 and earlier
-            return types.CodeType(
-                code_args['co_argcount'],
-                code_args['co_kwonlyargcount'],
-                code_args['co_nlocals'],
-                code_args['co_stacksize'],
-                code_args['co_flags'],
-                code_args['co_code'],
-                code_args['co_consts'],
-                code_args['co_names'],
-                code_args['co_varnames'],
-                code_args['co_filename'],
-                code_args['co_name'],
-                original_code.co_firstlineno,
-                original_code.co_lnotab,
-                original_code.co_freevars,
-                original_code.co_cellvars
-            )
+        # Python 3.7 and earlier
+        return types.CodeType(
+            code_args["co_argcount"],
+            code_args["co_kwonlyargcount"],
+            code_args["co_nlocals"],
+            code_args["co_stacksize"],
+            code_args["co_flags"],
+            code_args["co_code"],
+            code_args["co_consts"],
+            code_args["co_names"],
+            code_args["co_varnames"],
+            code_args["co_filename"],
+            code_args["co_name"],
+            original_code.co_firstlineno,
+            original_code.co_lnotab,
+            original_code.co_freevars,
+            original_code.co_cellvars
+        )
 
 
 # Global bytecode modifier instance
@@ -576,31 +578,31 @@ def create_breakpoint_instruction(line: int) -> bytes:
     # call the frame evaluation hook
     instructions = [
         dis.Instruction(
-            opname='LOAD_CONST',
+            opname="LOAD_CONST",
             opcode=LOAD_CONST,
             arg=0,
             argval=line,
-            argrepr=f'{line}',
+            argrepr=f"{line}",
             offset=0,
             starts_line=line,
             is_jump_target=False
         ),
         dis.Instruction(
-            opname='CALL_FUNCTION',
+            opname="CALL_FUNCTION",
             opcode=CALL_FUNCTION,
             arg=1,
             argval=1,
-            argrepr='',
+            argrepr="",
             offset=2,
             starts_line=None,
             is_jump_target=False
         ),
         dis.Instruction(
-            opname='POP_TOP',
+            opname="POP_TOP",
             opcode=POP_TOP,
             arg=None,
             argval=None,
-            argrepr='',
+            argrepr="",
             offset=4,
             starts_line=None,
             is_jump_target=False
@@ -612,7 +614,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
     for instr in instructions:
         bytecode.append(instr.opcode)
         if instr.arg is not None:
-            bytecode.extend(instr.arg.to_bytes(2, 'little'))
+            bytecode.extend(instr.arg.to_bytes(2, "little"))
     
     return bytes(bytecode)
 
@@ -697,25 +699,25 @@ def get_bytecode_info(code_obj: CodeType) -> Dict[str, Any]:
         instructions = list(dis.get_instructions(code_obj))
         
         return {
-            'instruction_count': len(instructions),
-            'has_breakpoints': any(
+            "instruction_count": len(instructions),
+            "has_breakpoints": any(
                 _bytecode_modifier._is_breakpoint_sequence(instructions, i)
                 for i in range(len(instructions))
             ),
-            'stack_size': code_obj.co_stacksize,
-            'flags': code_obj.co_flags,
-            'first_lineno': code_obj.co_firstlineno,
-            'filename': code_obj.co_filename,
-            'name': code_obj.co_name,
-            'constants_count': len(code_obj.co_consts),
-            'names_count': len(code_obj.co_names),
-            'varnames_count': len(code_obj.co_varnames),
+            "stack_size": code_obj.co_stacksize,
+            "flags": code_obj.co_flags,
+            "first_lineno": code_obj.co_firstlineno,
+            "filename": code_obj.co_filename,
+            "name": code_obj.co_name,
+            "constants_count": len(code_obj.co_consts),
+            "names_count": len(code_obj.co_names),
+            "varnames_count": len(code_obj.co_varnames),
         }
     except Exception:
         return {
-            'error': 'Failed to analyze bytecode',
-            'filename': getattr(code_obj, 'co_filename', 'unknown'),
-            'name': getattr(code_obj, 'co_name', 'unknown'),
+            "error": "Failed to analyze bytecode",
+            "filename": getattr(code_obj, "co_filename", "unknown"),
+            "name": getattr(code_obj, "co_name", "unknown"),
         }
 
 
@@ -732,7 +734,7 @@ def set_optimization_enabled(enabled: bool) -> None:
 def get_cache_stats() -> Dict[str, Any]:
     """Get statistics about the bytecode modification cache."""
     return {
-        'cached_code_objects': len(_bytecode_modifier.modified_code_objects),
-        'breakpoint_counter': _bytecode_modifier.breakpoint_counter,
-        'optimization_enabled': _bytecode_modifier.optimization_enabled,
+        "cached_code_objects": len(_bytecode_modifier.modified_code_objects),
+        "breakpoint_counter": _bytecode_modifier.breakpoint_counter,
+        "optimization_enabled": _bytecode_modifier.optimization_enabled,
     }

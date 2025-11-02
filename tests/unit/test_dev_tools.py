@@ -4,13 +4,12 @@ This module tests the developer tools functionality, focusing on the update_docs
 """
 from __future__ import annotations
 
-import importlib
-import sys
 from pathlib import Path
-from types import ModuleType
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
+
 
 def test_update_docs_success(tmp_path: Path) -> None:
     """Test that update_docs runs the script successfully."""
@@ -23,8 +22,8 @@ def test_update_docs_success(tmp_path: Path) -> None:
     script_path.write_text("# Dummy script for testing")
     
     # Patch the path resolution to point to our temp dir
-    with patch('dapper.dev_tools.Path') as mock_path, \
-         patch('dapper.dev_tools.runpy.run_path') as mock_run_path:
+    with patch("dapper.dev_tools.Path") as mock_path, \
+         patch("dapper.dev_tools.runpy.run_path") as mock_run_path:
         # Make __file__ point to our temp dir
         mock_file = MagicMock()
         mock_file.resolve.return_value.parent.parent = tmp_path
@@ -44,7 +43,7 @@ def test_update_docs_missing_script() -> None:
     from dapper.dev_tools import update_docs
     
     # Patch the path to point to a non-existent location
-    with patch('dapper.dev_tools.Path') as mock_path:
+    with patch("dapper.dev_tools.Path") as mock_path:
         mock_file = MagicMock()
         mock_file.resolve.return_value.parent.parent = Path("/non/existent/path")
         mock_path.return_value = mock_file

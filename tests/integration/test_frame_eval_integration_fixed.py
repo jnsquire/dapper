@@ -11,42 +11,33 @@ if project_root not in sys.path:
 
 Fixed tests for frame evaluation integration system."""
 
-import sys
 import threading
-import time
-from types import FrameType
-from typing import Any, Dict
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import Mock
 
 import pytest
 
 # Import the modules we're testing
-from dapper._frame_eval.debugger_integration import (
-    DebuggerFrameEvalBridge,
-    FrameEvalConfig,
-    IntegrationStatistics,
-    auto_integrate_debugger,
-    get_integration_bridge,
-    get_integration_statistics,
-    integrate_debugger_bdb,
-    integrate_py_debugger,
-    remove_integration,
-    configure_integration,
-)
+from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
+from dapper._frame_eval.debugger_integration import FrameEvalConfig
+from dapper._frame_eval.debugger_integration import auto_integrate_debugger
+from dapper._frame_eval.debugger_integration import configure_integration
+from dapper._frame_eval.debugger_integration import get_integration_bridge
+from dapper._frame_eval.debugger_integration import get_integration_statistics
+from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+from dapper._frame_eval.debugger_integration import integrate_py_debugger
+from dapper._frame_eval.debugger_integration import remove_integration
 
 # clear_thread_local_info is imported from _frame_evaluator below
 
 # Import Cython modules for testing
 try:
-    from dapper._frame_eval._frame_evaluator import (
-        frame_eval_func,
-        stop_frame_eval,
-        get_thread_info,
-        get_frame_eval_stats,
-        ThreadInfo,
-        FuncCodeInfo,
-        clear_thread_local_info,
-    )
+    from dapper._frame_eval._frame_evaluator import FuncCodeInfo
+    from dapper._frame_eval._frame_evaluator import ThreadInfo
+    from dapper._frame_eval._frame_evaluator import clear_thread_local_info
+    from dapper._frame_eval._frame_evaluator import frame_eval_func
+    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
+    from dapper._frame_eval._frame_evaluator import get_thread_info
+    from dapper._frame_eval._frame_evaluator import stop_frame_eval
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
@@ -104,23 +95,23 @@ class TestDebuggerFrameEvalBridge:
         stats = self.bridge.get_integration_statistics()
         
         assert isinstance(stats, dict)
-        assert 'config' in stats
-        assert 'integration_stats' in stats
-        assert 'performance_data' in stats
-        assert 'trace_manager_stats' in stats
-        assert 'cache_stats' in stats
+        assert "config" in stats
+        assert "integration_stats" in stats
+        assert "performance_data" in stats
+        assert "trace_manager_stats" in stats
+        assert "cache_stats" in stats
         
         # Check config
-        config = stats['config']
-        assert config['enabled'] is True
-        assert config['selective_tracing'] is True
+        config = stats["config"]
+        assert config["enabled"] is True
+        assert config["selective_tracing"] is True
         
         # Check integration stats
-        integration_stats = stats['integration_stats']
-        assert integration_stats['integrations_enabled'] >= 0
-        assert integration_stats['breakpoints_optimized'] >= 0
-        assert integration_stats['trace_calls_saved'] >= 0
-        assert integration_stats['errors_handled'] >= 0
+        integration_stats = stats["integration_stats"]
+        assert integration_stats["integrations_enabled"] >= 0
+        assert integration_stats["breakpoints_optimized"] >= 0
+        assert integration_stats["trace_calls_saved"] >= 0
+        assert integration_stats["errors_handled"] >= 0
     
     def test_reset_statistics(self):
         """Test resetting statistics."""
@@ -250,8 +241,8 @@ class TestGlobalFunctions:
         stats = get_integration_statistics()
         
         assert isinstance(stats, dict)
-        assert 'config' in stats
-        assert 'integration_stats' in stats
+        assert "config" in stats
+        assert "integration_stats" in stats
     
     def test_auto_integrate_debugger_bdb(self):
         """Test auto-integration with DebuggerBDB."""
@@ -354,7 +345,7 @@ class TestErrorHandling:
         
         # Verify the exception was handled by checking if the error count was incremented
         stats = bridge.get_integration_statistics()
-        assert stats['integration_stats']['errors_handled'] > 0
+        assert stats["integration_stats"]["errors_handled"] > 0
 
 
 class TestThreadSafety:
@@ -384,7 +375,7 @@ class TestThreadSafety:
         assert len(stats_list) == 10
         for stats in stats_list:
             assert isinstance(stats, dict)
-            assert 'config' in stats
+            assert "config" in stats
 
 
 @pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython modules not available")
@@ -393,12 +384,10 @@ class TestCythonIntegration:
     
     def test_cython_imports(self):
         """Test that Cython modules can be imported."""
-        from dapper._frame_eval._frame_evaluator import (
-            frame_eval_func,
-            stop_frame_eval,
-            get_thread_info,
-            get_frame_eval_stats,
-        )
+        from dapper._frame_eval._frame_evaluator import frame_eval_func
+        from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
+        from dapper._frame_eval._frame_evaluator import get_thread_info
+        from dapper._frame_eval._frame_evaluator import stop_frame_eval
         
         # Test that functions are callable
         assert callable(frame_eval_func)
@@ -411,20 +400,20 @@ class TestCythonIntegration:
         thread_info = get_thread_info()
         
         assert isinstance(thread_info, ThreadInfo)
-        assert hasattr(thread_info, 'inside_frame_eval')
-        assert hasattr(thread_info, 'fully_initialized')
-        assert hasattr(thread_info, 'is_pydevd_thread')
-        assert hasattr(thread_info, 'skip_all_frames')
+        assert hasattr(thread_info, "inside_frame_eval")
+        assert hasattr(thread_info, "fully_initialized")
+        assert hasattr(thread_info, "is_pydevd_thread")
+        assert hasattr(thread_info, "skip_all_frames")
     
     def test_frame_eval_stats(self):
         """Test frame evaluation statistics."""
         stats = get_frame_eval_stats()
         
         assert isinstance(stats, dict)
-        assert 'active' in stats
-        assert 'has_breakpoint_manager' in stats
-        assert isinstance(stats['active'], bool)
-        assert isinstance(stats['has_breakpoint_manager'], bool)
+        assert "active" in stats
+        assert "has_breakpoint_manager" in stats
+        assert isinstance(stats["active"], bool)
+        assert isinstance(stats["has_breakpoint_manager"], bool)
     
     def test_frame_eval_activation(self):
         """Test frame evaluation activation and deactivation."""
@@ -434,7 +423,7 @@ class TestCythonIntegration:
         # Activate frame evaluation
         frame_eval_func()
         active_stats = get_frame_eval_stats()
-        assert active_stats['active'] is True
+        assert active_stats["active"] is True
         
         # Deactivate frame evaluation
         stop_frame_eval()
@@ -463,7 +452,7 @@ class TestIntegrationStatistics:
         
         # Check top-level structure
         assert isinstance(stats, dict)
-        required_sections = ['config', 'integration_stats', 'performance_data', 'trace_manager_stats', 'cache_stats']
+        required_sections = ["config", "integration_stats", "performance_data", "trace_manager_stats", "cache_stats"]
         for section in required_sections:
             assert section in stats, f"Missing statistics section: {section}"
     
@@ -473,18 +462,18 @@ class TestIntegrationStatistics:
         stats = bridge.get_integration_statistics()
         
         # Config should be a dict with bool values
-        assert isinstance(stats['config'], dict)
-        for key, value in stats['config'].items():
+        assert isinstance(stats["config"], dict)
+        for key, value in stats["config"].items():
             assert isinstance(value, bool), f"Config value {key} should be bool"
         
         # Integration stats should be a dict with int values
-        assert isinstance(stats['integration_stats'], dict)
-        for key, value in stats['integration_stats'].items():
+        assert isinstance(stats["integration_stats"], dict)
+        for key, value in stats["integration_stats"].items():
             assert isinstance(value, int), f"Integration stat {key} should be int"
         
         # Performance data should be a dict with numeric values
-        assert isinstance(stats['performance_data'], dict)
-        for key, value in stats['performance_data'].items():
+        assert isinstance(stats["performance_data"], dict)
+        for key, value in stats["performance_data"].items():
             assert isinstance(value, (int, float)), f"Performance data {key} should be numeric"
 
 
@@ -505,11 +494,11 @@ class TestPerformanceMonitoring:
         stats = bridge.get_integration_statistics()
         
         # Check performance data structure
-        assert 'performance_data' in stats
-        perf_data = stats['performance_data']
+        assert "performance_data" in stats
+        perf_data = stats["performance_data"]
         
         # Should have expected performance metrics
-        expected_keys = ['trace_function_calls', 'frame_eval_calls']
+        expected_keys = ["trace_function_calls", "frame_eval_calls"]
         for key in expected_keys:
             assert key in perf_data, f"Missing performance metric: {key}"
             assert isinstance(perf_data[key], int), f"Performance metric {key} should be int"
@@ -522,12 +511,12 @@ class TestPerformanceMonitoring:
         stats = bridge.get_integration_statistics()
         
         # Performance data should still exist but be minimal
-        assert 'performance_data' in stats
-        perf_data = stats['performance_data']
+        assert "performance_data" in stats
+        perf_data = stats["performance_data"]
         
         # Should have basic structure but minimal data
-        assert 'trace_function_calls' in perf_data
-        assert 'frame_eval_calls' in perf_data
+        assert "trace_function_calls" in perf_data
+        assert "frame_eval_calls" in perf_data
 
 
 if __name__ == "__main__":

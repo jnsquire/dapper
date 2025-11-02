@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import types
-from typing import TYPE_CHECKING
 
 from dapper import dap_command_handlers as handlers
 from dapper import debug_shared

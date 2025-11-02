@@ -11,15 +11,9 @@ if project_root not in sys.path:
 
 Integration tests for frame evaluation with mock debugger instances."""
 
-import sys
-import threading
 import time
-from types import FrameType
-from typing import Any
-from typing import Dict
 from unittest.mock import MagicMock
 from unittest.mock import Mock
-from unittest.mock import call
 from unittest.mock import patch
 
 import pytest
@@ -27,8 +21,6 @@ import pytest
 # Import the modules we're testing
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 from dapper._frame_eval.debugger_integration import auto_integrate_debugger
-from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
-from dapper._frame_eval.debugger_integration import integrate_py_debugger
 
 
 class MockDebuggerBDB:
@@ -330,7 +322,7 @@ def test_function():
                 self.mock_debugger.set_breakpoints(source, breakpoints)
                 
                 # Verify file operations were attempted
-                mock_open.assert_called_once_with("test.py", "r", encoding="utf-8")
+                mock_open.assert_called_once_with("test.py", encoding="utf-8")
                 
                 # Verify the mock file was read
                 mock_file.read.assert_called_once()
@@ -369,7 +361,7 @@ class TestAutoIntegration:
         unknown_debugger = Mock(spec=[])
         
         # The auto_integrate_debugger function should return False for unknown debugger types
-        with patch('dapper._frame_eval.debugger_integration._integration_bridge') as mock_bridge:
+        with patch("dapper._frame_eval.debugger_integration._integration_bridge") as mock_bridge:
             # Ensure the bridge's integration methods are not called
             mock_bridge.integrate_with_debugger_bdb.return_value = False
             mock_bridge.integrate_with_py_debugger.return_value = False
@@ -478,7 +470,7 @@ class TestIntegrationErrorRecovery:
         # Create debugger with failing user_line
         failing_debugger = MockDebuggerBDB()
         # Store the original user_line in a way that the debugger integration expects
-        setattr(failing_debugger, '_original_user_line', failing_debugger.user_line)
+        failing_debugger._original_user_line = failing_debugger.user_line
         # Replace the user_line with a mock that will raise an exception
         failing_debugger.user_line = Mock(side_effect=Exception("Debugger error"))
         

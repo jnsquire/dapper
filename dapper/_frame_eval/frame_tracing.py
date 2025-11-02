@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
-import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import TypedDict
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import os
-    from types import CodeType, FrameType
+    from types import CodeType
+    from types import FrameType
     from typing import Callable
 
 
@@ -84,7 +86,7 @@ class FrameTracingConfig:
         self.debugger_functions = DEBUGGER_FUNCTIONS
     
     @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> "FrameTracingConfig":
+    def from_dict(cls, config_dict: dict[str, Any]) -> FrameTracingConfig:
         """Create config from dictionary."""
         return cls(enabled=config_dict.get("enabled", False))
 
