@@ -194,6 +194,8 @@ def test_remove_breakpoints(original_code: types.CodeType) -> None:
     
     # Check breakpoints were removed
     info = get_bytecode_info(cleaned_code)
+    assert isinstance(info, dict)
+    assert "has_breakpoints" in info
     assert not info["has_breakpoints"]
 
 def test_optimize_bytecode(original_code: types.CodeType) -> None:
@@ -320,8 +322,3 @@ def test_injection_point_finding(bytecode_modifier: BytecodeModifier, original_c
     breakpoint_lines = {3, 5}
     injection_points = bytecode_modifier._find_injection_points(instructions, breakpoint_lines)
     assert isinstance(injection_points, dict)
-    
-    # The function might not find injection points if the lines don't match any code
-    # So we'll just check that we got a valid dict and skip the line checks
-    # If you want to test with specific code that should have breakpoints,
-    # you can add a separate test case for that

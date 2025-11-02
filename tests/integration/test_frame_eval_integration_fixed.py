@@ -20,13 +20,14 @@ from dapper._frame_eval.debugger_integration import remove_integration
 
 # Import Cython modules for testing
 try:
-    from dapper._frame_eval._frame_evaluator import FuncCodeInfo
     from dapper._frame_eval._frame_evaluator import ThreadInfo
     from dapper._frame_eval._frame_evaluator import clear_thread_local_info
     from dapper._frame_eval._frame_evaluator import frame_eval_func
     from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
     from dapper._frame_eval._frame_evaluator import get_thread_info
     from dapper._frame_eval._frame_evaluator import stop_frame_eval
+        
+
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
@@ -351,7 +352,7 @@ class TestThreadSafety:
         
         # Create multiple threads that access statistics
         threads = []
-        for i in range(10):
+        for _i in range(10):
             thread = threading.Thread(target=get_stats)
             threads.append(thread)
             thread.start()
@@ -373,11 +374,6 @@ class TestCythonIntegration:
     
     def test_cython_imports(self):
         """Test that Cython modules can be imported."""
-        from dapper._frame_eval._frame_evaluator import frame_eval_func
-        from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
-        from dapper._frame_eval._frame_evaluator import get_thread_info
-        from dapper._frame_eval._frame_evaluator import stop_frame_eval
-        
         # Test that functions are callable
         assert callable(frame_eval_func)
         assert callable(stop_frame_eval)
@@ -396,13 +392,19 @@ class TestCythonIntegration:
     
     def test_frame_eval_stats(self):
         """Test frame evaluation statistics."""
-        stats = get_frame_eval_stats()
-        
-        assert isinstance(stats, dict)
-        assert "active" in stats
-        assert "has_breakpoint_manager" in stats
-        assert isinstance(stats["active"], bool)
-        assert isinstance(stats["has_breakpoint_manager"], bool)
+        # Skip test if Cython module isn't available
+        try:
+            from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
+            
+            stats = get_frame_eval_stats()
+            
+            assert isinstance(stats, dict)
+            assert "active" in stats
+            assert "has_breakpoint_manager" in stats
+            assert isinstance(stats["active"], bool)
+            assert isinstance(stats["has_breakpoint_manager"], bool)
+        except ImportError:
+            pytest.skip("Cython module not available")
     
     def test_frame_eval_activation(self):
         """Test frame evaluation activation and deactivation."""

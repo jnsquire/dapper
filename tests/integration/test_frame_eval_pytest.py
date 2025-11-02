@@ -5,8 +5,24 @@ Pytest-style tests for frame evaluation system.
 
 import os
 import sys
+import tempfile
 
 import pytest
+
+# Local application imports
+from dapper._frame_eval.cache_manager import BreakpointCache
+from dapper._frame_eval.cache_manager import cleanup_caches
+from dapper._frame_eval.cache_manager import clear_all_caches
+from dapper._frame_eval.cache_manager import get_cache_statistics
+from dapper._frame_eval.cache_manager import get_func_code_info
+from dapper._frame_eval.cache_manager import get_thread_info
+from dapper._frame_eval.cache_manager import remove_func_code_info
+from dapper._frame_eval.cache_manager import set_func_code_info
+from dapper._frame_eval.debugger_integration import auto_integrate_debugger
+from dapper._frame_eval.debugger_integration import configure_integration
+from dapper._frame_eval.debugger_integration import get_integration_bridge
+from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
+from dapper._frame_eval.selective_tracer import get_trace_manager
 
 # Disable import order warnings for this test file
 pytestmark = pytest.mark.filterwarnings(
@@ -16,10 +32,6 @@ pytestmark = pytest.mark.filterwarnings(
 
 def test_imports():
     """Test that we can import our modules."""
-    from dapper._frame_eval.cache_manager import get_cache_statistics
-    from dapper._frame_eval.debugger_integration import get_integration_bridge
-    from dapper._frame_eval.selective_tracer import get_trace_manager
-    
     # Basic assertions that imports work
     assert get_cache_statistics is not None
     assert get_trace_manager is not None
@@ -28,8 +40,6 @@ def test_imports():
 
 def test_basic_functionality():
     """Test basic functionality works."""
-    from dapper._frame_eval.cache_manager import get_cache_statistics
-    
     stats = get_cache_statistics()
     assert isinstance(stats, dict)
     assert "func_code_cache" in stats
@@ -51,10 +61,6 @@ def test_python_path():
 
 def test_cache_manager_basic():
     """Test basic cache manager functionality."""
-    from dapper._frame_eval.cache_manager import get_func_code_info
-    from dapper._frame_eval.cache_manager import remove_func_code_info
-    from dapper._frame_eval.cache_manager import set_func_code_info
-    
     # Create a test code object
     def test_function():
         return 42
@@ -81,8 +87,6 @@ def test_cache_manager_basic():
 
 def test_thread_info():
     """Test thread info functionality."""
-    from dapper._frame_eval.cache_manager import get_thread_info
-    
     thread_info = get_thread_info()
     assert thread_info is not None
     assert hasattr(thread_info, "inside_frame_eval")
@@ -104,11 +108,6 @@ def test_thread_info():
 
 def test_breakpoint_cache():
     """Test breakpoint cache functionality."""
-    import os
-    import tempfile
-
-    from dapper._frame_eval.cache_manager import BreakpointCache
-    
     # Create a temporary file for testing
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# Test file\nx = 42\n")
@@ -145,8 +144,6 @@ def test_breakpoint_cache():
 
 def test_selective_tracer():
     """Test selective tracer functionality."""
-    from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
-    from dapper._frame_eval.selective_tracer import get_trace_manager
     
     # Test trace manager
     manager = get_trace_manager()
@@ -172,9 +169,6 @@ def test_selective_tracer():
 
 def test_debugger_integration():
     """Test debugger integration functionality."""
-
-    from dapper._frame_eval.debugger_integration import auto_integrate_debugger
-    from dapper._frame_eval.debugger_integration import get_integration_bridge
     
     # Test integration bridge
     bridge = get_integration_bridge()
@@ -215,7 +209,6 @@ def test_debugger_integration():
 
 def test_performance_monitoring():
     """Test performance monitoring functionality."""
-    from dapper._frame_eval.debugger_integration import get_integration_bridge
     
     bridge = get_integration_bridge()
     
@@ -224,10 +217,10 @@ def test_performance_monitoring():
     assert bridge.config["performance_monitoring"] is True
     
     # Simulate some activity
-    for i in range(10):
+    for _i in range(10):
         bridge._monitor_trace_call()
     
-    for i in range(5):
+    for _i in range(5):
         bridge._monitor_frame_eval_call()
     
     # Get statistics
@@ -245,7 +238,6 @@ def test_performance_monitoring():
 
 def test_configuration():
     """Test configuration management."""
-    from dapper._frame_eval.debugger_integration import configure_integration
     
     # Test configuration updates
     configure_integration(
@@ -254,7 +246,6 @@ def test_configuration():
         performance_monitoring=True
     )
     
-    from dapper._frame_eval.debugger_integration import get_integration_bridge
     bridge = get_integration_bridge()
     
     assert bridge.config["selective_tracing"] is False
@@ -266,7 +257,7 @@ def test_configuration():
     assert bridge.config["enabled"] is False
 
 
-@pytest.mark.parametrize("test_file,should_track", [
+@pytest.mark.parametrize(("test_file", "should_track"), [
     ("user_code.py", True),
     ("test_module.py", True),
     ("<string>", False),
@@ -275,10 +266,8 @@ def test_configuration():
     ("importlib/__init__.py", False),
     ("dapper/_frame_eval/cache.py", False),
 ])
-def test_file_tracking_patterns(test_file, should_track):
+def test_file_tracking_patterns(test_file: str, should_track: bool) -> None:
     """Test file tracking patterns with parametrization."""
-    from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
-    
     analyzer = FrameTraceAnalyzer()
     result = analyzer._should_track_file(test_file)
     assert result == should_track
@@ -286,9 +275,6 @@ def test_file_tracking_patterns(test_file, should_track):
 
 def test_cache_statistics():
     """Test cache statistics functionality."""
-    from dapper._frame_eval.cache_manager import cleanup_caches
-    from dapper._frame_eval.cache_manager import clear_all_caches
-    from dapper._frame_eval.cache_manager import get_cache_statistics
     
     # Get initial statistics
     stats = get_cache_statistics()
@@ -315,7 +301,3 @@ def test_cache_statistics():
     clear_all_caches()
     cleared_stats = get_cache_statistics()
     assert cleared_stats["global_stats"]["total_entries"] == 0
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

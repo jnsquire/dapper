@@ -5,13 +5,17 @@ Pytest-style tests for the Debug Adapter Protocol message handling.
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any
+from typing import cast
 
 import pytest
 
-from dapper.protocol import ProtocolError, ProtocolHandler
-from dapper.protocol_types import GenericEvent, GenericRequest, GenericResponse, ProtocolMessage
-
+from dapper.protocol import ProtocolError
+from dapper.protocol import ProtocolHandler
+from dapper.protocol_types import GenericEvent
+from dapper.protocol_types import GenericRequest
+from dapper.protocol_types import GenericResponse
+from dapper.protocol_types import ProtocolMessage
 
 # Use the protocol types directly from dapper.protocol_types
 RequestMessage = GenericRequest
@@ -43,7 +47,7 @@ def handler() -> ProtocolHandler:
 def test_request_message(handler: ProtocolHandler) -> None:
     """Test the Request message class"""
     args: dict[str, Any] = {"program": "test.py", "stopOnEntry": True}
-    req: RequestType = handler.create_request("launch", args)
+    req = handler.create_request("launch", args)
 
     # Test attributes
     assert req["seq"] == 1
@@ -61,7 +65,7 @@ def test_request_message(handler: ProtocolHandler) -> None:
 def test_response_message(handler: ProtocolHandler) -> None:
     """Test the Response message class"""
     body: dict[str, Any] = {"breakpoints": [{"verified": True, "line": 10}]}
-    request = handler.create_request("setBreakpoints")
+    request = handler.create_request("setBreakpoints", return_type=GenericRequest)
     resp: ResponseType = handler.create_response(request, True, body)
 
     # Test attributes
@@ -113,23 +117,29 @@ def test_event_message(handler: ProtocolHandler) -> None:
 
 def test_json_serialization(handler: ProtocolHandler) -> None:
     """Test that all messages can be properly serialized to JSON"""
-    messages: list[dict[str, Any]] = [
-        {"seq": 1, "type": "request"},  # ProtocolMessage base
-        handler.create_request("launch", {"program": "test.py"}),
-        handler.create_response(handler.create_request("launch"), True),
-        handler.create_event("stopped", {"reason": "breakpoint"}),
-    ]
-
-    for msg in messages:
-        # Convert to dict then JSON string
-        msg_dict = msg
-        json_str = json.dumps(msg_dict)
-
+    # Create a base message with explicit type to satisfy the type checker
+    base_message: dict[str, Any] = {"seq": 1, "type": "request"}
+    
+    # Create test messages
+    request_msg = handler.create_request("launch", {"program": "test.py"})
+    response_msg = handler.create_response(handler.create_request("launch"), True)
+    event_msg = handler.create_event("stopped", {"reason": "breakpoint"})
+    
+    # Test each message type separately to avoid mixed type issues
+    for msg in [
+        base_message,
+        cast("dict[str, Any]", request_msg),
+        cast("dict[str, Any]", response_msg),
+        cast("dict[str, Any]", event_msg),
+    ]:
+        # Convert to JSON string
+        json_str = json.dumps(msg)
+        
         # Parse back from JSON
         parsed_dict = json.loads(json_str)
-
+        
         # Verify the structure is preserved
-        assert parsed_dict == msg_dict
+        assert parsed_dict == msg
 
 
 def test_parse_message_valid_request(handler: ProtocolHandler) -> None:

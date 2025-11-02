@@ -24,7 +24,6 @@ import tempfile
 import threading
 import time
 from collections.abc import Awaitable
-from collections.abc import Callable
 from collections.abc import Sequence
 from multiprocessing import connection as mp_conn
 from pathlib import Path
@@ -51,12 +50,13 @@ class BreakpointResponse(TypedDict, total=False):
     verified: bool
     message: NotRequired[str]
     line: NotRequired[int]
-    condition: NotRequired[str]
-    hitCondition: NotRequired[str]
-    logMessage: NotRequired[str]
+    condition: NotRequired[str | None]
+    hitCondition: NotRequired[str | None]
+    logMessage: NotRequired[str | None]
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
+    from collections.abc import Callable
     from collections.abc import Sequence
     from concurrent.futures import Future as _CFuture
     from typing import Literal
@@ -68,7 +68,6 @@ if TYPE_CHECKING:
     from dapper.protocol_types import ExceptionInfoRequest
     from dapper.protocol_types import Source
     from dapper.protocol_types import SourceBreakpoint
-    from dapper.protocol_types import SourceBreakpoint as ProtocolSourceBreakpoint
 
     class GenericRequest(TypedDict):
         command: str
@@ -1100,7 +1099,7 @@ class PyDebugger:
     async def set_breakpoints(
         self, 
         source: SourceDict | str, 
-        breakpoints: Sequence[ProtocolSourceBreakpoint]
+        breakpoints: Sequence[SourceBreakpoint]
     ) -> list[BreakpointResponse]:
         """Set breakpoints for a source file.
         

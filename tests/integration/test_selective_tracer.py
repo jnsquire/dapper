@@ -273,7 +273,7 @@ class TestTraceDispatcher:
             self.mock_trace_func.reset_mock()
             
             # Set up the mock to return a function for the trace function
-            self.mock_trace_func.return_value = lambda *args, **kwargs: None
+            self.mock_trace_func.return_value = lambda *args, **kwargs: None  # noqa: ARG005
             
             # Call the dispatcher method
             result = self.dispatcher.selective_trace_dispatch(frame, event, arg)

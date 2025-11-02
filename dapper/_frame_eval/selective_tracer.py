@@ -393,7 +393,7 @@ class FrameTraceManager:
         """Check if selective tracing is enabled."""
         return self._enabled
     
-    def get_trace_function(self) -> Optional[Callable]:
+    def get_trace_function(self) -> Callable | None:
         """Get the selective trace function for sys.settrace()."""
         if self._enabled:
             return self.dispatcher.selective_trace_dispatch
