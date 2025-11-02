@@ -21,17 +21,7 @@ class _CapturingServer:
 
 @pytest.mark.asyncio
 async def test_binary_ipc_frame_roundtrip_exited_event():
-    """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Exercise the binary IPC read loop by sending an 'exited' event frame.
+    """Exercise the binary IPC read loop by sending an 'exited' event frame.
 
     This avoids starting the real launcher by connecting to the debugger's
     ephemeral TCP listener and writing a single binary frame that carries the

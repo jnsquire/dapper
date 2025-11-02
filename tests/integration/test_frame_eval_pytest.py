@@ -8,6 +8,11 @@ import sys
 
 import pytest
 
+# Disable import order warnings for this test file
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:import should be at the top-level of a file:RuntimeWarning"
+)
+
 
 def test_imports():
     """Test that we can import our modules."""
@@ -167,6 +172,7 @@ def test_selective_tracer():
 
 def test_debugger_integration():
     """Test debugger integration functionality."""
+
     from dapper._frame_eval.debugger_integration import auto_integrate_debugger
     from dapper._frame_eval.debugger_integration import get_integration_bridge
     

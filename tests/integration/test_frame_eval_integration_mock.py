@@ -1,15 +1,4 @@
-#!/usr/bin/env python3
-"""
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Integration tests for frame evaluation with mock debugger instances."""
+"""Integration tests for frame evaluation with mock debugger instances."""
 
 import time
 from unittest.mock import MagicMock
@@ -86,13 +75,11 @@ class TestDebuggerBDBIntegration:
         self.bridge = DebuggerFrameEvalBridge()
         self.mock_debugger = MockDebuggerBDB()
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
-    def test_full_integration_cycle(self, mock_enable_tracing, mock_trace_manager, mock_thread_info):
+    def test_full_integration_cycle(self, mock_enable_tracing, mock_trace_manager):
         """Test complete integration cycle with DebuggerBDB."""
         # Setup mocks
-        mock_thread_info.return_value = Mock(fully_initialized=False)
         mock_trace_instance = Mock()
         mock_trace_instance.is_enabled.return_value = True
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.return_value = {
@@ -119,19 +106,14 @@ class TestDebuggerBDBIntegration:
         assert self.mock_debugger.user_line_calls[0]["filename"] == "test.py"
         assert self.mock_debugger.user_line_calls[0]["lineno"] == 10
         
-        # Verify thread info was updated
-        mock_thread_info.return_value.fully_initialized = True
-        
         # Remove integration
         result = self.bridge.remove_integration(self.mock_debugger)
         assert result is True
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
-    def test_selective_tracing_skip(self, mock_trace_manager, mock_thread_info):
+    def test_selective_tracing_skip(self, mock_trace_manager):
         """Test that selective tracing skips frames without breakpoints."""
-        # Setup mocks to skip tracing
-        mock_thread_info.return_value = Mock(fully_initialized=False)
+        # Setup mocks
         mock_trace_instance = Mock()
         mock_trace_instance.is_enabled.return_value = True
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.return_value = {
@@ -159,20 +141,16 @@ class TestDebuggerBDBIntegration:
         # Verify statistics were updated
         assert self.bridge.integration_stats["trace_calls_saved"] == 1
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
-    def test_error_handling_in_user_line(self, mock_trace_manager, mock_thread_info):
+    def test_error_handling_in_user_line(self, mock_trace_manager):
         """Test error handling in enhanced user_line function."""
-        # Setup thread info to raise an exception
-        mock_thread_info.side_effect = Exception("Thread info error")
-        
-        # Set up trace manager to return a mock that will raise an exception
-        mock_tm = Mock()
-        mock_tm.is_enabled.return_value = True
-        mock_analyzer = Mock()
-        mock_analyzer.should_trace_frame.side_effect = Exception("Test error")
-        mock_tm.dispatcher.analyzer = mock_analyzer
-        mock_trace_manager.return_value = mock_tm
+        # Setup mocks
+        mock_trace_instance = Mock()
+        mock_trace_instance.is_enabled.return_value = True
+        mock_trace_instance.dispatcher = Mock()
+        mock_trace_instance.dispatcher.analyzer = Mock()
+        mock_trace_instance.dispatcher.analyzer.should_trace_frame.side_effect = Exception("Test error")
+        mock_trace_manager.return_value = mock_trace_instance
         
         # Add a breakpoint to ensure the frame is not skipped
         self.mock_debugger.set_breakpoint("test.py", 10)
@@ -387,8 +365,7 @@ class TestMultiDebuggerIntegration:
         # Integrate all debuggers
         results = []
         for debugger in debuggers:
-            with patch("dapper._frame_eval.debugger_integration.get_thread_info"), \
-                 patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
+            with patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
                  patch("dapper._frame_eval.debugger_integration.enable_selective_tracing"):
                 result = bridge.integrate_with_debugger_bdb(debugger)
                 results.append(result)
@@ -409,8 +386,7 @@ class TestMultiDebuggerIntegration:
         debugger_py = MockPyDebugger()
         
         # Integrate both types
-        with patch("dapper._frame_eval.debugger_integration.get_thread_info"), \
-             patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
+        with patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
              patch("dapper._frame_eval.debugger_integration.enable_selective_tracing"), \
              patch("dapper._frame_eval.debugger_integration.update_breakpoints"), \
              patch("dapper._frame_eval.debugger_integration.get_selective_trace_function"):
@@ -434,8 +410,7 @@ class TestIntegrationPerformance:
         # Measure integration time
         start_time = time.time()
         
-        with patch("dapper._frame_eval.debugger_integration.get_thread_info"), \
-             patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
+        with patch("dapper._frame_eval.debugger_integration.get_trace_manager"), \
              patch("dapper._frame_eval.debugger_integration.enable_selective_tracing"):
             
             result = bridge.integrate_with_debugger_bdb(mock_debugger)
@@ -450,10 +425,9 @@ class TestIntegrationPerformance:
 class TestIntegrationErrorRecovery:
     """Test error recovery in integration scenarios."""
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
-    def test_debugger_method_failure_recovery(self, mock_enable_tracing, mock_trace_manager, mock_thread_info):
+    def test_debugger_method_failure_recovery(self, mock_enable_tracing, mock_trace_manager):
         """Test recovery when debugger methods fail."""
         # Setup mocks
         mock_trace_instance = Mock()
@@ -577,8 +551,7 @@ class TestIntegrationConfiguration:
         
         mock_debugger = MockDebuggerBDB()
         
-        with patch("dapper._frame_eval.debugger_integration.get_thread_info"):
-            result = bridge.integrate_with_debugger_bdb(mock_debugger)
+        result = bridge.integrate_with_debugger_bdb(mock_debugger)
         
         assert result is True
         

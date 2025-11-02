@@ -16,13 +16,6 @@ def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
 async def test_cross_loop_future_is_failed_on_shutdown() -> None:
     """
 
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 A future created on another loop is failed during shutdown."""
 

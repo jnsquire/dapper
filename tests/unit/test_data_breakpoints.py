@@ -29,9 +29,11 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
     mock_debugger.data_breakpoint_info = real_dbg.data_breakpoint_info  # type: ignore[assignment]
     mock_debugger.set_data_breakpoints = real_dbg.set_data_breakpoints  # type: ignore[assignment]
 
-    conn = MockConnection()
-    server = DebugAdapterServer(conn, asyncio.get_event_loop())
-    server.debugger = mock_debugger
+    # Create the server with a mock connection and patch the debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        conn = MockConnection()
+        server = DebugAdapterServer(conn, asyncio.get_event_loop())
+        # The debugger is now set through the constructor, no need to set it directly
 
     # Initialize then request dataBreakpointInfo and setDataBreakpoints
     conn.add_request("initialize", seq=1)
@@ -58,8 +60,10 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
 
     assert "dataBreakpointInfo" in responses
     info_body = responses["dataBreakpointInfo"]["body"]
-    assert info_body["dataId"].startswith("frame:42:var:x")
+    assert info_body["dataId"] == "frame:42:var:x"
+    assert info_body["description"] == "Variable 'x' in frame 42"
     assert info_body["accessTypes"] == ["write"]
+    assert info_body["canPersist"] is False
 
     assert "setDataBreakpoints" in responses
     sdb_body = responses["setDataBreakpoints"]["body"]

@@ -10,7 +10,7 @@ import pytest
 # Add the project root to the Python path first
 project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+    sys.path.append(project_root)
 
 from dapper.server import DebugAdapterServer
 from tests.mocks import MockConnection

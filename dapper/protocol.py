@@ -256,13 +256,13 @@ class ProtocolHandler:
             raise ProtocolError(msg) from e
 
         if not isinstance(message, dict):
-            raise ProtocolError("Message is not a JSON object")  # noqa: EM101, TRY003
+            raise ProtocolError("Message is not a JSON object")
 
         if "seq" not in message:
-            raise ProtocolError("Message missing 'seq' field")  # noqa: EM101, TRY003
+            raise ProtocolError("Message missing 'seq' field")
 
         if "type" not in message:
-            raise ProtocolError("Message missing 'type' field")  # noqa: EM101, TRY003
+            raise ProtocolError("Message missing 'type' field")
 
         msg_type = message["type"]
 
@@ -275,7 +275,7 @@ class ProtocolHandler:
         if msg_type == "event":
             return self._validate_event(message)
 
-        raise ProtocolError(f"Invalid message type: {msg_type}")  # noqa: EM102, TRY003
+        raise ProtocolError(f"Invalid message type: {msg_type}")  # noqa: EM102
 
     def _validate_request(self, message: dict[str, Any]):
         """Validate and return a request message."""

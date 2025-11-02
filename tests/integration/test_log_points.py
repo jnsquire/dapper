@@ -364,11 +364,11 @@ async def test_log_points_server_integration():
             return_value=[{"verified": True, "line": 10}]
         )
 
-        # Create mock connection and server
-        mock_connection = MockConnection()
-        loop = asyncio.get_event_loop()
-        server = DebugAdapterServer(mock_connection, loop)
-        server.debugger = mock_debugger
+        # Create server with patched debugger
+        with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+            mock_connection = MockConnection()
+            loop = asyncio.get_event_loop()
+            server = DebugAdapterServer(mock_connection, loop)
 
         # Add requests including log point breakpoint
         mock_connection.add_request("initialize")

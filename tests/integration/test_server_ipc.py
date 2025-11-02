@@ -96,14 +96,16 @@ def test_write_command_to_channel_fallback_to_stdin():
 @pytest.mark.asyncio
 @patch("dapper.server.PyDebugger")
 async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
+    # Setup the mock debugger
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.launch = AsyncCallRecorder(return_value=None)
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
-    mock_connection = MockConnection()
-    loop = asyncio.get_event_loop()
-    server = DebugAdapterServer(mock_connection, loop)
-    server.debugger = mock_debugger
+    # Create server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        mock_connection = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(mock_connection, loop)
 
     mock_connection.add_request(
         "launch",
@@ -198,23 +200,23 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
 async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     """
 
-import sys
 from pathlib import Path
 
 # Add the project root to the Python path
 project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 Server should forward useBinaryIpc to debugger.launch as use_binary_ipc."""
+    # Setup the mock debugger
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.launch = AsyncCallRecorder(return_value=None)
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
-    mock_connection = MockConnection()
-    loop = asyncio.get_event_loop()
-    server = DebugAdapterServer(mock_connection, loop)
-    server.debugger = mock_debugger
+    # Create server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        mock_connection = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(mock_connection, loop)
 
     # Provide a launch request that enables IPC and binary IPC
     mock_connection.add_request(

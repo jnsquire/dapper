@@ -17,17 +17,7 @@ class _StubServer:
 
 @pytest.mark.asyncio
 async def test_launcher_args_include_ipc_binary_flag_when_requested():
-    """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-When use_binary_ipc is True, PyDebugger should add --ipc-binary to argv."""
+    """When use_binary_ipc is True, PyDebugger should add --ipc-binary to argv."""
     # Capture the debug command that would be used to start the debuggee
     captured_args: list[list[str]] = []
 

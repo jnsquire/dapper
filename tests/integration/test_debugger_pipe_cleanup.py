@@ -18,15 +18,6 @@ class _StubServer:
 @pytest.mark.asyncio
 async def test_pipe_endpoints_closed_on_cleanup() -> None:
     """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 Ensure pipe endpoints are closed during IPC cleanup on Windows.
 
     Skips on non-Windows platforms.

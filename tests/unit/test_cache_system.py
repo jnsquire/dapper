@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
-"""
+"""Test script for the frame evaluation caching system."""
 
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Test script for the frame evaluation caching system."""
-
-import sys
 import threading
 import time
+from typing import Any
 
-sys.path.insert(0, ".")
+# Disable import order warnings for this test file
+import pytest
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:import should be at the top-level of a file:RuntimeWarning"
+)
+
+# Import cache manager functions at module level
+from dapper._frame_eval.cache_manager import BreakpointCache
+from dapper._frame_eval.cache_manager import ThreadLocalCache
+from dapper._frame_eval.cache_manager import cleanup_caches
+from dapper._frame_eval.cache_manager import clear_all_caches
+from dapper._frame_eval.cache_manager import configure_caches
+from dapper._frame_eval.cache_manager import get_breakpoints
+from dapper._frame_eval.cache_manager import get_cache_statistics
+from dapper._frame_eval.cache_manager import get_func_code_info
+from dapper._frame_eval.cache_manager import get_thread_info
+from dapper._frame_eval.cache_manager import invalidate_breakpoints
+from dapper._frame_eval.cache_manager import set_breakpoints
+from dapper._frame_eval.cache_manager import set_cache_enabled
+from dapper._frame_eval.cache_manager import set_func_code_info
+
 
 def sample_function():
     """A sample function for testing."""
@@ -30,14 +43,20 @@ def another_function():
 class MockFuncCodeInfo:
     """Mock FuncCodeInfo class for testing."""
     
-    def __init__(self, filename="test.py", has_breakpoints=False):
+    def __init__(self, filename: str = "test.py", has_breakpoints: bool = False) -> None:
+        """Initialize mock function code info.
+        
+        Args:
+            filename: The filename to associate with this code info.
+            has_breakpoints: Whether this code has breakpoints.
+        """
         self.filename = filename
         self.has_breakpoints = has_breakpoints
         self.breakpoint_lines = {3, 5} if has_breakpoints else set()
         self.last_check = time.time()
         self.is_valid = True
     
-    def update_breakpoint_info(self):
+    def update_breakpoint_info(self) -> None:
         """Mock update method."""
         self.last_check = time.time()
 
@@ -113,8 +132,6 @@ def test_thread_local_cache():
     print("\n=== Testing Thread-Local Cache ===")
     
     try:
-        from dapper._frame_eval.cache_manager import ThreadLocalCache
-        from dapper._frame_eval.cache_manager import get_thread_info
         
         cache = ThreadLocalCache()
         
@@ -137,8 +154,8 @@ def test_thread_local_cache():
         print(f"Should skip debugger frame: {should_skip1}")
         print(f"Should skip user frame: {should_skip2}")
         
-        # Test recursion depth
-        for i in range(5):
+        # Test recursion depth       
+        for _ in range(5):
             thread_info.enter_frame_eval()
         print(f"Recursion depth: {thread_info.recursion_depth}")
         
@@ -159,16 +176,11 @@ def test_thread_local_cache():
         import traceback
         traceback.print_exc()
 
-def test_breakpoint_cache():
+def test_breakpoint_cache() -> None:
     """Test breakpoint caching functionality."""
     print("\n=== Testing Breakpoint Cache ===")
     
     try:
-        from dapper._frame_eval.cache_manager import BreakpointCache
-        from dapper._frame_eval.cache_manager import get_breakpoints
-        from dapper._frame_eval.cache_manager import invalidate_breakpoints
-        from dapper._frame_eval.cache_manager import set_breakpoints
-        
         cache = BreakpointCache(max_entries=3)
         
         # Test basic get/set
@@ -211,49 +223,48 @@ def test_breakpoint_cache():
         import traceback
         traceback.print_exc()
 
-def test_multithreading():
+def worker_thread(thread_id: int, results: list[dict[str, Any]], errors: list[str]) -> None:
+    """Worker function for testing thread safety."""
+    try:
+        # Get thread info
+        thread_info = get_thread_info()
+        thread_info.enter_frame_eval()
+        
+        # Use FuncCodeInfo cache
+        code_obj = compile(f"def worker_{thread_id}(): return {thread_id}", 
+                         f"worker_{thread_id}.py", "exec")
+        info = MockFuncCodeInfo(f"worker_{thread_id}.py", True)
+        
+        set_func_code_info(code_obj, info)
+        cached_info = get_func_code_info(code_obj)
+        
+        # Verify thread-local isolation
+        thread_info.exit_frame_eval()
+        
+        results.append({
+            "thread_id": thread_id,
+            "cache_hit": cached_info is info,
+            "frame_eval_count": thread_info.inside_frame_eval,
+        })
+        
+    except Exception as e:
+        errors.append(f"Thread {thread_id}: {e}")
+
+def test_multithreading() -> None:
     """Test cache behavior with multiple threads."""
     print("\n=== Testing Multithreading ===")
     
     try:
-        from dapper._frame_eval.cache_manager import get_func_code_info
-        from dapper._frame_eval.cache_manager import get_thread_info
-        from dapper._frame_eval.cache_manager import set_func_code_info
-        
         results = []
         errors = []
-        
-        def worker_thread(thread_id):
-            """Worker function for testing thread safety."""
-            try:
-                # Get thread info
-                thread_info = get_thread_info()
-                thread_info.enter_frame_eval()
-                
-                # Use FuncCodeInfo cache
-                code_obj = compile(f"def worker_{thread_id}(): return {thread_id}", 
-                                 f"worker_{thread_id}.py", "exec")
-                info = MockFuncCodeInfo(f"worker_{thread_id}.py", True)
-                
-                set_func_code_info(code_obj, info)
-                cached_info = get_func_code_info(code_obj)
-                
-                # Verify thread-local isolation
-                thread_info.exit_frame_eval()
-                
-                results.append({
-                    "thread_id": thread_id,
-                    "cache_hit": cached_info is info,
-                    "frame_eval_count": thread_info.inside_frame_eval,
-                })
-                
-            except Exception as e:
-                errors.append(f"Thread {thread_id}: {e}")
         
         # Start multiple threads
         threads = []
         for i in range(5):
-            thread = threading.Thread(target=worker_thread, args=(i,))
+            thread = threading.Thread(
+                target=worker_thread, 
+                args=(i, results, errors)
+            )
             threads.append(thread)
             thread.start()
         
@@ -291,13 +302,6 @@ def test_cache_configuration():
     print("\n=== Testing Cache Configuration ===")
     
     try:
-        from dapper._frame_eval.cache_manager import cleanup_caches
-        from dapper._frame_eval.cache_manager import clear_all_caches
-        from dapper._frame_eval.cache_manager import configure_caches
-        from dapper._frame_eval.cache_manager import get_cache_statistics
-        from dapper._frame_eval.cache_manager import set_cache_enabled
-        from dapper._frame_eval.cache_manager import set_func_code_info
-        
         # Get initial stats
         initial_stats = get_cache_statistics()
         print(f"Initial stats: {initial_stats}")
@@ -346,16 +350,12 @@ def test_cache_configuration():
         
     except Exception as e:
         print(f"❌ Cache configuration test failed: {e}")
-        import traceback
-        traceback.print_exc()
 
 def test_performance():
     """Test cache performance."""
     print("\n=== Testing Cache Performance ===")
     
     try:
-        from dapper._frame_eval.cache_manager import get_cache_statistics
-        from dapper._frame_eval.cache_manager import get_func_code_info
         from dapper._frame_eval.cache_manager import set_func_code_info
         
         # Performance test setup

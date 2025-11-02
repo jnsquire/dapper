@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Script to update imports in test files."""
 
-import os
 import re
+from pathlib import Path
 
 
 def update_imports(file_path):
     """Update imports in a test file."""
-    with open(file_path, encoding="utf-8") as f:
+    with Path.open(file_path, encoding="utf-8") as f:
         content = f.read()
     
     # Check if the file already has the updated import pattern
@@ -26,7 +26,7 @@ def update_imports(file_path):
         )
     
     # Write the updated content back to the file
-    with open(file_path, "w", encoding="utf-8") as f:
+    with Path.open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
     
     return True
@@ -44,18 +44,19 @@ def main():
     updated_files = []
     
     for test_dir in test_dirs:
-        if not os.path.exists(test_dir):
+        test_path = Path(test_dir)
+        if not test_path.exists():
             continue
             
-        for root, _, files in os.walk(test_dir):
-            for file in files:
-                if file.startswith("test_") and file.endswith(".py"):
-                    file_path = os.path.join(root, file)
-                    try:
-                        if update_imports(file_path):
-                            updated_files.append(file_path)
-                    except Exception as e:
-                        print(f"Error updating {file_path}: {e}")
+        try:
+            for file_path in test_path.rglob("test_*.py"):
+                try:
+                    if update_imports(str(file_path)):
+                        updated_files.append(str(file_path))
+                except Exception as e:
+                    print(f"Error updating {file_path}: {e}")
+        except Exception as e:
+            print(f"Error processing directory {test_path}: {e}")
     
     if updated_files:
         print("Updated imports in the following files:")

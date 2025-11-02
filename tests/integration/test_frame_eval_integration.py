@@ -1,15 +1,4 @@
-#!/usr/bin/env python3
-"""
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Tests for frame evaluation integration system."""
+"""Tests for frame evaluation integration system."""
 
 from unittest.mock import MagicMock
 from unittest.mock import Mock
@@ -191,13 +180,11 @@ class TestDebuggerBDBIntegration:
         self.mock_debugger = Mock()
         self.mock_debugger.user_line = Mock()
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
-    def test_integrate_with_debugger_bdb_success(self, mock_enable_tracing, mock_trace_manager, mock_thread_info):
+    def test_integrate_with_debugger_bdb_success(self, mock_enable_tracing, mock_trace_manager):
         """Test successful DebuggerBDB integration."""
         # Setup mocks
-        mock_thread_info.return_value = Mock(fully_initialized=False)
         mock_trace_instance = Mock()
         mock_trace_instance.is_enabled.return_value = True
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.return_value = {"should_trace": True}
@@ -240,20 +227,30 @@ class TestDebuggerBDBIntegration:
         assert id(debugger_no_user_line) in self.bridge.original_trace_functions
         assert callable(debugger_no_user_line.user_line)  # A user_line should have been added
     
-    @patch("dapper._frame_eval.debugger_integration.get_thread_info")
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
-    def test_enhanced_user_line_function(self, mock_trace_manager, mock_thread_info):
+    @patch("dapper._frame_eval.debugger_integration.sys")
+    def test_enhanced_user_line_function(self, mock_sys, mock_trace_manager):
         """Test the enhanced user_line function behavior."""
-        # Setup mocks
-        mock_thread_info.return_value = Mock(fully_initialized=False)
-        
         # Setup trace manager to allow tracing
         mock_tm = Mock()
         mock_tm.is_enabled.return_value = True
         mock_analyzer = Mock()
+        
+        # Mock the dispatcher and analyzer
+        mock_dispatcher = Mock()
+        mock_dispatcher.analyzer = mock_analyzer
+        mock_tm.dispatcher = mock_dispatcher
+        
+        # Setup return value for should_trace_frame
         mock_analyzer.should_trace_frame.return_value = {"should_trace": True, "reason": "test"}
-        mock_tm.dispatcher.analyzer = mock_analyzer
+        
         mock_trace_manager.return_value = mock_tm
+        
+        # Setup sys._getframe for the test
+        mock_frame = Mock()
+        mock_frame.f_code.co_filename = "test_file.py"
+        mock_frame.f_lineno = 42
+        mock_sys._getframe.return_value = mock_frame
         
         # Create a mock debugger with a user_line method
         original_user_line = Mock()
@@ -269,19 +266,15 @@ class TestDebuggerBDBIntegration:
         # Get the enhanced function
         enhanced_func = self.mock_debugger.user_line
         
-        # Create a mock frame with required attributes
-        mock_frame = Mock()
-        mock_frame.f_code.co_filename = "test_file.py"
-        mock_frame.f_lineno = 42
-        
         # Call the enhanced function
         enhanced_func(mock_frame)
         
         # Verify original was called
         original_user_line.assert_called_once_with(mock_frame)
         
-        # Verify thread info was updated
-        mock_thread_info.return_value.fully_initialized = True
+        # Verify the trace manager was checked
+        mock_tm.is_enabled.assert_called_once()
+        mock_analyzer.should_trace_frame.assert_called_once()
 
 
 class TestPyDebuggerIntegration:

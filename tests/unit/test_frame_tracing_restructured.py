@@ -246,10 +246,10 @@ class TestCacheManager:
         
         # Add something to the cache
         key = manager.get_cache_key(code_obj)
-        manager._trace_function_cache[key] = "dummy"
+        manager._trace_function_cache[key] = lambda: None  # Using a callable as value
         
         # Add attribute to code object
-        code_obj._frame_eval_cache = "dummy"
+        code_obj._frame_eval_cache = lambda: None  # Using a callable as value
         
         # Invalidate
         manager.invalidate_code_cache(code_obj)
@@ -261,7 +261,8 @@ class TestCacheManager:
     def test_clear_all(self):
         """Test clearing all cached data."""
         manager = CacheManager()
-        manager._trace_function_cache["test"] = "dummy"
+        cache_key = (0, "test", 0)  # Using a valid key type
+        manager._trace_function_cache[cache_key] = lambda: None  # Using a callable as value
         
         manager.clear_all()
         
@@ -368,7 +369,7 @@ class TestBackwardCompatibility:
         # Test with a frame that should be skipped
         frame = MagicMock()
         with patch("dapper._frame_eval.frame_tracing.should_skip_frame", return_value=True):
-            result = wrapper(frame, "line", None)
+            wrapper(frame, "line", None)
             mock_trace.assert_called_once_with(frame, "line", None)
     
     def test_create_trace_function_wrapper_error(self):
@@ -379,7 +380,7 @@ class TestBackwardCompatibility:
         frame = MagicMock()
         with patch("dapper._frame_eval.frame_tracing.should_skip_frame", side_effect=Exception("Test error")):
             # Should fall back to original trace
-            result = wrapper(frame, "line", None)
+            wrapper(frame, "line", None)
             mock_trace.assert_called_once_with(frame, "line", None)
     
     def test_invalidate_code_cache(self):

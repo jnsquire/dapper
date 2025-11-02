@@ -6,7 +6,6 @@ import os
 import sys
 import tempfile
 import threading
-from pathlib import Path
 from unittest.mock import Mock
 
 # Third-party imports
@@ -15,11 +14,6 @@ import pytest
 # Local application imports
 from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
 from dapper._frame_eval.selective_tracer import get_trace_manager
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 
 class TestCacheManager:

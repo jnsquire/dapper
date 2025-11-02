@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-import sys
-from pathlib import Path
-
-Tests for selective tracing system.
-"""
+"""Tests for selective tracing system."""
 
 import threading
 from unittest.mock import Mock

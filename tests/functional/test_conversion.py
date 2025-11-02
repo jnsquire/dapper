@@ -2,17 +2,7 @@
 Test for the _convert_string_to_value function in debug_launcher.py
 """
 
-import sys
-from pathlib import Path
-
-# Try to import from the installed package first; if that fails (for local
-# development runs), add the repo root to sys.path and import the module.
-try:
-    from dapper.debug_launcher import _convert_string_to_value
-except Exception:
-    repo_root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(repo_root))
-    from dapper.debug_launcher import _convert_string_to_value
+from dapper.debug_launcher import _convert_string_to_value
 
 
 def test_convert_string_to_value():

@@ -9,16 +9,7 @@ from .test_debugger_base import BaseDebuggerTest
 # Local async recorder
 class AsyncCallRecorder:
     """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Replacement for AsyncMock used in these tests.
+    Replacement for AsyncMock used in these tests.
 
     Records calls synchronously and returns a noop coroutine so callers can
     safely await the result without creating orphaned coroutine warnings.

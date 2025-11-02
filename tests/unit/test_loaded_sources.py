@@ -5,7 +5,6 @@ Test script to verify loadedSources functionality.
 
 import asyncio
 import logging
-import sys
 from pathlib import Path
 
 import pytest
@@ -14,7 +13,6 @@ from dapper.connections.tcp import TCPServerConnection
 from dapper.server import PyDebugger
 
 # Add the dapper module to the path
-sys.path.insert(0, str(Path(__file__).parent))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,8 +42,6 @@ async def test_loaded_sources():
         test_file_name = Path(__file__).name
         assert test_file_name in found_modules, f"Test file {test_file_name} is missing from loaded sources"
 
-    except Exception:
-        raise
     finally:
         # Clean up
         await connection.close()

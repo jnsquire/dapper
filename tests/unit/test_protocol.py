@@ -1,26 +1,28 @@
 """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Pytest-style tests for the Debug Adapter Protocol message classes.
-
-Converted from unittest.TestCase to plain pytest functions.
+Pytest-style tests for the Debug Adapter Protocol message handling.
 """
 
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 import pytest
 
-from dapper.protocol import ProtocolError
-from dapper.protocol import ProtocolHandler
+from dapper.protocol import ProtocolError, ProtocolHandler
+from dapper.protocol_types import GenericEvent, GenericRequest, GenericResponse, ProtocolMessage
+
+
+# Use the protocol types directly from dapper.protocol_types
+RequestMessage = GenericRequest
+ResponseMessage = GenericResponse
+EventMessage = GenericEvent
+
+# Use ProtocolMessage as the base type for all messages
+MessageType = ProtocolMessage
+RequestType = GenericRequest
+ResponseType = GenericResponse
+EventType = GenericEvent
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -28,7 +30,7 @@ from dapper.protocol import ProtocolHandler
 
 
 @pytest.fixture
-def handler():
+def handler() -> ProtocolHandler:
     """Create a protocol handler for testing."""
     return ProtocolHandler()
 
@@ -38,10 +40,10 @@ def handler():
 # ---------------------------------------------------------------------------
 
 
-def test_request_message(handler):
+def test_request_message(handler: ProtocolHandler) -> None:
     """Test the Request message class"""
-    args = {"program": "test.py", "stopOnEntry": True}
-    req = handler.create_request("launch", args)
+    args: dict[str, Any] = {"program": "test.py", "stopOnEntry": True}
+    req: RequestType = handler.create_request("launch", args)
 
     # Test attributes
     assert req["seq"] == 1
@@ -49,18 +51,18 @@ def test_request_message(handler):
     assert req["arguments"] == args
 
     # Test conversion to dict
-    req_dict = req
+    req_dict = cast("dict[str, Any]", req)
     assert req_dict["seq"] == 1
     assert req_dict["type"] == "request"
     assert req_dict["command"] == "launch"
     assert req_dict["arguments"] == args
 
 
-def test_response_message(handler):
+def test_response_message(handler: ProtocolHandler) -> None:
     """Test the Response message class"""
-    body = {"breakpoints": [{"verified": True, "line": 10}]}
+    body: dict[str, Any] = {"breakpoints": [{"verified": True, "line": 10}]}
     request = handler.create_request("setBreakpoints")
-    resp = handler.create_response(request, True, body)
+    resp: ResponseType = handler.create_response(request, True, body)
 
     # Test attributes
     assert resp["seq"] == 2
@@ -71,7 +73,7 @@ def test_response_message(handler):
     assert resp.get("body") == body
 
     # Test conversion to dict
-    resp_dict = resp
+    resp_dict = cast("dict[str, Any]", resp)
     assert resp_dict["seq"] == 2
     assert resp_dict["type"] == "response"
     assert resp_dict["request_seq"] == 1
@@ -81,19 +83,18 @@ def test_response_message(handler):
     assert resp_dict.get("body") == body
 
     # Test error response
-    err_resp = handler.create_response(request, False, None, "Invalid expression")
+    err_resp = cast("GenericResponse", handler.create_response(request, False, None, "Invalid expression"))
 
-    err_dict = err_resp
-    assert err_dict["seq"] == 3
-    assert err_dict["success"] is False
-    assert "message" in err_dict
-    assert err_dict.get("message") == "Invalid expression"
+    assert err_resp["seq"] == 3
+    assert err_resp["success"] is False
+    assert "message" in err_resp
+    assert err_resp.get("message") == "Invalid expression"
 
 
-def test_event_message(handler):
+def test_event_message(handler: ProtocolHandler) -> None:
     """Test the Event message class"""
-    body = {"reason": "breakpoint", "threadId": 1}
-    event = handler.create_event("stopped", body)
+    body: dict[str, Any] = {"reason": "breakpoint", "threadId": 1}
+    event: EventType = handler.create_event("stopped", body)
 
     # Test attributes
     assert event["seq"] == 1
@@ -102,7 +103,7 @@ def test_event_message(handler):
     assert event.get("body") == body
 
     # Test conversion to dict
-    event_dict = event
+    event_dict = cast("dict[str, Any]", event)
     assert event_dict["seq"] == 1
     assert event_dict["type"] == "event"
     assert event_dict["event"] == "stopped"
@@ -110,9 +111,9 @@ def test_event_message(handler):
     assert event_dict.get("body") == body
 
 
-def test_json_serialization(handler):
+def test_json_serialization(handler: ProtocolHandler) -> None:
     """Test that all messages can be properly serialized to JSON"""
-    messages = [
+    messages: list[dict[str, Any]] = [
         {"seq": 1, "type": "request"},  # ProtocolMessage base
         handler.create_request("launch", {"program": "test.py"}),
         handler.create_response(handler.create_request("launch"), True),
@@ -131,15 +132,15 @@ def test_json_serialization(handler):
         assert parsed_dict == msg_dict
 
 
-def test_parse_message_valid_request(handler):
+def test_parse_message_valid_request(handler: ProtocolHandler) -> None:
     """Test parsing a valid request message"""
-    json_msg = {
+    json_msg: dict[str, Any] = {
         "seq": 1,
         "type": "request",
         "command": "launch",
         "arguments": {"program": "test.py"},
     }
-    json_str = json.dumps(json_msg)
+    json_str: str = json.dumps(json_msg)
 
     parsed = handler.parse_message(json_str)
     assert parsed["seq"] == 1
@@ -148,9 +149,9 @@ def test_parse_message_valid_request(handler):
     assert parsed["arguments"] == {"program": "test.py"}
 
 
-def test_parse_message_valid_response(handler):
+def test_parse_message_valid_response(handler: ProtocolHandler) -> None:
     """Test parsing a valid response message"""
-    json_msg = {
+    json_msg: dict[str, Any] = {
         "seq": 2,
         "type": "response",
         "request_seq": 1,
@@ -158,7 +159,7 @@ def test_parse_message_valid_response(handler):
         "command": "launch",
         "body": {"threadId": 1},
     }
-    json_str = json.dumps(json_msg)
+    json_str: str = json.dumps(json_msg)
 
     parsed = handler.parse_message(json_str)
     assert parsed["seq"] == 2
@@ -169,15 +170,15 @@ def test_parse_message_valid_response(handler):
     assert parsed["body"] == {"threadId": 1}
 
 
-def test_parse_message_valid_event(handler):
+def test_parse_message_valid_event(handler: ProtocolHandler) -> None:
     """Test parsing a valid event message"""
-    json_msg = {
+    json_msg: dict[str, Any] = {
         "seq": 3,
         "type": "event",
         "event": "stopped",
         "body": {"reason": "breakpoint", "threadId": 1},
     }
-    json_str = json.dumps(json_msg)
+    json_str: str = json.dumps(json_msg)
 
     parsed = handler.parse_message(json_str)
     assert parsed["seq"] == 3
@@ -186,9 +187,9 @@ def test_parse_message_valid_event(handler):
     assert parsed["body"] == {"reason": "breakpoint", "threadId": 1}
 
 
-def test_parse_message_invalid_json(handler):
+def test_parse_message_invalid_json(handler: ProtocolHandler) -> None:
     """Test parsing invalid JSON raises ProtocolError"""
-    invalid_json = "{invalid json"
+    invalid_json: str = "{invalid json"
 
     with pytest.raises(ProtocolError) as exc_info:
         handler.parse_message(invalid_json)
@@ -196,10 +197,10 @@ def test_parse_message_invalid_json(handler):
     assert "Failed to parse message as JSON" in str(exc_info.value)
 
 
-def test_parse_message_missing_type(handler):
+def test_parse_message_missing_type(handler: ProtocolHandler) -> None:
     """Test parsing message without type field"""
-    json_msg = {"seq": 1, "command": "launch"}
-    json_str = json.dumps(json_msg)
+    json_msg: dict[str, Any] = {"seq": 1, "command": "launch"}
+    json_str: str = json.dumps(json_msg)
 
     with pytest.raises(ProtocolError) as exc_info:
         handler.parse_message(json_str)
@@ -207,10 +208,10 @@ def test_parse_message_missing_type(handler):
     assert "Message missing 'type' field" in str(exc_info.value)
 
 
-def test_parse_message_unknown_type(handler):
+def test_parse_message_unknown_type(handler: ProtocolHandler) -> None:
     """Test parsing message with unknown type"""
-    json_msg = {"seq": 1, "type": "unknown", "command": "launch"}
-    json_str = json.dumps(json_msg)
+    json_msg: dict[str, Any] = {"seq": 1, "type": "unknown", "command": "launch"}
+    json_str: str = json.dumps(json_msg)
 
     with pytest.raises(ProtocolError) as exc_info:
         handler.parse_message(json_str)
@@ -218,20 +219,34 @@ def test_parse_message_unknown_type(handler):
     assert "Invalid message type: unknown" in str(exc_info.value)
 
 
-def test_create_error_response(handler):
+def test_create_error_response(handler: ProtocolHandler) -> None:
     """Test creating error responses"""
     request = handler.create_request("launch", {"program": "test.py"})
 
-    # Test error response with just message
-    error_resp = handler.create_response(request, False, None, "Failed to launch")
+    # Test error response with message
+    error_resp = handler.create_response(
+        request=request,
+        success=False,
+        body=None,
+        error_message="Failed to launch"
+    )
 
     assert error_resp["seq"] == 2
     assert error_resp["type"] == "response"
     assert error_resp["request_seq"] == 1
     assert error_resp["success"] is False
     assert error_resp["command"] == "launch"
-    assert error_resp["message"] == "Failed to launch"
+    assert error_resp.get("message") == "Failed to launch"  # Use .get() since message is NotRequired
     assert "body" not in error_resp
+    
+    # Test error response without message
+    error_resp_no_msg = handler.create_response(
+        request=request,
+        success=False,
+        body=None,
+        error_message=None
+    )
+    assert "message" not in error_resp_no_msg  # Should not include message when error_message is None
 
 
 def test_create_initialize_request(handler):

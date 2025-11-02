@@ -1,17 +1,5 @@
 """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 Pytest-style tests for the Debug Adapter Protocol server.
-
-Converted from unittest.TestCase to plain pytest functions with
-fixtures to reduce boilerplate and align with modern pytest patterns.
 """
 
 from __future__ import annotations
@@ -76,15 +64,14 @@ async def test_initialization_sequence(mock_debugger_class):
     """Test the initialization sequence"""
     # Setup mocked debugger
     mock_debugger = mock_debugger_class.return_value
-
     mock_debugger.launch = AsyncCallRecorder(return_value=None)
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
-    # Create mock connection and server
-    mock_connection = MockConnection()
-    loop = asyncio.get_event_loop()
-    server = DebugAdapterServer(mock_connection, loop)
-    server.debugger = mock_debugger
+    # Create mock connection and server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        mock_connection = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(mock_connection, loop)
 
     # Add initialization and configuration requests
     mock_connection.add_request("initialize")
@@ -145,14 +132,16 @@ async def test_initialization_sequence(mock_debugger_class):
 @pytest.mark.asyncio
 @patch("dapper.server.PyDebugger")
 async def test_attach_request_routed(mock_debugger_class):
-    """Attach should be routed to debugger.attach with provided args."""
+    """Attach should be routed to debugger.attach"""
+    # Setup mocked debugger
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.attach = AsyncCallRecorder(return_value=None)
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
-    conn = MockConnection()
-    server = DebugAdapterServer(conn, asyncio.get_event_loop())
-    server.debugger = mock_debugger
+    # Create server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        conn = MockConnection()
+        server = DebugAdapterServer(conn, asyncio.get_event_loop())
 
     # Add attach request with IPC parameters
     conn.add_request(
@@ -194,15 +183,14 @@ async def test_error_handling(mock_debugger_class):
     """Test error handling in server"""
     # Setup mocked debugger
     mock_debugger = mock_debugger_class.return_value
-
     mock_debugger.launch = AsyncCallRecorder(side_effect=RuntimeError("Test error"))
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
-    # Create mock connection and server
-    mock_connection = MockConnection()
-    loop = asyncio.get_event_loop()
-    server = DebugAdapterServer(mock_connection, loop)
-    server.debugger = mock_debugger
+    # Create mock connection and server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        mock_connection = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(mock_connection, loop)
 
     # Add a request that will fail
     mock_connection.add_request("launch", {"program": "test.py"})
@@ -292,11 +280,11 @@ async def test_modules_request(mock_debugger_class):
     ]
     mock_debugger.get_modules = AsyncCallRecorder(return_value=mock_modules)
 
-    # Create mock connection and server
-    mock_connection = MockConnection()
-    loop = asyncio.get_event_loop()
-    server = DebugAdapterServer(mock_connection, loop)
-    server.debugger = mock_debugger
+    # Create mock connection and server with patched debugger
+    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        mock_connection = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(mock_connection, loop)
 
     # Add initialization and modules request
     mock_connection.add_request("initialize")

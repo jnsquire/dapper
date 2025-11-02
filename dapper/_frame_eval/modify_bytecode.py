@@ -16,9 +16,52 @@ from typing import Dict
 from typing import List
 from typing import Set
 from typing import Tuple
+from typing import TypedDict
 
 if TYPE_CHECKING:
     from types import CodeType
+
+
+class BytecodeInfo(TypedDict):
+    """Type definition for bytecode information dictionary.
+    
+    Attributes:
+        instruction_count: Number of instructions in the bytecode
+        has_breakpoints: Whether the bytecode contains breakpoint sequences
+        stack_size: Maximum stack size required by the code
+        flags: Code object flags (co_flags)
+        first_lineno: First line number in the source code
+        filename: Name of the source file
+        name: Name of the code object
+        constants_count: Number of constants in the code object
+        names_count: Number of names in the code object
+        varnames_count: Number of local variable names in the code object
+    """
+    instruction_count: int
+    has_breakpoints: bool
+    stack_size: int
+    flags: int
+    first_lineno: int
+    filename: str
+    name: str
+    constants_count: int
+    names_count: int
+    varnames_count: int
+
+
+class BytecodeErrorInfo(TypedDict):
+    """Type definition for bytecode error information.
+    
+    Used when bytecode analysis fails.
+    
+    Attributes:
+        error: Error message
+        filename: Name of the source file if available, otherwise 'unknown'
+        name: Name of the code object if available, otherwise 'unknown'
+    """
+    error: str
+    filename: str
+    name: str
 
 # Python bytecode instruction constants - version compatible
 LOAD_CONST = dis.opmap["LOAD_CONST"]
@@ -685,7 +728,7 @@ def clear_bytecode_cache() -> None:
     _bytecode_modifier.modified_code_objects.clear()
 
 
-def get_bytecode_info(code_obj: CodeType) -> Dict[str, Any]:
+def get_bytecode_info(code_obj: CodeType) -> BytecodeInfo | BytecodeErrorInfo:
     """
     Get information about a code object's bytecode.
     
@@ -693,7 +736,7 @@ def get_bytecode_info(code_obj: CodeType) -> Dict[str, Any]:
         code_obj: The code object to analyze
         
     Returns:
-        dict: Information about the bytecode
+        BytecodeInfo: Information about the bytecode
     """
     try:
         instructions = list(dis.get_instructions(code_obj))

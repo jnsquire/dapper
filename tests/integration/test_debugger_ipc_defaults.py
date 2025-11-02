@@ -12,17 +12,7 @@ from dapper.server import PyDebugger
 
 class _StubServer:
     async def send_event(self, _event: str, _payload: dict[str, Any]) -> None:
-        """
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Minimal stub: debugger.launch awaits this."""
+        """Minimal stub: debugger.launch awaits this."""
         return
 
 

@@ -35,6 +35,7 @@ from typing import TypedDict
 from typing import cast
 
 from typing_extensions import NotRequired
+from typing_extensions import Protocol
 
 from dapper import debug_shared
 from dapper.inprocess_debugger import InProcessDebugger
@@ -220,14 +221,54 @@ class DebugDataExtractor(dict):
         }
 
 
+class DebugServer(Protocol):
+    """Protocol defining the interface expected by PyDebugger for server communication."""
+    
+    @property
+    def debugger(self) -> PyDebugger:
+        """Access the debugger instance."""
+        ...  # type: ignore[empty-body]
+    
+    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
+        """Send an event to the debug client.
+        
+        Args:
+            event_name: The event name (e.g., 'stopped', 'output', 'process')
+            body: Optional event payload
+        """
+        ...  # type: ignore[empty-body]
+    
+    async def send_message(self, message: dict[str, Any]) -> None:
+        """Send a raw message to the debug client.
+        
+        Args:
+            message: The complete message dictionary
+        """
+        ...  # type: ignore[empty-body]
+    
+    def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
+        """Schedule a callback to be run on the server's event loop.
+        
+        Args:
+            callback: The function to call on the server's event loop
+        """
+        ...  # type: ignore[empty-body]
+
+
 class PyDebugger:
     """
     Main debugger class that integrates with Python's built-in debugging tools
     and communicates back to the DebugAdapterServer.
     """
 
-    def __init__(self, server: object, loop: asyncio.AbstractEventLoop | None = None):
-        self.server: object = server
+    def __init__(self, server: DebugServer, loop: asyncio.AbstractEventLoop | None = None):
+        """Initialize the PyDebugger.
+        
+        Args:
+            server: The debug server that implements the DebugServer protocol
+            loop: Optional event loop to use. If not provided, gets the current event loop.
+        """
+        self.server: DebugServer = server
         self.loop: asyncio.AbstractEventLoop
         self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)
@@ -560,11 +601,11 @@ class PyDebugger:
         except Exception:
             logger.exception("error in on_exited callback")
 
-    def _inproc_on_output(self, category: str, output: str) -> None:
+    async def _inproc_on_output(self, category: str, output: str) -> None:
         """Forward output events from inproc to the server, with isolation."""
         try:
             payload = {"category": category, "output": output}
-            self.server.send_event("output", payload)
+            await self.server.send_event("output", payload)
         except Exception:
             logger.exception("error in on_output callback")
 
@@ -2977,7 +3018,11 @@ class RequestHandler:
             }
 
 
-class DebugAdapterServer:
+class DebugAdapterServer(DebugServer):
+    """Server implementation that handles DAP protocol communication.
+    
+    This class implements the DebugServer protocol expected by PyDebugger.
+    """
     """
     Debug adapter server that communicates with a DAP client
     """
@@ -2990,11 +3035,36 @@ class DebugAdapterServer:
         self.connection = connection
         self.request_handler = RequestHandler(self)
         # Prefer caller-supplied or running loop; create one only if needed.
-        self.loop, _owns = _acquire_event_loop(loop)  # _owns unused here
-        self.debugger = PyDebugger(self, self.loop)
+        self.loop, _ = _acquire_event_loop(loop)  # _owns unused here
+        self._debugger = PyDebugger(self, self.loop)
         self.running = False
         self.sequence_number = 0
         self.protocol_handler = ProtocolHandler()
+
+    @property
+    def debugger(self) -> PyDebugger:
+        """Get the debugger instance."""
+        return self._debugger
+        
+    def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
+        """Schedule a callback to be run on the server's event loop.
+        
+        This implements the DebugServer protocol method.
+        
+        Args:
+            callback: The function to call on the server's event loop
+        """
+        if not self.loop.is_running():
+            logger.warning("Event loop is not running, cannot schedule callback")
+            return
+            
+        def _wrapped() -> None:
+            try:
+                callback()
+            except Exception:
+                logger.exception("Error in spawn_threadsafe callback")
+        
+        self.loop.call_soon_threadsafe(_wrapped)
 
     @property
     def next_seq(self) -> int:

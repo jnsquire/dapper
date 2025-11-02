@@ -127,7 +127,7 @@ select = [
 ]
 
 # Only ignore specific rules that we want to keep
-ignore = ["E501", "E741", "SIM105", "G004", "T201"]
+ignore = ["E501", "E741", "SIM105", "G004", "T201", "TRY003", "EM101"]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided
 fixable = ["ALL"]
