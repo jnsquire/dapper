@@ -1,4 +1,23 @@
-# Dapper - Debug Adapter Protocol for Python
+# Dapper Repository
+
+This repository contains two projects:
+
+## 📚 [Wiki: Things the Humans Should Know](wiki/)
+
+A Wikipedia-style knowledge base built with **TypeScript** and **Bun**, containing essential information about science, critical thinking, climate, privacy, and more.
+
+**Quick Start:**
+```bash
+cd wiki
+bun install
+bun run dev  # Visit http://localhost:3000
+```
+
+See [wiki/README.md](wiki/README.md) for complete documentation.
+
+---
+
+## 🐛 Dapper - Debug Adapter Protocol for Python
 
 A Debug Adapter Protocol implementation in Python.
 
