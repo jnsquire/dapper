@@ -95,11 +95,6 @@ export async function build(): Promise<void> {
 export async function watch(): Promise<void> {
   console.log('👀 Watching for changes...');
   
-  const watcher = Bun.file(config.contentDir);
-  
-  // Initial build
-  await build();
-  
   // Watch for file changes
   const fs = await import('fs');
   fs.watch(config.contentDir, { recursive: true }, async (eventType, filename) => {

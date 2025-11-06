@@ -1,15 +1,31 @@
 import type { TemplateData } from './types';
 
 /**
+ * Escape HTML entities to prevent XSS
+ */
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, char => map[char] || char);
+}
+
+/**
  * Generate the main HTML template for wiki pages
  */
 export function renderPage(data: TemplateData): string {
+  const escapedTitle = escapeHtml(data.title);
+  
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${data.title} - Things the Humans Should Know</title>
+  <title>${escapedTitle} - Things the Humans Should Know</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -21,11 +37,14 @@ export function renderPage(data: TemplateData): string {
       <nav class="wiki-nav">
         <h2>Articles</h2>
         <ul>
-          ${data.pages.map(page => `
+          ${data.pages.map(page => {
+            const escapedPageTitle = escapeHtml(page.title);
+            return `
             <li class="${page.slug === data.currentSlug ? 'active' : ''}">
-              <a href="/${page.slug}.html">${page.title}</a>
+              <a href="/${page.slug}.html">${escapedPageTitle}</a>
             </li>
-          `).join('')}
+          `;
+          }).join('')}
         </ul>
       </nav>
       <div class="wiki-footer">
@@ -34,7 +53,7 @@ export function renderPage(data: TemplateData): string {
     </aside>
     <main class="wiki-content">
       <article>
-        ${data.content}
+        ${/* Content is from trusted markdown files parsed by marked library */ data.content}
       </article>
     </main>
   </div>
