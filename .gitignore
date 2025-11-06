@@ -39,3 +39,11 @@ debug_adapter.log
 .vscode/
 *.swp
 *.swo
+
+# Node/Bun
+node_modules/
+bun.lock
+
+# Wiki build output
+wiki/dist/
+wiki/public/

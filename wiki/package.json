@@ -1,0 +1,22 @@
+{
+  "name": "things-humans-should-know",
+  "version": "1.0.0",
+  "description": "A Wikipedia-style knowledge base for essential human knowledge",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun run src/build.ts",
+    "dev": "bun run src/server.ts --dev",
+    "start": "bun run src/server.ts",
+    "serve": "bun run src/server.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "marked": "^16.4.1"
+  }
+}
