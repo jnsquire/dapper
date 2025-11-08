@@ -60,7 +60,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from concurrent.futures import Future as _CFuture
     from typing import Literal
-    from typing import TypedDict
 
     from dapper.connections import ConnectionBase
     from dapper.debugger_protocol import Variable
@@ -1110,118 +1109,158 @@ class PyDebugger:
         Returns:
             List of breakpoint results with verification status
         """
+        # Extract and validate path
         path = source if isinstance(source, str) else source.get("path")
         if not path:
             return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
         path = str(Path(path).resolve())
 
-        # Build a properly-typed list of breakpoint entries for the debugger API
+        # Process breakpoints
+        spec_list, storage_list = self._process_breakpoints(breakpoints)
+        self.breakpoints[path] = storage_list
+
+        # Try in-process debugger first
+        if self.in_process and self._inproc is not None:
+            return await self._set_breakpoints_in_process(path, spec_list, storage_list)
+        
+        # Fall back to external process debugger
+        if self.process and not self.is_terminated:
+            await self._set_breakpoints_external_process(path, storage_list)
+        
+        return storage_list  # type: ignore[return-value]
+
+    def _process_breakpoints(self, breakpoints: Sequence[SourceBreakpoint]) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
+        """Process breakpoints into spec and storage lists.
+        
+        Args:
+            breakpoints: List of breakpoint specifications
+            
+        Returns:
+            Tuple of (spec_list, storage_list)
+        """
         spec_list: list[SourceBreakpoint] = []
-        # Build a storage list that includes the 'verified' flag for the response
         storage_list: list[BreakpointDict] = []
+        
         for bp in breakpoints:
             line_val = int(bp.get("line", 0))
+            
+            # Extract optional fields
+            optional_fields = {}
+            for field in ["condition", "hitCondition", "logMessage"]:
+                value = bp.get(field)
+                if value is not None:
+                    optional_fields[field] = str(value) if field != "logMessage" else value
+            
+            # Create spec entry for debugger API
             spec_entry: SourceBreakpoint = {"line": line_val}
-            cond = bp.get("condition")
-            if cond is not None:
-                spec_entry["condition"] = str(cond)
-            hc = bp.get("hitCondition")
-            if hc is not None:
-                spec_entry["hitCondition"] = str(hc)
-            lm = bp.get("logMessage")
-            if lm is not None:
-                spec_entry["logMessage"] = str(lm)
+            spec_entry.update(optional_fields)
             spec_list.append(spec_entry)
-
-            # Create breakpoint response with all provided fields
+            
+            # Create storage entry for response
             bp_result: BreakpointDict = {
                 "line": line_val,
                 "verified": True
             }
-            if cond is not None:
-                bp_result["condition"] = cond
-            if hc is not None:
-                bp_result["hitCondition"] = hc
-            if lm is not None:
-                bp_result["logMessage"] = lm
+            bp_result.update(optional_fields)
             storage_list.append(bp_result)
+        
+        return spec_list, storage_list
 
-        # Store the dict version in breakpoints to avoid type issues
-        self.breakpoints[path] = storage_list
-
-        if self.in_process and self._inproc is not None:
-            try:
-                result = self._inproc.set_breakpoints(path, spec_list)
-                # Convert protocol breakpoints to our response type
-                return [
-                    {
-                        "verified": bp.get("verified", False),
-                        "line": bp.get("line"),
-                        "condition": bp.get("condition"),
-                        "hitCondition": bp.get("hitCondition"),
-                        "logMessage": bp.get("logMessage")
-                    }
-                    for bp in result
-                ]
-            except Exception:
-                logger.exception("in-process set_breakpoints failed")
+    async def _set_breakpoints_in_process(
+        self, 
+        path: str, 
+        spec_list: list[SourceBreakpoint], 
+        storage_list: list[BreakpointDict]
+    ) -> list[BreakpointResponse]:
+        """Set breakpoints using in-process debugger.
+        
+        Args:
+            path: Source file path
+            spec_list: Breakpoint specs for debugger API
+            storage_list: Storage list for fallback
+            
+        Returns:
+            List of breakpoint responses
+        """
+        try:
+            if self._inproc is None:
                 return [{"verified": False} for _ in storage_list]
-        if self.process and not self.is_terminated:
-            # Create a source dictionary as expected by the debugger protocol
-            source_dict = {"path": path}
-            # Create the command with proper typing
-            bp_command = {
-                "command": "setBreakpoints",
-                "arguments": {
-                    "source": source_dict,
-                    "breakpoints": storage_list,
-                },
-            }
-            # Emit a progress start event for longer running operations so
-            # clients can show a spinner if they want. We keep this lightweight
-            # and emit progress end once the command is sent.
-            # build a reasonably unique progress id without touching other
-            # properties that static analysis may not like
-            try:
-                progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
-            except Exception:
-                progress_id = f"setBreakpoints:{path}"
+            result = self._inproc.set_breakpoints(path, spec_list)
+            return [
+                {
+                    "verified": bp.get("verified", False),
+                    "line": bp.get("line"),
+                    "condition": bp.get("condition"),
+                    "hitCondition": bp.get("hitCondition"),
+                    "logMessage": bp.get("logMessage")
+                }
+                for bp in result
+            ]  # type: ignore[return-value]
+        except Exception:
+            logger.exception("in-process set_breakpoints failed")
+            return [{"verified": False} for _ in storage_list]
 
-            # schedule progressStart and progressEnd around the outgoing command
-            self.spawn_threadsafe(
-                lambda pid=progress_id: self.server.send_event(
-                    "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
-                )
+    async def _set_breakpoints_external_process(self, path: str, storage_list: list[BreakpointDict]) -> None:
+        """Set breakpoints using external process debugger.
+        
+        Args:
+            path: Source file path
+            storage_list: List of breakpoint dictionaries
+        """
+        # Create command for external debugger
+        source_dict = {"path": path}
+        bp_command = {
+            "command": "setBreakpoints",
+            "arguments": {
+                "source": source_dict,
+                "breakpoints": storage_list,
+            },
+        }
+        
+        # Generate progress ID
+        try:
+            progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
+        except Exception:
+            progress_id = f"setBreakpoints:{path}"
+
+        # Send progress events around the command
+        self.spawn_threadsafe(
+            lambda pid=progress_id: self.server.send_event(
+                "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
             )
+        )
 
-            await self._send_command_to_debuggee(bp_command)
+        await self._send_command_to_debuggee(bp_command)
 
-            # After sending the setBreakpoints command to the debuggee, forward
-            # a breakpoint-changed event so clients can react to changes.
-            try:
-                bp_events = [
-                    {
-                        "reason": "changed",
-                        "breakpoint": {
-                            "verified": bp.get("verified", True),
-                            "line": bp.get("line"),
-                        },
-                    }
-                    for bp in storage_list
-                ]
-                for be in bp_events:
-                    # forward as an adapter-level 'breakpoint' event
-                    self._forward_event("breakpoint", be)
-            except Exception:
-                logger.debug("Failed to forward breakpoint events")
+        # Forward breakpoint events
+        self._forward_breakpoint_events(storage_list)
 
-            # schedule a progressEnd
-            self.spawn_threadsafe(
-                lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
-            )
+        # End progress
+        self.spawn_threadsafe(
+            lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
+        )
 
-        # Return the storage list which already has the correct Breakpoint type
-        return storage_list
+    def _forward_breakpoint_events(self, storage_list: list[BreakpointDict]) -> None:
+        """Forward breakpoint-changed events to clients.
+        
+        Args:
+            storage_list: List of breakpoint dictionaries
+        """
+        try:
+            bp_events = [
+                {
+                    "reason": "changed",
+                    "breakpoint": {
+                        "verified": bp.get("verified", True),
+                        "line": bp.get("line"),
+                    },
+                }
+                for bp in storage_list
+            ]
+            for be in bp_events:
+                self._forward_event("breakpoint", be)
+        except Exception:
+            logger.debug("Failed to forward breakpoint events")
 
     async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Set breakpoints for functions"""

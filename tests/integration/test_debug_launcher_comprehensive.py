@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+import pytest
+
 from dapper import debug_launcher
 from dapper import debug_shared
 from tests.dummy_debugger import DummyDebugger
@@ -777,7 +779,7 @@ def test_handle_evaluate_invalid_expression():
             "frameId": frame_id,
             "context": "watch"
         })
-        assert False, "Should have raised TypeError"
+        raise AssertionError("Should have raised TypeError")
     except TypeError:
         pass  # Expected
 
@@ -817,7 +819,7 @@ def test_handle_configuration_done():
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    result = debug_launcher.handle_configuration_done(dbg, {})
+    debug_launcher.handle_configuration_done(dbg, {})
     # Should not raise exception and return None (no-op)
 
 
@@ -829,13 +831,20 @@ def test_handle_terminate():
 
     # Test that the command sets termination flag
     # Note: We can't test os._exit without actually exiting
+    # Inject a test-friendly exit function so we don't kill the test runner.
+    orig_exit = debug_shared.state.exit_func
+    def fake_exit(code: int):
+        raise SystemExit(code)
+
+    debug_shared.state.set_exit_func(fake_exit)
     try:
-        debug_launcher.handle_terminate(dbg, {})
-    except SystemExit:
-        # Expected if os._exit is called
-        pass
-    
-    assert s.is_terminated is True
+        with pytest.raises(SystemExit):
+            debug_launcher.handle_terminate(dbg, {})
+
+        assert s.is_terminated is True
+    finally:
+        # Restore original behavior
+        debug_shared.state.set_exit_func(orig_exit)
 
 
 def test_handle_restart():
@@ -844,9 +853,24 @@ def test_handle_restart():
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    # Currently restart is not implemented, should not raise exception
-    debug_launcher.handle_restart(dbg, {})
-    # No assertions needed - just verify no exception is raised
+    # Override exec behavior so we don't replace the test process.
+    orig_exec = debug_shared.state.exec_func
+    def fake_exec(path: str, args: list[str]):
+        # Signal via exception so test can assert restart was attempted
+        raise SystemExit(("exec_called", path, tuple(args)))
+
+    debug_shared.state.set_exec_func(fake_exec)
+    try:
+        with pytest.raises(SystemExit) as excinfo:
+            debug_launcher.handle_restart(dbg, {})
+
+        # The exit code should be a tuple with our test data
+        exit_code = excinfo.value.code
+        assert isinstance(exit_code, tuple)
+        assert len(exit_code) >= 1
+        assert exit_code[0] == "exec_called"
+    finally:
+        debug_shared.state.set_exec_func(orig_exec)
 
 
 def test_handle_threads_with_data():
@@ -922,7 +946,7 @@ def test_handle_debug_command_exception():
     s.debugger = dbg
 
     # Mock a handler to raise exception
-    def failing_handler(dbg, args):
+    def failing_handler(_dbg, _args):
         raise ValueError("Test handler error")
     
     original_handler = debug_launcher.handle_initialize
@@ -1098,6 +1122,7 @@ def test_handle_command_bytes():
             self.items = []
         
         def put(self, item, block=True, timeout=None):
+            _ = block, timeout  # Unused parameters
             self.items.append(item)
     
     mock_queue = MockQueue()
@@ -1115,7 +1140,6 @@ def test_handle_command_bytes():
 
 def test_handle_command_bytes_invalid_json():
     """Test _handle_command_bytes with invalid JSON."""
-    s = debug_shared.state
     
     # Test that invalid JSON doesn't crash
     try:

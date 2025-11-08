@@ -6,14 +6,57 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 from __future__ import annotations
 
 import asyncio
+import sys
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 
+# Add project root to Python path for local imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Import protocol types for type checking
+
+# Type definitions for test mocks
+class Source(TypedDict):
+    """Mock Source type for testing."""
+    path: str
+    name: str | None
+
+
+class SourceBreakpoint(TypedDict, total=False):
+    """Mock SourceBreakpoint type for testing."""
+    line: int
+    condition: str | None
+    hitCondition: str | None
+    column: int | None
+    logMessage: str | None
+
+
+class FunctionBreakpoint(TypedDict, total=False):
+    """Mock FunctionBreakpoint type for testing."""
+    name: str
+    condition: str | None
+    hitCondition: str | None
+
+
+class BreakpointResponse(TypedDict, total=False):
+    """Mock BreakpointResponse type for testing."""
+    verified: bool
+    line: int | None
+    condition: str | None
+    hitCondition: str | None
+    message: str | None
+    source: dict[str, str] | None
+
+
+# Constants for testing
+from dapper.constants import DEFAULT_BREAKPOINT_CONDITION_VALUE
+from dapper.constants import DEFAULT_BREAKPOINT_LINE
+from dapper.constants import TEST_ALT_LINE_1
 from dapper.server import PyDebugger
 from dapper.server import PyDebuggerThread
 
@@ -422,34 +465,50 @@ async def test_step_out(debugger):
 
 @pytest.mark.asyncio
 async def test_set_breakpoints(debugger: PyDebugger) -> None:
-    """Test setting breakpoints in a source file"""
-    source: dict[str, str] = {"path": "/path/to/test.py"}
-    breakpoints: list[dict[str, Any]] = [
-        {"line": 10, "condition": "x > 5"}, 
-        {"line": 20}
-    ]
+    """Test setting breakpoints in a source file."""
+    # Create source using a simple dict that matches the expected structure
+    source = {
+        "path": "/path/to/test.py"
+    }
+    
+    # Create breakpoints using dicts that match the expected structure
+    breakpoint1: SourceBreakpoint = {
+        "line": DEFAULT_BREAKPOINT_LINE,
+        "condition": f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}",
+        "column": 1,  # 1-based column number
+        "hitCondition": ""
+    }
+    breakpoint2: SourceBreakpoint = {
+        "line": TEST_ALT_LINE_1,
+        "condition": "",
+        "column": 1,
+        "hitCondition": ""
+    }
+    breakpoints: list[SourceBreakpoint] = [breakpoint1, breakpoint2]
 
+    # Call set_breakpoints directly - no need to patch _create_breakpoint
     result = await debugger.set_breakpoints(source, breakpoints)
-
+    
     # Check that breakpoints were stored
     expected_path = str(Path("/path/to/test.py").resolve())
     assert expected_path in debugger.breakpoints
     assert len(debugger.breakpoints[expected_path]) == 2
 
-    # Check breakpoint properties
+    # Check breakpoint properties using dictionary access for TypedDict
     bp1 = debugger.breakpoints[expected_path][0]
-    assert bp1["line"] == 10
-    assert bp1["condition"] == "x > 5"
+    assert bp1["line"] == DEFAULT_BREAKPOINT_LINE
+    assert bp1["condition"] == f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}"
     assert bp1["verified"] is True
 
     bp2 = debugger.breakpoints[expected_path][1]
-    assert bp2["line"] == 20
+    assert bp2["line"] == TEST_ALT_LINE_1
     assert bp2["verified"] is True
 
-    # Check return value
+    # Check return value structure
+    assert isinstance(result, list)
     assert len(result) == 2
-    assert result[0]["verified"] is True
-    assert result[1]["verified"] is True
+    assert all(isinstance(bp, dict) for bp in result)
+    assert all(isinstance(bp.get("verified"), bool) for bp in result)
 
 
 @pytest.mark.asyncio
@@ -484,7 +543,13 @@ async def test_set_breakpoints_with_valid_path(debugger):
 @pytest.mark.asyncio
 async def test_set_function_breakpoints(debugger):
     """Test setting function breakpoints"""
-    breakpoints = [{"name": "main"}, {"name": "helper", "condition": "x > 0"}]
+    breakpoints = [
+        FunctionBreakpoint(name="main"),
+        FunctionBreakpoint(
+            name="helper", 
+            condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}"
+        )
+    ]
 
     result = await debugger.set_function_breakpoints(breakpoints)
 

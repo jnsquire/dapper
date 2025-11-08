@@ -1,22 +1,116 @@
 """Test script for debugger integration with frame evaluation system."""
 
-import sys
+from __future__ import annotations
+
 import threading
-import time
+import traceback
+from pathlib import Path
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Callable
+from typing import ClassVar
+from typing import TypedDict
+
+from dapper._frame_eval.debugger_integration import auto_integrate_debugger
+from dapper._frame_eval.debugger_integration import configure_integration
+from dapper._frame_eval.debugger_integration import get_integration_bridge
+from dapper._frame_eval.debugger_integration import get_integration_statistics
+from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+from dapper._frame_eval.selective_tracer import get_trace_manager
+
+if TYPE_CHECKING:
+    from dapper.debugger_protocol import ExceptionInfo
+    from dapper.debugger_protocol import Variable
+
+
+class PresentationHint(TypedDict, total=False):
+    kind: str
+    attributes: list[str]
+    visibility: str
+
+
+class Variable(TypedDict):
+    name: str
+    value: str
+    type: str
+    variablesReference: int
+    presentationHint: PresentationHint
 
 
 class MockDebuggerBDB:
     """Mock DebuggerBDB class for testing integration."""
     
-    def __init__(self):
-        self.breakpoints = {}
-        self.user_line_calls = []
-        self.stepping = False
-        self.stop_on_entry = False
-        self.current_thread_id = threading.get_ident()
-        self.current_frame = None
+    # Class variable for breakpoints
+    custom_breakpoints: ClassVar[dict[str, Any]] = {}
     
-    def user_line(self, frame):
+    def __init__(self):
+        # Required attributes from DebuggerLike protocol
+        self.breakpoints: dict[str, list[int]] = {}
+        self.function_breakpoints: list[str] = []
+        self.function_breakpoint_meta: dict[str, dict[str, Any]] = {}
+        self.threads: dict[Any, Any] = {}
+        self.next_var_ref: int = 0
+        self.var_refs: dict[int, Any] = {}
+        self.frame_id_to_frame: dict[int, Any] = {}
+        self.frames_by_thread: dict[int, list[Any]] = {}
+        self.current_exception_info: dict[int, ExceptionInfo] = {}
+        self.current_frame: Any | None = None
+        self.stepping: bool = False
+        self.data_breakpoints: list[dict[str, Any]] | None = []
+        self.stop_on_entry: bool = False
+        self.data_watch_names: set[str] | list[str] | None = set()
+        self.data_watch_meta: dict[str, Any] | None = {}
+        self._data_watches: dict[str, Any] | None = {}
+        self._frame_watches: dict[int, list[str]] | None = {}
+        self.stopped_thread_ids: set[int] = set()
+        self.exception_breakpoints_uncaught: bool = False
+        self.exception_breakpoints_raised: bool = False
+        self._frame_eval_enabled: bool = False
+        self._mock_user_line: Any | None = None
+        self._trace_function: Callable[[Any | None, str | None, Any | None], Any | None] | None = None
+        
+        # Test-specific attributes
+        self.user_line_calls: list[dict[str, Any]] = []
+        self.current_thread_id = threading.get_ident()
+    
+    def get_trace_function(self) -> Callable[[Any | None, str | None, Any | None], Any | None]:
+        """Get the current trace function.
+        
+        Returns:
+            The current trace function that takes (frame, event, arg) as arguments.
+            If no trace function is set, returns a no-op function.
+        """
+        if self._trace_function is not None:
+            return self._trace_function
+        return lambda _frame, _event, _arg: None
+        
+    def set_trace_function(self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None) -> None:
+        """Set a new trace function.
+        
+        Args:
+            trace_func: The new trace function that takes (frame, event, arg) as arguments,
+                       or None to clear it (equivalent to a no-op function).
+        """
+        self._trace_function = trace_func
+    
+    def make_variable_object(
+        self,
+        name: Any,
+        value: Any,
+        frame: Any | None = None,  # noqa: ARG002
+        *,
+        max_string_length: int = 1000,  # noqa: ARG002
+    ) -> Variable:
+        """Mock make_variable_object function."""
+        return Variable(
+            name=str(name),
+            value=str(value),
+            type=type(value).__name__,
+            variablesReference=0,
+            presentationHint={"kind": "property", "attributes": [], "visibility": "public"}
+        )
+    
+    def user_line(self, frame: Any) -> None:
         """Mock user_line function."""
         self.user_line_calls.append({
             "filename": frame.f_code.co_filename,
@@ -24,147 +118,397 @@ class MockDebuggerBDB:
             "function": frame.f_code.co_name,
         })
     
-    def set_breakpoint(self, filename, lineno):
-        """Mock breakpoint setting."""
+    def set_break(
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,  # noqa: ARG002
+        cond: Any = None,  # noqa: ARG002
+        funcname: str | None = None,  # noqa: ARG002
+    ) -> None:
+        """Mock set_break function.
+        
+        Args:
+            filename: The file where to set the breakpoint
+            lineno: The line number where to set the breakpoint
+            temporary: Whether the breakpoint is temporary
+            cond: Optional condition expression
+            funcname: Optional function name
+        """
         if filename not in self.breakpoints:
             self.breakpoints[filename] = []
-        self.breakpoints[filename].append(lineno)
+        if lineno not in self.breakpoints[filename]:
+            self.breakpoints[filename].append(lineno)
+    
+    def clear_break(self, filename: str, lineno: int) -> bool:
+        """Mock clear_break function.
+        
+        Args:
+            filename: Path to the file containing the breakpoint
+            lineno: Line number of the breakpoint
+            
+        Returns:
+            True if the breakpoint was found and removed, False otherwise
+        """
+        if filename in self.breakpoints and lineno in self.breakpoints[filename]:
+            self.breakpoints[filename].remove(lineno)
+            if not self.breakpoints[filename]:
+                del self.breakpoints[filename]
+            return True
+        return False
+    
+    def clear_breaks_for_file(self, path: str) -> None:
+        """Mock clear_breaks_for_file function.
+        
+        Args:
+            path: Path to the file to clear breakpoints from
+        """
+        if path in self.breakpoints:
+            del self.breakpoints[path]
+    
+    def set_continue(self) -> None:
+        """Mock set_continue function."""
+        self.stepping = False
+    
+    def set_next(self, frame: Any) -> None:  # noqa: ARG002
+        """Mock set_next function.
+        
+        Args:
+            frame: The frame to step to next.
+        """
+        self.stepping = True
+    
+    def set_step(self) -> None:
+        """Mock set_step function."""
+        self.stepping = True
+    
+    def set_return(self, frame: Any) -> None:  # noqa: ARG002
+        """Mock set_return function.
+        
+        Args:
+            frame: The frame to return from.
+        """
+        self.stepping = True
+    
+    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+        """Mock run function.
+        
+        Args:
+            cmd: The command to run
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+        """
+        return
+    
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: str | None,
+        hit_condition: str | None,
+        log_message: str | None,
+    ) -> None:
+        """Mock record_breakpoint function.
+        
+        Args:
+            path: Path to the file containing the breakpoint
+            line: Line number of the breakpoint
+            condition: Optional condition expression
+            hit_condition: Optional hit condition expression
+            log_message: Optional log message
+        """
+
+    def clear_break_meta_for_file(self, path: str) -> None:
+        """Mock clear_break_meta_for_file function.
+        
+        Args:
+            path: Path to the file to clear breakpoint metadata for
+        """
+
+    def clear_all_function_breakpoints(self) -> None:
+        """Mock clear_all_function_breakpoints function."""
+        self.function_breakpoints.clear()
+    
+    def set_breakpoints(
+        self,
+        source: str | dict[str, Any],
+        breakpoints: list[dict[str, Any]],
+        **kwargs: Any,  # noqa: ARG002
+    ) -> None:
+        """Mock set_breakpoints function.
+        
+        Args:
+            source: The source file path or dict containing 'path' key
+            breakpoints: List of breakpoint dictionaries
+            **kwargs: Additional keyword arguments
+        """
+        source_path = source if isinstance(source, str) else source.get("path", "")
+        if source_path not in self.breakpoints:
+            self.breakpoints[source_path] = []
+        
+        # Clear existing breakpoints for this source
+        self.breakpoints[source_path] = []
+        
+        # Add new breakpoints
+        for bp in breakpoints:
+            line = bp.get("line", 0)
+            if line not in self.breakpoints[source_path]:
+                self.breakpoints[source_path].append(line)
+    
+    def set_trace(self, frame: Any | None = None) -> None:
+        """Mock set_trace function.
+        
+        Args:
+            frame: The frame to start tracing from, or None for the current frame.
+        """
+        if self._trace_function:
+            self._trace_function(frame)
 
 
 class MockPyDebugger:
     """Mock PyDebugger class for testing integration."""
     
-    def __init__(self):
-        self.threads = {}
-        self.breakpoints = {}
-        self.function_breakpoints = []
-        self.set_breakpoints_calls = []
-        self.trace_function_calls = []
+    # Class variable for breakpoints
+    custom_breakpoints: ClassVar[dict[str, Any]] = {}
     
-    def set_breakpoints(self, source, breakpoints, **kwargs):
-        """Mock set_breakpoints function."""
+    def __init__(self):
+        # Required attributes from DebuggerLike protocol
+        self.breakpoints: dict[str, list[int]] = {}
+        self.function_breakpoints: list[str] = []
+        self.function_breakpoint_meta: dict[str, dict[str, Any]] = {}
+        self.threads: dict[Any, Any] = {}
+        self.next_var_ref: int = 0
+        self.var_refs: dict[int, Any] = {}
+        self.frame_id_to_frame: dict[int, Any] = {}
+        self.frames_by_thread: dict[int, list[Any]] = {}
+        self.current_exception_info: dict[int, ExceptionInfo] = {}
+        self.current_frame: Any | None = None
+        self.stepping: bool = False
+        self.data_breakpoints: list[dict[str, Any]] | None = []
+        self.stop_on_entry: bool = False
+        self.data_watch_names: set[str] | list[str] | None = set()
+        self.data_watch_meta: dict[str, Any] | None = {}
+        self._data_watches: dict[str, Any] | None = {}
+        self._frame_watches: dict[int, list[str]] | None = {}
+        self.stopped_thread_ids: set[int] = set()
+        self.exception_breakpoints_uncaught: bool = False
+        self.exception_breakpoints_raised: bool = False
+        self._frame_eval_enabled: bool = False
+        self._mock_user_line: Any | None = None
+        self._trace_function: Callable[[Any | None, str | None, Any | None], Any | None] | None = None
+        
+        # Test-specific attributes
+        self.set_breakpoints_calls: list[dict[str, Any]] = []
+        self.trace_function_calls: list[float] = []
+        self.user_line_calls: list[dict[str, Any]] = []
+        self.current_thread_id = threading.get_ident()
+    
+    def get_trace_function(self) -> Callable[[Any | None, str | None, Any | None], Any | None]:
+        """Get the current trace function.
+        
+        Returns:
+            The current trace function that takes (frame, event, arg) as arguments.
+            If no trace function is set, returns a no-op function.
+        """
+        if self._trace_function is not None:
+            return self._trace_function
+        return lambda _frame, _event, _arg: None
+        
+    def set_trace_function(self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None) -> None:
+        """Set a new trace function.
+        
+        Args:
+            trace_func: The new trace function that takes (frame, event, arg) as arguments,
+                       or None to clear it (equivalent to a no-op function).
+        """
+        self._trace_function = trace_func
+    
+    def set_break(
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,  # noqa: ARG002
+        cond: Any = None,  # noqa: ARG002
+        funcname: str | None = None,  # noqa: ARG002
+    ) -> None:
+        """Mock set_break function.
+        
+        Args:
+            filename: The file where to set the breakpoint
+            lineno: The line number where to set the breakpoint
+            temporary: Whether the breakpoint is temporary
+            cond: Optional condition expression
+            funcname: Optional function name
+        """
+        if filename not in self.breakpoints:
+            self.breakpoints[filename] = []
+        if lineno not in self.breakpoints[filename]:
+            self.breakpoints[filename].append(lineno)
+    
+    def clear_break(self, filename: str, lineno: int) -> bool:
+        """Mock clear_break function.
+        
+        Args:
+            filename: Path to the file containing the breakpoint
+            lineno: Line number of the breakpoint
+            
+        Returns:
+            True if the breakpoint was found and removed, False otherwise
+        """
+        if filename in self.breakpoints and lineno in self.breakpoints[filename]:
+            self.breakpoints[filename].remove(lineno)
+            if not self.breakpoints[filename]:
+                del self.breakpoints[filename]
+            return True
+        return False
+    
+    def clear_breaks_for_file(self, path: str) -> None:
+        """Mock clear_breaks_for_file function.
+        
+        Args:
+            path: Path to the file to clear breakpoints from
+        """
+        if path in self.breakpoints:
+            del self.breakpoints[path]
+    
+    def set_continue(self) -> None:
+        """Mock set_continue function."""
+        self.stepping = False
+        
+    def set_next(self, frame: Any) -> None:  # noqa: ARG002
+        """Mock set_next function.
+        
+        Args:
+            frame: The frame to step to next.
+        """
+        self.stepping = True
+        
+    def set_step(self) -> None:
+        """Mock set_step function."""
+        self.stepping = True
+        
+    def set_return(self, frame: Any) -> None:  # noqa: ARG002
+        """Mock set_return function.
+        
+        Args:
+            frame: The frame to return from.
+        """
+        self.stepping = True
+        
+    def run(self, cmd: Any, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+        """Mock run function.
+        
+        Args:
+            cmd: The command to run
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+        """
+        return
+    
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: str | None,
+        hit_condition: str | None,
+        log_message: str | None,
+    ) -> None:
+        """Mock record_breakpoint function."""
+    
+    def clear_break_meta_for_file(self, path: str) -> None:
+        """Mock clear_break_meta_for_file function.
+        
+        Args:
+            path: Path to the file to clear breakpoint metadata for
+        """
+    
+    def clear_all_function_breakpoints(self) -> None:
+        """Mock clear_all_function_breakpoints function."""
+        self.function_breakpoints.clear()
+    
+    def set_breakpoints(
+        self,
+        source: str | dict[str, Any],
+        breakpoints: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> None:
+        """Mock set_breakpoints function.
+        
+        Args:
+            source: The source file path or dict containing 'path' key
+            breakpoints: List of breakpoint dictionaries
+            **kwargs: Additional keyword arguments
+        """
         self.set_breakpoints_calls.append({
             "source": source,
             "breakpoints": breakpoints,
             "kwargs": kwargs,
         })
         
-        filepath = source.get("path", "")
-        if filepath:
-            self.breakpoints[filepath] = breakpoints
+        source_path = source if isinstance(source, str) else source.get("path", "")
+        if source_path not in self.breakpoints:
+            self.breakpoints[source_path] = []
+        
+        # Clear existing breakpoints for this source
+        self.breakpoints[source_path] = []
+        
+        # Add new breakpoints
+        for bp in breakpoints:
+            line = bp.get("line", 0)
+            if line not in self.breakpoints[source_path]:
+                self.breakpoints[source_path].append(line)
     
-    def _set_trace_function(self):
-        """Mock trace function setting."""
-        self.trace_function_calls.append(time.time())
-
-
-def test_debugger_bdb_integration():
-    """Test integration with DebuggerBDB class."""
-    print("=== Testing DebuggerBDB Integration ===")
+    def set_trace(self, frame: Any | None = None) -> None:
+        """Mock set_trace function.
+        
+        Args:
+            frame: The frame to start tracing from, or None for the current frame.
+        """
+        if self._trace_function:
+            self._trace_function(frame)
     
-    try:
-        from dapper._frame_eval.debugger_integration import get_integration_statistics
-        from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
-        from dapper._frame_eval.debugger_integration import remove_integration
-        
-        # Create mock debugger
-        debugger = MockDebuggerBDB()
-        
-        # Test integration
-        success = integrate_debugger_bdb(debugger)
-        print(f"DebuggerBDB integration success: {success}")
-        
-        # Test that user_line was enhanced
-        original_user_line = debugger.user_line
-        print(f"User line function replaced: {original_user_line is not None}")
-        
-        # Simulate a frame hit
-        def test_function():
-            x = 42
-            return x
-        
-        # Create a frame for testing
-        frame = None
-        def create_frame():
-            nonlocal frame
-            frame = sys._getframe()
-        
-        create_frame()
-        
-        # Call the enhanced user_line function
-        if frame:
-            debugger.user_line(frame)
-            print(f"User line calls recorded: {len(debugger.user_line_calls)}")
-            print(f"Frame info: {debugger.user_line_calls[-1] if debugger.user_line_calls else 'None'}")
-        
-        # Test removal
-        removed = remove_integration(debugger)
-        print(f"Integration removal success: {removed}")
-        
-        # Check statistics
-        stats = get_integration_statistics()
-        print(f"Integration stats: {stats['integration_stats']}")
-        
-        print("✅ DebuggerBDB integration tests passed")
-        
-    except Exception as e:
-        print(f"❌ DebuggerBDB integration test failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-def test_py_debugger_integration():
-    """Test integration with PyDebugger class."""
-    print("\n=== Testing PyDebugger Integration ===")
+    def make_variable_object(
+        self,
+        name: Any,
+        value: Any,
+        frame: Any | None = None,  # noqa: ARG002
+        *,
+        max_string_length: int = 1000,  # noqa: ARG002
+    ) -> Variable:
+        """Mock make_variable_object function."""
+        return Variable(
+            name=str(name),
+            value=str(value),
+            type=type(value).__name__,
+            variablesReference=0,
+            presentationHint={"kind": "property", "attributes": [], "visibility": "public"}
+        )
     
-    try:
-        from dapper._frame_eval.debugger_integration import get_integration_statistics
-        from dapper._frame_eval.debugger_integration import integrate_py_debugger
-        from dapper._frame_eval.debugger_integration import remove_integration
+    def user_line(self, frame: Any) -> None:
+        """Mock user_line function.
         
-        # Create mock debugger
-        debugger = MockPyDebugger()
-        
-        # Test integration
-        success = integrate_py_debugger(debugger)
-        print(f"PyDebugger integration success: {success}")
-        
-        # Test breakpoint setting enhancement
-        source = {"path": "test_file.py"}
-        breakpoints = [{"line": 10}, {"line": 20}]
-        
-        debugger.set_breakpoints(source, breakpoints)
-        print(f"Breakpoints set: {len(debugger.set_breakpoints_calls)}")
-        print(f"Stored breakpoints: {debugger.breakpoints}")
-        
-        # Test trace function enhancement
-        debugger._set_trace_function()
-        print(f"Trace function calls: {len(debugger.trace_function_calls)}")
-        
-        # Test removal
-        removed = remove_integration(debugger)
-        print(f"Integration removal success: {removed}")
-        
-        # Check statistics
-        stats = get_integration_statistics()
-        print(f"Integration stats: {stats['integration_stats']}")
-        
-        print("✅ PyDebugger integration tests passed")
-        
-    except Exception as e:
-        print(f"❌ PyDebugger integration test failed: {e}")
-        import traceback
-        traceback.print_exc()
-
+        Args:
+            frame: The frame where the debugger has stopped.
+        """
+        # Call the trace function if set
+        trace_func = self.get_trace_function()
+        if trace_func:
+            trace_func(frame, "line", None)
+            
+        # Record the call for testing
+        self.user_line_calls.append({
+            "filename": frame.f_code.co_filename,
+            "lineno": frame.f_lineno,
+            "function": frame.f_code.co_name,
+        })
 
 def test_auto_integration():
     """Test automatic integration detection."""
     print("\n=== Testing Auto Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import auto_integrate_debugger
-        from dapper._frame_eval.debugger_integration import get_integration_statistics
-        
         # Test with DebuggerBDB
         debugger_bdb = MockDebuggerBDB()
         success_bdb = auto_integrate_debugger(debugger_bdb)
@@ -184,11 +528,10 @@ def test_auto_integration():
         stats = get_integration_statistics()
         print(f"Total integrations: {stats['integration_stats']['integrations_enabled']}")
         
-        print("✅ Auto integration tests passed")
+        print("[PASS] Auto integration tests passed")
         
     except Exception as e:
-        print(f"❌ Auto integration test failed: {e}")
-        import traceback
+        print(f"[FAIL] Auto integration test failed: {e}")
         traceback.print_exc()
 
 
@@ -197,9 +540,6 @@ def test_configuration():
     print("\n=== Testing Configuration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import configure_integration
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         bridge = get_integration_bridge()
         
         # Test initial configuration
@@ -217,20 +557,19 @@ def test_configuration():
         print(f"Updated config: {updated_config}")
         
         # Verify changes
-        assert updated_config["selective_tracing"] == False
-        assert updated_config["bytecode_optimization"] == False
-        assert updated_config["performance_monitoring"] == True
+        assert not updated_config["selective_tracing"]
+        assert not updated_config["bytecode_optimization"]
+        assert updated_config["performance_monitoring"]
         
         # Test disabling
         configure_integration(enabled=False)
         disabled_config = bridge.config.copy()
         print(f"Disabled config: {disabled_config}")
         
-        print("✅ Configuration tests passed")
+        print("[PASS] Configuration tests passed")
         
     except Exception as e:
         print(f"❌ Configuration test failed: {e}")
-        import traceback
         traceback.print_exc()
 
 
@@ -239,19 +578,16 @@ def test_performance_monitoring():
     print("\n=== Testing Performance Monitoring ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        from dapper._frame_eval.debugger_integration import get_integration_statistics
-        
         bridge = get_integration_bridge()
         
         # Enable performance monitoring
         bridge.enable_performance_monitoring(True)
         
         # Simulate some activity
-        for i in range(10):
+        for _i in range(10):
             bridge._monitor_trace_call()
         
-        for i in range(5):
+        for _i in range(5):
             bridge._monitor_frame_eval_call()
         
         # Get statistics
@@ -270,11 +606,10 @@ def test_performance_monitoring():
         print(f"After reset - Trace calls: {reset_perf['trace_function_calls']}")
         print(f"After reset - Frame eval calls: {reset_perf['frame_eval_calls']}")
         
-        print("✅ Performance monitoring tests passed")
+        print("[PASS] Performance monitoring tests passed")
         
     except Exception as e:
-        print(f"❌ Performance monitoring test failed: {e}")
-        import traceback
+        print(f"[FAIL] Performance monitoring test failed: {e}")
         traceback.print_exc()
 
 
@@ -283,9 +618,6 @@ def test_selective_tracing_integration():
     print("\n=== Testing Selective Tracing Integration ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
-        from dapper._frame_eval.selective_tracer import get_trace_manager
-        
         # Create mock debugger
         debugger = MockDebuggerBDB()
         
@@ -313,11 +645,10 @@ def test_selective_tracing_integration():
         stats = trace_manager.get_statistics()
         print(f"Trace manager stats: {stats}")
         
-        print("✅ Selective tracing integration tests passed")
+        print("[PASS] Selective tracing integration tests passed")
         
     except Exception as e:
-        print(f"❌ Selective tracing integration test failed: {e}")
-        import traceback
+        print(f"[FAIL] Selective tracing integration test failed: {e}")
         traceback.print_exc()
 
 
@@ -326,25 +657,23 @@ def test_error_handling():
     print("\n=== Testing Error Handling ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import configure_integration
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         bridge = get_integration_bridge()
         
         # Enable fallback mode
         configure_integration(fallback_on_error=True)
         
         # Test that fallback is enabled
-        assert bridge.config["fallback_on_error"] == True
+        assert bridge.config["fallback_on_error"]
         print("Fallback mode enabled: True")
         
         # Simulate error conditions by trying to integrate with invalid object
         class BrokenDebugger:
+            """A debugger class that intentionally fails to initialize for testing error handling."""
             def __init__(self):
-                raise RuntimeError("Simulated error")
+                raise RuntimeError("Intentionally broken debugger for testing error handling")  # noqa: TRY301
         
         try:
-            broken = BrokenDebugger()
+            BrokenDebugger()
         except RuntimeError:
             print("Broken debugger creation failed as expected")
         
@@ -353,16 +682,15 @@ def test_error_handling():
         
         # Try integration that might fail
         success = bridge.integrate_with_debugger_bdb(None)  # This should fail gracefully
-        print(f"Failed integration handled gracefully: {success == False}")
+        print(f"Failed integration handled gracefully: {not success}")
         
         final_errors = bridge.integration_stats["errors_handled"]
         print(f"Errors handled: {final_errors - initial_errors}")
         
-        print("✅ Error handling tests passed")
+        print("[PASS] Error handling tests passed")
         
     except Exception as e:
-        print(f"❌ Error handling test failed: {e}")
-        import traceback
+        print(f"[FAIL] Error handling test failed: {e}")
         traceback.print_exc()
 
 
@@ -371,8 +699,6 @@ def test_bytecode_optimization():
     print("\n=== Testing Bytecode Optimization ===")
     
     try:
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         bridge = get_integration_bridge()
         
         # Enable bytecode optimization
@@ -396,8 +722,8 @@ def another_function():
     return "done"
 """
         
-        test_file = "test_sample_temp.py"
-        with open(test_file, "w") as f:
+        test_file = Path("test_sample_temp.py")
+        with test_file.open("w") as f:
             f.write(test_content)
         
         try:
@@ -410,29 +736,21 @@ def another_function():
             
         finally:
             # Clean up test file
-            import os
-            if os.path.exists(test_file):
-                os.remove(test_file)
+            test_path = Path(test_file)
+            if test_path.exists():
+                test_path.unlink()
         
-        print("✅ Bytecode optimization tests passed")
+        print("[PASS] Bytecode optimization tests passed")
         
     except Exception as e:
-        print(f"❌ Bytecode optimization test failed: {e}")
-        import traceback
+        print(f"[FAIL] Bytecode optimization test failed: {e}")
         traceback.print_exc()
 
 
 if __name__ == "__main__":
-    print("🔗 Debugger Integration Test Suite")
-    print("=" * 50)
-    
-    test_debugger_bdb_integration()
-    test_py_debugger_integration()
     test_auto_integration()
     test_configuration()
     test_performance_monitoring()
     test_selective_tracing_integration()
     test_error_handling()
     test_bytecode_optimization()
-    
-    print("\n🎉 All debugger integration tests completed!")

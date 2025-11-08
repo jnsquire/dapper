@@ -139,12 +139,43 @@ async def test_port_future_resolves_when_server_created(monkeypatch):
     monkeypatch.setattr(adapter_thread_mod, "TCPServerConnection", _FakeTCPConnection)
     monkeypatch.setattr(adapter_thread_mod, "DebugAdapterServer", _FakeServer)
 
+    port_future = asyncio.Future()
+    
+    def on_port_assigned(port):
+        if not port_future.done():
+            port_future.set_result(port)
+    
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", port=None)
-
-    runner.start()
-
-    port = await _wait_for_port(runner)
-
-    # Future should resolve to 55555 after the adapter thread starts listening
-    assert port == 55555
-    runner.stop()
+    runner.on_port_assigned.add_listener(on_port_assigned)
+    
+    try:
+        runner.start()
+        port = await asyncio.wait_for(port_future, timeout=5.0)
+        assert port == 55555, f"Expected port 55555, got {port}"
+    except asyncio.TimeoutError:
+        server = runner.server
+        port = getattr(server.connection, "port", None) if server else None
+        pytest.fail(f"Timeout waiting for port assignment. Port: {port}")
+    finally:
+        if hasattr(runner, "on_port_assigned"):
+            runner.on_port_assigned.remove_listener(on_port_assigned)
+        
+        if hasattr(runner, "stop"):
+            try:
+                runner.stop(join=True, timeout=1.0)
+            except Exception:
+                # If stop fails, try to clean up resources directly
+                if hasattr(runner, "_thread") and runner._thread is not None:
+                    runner._thread.join(timeout=0.5)
+                if hasattr(runner, "_loop") and runner._loop is not None and not runner._loop.is_closed():
+                    runner._loop.call_soon_threadsafe(runner._loop.stop)
+            
+            # Clear any references to help with garbage collection
+            if hasattr(runner, "_thread"):
+                runner._thread = None
+            if hasattr(runner, "_loop"):
+                runner._loop = None
+        
+        # Cancel the future if it's still pending
+        if not port_future.done():
+            port_future.cancel()

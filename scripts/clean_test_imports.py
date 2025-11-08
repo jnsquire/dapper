@@ -1,5 +1,6 @@
 """Script to clean up sys.path manipulation in test files."""
 
+import argparse
 import re
 from pathlib import Path
 
@@ -32,7 +33,7 @@ def remove_sys_path_manipulation(content: str) -> tuple[str, bool]:
         
         # Skip docstrings and comments
         stripped = line.strip()
-        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+        if stripped.startswith(("#", '"""', "'''")):
             new_lines.append(line)
             i += 1
             continue
@@ -77,15 +78,16 @@ def process_file(file_path: Path, dry_run: bool = True) -> tuple[bool, str]:
             if not dry_run:
                 file_path.write_text(new_content, encoding="utf-8")
             return True, content
-        return False, ""
     except Exception as e:
         error_msg = f"Error processing {file_path}: {e}"
         print(error_msg)
         return False, error_msg
+    else:
+        return False, ""
 
 def show_diff(original: str, modified: str, file_path: Path) -> None:
     """Show a diff between original and modified content."""
-    from difflib import unified_diff
+    from difflib import unified_diff  # noqa: PLC0415
     
     original_lines = original.splitlines(keepends=True)
     modified_lines = modified.splitlines(keepends=True)
@@ -101,8 +103,6 @@ def show_diff(original: str, modified: str, file_path: Path) -> None:
     print("".join(diff))
 
 def main():
-    import argparse
-    
     parser = argparse.ArgumentParser(description="Clean up sys.path manipulation in test files.")
     parser.add_argument("--apply", action="store_true", help="Apply the changes (default: dry run)")
     args = parser.parse_args()

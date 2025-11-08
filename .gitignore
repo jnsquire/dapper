@@ -42,3 +42,6 @@ debug_adapter.log
 
 # docs
 site/
+
+vscode/extension/node_modules
+vscode/extension/out

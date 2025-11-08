@@ -7,12 +7,17 @@ and integration with Dapper's existing debugging infrastructure.
 
 from __future__ import annotations
 
+# Standard library imports
 import importlib.resources
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
 from typing import TypedDict
+
+# Local application imports
+from dapper._frame_eval.cache_manager import get_breakpoints
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -21,7 +26,6 @@ if TYPE_CHECKING:
     import os
     from types import CodeType
     from types import FrameType
-    from typing import Callable
 
 
 class FrameInfo(TypedDict):
@@ -149,8 +153,21 @@ class FrameEvaluator:
     """Evaluates frames to determine if they should be traced."""
     
     def __init__(self, config: FrameTracingConfig, path_handler: PathHandler):
-        self.config = config
+        self._config = config
         self.path_handler = path_handler
+        
+    @property
+    def config(self) -> FrameTracingConfig:
+        """Get the current configuration."""
+        return self._config
+        
+    def update_config(self, new_config: FrameTracingConfig) -> None:
+        """Update the configuration.
+        
+        Args:
+            new_config: New configuration to use
+        """
+        self._config = new_config
     
     def should_skip_frame(self, frame: FrameType) -> bool:
         """
@@ -218,11 +235,12 @@ class CodeWrapper:
         if self._template is None:
             try:
                 # Load from package resources
-                template_bytes = importlib.resources.files("dapper._frame_eval.resources.templates").joinpath("frame_wrapper.py").read_bytes()
+                template_bytes = importlib.resources.files("dapper._frame_eval.resources.templates").joinpath("frame_wrapper.py.template").read_bytes()
                 self._template = template_bytes.decode("utf-8")
             except Exception as exc:
+                msg = f"Failed to load frame evaluation template: {exc}"
                 raise RuntimeError(
-                    f"Failed to load frame evaluation template: {exc}"
+                    msg
                 ) from exc
         return self._template
     
@@ -236,9 +254,7 @@ class CodeWrapper:
         Returns:
             str: Python code string for the wrapper
         """
-        global _breakpoint_wrapper_template
         template = self._get_template()
-        _breakpoint_wrapper_template = template
         return template.format(line=line)
 
 
@@ -274,8 +290,7 @@ class CacheManager:
 
 # Global instances for backward compatibility
 _path_handler = PathHandler()
-_config = FrameTracingConfig()
-_evaluator = FrameEvaluator(_config, _path_handler)
+_evaluator = FrameEvaluator(FrameTracingConfig(), _path_handler)  # Initialize with default config
 _code_wrapper = CodeWrapper()
 _cache_manager = CacheManager()
 
@@ -448,10 +463,13 @@ def get_breakpoint_lines_for_file(filename: str) -> set[int]:
         filename: The filename to get breakpoints for
         
     Returns:
-        Set[int]: Set of line numbers with breakpoints
+        Set of line numbers with breakpoints. Returns an empty set if no breakpoints are set.
     """
-    # This would be implemented to query the actual breakpoints
-    return set()
+    # Try to get breakpoints from the cache
+    breakpoints = get_breakpoints(filename)
+    
+    # Return breakpoints if found, otherwise return an empty set
+    return set(breakpoints) if breakpoints is not None else set()
 
 
 def optimize_code_for_debugging(code_obj: type) -> type:
@@ -479,12 +497,12 @@ def setup_frame_tracing(config: dict[str, Any]) -> bool:
     Returns:
         bool: True if setup was successful
     """
-    global _tracing_enabled, _config, _evaluator
+    global _tracing_enabled, _evaluator  # noqa: PLW0602, PLW0603
     
     try:
-        _config = FrameTracingConfig.from_dict(config)
-        _evaluator = FrameEvaluator(_config, _path_handler)
-        _tracing_enabled = _config.enabled
+        # Update evaluator with new config
+        _evaluator.update_config(FrameTracingConfig.from_dict(config))
+        _tracing_enabled = _evaluator.config.enabled
         
         # Set up any additional configuration
         if _tracing_enabled:
@@ -498,7 +516,7 @@ def setup_frame_tracing(config: dict[str, Any]) -> bool:
 
 def cleanup_frame_tracing() -> None:
     """Clean up frame tracing state."""
-    global _tracing_enabled, _trace_function_cache
+    global _tracing_enabled  # noqa: PLW0603
     
     # Reset tracing state
     _tracing_enabled = False

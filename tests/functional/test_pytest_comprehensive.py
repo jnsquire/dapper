@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """Comprehensive pytest-style tests for the complete frame evaluation system."""
 
-# Standard library imports
-import os
 import sys
 import tempfile
 import threading
+from pathlib import Path
 from unittest.mock import Mock
 
-# Third-party imports
 import pytest
 
-# Local application imports
+from dapper._frame_eval.cache_manager import BreakpointCache
+from dapper._frame_eval.cache_manager import cleanup_caches
+from dapper._frame_eval.cache_manager import clear_all_caches
+from dapper._frame_eval.cache_manager import get_cache_statistics
+from dapper._frame_eval.cache_manager import get_func_code_info
+from dapper._frame_eval.cache_manager import get_thread_info
+from dapper._frame_eval.cache_manager import remove_func_code_info
+from dapper._frame_eval.cache_manager import set_func_code_info
+from dapper._frame_eval.debugger_integration import auto_integrate_debugger
+from dapper._frame_eval.debugger_integration import configure_integration
+from dapper._frame_eval.debugger_integration import get_integration_bridge
 from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
+from dapper._frame_eval.selective_tracer import SelectiveTraceDispatcher
 from dapper._frame_eval.selective_tracer import get_trace_manager
 
 
@@ -20,9 +29,6 @@ class TestCacheManager:
     """Test suite for cache manager functionality."""
     def test_func_code_cache_operations(self):
         """Test function code cache set/get/remove operations."""
-        from dapper._frame_eval.cache_manager import get_func_code_info
-        from dapper._frame_eval.cache_manager import remove_func_code_info
-        from dapper._frame_eval.cache_manager import set_func_code_info
         
         def test_func():
             return 42
@@ -42,7 +48,6 @@ class TestCacheManager:
         assert get_func_code_info(code_obj) is None
     def test_thread_info_recursion_tracking(self):
         """Test thread info recursion depth tracking."""
-        from dapper._frame_eval.cache_manager import get_thread_info
         
         thread_info = get_thread_info()
         initial_depth = thread_info.recursion_depth
@@ -58,7 +63,6 @@ class TestCacheManager:
         assert thread_info.inside_frame_eval == initial_eval
     def test_breakpoint_cache_with_real_file(self):
         """Test breakpoint cache with actual file operations."""
-        from dapper._frame_eval.cache_manager import BreakpointCache
         
         # Create temporary file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -79,10 +83,9 @@ class TestCacheManager:
             assert cache.get_breakpoints(test_file) is None
             
         finally:
-            os.unlink(test_file)
+            Path(test_file).unlink()
     def test_cache_statistics_structure(self):
         """Test cache statistics return proper structure."""
-        from dapper._frame_eval.cache_manager import get_cache_statistics
         
         stats = get_cache_statistics()
         
@@ -100,9 +103,6 @@ class TestCacheManager:
         assert isinstance(func_stats["hit_rate"], (int, float))
         
         # Test that cache is actually working by doing some operations
-        from dapper._frame_eval.cache_manager import get_func_code_info
-        from dapper._frame_eval.cache_manager import set_func_code_info
-        
         def test_func():
             return 42
         
@@ -111,7 +111,7 @@ class TestCacheManager:
         
         # Set and get to generate cache activity
         set_func_code_info(code_obj, test_info)
-        retrieved = get_func_code_info(code_obj)
+        get_func_code_info(code_obj)
         
         # Now check stats again
         updated_stats = get_cache_statistics()
@@ -139,15 +139,13 @@ class TestSelectiveTracer:
         assert analyzer._should_track_file("dapper/_frame_eval/cache.py") is False
     def test_trace_manager_lifecycle(self):
         """Test trace manager enable/disable lifecycle."""
-        from dapper._frame_eval.selective_tracer import get_trace_manager
-        
         manager = get_trace_manager()
         
         # Test initial state
         initial_state = manager.is_enabled()
         
         # Test enable/disable
-        def dummy_trace(frame, event, arg):
+        def dummy_trace(_frame, _event, _arg):
             return None
         
         manager.enable_selective_tracing(dummy_trace)
@@ -187,7 +185,6 @@ class TestSelectiveTracer:
         assert cleared == set()  # Should return empty set, not None
     def test_trace_function_dispatch(self):
         """Test trace function dispatch logic."""
-        from dapper._frame_eval.selective_tracer import SelectiveTraceDispatcher
         
         dispatcher = SelectiveTraceDispatcher()
         mock_trace = Mock()
@@ -197,8 +194,7 @@ class TestSelectiveTracer:
         
         # Create a frame for testing
         def test_func():
-            x = 42
-            return x
+            return 42
         
         frame = None
         def create_frame():
@@ -219,12 +215,10 @@ class TestSelectiveTracer:
             # Result depends on frame analysis, but should not crash
     def test_performance_optimization(self):
         """Test that selective tracing provides performance optimization."""
-        from dapper._frame_eval.selective_tracer import get_trace_manager
-        
         manager = get_trace_manager()
         
         # Get initial stats
-        initial_stats = manager.get_statistics()
+        manager.get_statistics()
         
         # Check that optimization structure is correct
         final_stats = manager.get_statistics()
@@ -239,8 +233,6 @@ class TestDebuggerIntegration:
     """Test suite for debugger integration functionality."""
     def test_integration_bridge_creation(self):
         """Test integration bridge creation and configuration."""
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         bridge = get_integration_bridge()
         assert bridge is not None
         assert isinstance(bridge.config, dict)
@@ -248,19 +240,42 @@ class TestDebuggerIntegration:
         assert "selective_tracing" in bridge.config
     def test_auto_integration_detection(self):
         """Test automatic integration detection for different debugger types."""
-        from dapper._frame_eval.debugger_integration import auto_integrate_debugger
         
         # Mock DebuggerBDB
         class MockDebuggerBDB:
             def __init__(self):
-                self.user_line = lambda frame: None
+                self.user_line = lambda _frame: None
                 self.breakpoints = {}
+                self._trace_function = None
+            
+            def get_trace_function(self):
+                """Get the current trace function."""
+                if self._trace_function is not None:
+                    return self._trace_function
+                return lambda _frame, _event, _arg: None
+            
+            def set_trace_function(self, trace_func):
+                """Set the trace function."""
+                self._trace_function = trace_func
         
         # Mock PyDebugger
         class MockPyDebugger:
             def __init__(self):
-                self.set_breakpoints = lambda source, bps, **kwargs: None
                 self.threads = {}
+                self._trace_function = None
+            
+            def set_breakpoints(self, _source, _bps, **_kwargs):
+                pass
+            
+            def get_trace_function(self):
+                """Get the current trace function."""
+                if self._trace_function is not None:
+                    return self._trace_function
+                return lambda _frame, _event, _arg: None
+            
+            def set_trace_function(self, trace_func):
+                """Set the trace function."""
+                self._trace_function = trace_func
         
         # Test detection
         mock_bdb = MockDebuggerBDB()
@@ -273,7 +288,6 @@ class TestDebuggerIntegration:
         assert auto_integrate_debugger(object()) is False
     def test_configuration_management(self):
         """Test configuration updates and validation."""
-        from dapper._frame_eval.debugger_integration import configure_integration
         
         # Test configuration updates
         configure_integration(
@@ -282,7 +296,6 @@ class TestDebuggerIntegration:
             performance_monitoring=True
         )
         
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
         bridge = get_integration_bridge()
         
         assert bridge.config["selective_tracing"] is False
@@ -294,16 +307,14 @@ class TestDebuggerIntegration:
         assert bridge.config["enabled"] is False
     def test_performance_monitoring(self):
         """Test performance monitoring and statistics."""
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         bridge = get_integration_bridge()
         bridge.enable_performance_monitoring(True)
         
         # Simulate activity
-        for i in range(10):
+        for _i in range(10):
             bridge._monitor_trace_call()
         
-        for i in range(5):
+        for _i in range(5):
             bridge._monitor_frame_eval_call()
         
         # Check statistics
@@ -321,9 +332,6 @@ class TestDebuggerIntegration:
         assert reset_stats["performance_data"]["frame_eval_calls"] == 0
     def test_error_handling_and_fallback(self):
         """Test error handling and fallback mechanisms."""
-        from dapper._frame_eval.debugger_integration import configure_integration
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        
         # Enable fallback mode
         configure_integration(fallback_on_error=True)
         
@@ -331,7 +339,7 @@ class TestDebuggerIntegration:
         assert bridge.config["fallback_on_error"] is True
         
         # Test that integration handles errors gracefully
-        initial_errors = bridge.integration_stats["errors_handled"]
+        bridge.integration_stats["errors_handled"]
         
         # Try integration that should fail gracefully
         result = bridge.integrate_with_debugger_bdb(None)
@@ -345,12 +353,7 @@ class TestDebuggerIntegration:
 class TestSystemIntegration:
     """Test suite for overall system integration."""
     def test_cross_component_integration(self):
-        """Test integration between cache, tracer, and debugger components."""
-        from dapper._frame_eval.cache_manager import get_cache_statistics
-        from dapper._frame_eval.debugger_integration import get_integration_bridge
-        from dapper._frame_eval.selective_tracer import get_trace_manager
-        
-        # All components should be importable and functional
+        """Test integration between cache, tracer, and debugger components."""        
         cache_stats = get_cache_statistics()
         trace_manager = get_trace_manager()
         integration_bridge = get_integration_bridge()
@@ -367,9 +370,6 @@ class TestSystemIntegration:
         assert isinstance(final_stats, dict)
     def test_thread_safety(self):
         """Test thread safety of the frame evaluation system."""
-        from dapper._frame_eval.cache_manager import get_thread_info
-        from dapper._frame_eval.selective_tracer import get_trace_manager
-        
         results = []
         errors = []
         
@@ -405,10 +405,6 @@ class TestSystemIntegration:
 
     def test_cache_cleanup(self):
         """Test memory cleanup and resource management."""
-        from dapper._frame_eval.cache_manager import cleanup_caches
-        from dapper._frame_eval.cache_manager import clear_all_caches
-        from dapper._frame_eval.cache_manager import get_cache_statistics
-        
         # Clear all caches
         clear_all_caches()
         
@@ -451,13 +447,12 @@ def temp_python_file():
     yield temp_file
     
     # Cleanup
-    if os.path.exists(temp_file):
-        os.unlink(temp_file)
+    temp_path = Path(temp_file)
+    if temp_path.exists():
+        temp_path.unlink()
 
 def test_with_fixture(temp_python_file):
     """Test using pytest fixture."""
-    from dapper._frame_eval.cache_manager import BreakpointCache
-    
     cache = BreakpointCache(max_entries=10)
     breakpoints = {1, 2, 3}
     

@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
 from typing import TypedDict
 from typing import cast
 
@@ -122,6 +123,27 @@ class SessionState:
         self.next_source_ref = itertools.count(1)
 
         self._initialized = True
+
+        # ------------------------------------------------------------------
+        # Process-level hooks for termination and exec behavior
+        # ------------------------------------------------------------------
+        # These provide injectable hooks so tests can override process-level
+        # behavior (for example, to raise SystemExit rather than terminating
+        # the process). Defaults preserve prior behavior.
+        # - exit_func(code: int) -> Any: invoked when code wants to terminate
+        #   the process. Default: os._exit
+        # - exec_func(path: str, args: list[str]) -> Any: invoked to replace
+        #   the current process image. Default: os.execv
+        self.exit_func: Callable[[int], Any] = os._exit
+        self.exec_func: Callable[[str, list[str]], Any] = os.execv
+
+    def set_exit_func(self, fn: Callable[[int], Any]) -> None:
+        """Set a custom exit function for the session."""
+        self.exit_func = fn
+
+    def set_exec_func(self, fn: Callable[[str, list[str]], Any]) -> None:
+        """Set a custom exec function for the session."""
+        self.exec_func = fn
 
     # ------------------------------------------------------------------
     # Command provider registration and dispatch

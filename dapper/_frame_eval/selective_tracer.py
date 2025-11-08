@@ -8,38 +8,69 @@ by avoiding unnecessary trace function calls on frames without breakpoints.
 
 from __future__ import annotations
 
+import dis
 import threading
 from collections import defaultdict
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
-from typing import Dict
-from typing import Optional
-from typing import Set
+from typing import Protocol
+from typing import TypedDict
+
+from dapper._frame_eval.cache_manager import get_breakpoints
+from dapper._frame_eval.cache_manager import invalidate_breakpoints
+from dapper._frame_eval.cache_manager import set_breakpoints
+
+
+class ThreadInfo(Protocol):
+    """Protocol defining the interface for thread information objects."""
+    fully_initialized: bool
+    step_mode: bool
+    
+    def should_skip_frame(self, filename: str) -> bool:
+        """Determine if a frame should be skipped based on its filename."""
+        ...
 
 if TYPE_CHECKING:
     from types import FrameType
-
-    from typing_extensions import TypedDict
 else:
     try:
         from typing_extensions import TypedDict
     except ImportError:
         from typing import TypedDict
 
-# Import our cache system
-from .cache_manager import get_breakpoints
-from .cache_manager import get_thread_info
-from .cache_manager import invalidate_breakpoints
-from .cache_manager import set_breakpoints
+
+# Import frame evaluation functions if available
+try:
+    from dapper._frame_eval._frame_evaluator import (
+        get_thread_info,  # type: ignore[import-not-found]
+    )
+except ImportError:
+    # Fallback implementation for when C extensions are not available
+    class _FallbackThreadInfo:
+        """Fallback implementation of ThreadInfo protocol."""
+        fully_initialized: bool = False
+        step_mode: bool = False
+        
+        def should_skip_frame(self, _filename: str) -> bool:
+            """Never skip frames in fallback mode.
+            
+            Args:
+                _filename: The filename to check (unused in fallback)
+            """
+            return False
+    
+    def get_thread_info() -> _FallbackThreadInfo:
+        """Get thread information with fallback implementation."""
+        return _FallbackThreadInfo()
 
 
 class TraceDecision(TypedDict):
     """TypedDict for trace decision results."""
     should_trace: bool
     reason: str
-    breakpoint_lines: Set[int]
-    frame_info: Dict[str, Any]
+    breakpoint_lines: set[int]
+    frame_info: dict[str, Any]
 
 
 class FrameTraceAnalyzer:
@@ -60,6 +91,50 @@ class FrameTraceAnalyzer:
             "fast_path_hits": 0,
         }
     
+    def _create_trace_decision(
+        self,
+        should_trace: bool,
+        reason: str,
+        frame_info: dict[str, Any],
+        breakpoint_lines: set[int] | None = None,
+        update_stats: bool = False
+    ) -> TraceDecision:
+        """Helper to create a TraceDecision with consistent defaults."""
+        if update_stats and should_trace:
+            self._stats["traced_frames"] += 1
+        
+        return TraceDecision(
+            should_trace=should_trace,
+            reason=reason,
+            breakpoint_lines=breakpoint_lines or set(),
+            frame_info=frame_info,
+        )
+    
+    def _check_skip_frame(self, frame: FrameType) -> TraceDecision | None:
+        """Check if frame should be skipped based on thread info."""
+        thread_info = get_thread_info()
+        if hasattr(thread_info, "should_skip_frame") and thread_info.should_skip_frame(frame.f_code.co_filename):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="thread_skip_frame",
+                frame_info=self._get_frame_info(frame)
+            )
+        return None
+    
+    def _handle_no_breakpoints(self, filename: str, frame_info: dict[str, Any]) -> TraceDecision:
+        """Handle case when no breakpoints are found for a file."""
+        if self._should_track_file(filename):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="no_breakpoints_in_file",
+                frame_info=frame_info
+            )
+        return self._create_trace_decision(
+            should_trace=False,
+            reason="file_not_tracked",
+            frame_info=frame_info
+        )
+    
     def should_trace_frame(self, frame: FrameType) -> TraceDecision:
         """
         Determine if a frame should be traced based on breakpoints.
@@ -71,83 +146,49 @@ class FrameTraceAnalyzer:
             TraceDecision containing the decision and reasoning
         """
         self._stats["total_frames"] += 1
+        frame_info = self._get_frame_info(frame)
+        filename = frame_info["filename"]
+        lineno = frame_info["lineno"]
         
-        # Fast path: check thread info first
-        thread_info = get_thread_info()
-        if thread_info.should_skip_frame(frame.f_code.co_filename):
-            return {
-                "should_trace": False,
-                "reason": "thread_skip_frame",
-                "breakpoint_lines": set(),
-                "frame_info": self._get_frame_info(frame),
-            }
+        # Check if frame should be skipped
+        skip_decision = self._check_skip_frame(frame)
+        if skip_decision is not None:
+            return skip_decision
         
-        # Get frame information
-        filename = frame.f_code.co_filename
-        lineno = frame.f_lineno
-        
-        # Check if we have cached breakpoint info for this file
+        # Get breakpoints for the file
         file_breakpoints = get_breakpoints(filename)
         
-        if file_breakpoints is None:
-            # No cached breakpoints, check if this is a file we should track
-            if self._should_track_file(filename):
-                # File should be tracked but no breakpoints cached
-                # Assume no breakpoints for now
-                return {
-                    "should_trace": False,
-                    "reason": "no_breakpoints_in_file",
-                    "breakpoint_lines": set(),
-                    "frame_info": self._get_frame_info(frame),
-                }
-            # File should not be tracked at all
-            return {
-                "should_trace": False,
-                "reason": "file_not_tracked",
-                "breakpoint_lines": set(),
-                "frame_info": self._get_frame_info(frame),
-            }
+        # Handle cases with no breakpoints or no file tracking
+        if file_breakpoints is None or not file_breakpoints:
+            return self._handle_no_breakpoints(filename, frame_info)
         
-        # We have cached breakpoints for this file
-        if not file_breakpoints:
-            # No breakpoints in this file
-            return {
-                "should_trace": False,
-                "reason": "no_breakpoints_in_file",
-                "breakpoint_lines": set(),
-                "frame_info": self._get_frame_info(frame),
-            }
-        
-        # Check if current line has a breakpoint
+        # Check for breakpoint on current line
         if lineno in file_breakpoints:
-            self._stats["traced_frames"] += 1
-            return {
-                "should_trace": True,
-                "reason": "breakpoint_on_line",
-                "breakpoint_lines": {lineno},
-                "frame_info": self._get_frame_info(frame),
-            }
+            return self._create_trace_decision(
+                should_trace=True,
+                reason="breakpoint_on_line",
+                frame_info=frame_info,
+                breakpoint_lines={lineno},
+                update_stats=True
+            )
         
-        # Check if we're in a function that has breakpoints elsewhere
+        # Check for function breakpoints that might need tracing
         func_breakpoints = self._get_function_breakpoints(frame, file_breakpoints)
-        # Function has breakpoints, but not on current line
-        # We might want to trace for step-over functionality
         if func_breakpoints and self._should_trace_function_for_step(frame):
-            self._stats["traced_frames"] += 1
-            return {
-                "should_trace": True,
-                "reason": "function_has_breakpoints",
-                "breakpoint_lines": func_breakpoints,
-                "frame_info": self._get_frame_info(frame),
-            }
+            return self._create_trace_decision(
+                should_trace=True,
+                reason="function_has_breakpoints",
+                frame_info=frame_info,
+                breakpoint_lines=func_breakpoints,
+                update_stats=True
+            )
         
-        # No breakpoints found
-        return {
-            "should_trace": False,
-            "reason": "no_breakpoints_in_function",
-            "breakpoint_lines": set(),
-            "frame_info": self._get_frame_info(frame),
-        }
+        # Default case: no tracing needed
+        return self._create_trace_decision(
+            should_trace=False,
+            reason="no_breakpoints_in_function",
+            frame_info=frame_info
+        )
     
     def _should_track_file(self, filename: str) -> bool:
         """Determine if a file should be tracked for breakpoints."""
@@ -169,7 +210,7 @@ class FrameTraceAnalyzer:
         # Track user code files
         return filename.endswith(".py")
     
-    def _get_function_breakpoints(self, frame: FrameType, file_breakpoints: Set[int]) -> Set[int]:
+    def _get_function_breakpoints(self, frame: FrameType, file_breakpoints: set[int]) -> set[int]:
         """Get breakpoints within the current function's line range."""
         try:
             code_obj = frame.f_code
@@ -179,12 +220,11 @@ class FrameTraceAnalyzer:
             func_end = self._estimate_function_end(frame)
             
             # Find breakpoints within function range
-            func_breakpoints = {
+            return {
                 line for line in file_breakpoints 
                 if func_start <= line <= func_end
             }
             
-            return func_breakpoints
             
         except Exception:
             return set()
@@ -192,20 +232,23 @@ class FrameTraceAnalyzer:
     def _estimate_function_end(self, frame: FrameType) -> int:
         """Estimate the end line of a function."""
         try:
-            import dis
-            
             # Get all line numbers from the code object
             instructions = list(dis.get_instructions(frame.f_code))
-            line_numbers = {instr.lineno for instr in instructions if instr.lineno is not None}
+            line_numbers: set[int] = set()
             
-            if line_numbers:
-                return max(line_numbers)
-            return frame.f_code.co_firstlineno
-                
+            for instr in instructions:
+                # Handle different Python versions where lineno might be in different attributes
+                line = getattr(instr, "starts_line", None) or getattr(instr, "lineno", None)
+                if line is not None:
+                    line_numbers.add(line)
+            
+            if not line_numbers:
+                return frame.f_code.co_firstlineno + 100  # Fallback estimate
+            return max(line_numbers)
         except Exception:
-            return frame.f_code.co_firstlineno + 100  # Rough estimate
+            return frame.f_code.co_firstlineno + 100  # Fallback estimate
     
-    def _should_trace_function_for_step(self, frame: FrameType) -> bool:
+    def _should_trace_function_for_step(self, _frame: FrameType) -> bool:
         """Determine if a function should be traced for step-over functionality."""
         thread_info = get_thread_info()
         
@@ -213,13 +256,10 @@ class FrameTraceAnalyzer:
         if not thread_info.fully_initialized:
             return False
         
-        # Check if we're in step-over mode
-        if hasattr(thread_info, "step_mode") and thread_info.step_mode:
-            return True
-        
-        return False
+        # Check if we're in step-over mode using getattr for safety
+        return bool(getattr(thread_info, "step_mode", False))
     
-    def _get_frame_info(self, frame: FrameType) -> Dict[str, Any]:
+    def _get_frame_info(self, frame: FrameType) -> dict[str, Any]:
         """Extract basic frame information for debugging."""
         return {
             "filename": frame.f_code.co_filename,
@@ -228,13 +268,13 @@ class FrameTraceAnalyzer:
             "is_module": frame.f_code.co_name == "<module>",
         }
     
-    def update_breakpoints(self, filename: str, breakpoints: Set[int]) -> None:
+    def update_breakpoints(self, filename: str, breakpoints: set[int]) -> None:
         """Update breakpoint information for a file."""
         set_breakpoints(filename, breakpoints)
         
         # Invalidate any cached analysis for this file
         with self._cache_lock:
-            keys_to_remove = [key for key in self._analysis_cache.keys() 
+            keys_to_remove = [key for key in self._analysis_cache 
                             if key.startswith(f"{filename}:")]
             for key in keys_to_remove:
                 del self._analysis_cache[key]
@@ -245,12 +285,12 @@ class FrameTraceAnalyzer:
         
         # Clear analysis cache for this file
         with self._cache_lock:
-            keys_to_remove = [key for key in self._analysis_cache.keys() 
+            keys_to_remove = [key for key in self._analysis_cache 
                             if key.startswith(f"{filename}:")]
             for key in keys_to_remove:
                 del self._analysis_cache[key]
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get tracing statistics."""
         total = self._stats["total_frames"]
         traced = self._stats["traced_frames"]
@@ -279,7 +319,7 @@ class SelectiveTraceDispatcher:
     the actual debugger trace function based on frame analysis.
     """
     
-    def __init__(self, debugger_trace_func: Optional[Callable] = None):
+    def __init__(self, debugger_trace_func: Callable | None = None):
         self.debugger_trace_func = debugger_trace_func
         self.analyzer = FrameTraceAnalyzer()
         self._dispatch_stats = {
@@ -289,12 +329,12 @@ class SelectiveTraceDispatcher:
         }
         self._lock = threading.RLock()
     
-    def set_debugger_trace_func(self, trace_func: Callable) -> None:
+    def set_debugger_trace_func(self, trace_func: Callable[[FrameType, str, Any], Callable | None] | None) -> None:
         """Set the actual debugger trace function."""
         with self._lock:
             self.debugger_trace_func = trace_func
     
-    def selective_trace_dispatch(self, frame: FrameType, event: str, arg: Any) -> Optional[Callable]:
+    def selective_trace_dispatch(self, frame: FrameType, event: str, arg: Any) -> Callable | None:
         """
         Dispatch trace function only when frame should be traced.
         
@@ -328,7 +368,7 @@ class SelectiveTraceDispatcher:
             self._dispatch_stats["dispatched_calls"] += 1
             return self.debugger_trace_func(frame, event, arg)
     
-    def update_breakpoints(self, filename: str, breakpoints: Set[int]) -> None:
+    def update_breakpoints(self, filename: str, breakpoints: set[int]) -> None:
         """Update breakpoint information."""
         self.analyzer.update_breakpoints(filename, breakpoints)
     
@@ -336,7 +376,7 @@ class SelectiveTraceDispatcher:
         """Invalidate cached information for a file."""
         self.analyzer.invalidate_file(filename)
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get comprehensive dispatch statistics."""
         analyzer_stats = self.analyzer.get_statistics()
         
@@ -375,7 +415,7 @@ class FrameTraceManager:
         self.dispatcher = SelectiveTraceDispatcher()
         self._enabled = False
         self._lock = threading.RLock()
-        self._global_breakpoints = defaultdict(set)
+        self._global_breakpoints: dict[str, set[int]] = defaultdict(set)
         
     def enable_selective_tracing(self, debugger_trace_func: Callable) -> None:
         """Enable selective tracing with the given debugger trace function."""
@@ -399,13 +439,13 @@ class FrameTraceManager:
             return self.dispatcher.selective_trace_dispatch
         return None
     
-    def update_file_breakpoints(self, filename: str, breakpoints: Set[int]) -> None:
+    def update_file_breakpoints(self, filename: str, breakpoints: set[int]) -> None:
         """Update breakpoints for a specific file."""
         with self._lock:
             self._global_breakpoints[filename] = set(breakpoints)
             self.dispatcher.update_breakpoints(filename, breakpoints)
     
-    def update_all_breakpoints(self, breakpoint_map: Dict[str, Set[int]]) -> None:
+    def update_all_breakpoints(self, breakpoint_map: dict[str, set[int]]) -> None:
         """Update breakpoints for all files."""
         with self._lock:
             self._global_breakpoints.clear()
@@ -426,7 +466,7 @@ class FrameTraceManager:
             self._global_breakpoints[filename].discard(lineno)
             self.dispatcher.update_breakpoints(filename, self._global_breakpoints[filename])
     
-    def clear_breakpoints(self, filename: Optional[str] = None) -> None:
+    def clear_breakpoints(self, filename: str | None = None) -> None:
         """Clear breakpoints, either for a specific file or all files."""
         with self._lock:
             if filename:
@@ -441,15 +481,15 @@ class FrameTraceManager:
         """Invalidate cached information for a file."""
         self.dispatcher.invalidate_file(filename)
     
-    def get_breakpoints(self, filename: str) -> Set[int]:
+    def get_breakpoints(self, filename: str) -> set[int]:
         """Get current breakpoints for a file."""
         return self._global_breakpoints.get(filename, set()).copy()
     
-    def get_all_breakpoints(self) -> Dict[str, Set[int]]:
+    def get_all_breakpoints(self) -> dict[str, set[int]]:
         """Get all current breakpoints."""
         return {k: v.copy() for k, v in self._global_breakpoints.items()}
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get comprehensive tracing statistics."""
         return {
             "enabled": self._enabled,
@@ -482,12 +522,12 @@ def disable_selective_tracing() -> None:
     _trace_manager.disable_selective_tracing()
 
 
-def get_selective_trace_function() -> Optional[Callable]:
+def get_selective_trace_function() -> Callable | None:
     """Get the selective trace function for sys.settrace()."""
     return _trace_manager.get_trace_function()
 
 
-def update_breakpoints(filename: str, breakpoints: Set[int]) -> None:
+def update_breakpoints(filename: str, breakpoints: set[int]) -> None:
     """Update breakpoints for a file."""
     _trace_manager.update_file_breakpoints(filename, breakpoints)
 
@@ -502,6 +542,6 @@ def remove_breakpoint(filename: str, lineno: int) -> None:
     _trace_manager.remove_breakpoint(filename, lineno)
 
 
-def get_tracing_statistics() -> Dict[str, Any]:
+def get_tracing_statistics() -> dict[str, Any]:
     """Get comprehensive tracing statistics."""
     return _trace_manager.get_statistics()

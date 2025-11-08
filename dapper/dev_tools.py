@@ -18,7 +18,8 @@ def update_docs() -> None:
     root = Path(__file__).resolve().parent.parent
     script = root / "scripts" / "update_docs.py"
     if not script.exists():
-        raise SystemExit(f"update_docs script not found: {script}")
+        msg = f"update_docs script not found: {script}"
+        raise SystemExit(msg)
     # Execute the script as __main__ (it calls SystemExit(main()) itself).
     runpy.run_path(str(script), run_name="__main__")
 

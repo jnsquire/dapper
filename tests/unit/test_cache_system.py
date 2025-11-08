@@ -10,6 +10,7 @@ from typing import Any
 from dapper._frame_eval.cache_manager import BreakpointCache
 from dapper._frame_eval.cache_manager import FuncCodeInfoCache
 from dapper._frame_eval.cache_manager import ThreadLocalCache
+from dapper._frame_eval.cache_manager import _caches
 from dapper._frame_eval.cache_manager import cleanup_caches
 from dapper._frame_eval.cache_manager import clear_all_caches
 from dapper._frame_eval.cache_manager import configure_caches
@@ -55,8 +56,9 @@ class MockFuncCodeInfo:
 
 def test_func_code_cache():
     """Test FuncCodeInfo caching functionality."""
-    # Create a cache instance
-    cache = FuncCodeInfoCache(max_size=5, ttl=2)
+    # Create a cache instance with reduced TTL for faster testing
+    cache = FuncCodeInfoCache(max_size=5, ttl=1)  # Use int for ttl
+    _caches.func_code = cache
     
     # Test basic get/set
     code_obj = sample_function.__code__
@@ -74,12 +76,23 @@ def test_func_code_cache():
     remove_func_code_info(code_obj)
     get_func_code_info(code_obj)
     
-    # Test TTL expiration
+    # Test TTL expiration by forcing LRU cache usage
+    # Temporarily disable code extra index to test LRU TTL
+    original_index = cache._code_extra_index
+    cache._code_extra_index = -1
+    
     info2 = MockFuncCodeInfo("ttl_test.py", has_breakpoints=False)
     set_func_code_info(code_obj, info2)
     
-    # Wait for expiration
-    time.sleep(3)
+    # Wait for expiration (sleep for 1.1s to exceed TTL of 1s)
+    time.sleep(1.1)
+    
+    # Verify TTL expiration worked
+    cached_info = get_func_code_info(code_obj)
+    assert cached_info is None, "Cache entry should have expired"
+    
+    # Restore code extra index
+    cache._code_extra_index = original_index
     
     # Test LRU eviction
     for i in range(10):  # More than max_size
@@ -144,7 +157,7 @@ def test_breakpoint_cache() -> None:
     
     cache.get_stats()
 
-def worker_thread(thread_id: int, results: list[dict[str, Any]], errors: list[str]) -> None:
+def worker_thread(thread_id: int, results: list[dict[str, Any]]) -> None:
     """Worker function for testing thread safety."""
     # Get thread info
     thread_info = get_thread_info()
@@ -170,14 +183,13 @@ def worker_thread(thread_id: int, results: list[dict[str, Any]], errors: list[st
 def test_multithreading() -> None:
     """Test cache behavior with multiple threads."""
     results = []
-    errors = []
     
     # Start multiple threads
     threads = []
     for i in range(5):
         thread = threading.Thread(
             target=worker_thread, 
-            args=(i, results, errors)
+            args=(i, results)
         )
         threads.append(thread)
         thread.start()
@@ -190,7 +202,6 @@ def test_multithreading() -> None:
     all_cache_hits = all(r["cache_hit"] for r in results)
     all_frames_reset = all(r["frame_eval_count"] == 0 for r in results)
     
-    assert len(errors) == 0, f"Errors in worker threads: {errors}"
     assert all_cache_hits, "Not all cache hits were successful"
     assert all_frames_reset, "Not all frame evaluations were properly reset"
 

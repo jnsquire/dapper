@@ -3,7 +3,6 @@ Debug adapter communication and command queue logic.
 """
 
 import json
-import os
 import sys
 import traceback
 from queue import Empty
@@ -60,7 +59,7 @@ def receive_debug_commands() -> None:
         while not state.is_terminated:
             line = reader.readline()
             if not line:
-                sys.exit(0)
+                state.exit_func(0)
             if line.startswith("DBGCMD:"):
                 command_json = line[7:].strip()
                 try:
@@ -74,7 +73,7 @@ def receive_debug_commands() -> None:
         while not state.is_terminated:
             line = sys.stdin.readline()
             if not line:
-                os._exit(0)
+                state.exit_func(0)
             if line.startswith("DBGCMD:"):
                 command_json = line[7:].strip()
                 try:

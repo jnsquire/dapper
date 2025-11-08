@@ -7,6 +7,7 @@ method directly and validating basic invariants.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -48,9 +49,6 @@ async def test_get_modules_user_code_flag(tmp_path, monkeypatch):
     
     # Add the temporary directory to the Python path
     monkeypatch.syspath_prepend(str(tmp_path))
-    
-    # Import the module using importlib
-    import importlib.util
     
     spec = importlib.util.spec_from_file_location(module_name, str(mod_file))
     if spec is None or spec.loader is None:

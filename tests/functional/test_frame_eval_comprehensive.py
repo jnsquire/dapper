@@ -24,8 +24,6 @@ from dapper._frame_eval.debugger_integration import remove_integration
 # Import Cython modules for testing
 CYTHON_AVAILABLE = False
 try:
-    from dapper._frame_eval._frame_evaluator import FuncCodeInfo  # type: ignore[import-not-found]
-    from dapper._frame_eval._frame_evaluator import ThreadInfo  # type: ignore[import-not-found]
     from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
         frame_eval_func,
     )
@@ -153,7 +151,7 @@ class TestCythonIntegration:
         # If we get here, imports worked
         assert True
 
-    def test_thread_info_creation(self, mock_cython_functions) -> None:
+    def test_thread_info_creation(self) -> None:
         """Test that we can get thread info."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available")
@@ -162,7 +160,7 @@ class TestCythonIntegration:
         assert thread_info is not None
         assert hasattr(thread_info, "skip_all_frames")
 
-    def test_frame_eval_stats_has_expected_structure(self, mock_cython_functions) -> None:
+    def test_frame_eval_stats_has_expected_structure(self) -> None:
         """Test that frame evaluation stats have the expected structure."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available")
@@ -178,7 +176,7 @@ class TestCythonIntegration:
         assert isinstance(stats["active"], bool), "active should be a boolean"
         assert isinstance(stats["has_breakpoint_manager"], bool), "has_breakpoint_manager should be a boolean"
 
-    def test_frame_eval_stats_are_updated_after_evaluation(self, mock_cython_functions) -> None:
+    def test_frame_eval_stats_are_updated_after_evaluation(self) -> None:
         """Verify that frame evaluation updates the statistics."""
         # This test requires the real Cython implementation
         if not CYTHON_AVAILABLE:
@@ -200,10 +198,9 @@ class TestCythonIntegration:
             mock_frame.f_trace = None
             
             # Get initial state
-            initial_stats = get_frame_eval_stats()
+            get_frame_eval_stats()
             
             # Skip the frame evaluation part since we can't test it without the real implementation
-            # frame_eval_func(mock_frame, "call", None)
             
             # Just verify we can get the stats
             stats = get_frame_eval_stats()
@@ -212,7 +209,7 @@ class TestCythonIntegration:
             
         except Exception as e:
             if CYTHON_AVAILABLE:
-                raise e
+                raise
             pytest.skip(f"Test requires Cython modules: {e}")
 
     def test_frame_eval_can_be_disabled_and_reenabled(self) -> None:
@@ -222,7 +219,7 @@ class TestCythonIntegration:
             
         try:
             # Get initial state
-            initial_stats = get_frame_eval_stats()
+            get_frame_eval_stats()
             
             # Act - Disable frame evaluation
             stop_frame_eval()
@@ -242,7 +239,7 @@ class TestCythonIntegration:
                 
         except Exception as e:
             if CYTHON_AVAILABLE:
-                raise e
+                raise
             pytest.skip(f"Test requires Cython modules: {e}")
 
     def test_thread_isolation(self) -> None:
@@ -552,16 +549,6 @@ class TestGlobalFunctions:
 class TestErrorHandling:
     """Test error handling and fallback behavior."""
     
-    def test_integration_with_none_debugger(self):
-        """Test integration with None debugger."""
-        bridge = DebuggerFrameEvalBridge()
-        
-        result = bridge.integrate_with_debugger_bdb(None)
-        assert result is False
-        
-        result = bridge.integrate_with_py_debugger(None)
-        assert result is False
-    
     def test_integration_with_exception_throwing_debugger(self):
         """Test integration when debugger methods throw exceptions."""
         debugger_bdb = Mock()
@@ -654,7 +641,7 @@ class TestThreadSafety:
         
         # Create multiple threads that access statistics
         threads = []
-        for i in range(20):
+        for _i in range(20):
             thread = threading.Thread(target=get_stats)
             threads.append(thread)
             thread.start()

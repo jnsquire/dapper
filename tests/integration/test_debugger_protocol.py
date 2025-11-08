@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from dapper.debugger_protocol import DebuggerLike
+from dapper.debugger_protocol import ExceptionDetails
+from dapper.debugger_protocol import ExceptionInfo
+from dapper.debugger_protocol import PresentationHint
+from dapper.debugger_protocol import Variable
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
     import dapper.debugger_protocol as dp
 else:
-    import dapper.debugger_protocol as dp
+    pass
 
 
 def test_runtime_protocol_check():
@@ -387,13 +392,6 @@ def test_debugger_like_protocol_exception_handling():
 
 
 def test_protocol_type_annotations():
-    # Test that protocol type annotations work correctly at runtime
-    from dapper.debugger_protocol import DebuggerLike
-    from dapper.debugger_protocol import ExceptionDetails
-    from dapper.debugger_protocol import ExceptionInfo
-    from dapper.debugger_protocol import PresentationHint
-    from dapper.debugger_protocol import Variable
-    
     # Test that TypedDict classes are properly constructed
     assert hasattr(PresentationHint, "__required_keys__")
     assert hasattr(Variable, "__required_keys__")

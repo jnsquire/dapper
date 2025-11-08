@@ -80,8 +80,7 @@ def _build_code_args(code_attrs: dict) -> list:
     ]
     
     # Python 3.8+ adds posonlyargcount after argcount
-    if sys.version_info >= (3, 8):
-        args.insert(1, code_attrs.get("co_posonlyargcount", 0))
+    args.insert(1, code_attrs.get("co_posonlyargcount", 0))
     
     # Add line number table (different attribute name in Python 3.10+)
     if sys.version_info >= (3, 10):

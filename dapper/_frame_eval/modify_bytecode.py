@@ -12,10 +12,6 @@ import sys
 import types
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Dict
-from typing import List
-from typing import Set
-from typing import Tuple
 from typing import TypedDict
 
 if TYPE_CHECKING:
@@ -107,9 +103,9 @@ class BytecodeModifier:
     def inject_breakpoints(
         self, 
         code_obj: CodeType, 
-        breakpoint_lines: Set[int],
+        breakpoint_lines: set[int],
         debug_mode: bool = False
-    ) -> Tuple[bool, CodeType]:
+    ) -> tuple[bool, CodeType]:
         """
         Inject breakpoints into a code object at specified lines.
         
@@ -144,7 +140,7 @@ class BytecodeModifier:
             
             # Create new instruction list with breakpoints
             new_instructions = self._create_breakpoint_instructions(
-                instructions, injection_points, debug_mode
+                instructions, injection_points
             )
             
             # Rebuild code object
@@ -152,13 +148,12 @@ class BytecodeModifier:
             
             # Cache the result
             self.modified_code_objects[cache_key] = modified_code
-            
-            return True, modified_code
-            
         except Exception as e:
             if debug_mode:
                 print(f"Error injecting breakpoints: {e}")
             return False, code_obj
+        else:
+            return True, modified_code
     
     def create_breakpoint_wrapper_code(self, line: int) -> CodeType:
         """
@@ -203,13 +198,12 @@ __dapper_breakpoint_wrapper_{line}()
 '''
         
         # Compile the wrapper
-        wrapper_code = compile(
+        return compile(
             wrapper_source, 
             f"<dapper_breakpoint_wrapper_{line}>", 
             "exec"
         )
         
-        return wrapper_code
     
     def optimize_code_object(self, code_obj: CodeType) -> CodeType:
         """
@@ -263,15 +257,15 @@ __dapper_breakpoint_wrapper_{line}()
         except Exception:
             return code_obj
     
-    def _get_cache_key(self, code_obj: CodeType, breakpoint_lines: Set[int]) -> str:
+    def _get_cache_key(self, code_obj: CodeType, breakpoint_lines: set[int]) -> str:
         """Generate a cache key for a code object and breakpoint set."""
         return f"{id(code_obj)}_{hash(tuple(sorted(breakpoint_lines)))}"
     
     def _find_injection_points(
         self, 
-        instructions: List[dis.Instruction], 
-        breakpoint_lines: Set[int]
-    ) -> Dict[int, int]:
+        instructions: list[dis.Instruction], 
+        breakpoint_lines: set[int]
+    ) -> dict[int, int]:
         """
         Find the best injection points for breakpoints.
         
@@ -293,10 +287,9 @@ __dapper_breakpoint_wrapper_{line}()
     
     def _create_breakpoint_instructions(
         self,
-        original_instructions: List[dis.Instruction],
-        injection_points: Dict[int, int],
-        debug_mode: bool
-    ) -> List[dis.Instruction]:
+        original_instructions: list[dis.Instruction],
+        injection_points: dict[int, int]
+    ) -> list[dis.Instruction]:
         """Create new instruction list with breakpoints injected."""
         new_instructions = []
         breakpoint_code_cache = {}
@@ -318,7 +311,7 @@ __dapper_breakpoint_wrapper_{line}()
                 
                 # Add breakpoint check instructions
                 breakpoint_instrs = self._create_breakpoint_check_instructions(
-                    line_to_check, debug_mode
+                    line_to_check
                 )
                 new_instructions.extend(breakpoint_instrs)
         
@@ -326,14 +319,13 @@ __dapper_breakpoint_wrapper_{line}()
     
     def _create_breakpoint_check_instructions(
         self, 
-        line: int, 
-        debug_mode: bool
-    ) -> List[dis.Instruction]:
+        line: int
+    ) -> list[dis.Instruction]:
         """Create instructions for a breakpoint check."""
         # For now, create a simple call to a breakpoint function
         # This will be enhanced in the integration step
         
-        instructions = [
+        return [
             dis.Instruction(
                 opname="LOAD_CONST",
                 opcode=LOAD_CONST,
@@ -366,12 +358,11 @@ __dapper_breakpoint_wrapper_{line}()
             )
         ]
         
-        return instructions
     
     def _optimize_instructions(
         self, 
-        instructions: List[dis.Instruction]
-    ) -> List[dis.Instruction]:
+        instructions: list[dis.Instruction]
+    ) -> list[dis.Instruction]:
         """Optimize a list of instructions for better performance."""
         optimized = []
         i = 0
@@ -403,7 +394,7 @@ __dapper_breakpoint_wrapper_{line}()
     
     def _is_breakpoint_sequence(
         self, 
-        instructions: List[dis.Instruction], 
+        instructions: list[dis.Instruction], 
         start_index: int
     ) -> bool:
         """Check if instructions starting at start_index form a breakpoint sequence."""
@@ -421,7 +412,7 @@ __dapper_breakpoint_wrapper_{line}()
     
     def _get_breakpoint_sequence_length(
         self, 
-        instructions: List[dis.Instruction], 
+        instructions: list[dis.Instruction], 
         start_index: int
     ) -> int:
         """Get the length of a breakpoint instruction sequence."""
@@ -432,7 +423,7 @@ __dapper_breakpoint_wrapper_{line}()
     def _rebuild_code_object(
         self, 
         original_code: CodeType, 
-        new_instructions: List[dis.Instruction]
+        new_instructions: list[dis.Instruction]
     ) -> CodeType:
         """Rebuild a code object with new instructions."""
         # Convert instructions back to bytecode
@@ -470,8 +461,7 @@ __dapper_breakpoint_wrapper_{line}()
         }
         
         # Handle version-specific parameters
-        if sys.version_info >= (3, 8):
-            code_args["co_posonlyargcount"] = getattr(original_code, "co_posonlyargcount", 0)
+        code_args["co_posonlyargcount"] = getattr(original_code, "co_posonlyargcount", 0)
             
         # For Python 3.10+, we need to handle the new code object creation
         if sys.version_info >= (3, 10):
@@ -481,18 +471,23 @@ __dapper_breakpoint_wrapper_{line}()
             last_line = original_code.co_firstlineno
             last_byte = 0
             
-            for start, end, line in original_code.co_lines():
+            for start, _end, line in original_code.co_lines():
                 if start > last_byte and line is not None:
                     # Calculate the byte offset and line delta
                     byte_delta = start - last_byte
                     line_delta = line - last_line
                     
+                    # Constants for bytecode line number table encoding
+                    max_byte_delta = 255
+                    max_line_delta = 127
+                    min_line_delta = -128
+                    
                     # Handle multi-byte deltas
-                    while byte_delta > 255 or line_delta > 127 or line_delta < -128:
+                    while byte_delta > max_byte_delta or line_delta > max_line_delta or line_delta < min_line_delta:
                         # Emit a special byte to indicate multi-byte delta
-                        lnotab.extend((min(255, byte_delta), 0))
-                        byte_delta -= min(255, byte_delta)
-                        line_delta = max(-128, min(127, line_delta))
+                        lnotab.extend((min(max_byte_delta, byte_delta), 0))
+                        byte_delta -= min(max_byte_delta, byte_delta)
+                        line_delta = max(min_line_delta, min(max_line_delta, line_delta))
                     
                     # Emit the final delta
                     lnotab.extend((byte_delta, line_delta & 0xff))
@@ -500,57 +495,17 @@ __dapper_breakpoint_wrapper_{line}()
                     last_line = line
             
             code_args["co_linetable"] = bytes(lnotab)
-            code_args["co_lnotab"] = b""  # Keep for backward compatibility
-        else:
-            # For Python < 3.10, use the old co_lnotab
+            # For Python 3.10+, co_lnotab is deprecated but some code might still need it
+            if sys.version_info < (3, 10):
+                code_args["co_lnotab"] = original_code.co_lnotab
+        # For Python < 3.10, use the old co_lnotab
+        elif hasattr(original_code, "co_lnotab"):
             code_args["co_lnotab"] = original_code.co_lnotab
         
-        # Create the code object with the appropriate arguments
-        if sys.version_info >= (3, 10):
-            # Python 3.10+ uses co_linetable instead of co_lnotab
-            return types.CodeType(
-                code_args["co_argcount"],
-                code_args.get("co_posonlyargcount", 0),
-                code_args["co_kwonlyargcount"],
-                code_args["co_nlocals"],
-                code_args["co_stacksize"],
-                code_args["co_flags"],
-                code_args["co_code"],
-                code_args["co_consts"],
-                code_args["co_names"],
-                code_args["co_varnames"],
-                code_args["co_filename"],
-                code_args["co_name"],
-                code_args["co_firstlineno"],
-                code_args["co_linetable"],
-                code_args["co_freevars"],
-                code_args["co_cellvars"],
-                # Python 3.11+ requires these additional arguments
-                original_code.co_positions() if hasattr(original_code, "co_positions") else None,
-                original_code.co_exceptiontable if hasattr(original_code, "co_exceptiontable") else b""
-            )
-        if sys.version_info >= (3, 8):
-            return types.CodeType(
-                code_args["co_argcount"],
-                code_args.get("co_posonlyargcount", 0),
-                code_args["co_kwonlyargcount"],
-                code_args["co_nlocals"],
-                code_args["co_stacksize"],
-                code_args["co_flags"],
-                code_args["co_code"],
-                code_args["co_consts"],
-                code_args["co_names"],
-                code_args["co_varnames"],
-                code_args["co_filename"],
-                code_args["co_name"],
-                code_args["co_firstlineno"],
-                code_args["co_lnotab"],
-                code_args["co_freevars"],
-                code_args["co_cellvars"]
-            )
-        # Python 3.7 and earlier
-        return types.CodeType(
+        # Prepare common arguments for CodeType
+        args = [
             code_args["co_argcount"],
+            code_args.get("co_posonlyargcount", 0) if sys.version_info >= (3, 8) else 0,
             code_args["co_kwonlyargcount"],
             code_args["co_nlocals"],
             code_args["co_stacksize"],
@@ -561,11 +516,26 @@ __dapper_breakpoint_wrapper_{line}()
             code_args["co_varnames"],
             code_args["co_filename"],
             code_args["co_name"],
-            original_code.co_firstlineno,
-            original_code.co_lnotab,
-            original_code.co_freevars,
-            original_code.co_cellvars
-        )
+            code_args.get("co_firstlineno", original_code.co_firstlineno),
+            # Use co_linetable for Python 3.10+, fall back to co_lnotab for older versions
+            code_args.get("co_linetable" if sys.version_info >= (3, 10) else "co_lnotab", 
+                         getattr(original_code, "co_linetable" if sys.version_info >= (3, 10) else "co_lnotab", b"")),
+            code_args.get("co_freevars", getattr(original_code, "co_freevars", ())),
+            code_args.get("co_cellvars", getattr(original_code, "co_cellvars", ())),
+        ]
+        
+        # Add Python 3.11+ specific arguments if available
+        if sys.version_info >= (3, 11):
+            args.extend([
+                original_code.co_positions() if hasattr(original_code, "co_positions") else None,
+                original_code.co_exceptiontable if hasattr(original_code, "co_exceptiontable") else b""
+            ])
+        
+        # Remove any trailing None values for older Python versions
+        while args and args[-1] is None:
+            args.pop()
+            
+        return types.CodeType(*args)
 
 
 # Global bytecode modifier instance
@@ -574,10 +544,9 @@ _bytecode_modifier = BytecodeModifier()
 
 def insert_code(
     code_obj: CodeType, 
-    wrapper_code: str, 
     line: int, 
-    break_at_lines: Tuple[int, ...]
-) -> Tuple[bool, CodeType]:
+    break_at_lines: tuple[int, ...]
+) -> tuple[bool, CodeType]:
     """
     Insert debugging code into a Python code object.
     
@@ -586,26 +555,27 @@ def insert_code(
     
     Args:
         code_obj: The original code object to modify
-        wrapper_code: The debugging code to insert
-        line: The line number to insert at
+        line: The line number to insert at (must be non-negative)
         break_at_lines: Tuple of line numbers that should break
         
     Returns:
         tuple: (success, modified_code_obj) where success is bool
     """
+    # Validate line number
+    if line < 0:
+        return False, code_obj
+        
     try:
         # Use the advanced bytecode modifier
         breakpoint_lines = set(break_at_lines)
         success, modified_code = _bytecode_modifier.inject_breakpoints(
             code_obj, breakpoint_lines, debug_mode=True
         )
-        
-        return success, modified_code
-        
     except Exception:
         # If anything goes wrong, return original code object
         return False, code_obj
-
+    else:
+        return success, modified_code
 
 def create_breakpoint_instruction(line: int) -> bytes:
     """
@@ -688,15 +658,16 @@ def validate_bytecode(code_obj: CodeType) -> bool:
     try:
         # Try to disassemble the code
         list(dis.get_instructions(code_obj))
-        return True
     except Exception:
         return False
+    else:
+        return True
 
 
 def inject_breakpoint_bytecode(
     code_obj: CodeType, 
-    breakpoint_lines: Set[int]
-) -> Tuple[bool, CodeType]:
+    breakpoint_lines: set[int]
+) -> tuple[bool, CodeType]:
     """
     Inject breakpoint bytecode into a code object.
     
@@ -744,6 +715,7 @@ def get_bytecode_info(code_obj: CodeType) -> BytecodeInfo | BytecodeErrorInfo:
         return {
             "instruction_count": len(instructions),
             "has_breakpoints": any(
+                # ruff: noqa: SLF001 - Intentional access to private method for bytecode analysis
                 _bytecode_modifier._is_breakpoint_sequence(instructions, i)
                 for i in range(len(instructions))
             ),
@@ -774,7 +746,7 @@ def set_optimization_enabled(enabled: bool) -> None:
     _bytecode_modifier.optimization_enabled = enabled
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """Get statistics about the bytecode modification cache."""
     return {
         "cached_code_objects": len(_bytecode_modifier.modified_code_objects),

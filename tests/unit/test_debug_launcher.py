@@ -482,7 +482,7 @@ class TestExceptionBreakpoints:
         """Test handling of debugger attribute errors."""
         mock_dbg = MagicMock()
         # Make attribute assignment raise an exception
-        def raise_on_set_raised(value):
+        def raise_on_set_raised(_):  # _ indicates unused parameter
             raise AttributeError("Test error")
             
         # Use side_effect to raise an exception when the attribute is set

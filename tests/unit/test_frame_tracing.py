@@ -211,7 +211,7 @@ class TestCodeWrapper:
     def test_get_template(self):
         """Test loading the wrapper template."""
         wrapper = CodeWrapper()
-        with patch("importlib.resources.read_text") as mock_read:
+        with patch("importlib.resources.read_text"):
             # The actual implementation returns a template string with specific content
             result = wrapper._get_template()
             assert isinstance(result, str)

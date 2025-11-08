@@ -108,9 +108,9 @@ def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
         try:
             data = conn.recv_bytes()
         except (EOFError, OSError):
-            os._exit(0)
+            state.exit_func(0)
         if not data:
-            os._exit(0)
+            state.exit_func(0)
         try:
             kind, length = unpack_header(data[:HEADER_SIZE])
         except Exception as e:
@@ -125,7 +125,7 @@ def _recv_binary_from_stream(rfile: Any) -> None:
     while not state.is_terminated:
         header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
         if not header:
-            os._exit(0)
+            state.exit_func(0)
         try:
             kind, length = unpack_header(header)
         except Exception as e:
@@ -133,7 +133,7 @@ def _recv_binary_from_stream(rfile: Any) -> None:
             continue
         payload = read_exact(rfile, length)  # type: ignore[arg-type]
         if not payload:
-            os._exit(0)
+            state.exit_func(0)
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 
@@ -157,7 +157,7 @@ def receive_debug_commands() -> None:
         line = sys.stdin.readline()
         if not line:
             # End of input stream, debug adapter has closed connection
-            os._exit(0)
+            state.exit_func(0)
 
         if line.startswith("DBGCMD:"):
             _handle_command_bytes(line[7:].strip().encode("utf-8"))
@@ -846,7 +846,9 @@ def handle_terminate(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = Non
     # Mark termination on the module state
     state.is_terminated = True
     send_debug_message("exited", exitCode=0)
-    os._exit(0)
+    # Delegate actual process termination to the session hook so tests can
+    # override behavior. Default is os._exit.
+    state.exit_func(0)
 
 
 def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
@@ -963,8 +965,10 @@ def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None)
         state.is_terminated = True
         send_debug_message("exited", exitCode=0)
 
-        # Perform exec - on success this does not return
-        os.execv(python, [python, *argv])
+        # Perform exec - on success this does not return. Use the session
+        # exec hook so tests can override behavior (tests should replace
+        # state.exec_func with a function that raises or simulates restart).
+        state.exec_func(python, [python, *argv])
     except Exception as e:
         # If exec failed, return error response to adapter
         return {"success": False, "message": f"Restart failed: {e!s}"}

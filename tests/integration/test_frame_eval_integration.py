@@ -182,13 +182,14 @@ class TestDebuggerBDBIntegration:
     
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
-    def test_integrate_with_debugger_bdb_success(self, mock_enable_tracing, mock_trace_manager):
+    def test_integrate_with_debugger_bdb_success(self, mock_enable_selective_tracing, mock_get_trace_manager):
         """Test successful DebuggerBDB integration."""
         # Setup mocks
         mock_trace_instance = Mock()
         mock_trace_instance.is_enabled.return_value = True
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.return_value = {"should_trace": True}
-        mock_trace_manager.return_value = mock_trace_instance
+        mock_get_trace_manager.return_value = mock_trace_instance
+        mock_enable_selective_tracing.return_value = True
         
         # Integrate
         result = self.bridge.integrate_with_debugger_bdb(self.mock_debugger)
@@ -285,14 +286,14 @@ class TestPyDebuggerIntegration:
         self.bridge = DebuggerFrameEvalBridge()
         self.mock_debugger = Mock()
         self.mock_debugger.set_breakpoints = Mock()
+        self.mock_debugger.get_trace_function = Mock(return_value=lambda _f, _e, _a: None)
         self.mock_debugger._set_trace_function = Mock()
     
     @patch("dapper._frame_eval.debugger_integration.update_breakpoints")
     def test_integrate_with_py_debugger_success(self, mock_update_breakpoints):
         """Test successful PyDebugger integration."""
         # Setup test data
-        source = {"path": "test.py"}
-        breakpoints = [{"line": 10}, {"line": 20}]
+        mock_update_breakpoints.return_value = True
         
         # Integrate
         result = self.bridge.integrate_with_py_debugger(self.mock_debugger)
@@ -302,6 +303,7 @@ class TestPyDebuggerIntegration:
         
         # Verify methods were replaced with enhanced versions
         assert "enhanced_set_breakpoints" in str(self.mock_debugger.set_breakpoints)
+        # The trace function is now handled via get_trace_function/_set_trace_function
         assert "enhanced_set_trace" in str(self.mock_debugger._set_trace_function)
     
     def test_integrate_with_py_debugger_disabled(self):
@@ -381,13 +383,50 @@ class TestGlobalFunctions:
     @patch("dapper._frame_eval.debugger_integration._integration_bridge")
     def test_get_integration_statistics_global(self, mock_bridge):
         """Test global statistics function."""
-        mock_stats = {"test": "data"}
+        # Create a properly structured mock return value
+        mock_stats = {
+            "config": {
+                "enabled": True,
+                "selective_tracing": True,
+                "bytecode_optimization": True,
+                "cache_enabled": True,
+                "performance_monitoring": False,
+                "fallback_on_error": True
+            },
+            "integration_stats": {},
+            "performance_data": {},
+            "trace_manager_stats": {},
+            "cache_stats": {}
+        }
         mock_bridge.get_integration_statistics.return_value = mock_stats
         
+        # Call the function and verify the result
         result = get_integration_statistics()
         
-        assert result == mock_stats
+        # Verify the bridge was called
         mock_bridge.get_integration_statistics.assert_called_once()
+        
+        # Verify the result has the expected structure
+        assert isinstance(result, dict)
+        assert "config" in result
+        assert "integration_stats" in result
+        assert "performance_data" in result
+        assert "trace_manager_stats" in result
+        assert "cache_stats" in result
+        
+        # Verify config has all required fields
+        config = result["config"]
+        assert isinstance(config, dict)
+        assert "enabled" in config
+        assert "selective_tracing" in config
+        assert "bytecode_optimization" in config
+        assert "cache_enabled" in config
+        assert "performance_monitoring" in config
+        assert "fallback_on_error" in config
+
+
+class DebuggerTestError(Exception):
+    """Custom exception for testing debugger error handling."""
 
 
 class TestErrorHandling:
@@ -404,8 +443,45 @@ class TestErrorHandling:
         
         # Create a debugger with a user_line that will raise an exception
         class FaultyDebugger:
-            def user_line(self, frame):
-                raise Exception("Test error")
+            def __init__(self):
+                # Required attributes from DebuggerLike protocol
+                self.function_breakpoints = []
+                self.function_breakpoint_meta = {}
+                self.threads = {}
+                self.next_var_ref = 0
+                self.var_refs = {}
+                self.frame_id_to_frame = {}
+                self.frames_by_thread = {}
+                self.current_exception_info = {}
+                self.current_frame = None
+                self.stepping = False
+                self.data_breakpoints = []
+                self.stop_on_entry = False
+                self.data_watch_names = set()
+                self.data_watch_meta = {}
+                self._data_watches = {}
+                self._frame_watches = {}
+                self.stopped_thread_ids = set()
+                self.exception_breakpoints_uncaught = False
+                self.exception_breakpoints_raised = False
+                self._frame_eval_enabled = False
+                self._mock_user_line = None
+                self.custom_breakpoints = {}
+                self.breakpoints = {}
+                self._trace_function = None
+            
+            def user_line(self, _frame):
+                raise DebuggerTestError("Test error")
+            
+            def get_trace_function(self):
+                """Get the current trace function."""
+                if self._trace_function is not None:
+                    return self._trace_function
+                return lambda _frame, _event, _arg: None
+            
+            def set_trace_function(self, trace_func):
+                """Set the trace function."""
+                self._trace_function = trace_func
         
         # Create a mock for the debugger
         debugger = FaultyDebugger()
@@ -417,12 +493,13 @@ class TestErrorHandling:
             try:
                 # Simulate an error during integration
                 debugger_instance.user_line(None)
-                return True
             except Exception:
                 if self.bridge.config["fallback_on_error"]:
                     self.bridge.integration_stats["errors_handled"] += 1
                     return False
                 raise
+            else:
+                return True
         
         # Patch the method
         self.bridge.integrate_with_debugger_bdb = mock_integrate
@@ -445,8 +522,45 @@ class TestErrorHandling:
         
         # Create a debugger with a user_line that will raise an exception
         class FaultyDebugger:
-            def user_line(self, frame):
-                raise Exception("Test error")
+            def __init__(self):
+                # Required attributes from DebuggerLike protocol
+                self.function_breakpoints = []
+                self.function_breakpoint_meta = {}
+                self.threads = {}
+                self.next_var_ref = 0
+                self.var_refs = {}
+                self.frame_id_to_frame = {}
+                self.frames_by_thread = {}
+                self.current_exception_info = {}
+                self.current_frame = None
+                self.stepping = False
+                self.data_breakpoints = []
+                self.stop_on_entry = False
+                self.data_watch_names = set()
+                self.data_watch_meta = {}
+                self._data_watches = {}
+                self._frame_watches = {}
+                self.stopped_thread_ids = set()
+                self.exception_breakpoints_uncaught = False
+                self.exception_breakpoints_raised = False
+                self._frame_eval_enabled = False
+                self._mock_user_line = None
+                self.custom_breakpoints = {}
+                self.breakpoints = {}
+                self._trace_function = None
+            
+            def user_line(self, _frame):
+                raise DebuggerTestError("Test error")
+            
+            def get_trace_function(self):
+                """Get the current trace function."""
+                if self._trace_function is not None:
+                    return self._trace_function
+                return lambda _frame, _event, _arg: None
+            
+            def set_trace_function(self, trace_func):
+                """Set the trace function."""
+                self._trace_function = trace_func
         
         # Create a mock for the debugger
         debugger = FaultyDebugger()
@@ -458,7 +572,7 @@ class TestErrorHandling:
             try:
                 # Simulate an error during integration
                 debugger_instance.user_line(None)
-                return True
+                return True  # noqa: TRY300
             except Exception:
                 if self.bridge.config["fallback_on_error"]:
                     self.bridge.integration_stats["errors_handled"] += 1
@@ -470,7 +584,7 @@ class TestErrorHandling:
         
         try:
             # Integration should raise the exception
-            with pytest.raises(Exception, match="Test error"):
+            with pytest.raises(DebuggerTestError, match="Test error"):
                 self.bridge.integrate_with_debugger_bdb(debugger)
             
             # Verify the error was not handled

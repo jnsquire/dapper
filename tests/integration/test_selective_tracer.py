@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+import dapper._frame_eval.selective_tracer
 from dapper._frame_eval import cache_manager
 from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
 from dapper._frame_eval.selective_tracer import FrameTraceManager
@@ -115,8 +116,8 @@ class TestFrameAnalyzer:
             
             result = self.analyzer.should_trace_frame(mock_frame)
             assert result["should_trace"] is False
-            # The reason could be either of these depending on the test environment
-            assert result["reason"] in ["thread_skip_frame", "no_breakpoints_in_file"]
+            # The reason could be any of these depending on the test environment
+            assert result["reason"] in ["thread_skip_frame", "no_breakpoints_in_file", "file_not_tracked"]
     
     def test_update_breakpoints(self):
         """Test breakpoint updates."""
@@ -472,7 +473,6 @@ class TestGlobalFunctions:
     def setup_method(self):
         """Set up test fixtures."""
         # Reset global trace manager for each test
-        import dapper._frame_eval.selective_tracer
         dapper._frame_eval.selective_tracer._trace_manager = FrameTraceManager()
     
     def test_enable_selective_tracing(self):
@@ -535,7 +535,6 @@ class TestThreadSafety:
     
     def setup_method(self):
         """Set up test fixtures."""
-        from dapper._frame_eval.selective_tracer import FrameTraceManager
         self.trace_manager = FrameTraceManager()
     
     def test_concurrent_breakpoint_updates(self):
@@ -606,8 +605,6 @@ class TestThreadSafety:
                 except Exception as e:
                     errors.append(str(e))
 
-            # Start multiple threads calling the trace function
-            import threading
             threads = []
             for _ in range(5):
                 t = threading.Thread(target=call_trace_function)

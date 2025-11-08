@@ -3,9 +3,9 @@
 Pytest-style tests for frame evaluation system.
 """
 
-import os
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -49,13 +49,13 @@ def test_basic_functionality():
 
 def test_working_directory():
     """Test that working directory is correct."""
-    cwd = os.getcwd()
-    assert cwd.endswith("dapper")
+    cwd = Path.cwd()
+    assert str(cwd).endswith("dapper")
 
 
 def test_python_path():
     """Test that PYTHONPATH includes our workspace."""
-    workspace_path = os.getcwd()
+    workspace_path = str(Path.cwd())
     assert workspace_path in sys.path
 
 
@@ -138,8 +138,9 @@ def test_breakpoint_cache():
         
     finally:
         # Clean up the temporary file
-        if os.path.exists(test_file):
-            os.unlink(test_file)
+        test_path = Path(test_file)
+        if test_path.exists():
+            test_path.unlink()
 
 
 def test_selective_tracer():
@@ -185,13 +186,84 @@ def test_debugger_integration():
     # Test auto-integration with mock objects
     class MockDebuggerBDB:
         def __init__(self):
-            self.user_line = lambda frame: None
+            self.user_line = lambda _: None  # _ indicates unused parameter
             self.breakpoints = {}
+            self._trace_function = None
+            
+            # Required attributes from DebuggerLike protocol
+            self.function_breakpoints = []
+            self.function_breakpoint_meta = {}
+            self.threads = {}
+            self.next_var_ref = 0
+            self.var_refs = {}
+            self.frame_id_to_frame = {}
+            self.frames_by_thread = {}
+            self.current_exception_info = {}
+            self.current_frame = None
+            self.stepping = False
+            self.data_breakpoints = []
+            self.stop_on_entry = False
+            self.data_watch_names = set()
+            self.data_watch_meta = {}
+            self._data_watches = {}
+            self._frame_watches = {}
+            self.stopped_thread_ids = set()
+            self.exception_breakpoints_uncaught = False
+            self.exception_breakpoints_raised = False
+            self._frame_eval_enabled = False
+            self._mock_user_line = None
+            self.custom_breakpoints = {}
+        
+        def get_trace_function(self):
+            """Get the current trace function."""
+            if self._trace_function is not None:
+                return self._trace_function
+            return lambda _frame, _event, _arg: None
+        
+        def set_trace_function(self, trace_func):
+            """Set the trace function."""
+            self._trace_function = trace_func
     
     class MockPyDebugger:
         def __init__(self):
-            self.set_breakpoints = lambda source, bps, **kwargs: None
             self.threads = {}
+            self._trace_function = None
+            
+            # Required attributes from DebuggerLike protocol
+            self.function_breakpoints = []
+            self.function_breakpoint_meta = {}
+            self.next_var_ref = 0
+            self.var_refs = {}
+            self.frame_id_to_frame = {}
+            self.frames_by_thread = {}
+            self.current_exception_info = {}
+            self.current_frame = None
+            self.stepping = False
+            self.data_breakpoints = []
+            self.stop_on_entry = False
+            self.data_watch_names = set()
+            self.data_watch_meta = {}
+            self._data_watches = {}
+            self._frame_watches = {}
+            self.stopped_thread_ids = set()
+            self.exception_breakpoints_uncaught = False
+            self.exception_breakpoints_raised = False
+            self._frame_eval_enabled = False
+            self._mock_user_line = None
+            self.custom_breakpoints = {}
+        
+        def set_breakpoints(self, source, bps, **kwargs):
+            pass
+        
+        def get_trace_function(self):
+            """Get the current trace function."""
+            if self._trace_function is not None:
+                return self._trace_function
+            return lambda _frame, _event, _arg: None
+        
+        def set_trace_function(self, trace_func):
+            """Set the trace function."""
+            self._trace_function = trace_func
     
     # Test auto-integration
     mock_bdb = MockDebuggerBDB()
@@ -203,7 +275,7 @@ def test_debugger_integration():
     assert result_py is True
     
     # Test with unknown object
-    result_unknown = auto_integrate_debugger(object())
+    result_unknown = auto_integrate_debugger(object())  # type: ignore[arg-type]
     assert result_unknown is False
 
 

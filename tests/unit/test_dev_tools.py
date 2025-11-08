@@ -14,7 +14,7 @@ import pytest
 def test_update_docs_success(tmp_path: Path) -> None:
     """Test that update_docs runs the script successfully."""
     # Import here to avoid test collection issues
-    from dapper.dev_tools import update_docs
+    from dapper.dev_tools import update_docs  # noqa: PLC0415
     
     # Create a dummy script path and file
     script_path = tmp_path / "scripts" / "update_docs.py"
@@ -40,7 +40,7 @@ def test_update_docs_success(tmp_path: Path) -> None:
 
 def test_update_docs_missing_script() -> None:
     """Test that update_docs raises SystemExit when script is missing."""
-    from dapper.dev_tools import update_docs
+    from dapper.dev_tools import update_docs  # noqa: PLC0415
     
     # Patch the path to point to a non-existent location
     with patch("dapper.dev_tools.Path") as mock_path:
@@ -54,7 +54,7 @@ def test_update_docs_missing_script() -> None:
 def test_main_calls_update_docs() -> None:
     """Test that __main__ calls update_docs()."""
     # Import the module
-    import dapper.dev_tools
+    import dapper.dev_tools  # noqa: PLC0415
     
     # Mock the update_docs function
     with patch("dapper.dev_tools.update_docs") as mock_update_docs:

@@ -5,9 +5,12 @@ from unittest.mock import Mock
 
 import pytest
 
+from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
+
 # Import the modules we're testing
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 from dapper._frame_eval.debugger_integration import FrameEvalConfig
+from dapper._frame_eval.debugger_integration import _integration_bridge
 from dapper._frame_eval.debugger_integration import auto_integrate_debugger
 from dapper._frame_eval.debugger_integration import configure_integration
 from dapper._frame_eval.debugger_integration import get_integration_bridge
@@ -236,8 +239,7 @@ class TestGlobalFunctions:
     
     def test_auto_integrate_debugger_bdb(self):
         """Test auto-integration with DebuggerBDB."""
-        # Get the bridge and ensure it's enabled
-        from dapper._frame_eval.debugger_integration import _integration_bridge
+        # Ensure the bridge is enabled
         _integration_bridge.update_config(enabled=True)
         
         debugger_bdb = Mock()
@@ -394,7 +396,6 @@ class TestCythonIntegration:
         """Test frame evaluation statistics."""
         # Skip test if Cython module isn't available
         try:
-            from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
             
             stats = get_frame_eval_stats()
             
@@ -409,7 +410,7 @@ class TestCythonIntegration:
     def test_frame_eval_activation(self):
         """Test frame evaluation activation and deactivation."""
         # Get initial stats
-        initial_stats = get_frame_eval_stats()
+        get_frame_eval_stats()
         
         # Activate frame evaluation
         frame_eval_func()
@@ -418,7 +419,7 @@ class TestCythonIntegration:
         
         # Deactivate frame evaluation
         stop_frame_eval()
-        inactive_stats = get_frame_eval_stats()
+        get_frame_eval_stats()
         
         # Note: The simplified implementation might keep active=True
         # This is expected behavior for the current implementation
