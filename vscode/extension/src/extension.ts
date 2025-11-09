@@ -118,13 +118,13 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
   });
 }
 
-function* registerDebugAdapters(): Iterable<vscode.Disposable> {
+function* registerDebugAdapters(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
   // Register debug configuration provider
   const provider = new DapperConfigurationProvider();
   yield vscode.debug.registerDebugConfigurationProvider('dapper', provider);
 
   // Register debug adapter descriptor factory
-  const factory = new DapperDebugAdapterDescriptorFactory();
+  const factory = new DapperDebugAdapterDescriptorFactory(context);
   yield vscode.debug.registerDebugAdapterDescriptorFactory('dapper', factory);
   yield factory;
 }
@@ -164,7 +164,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register debug adapters
     logger.debug('Registering debug adapters...');
-    const debugDisposables = Array.from(registerDebugAdapters());
+  const debugDisposables = Array.from(registerDebugAdapters(context));
     debugDisposables.forEach(disposable => context.subscriptions.push(disposable));
     logger.log(`Registered ${debugDisposables.length} debug adapters`);
 

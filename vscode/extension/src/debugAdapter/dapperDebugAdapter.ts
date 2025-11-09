@@ -10,10 +10,10 @@ import * as Net from 'net';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { EnvironmentManager, InstallMode } from '../env/EnvironmentManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { PythonEnvironmentManager } from '../python/environment.js';
 
 // Define the debug configuration type that we expect
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
@@ -147,6 +147,13 @@ export class DapperDebugSession extends LoggingDebugSession {
 export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory, vscode.Disposable {
   private server?: Net.Server;
   private childProcess?: any; // Child process for the debug adapter
+  private readonly envManager: EnvironmentManager;
+  private readonly extensionVersion: string;
+
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.envManager = new EnvironmentManager(context);
+    this.extensionVersion = context.extension.packageJSON.version || '0.0.0';
+  }
 
   async createDebugAdapterDescriptor(
     session: vscode.DebugSession,
@@ -154,84 +161,79 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   ): Promise<DebugAdapterDescriptor> {
     if (!this.server) {
       try {
-        const workspaceFolder = session.workspaceFolder || 
-          (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
-        
-        // Get the Python environment and launch configuration
-        const extensionPath = path.dirname(__dirname);
-        const dapperPath = path.join(extensionPath, '..', '..'); // Go up to dapper root
-        const scriptPath = path.join(dapperPath, 'dapper', 'debug_launcher.py');
-        
-        // Get Python path from configuration or use default
         const config = session.configuration;
-        const pythonPath = config.pythonPath || 'python';
-        const command = pythonPath;
-        const args = [scriptPath];
-        
-        // Pass through any debug configuration
-        if (config.cwd) {
-            args.push('--cwd', config.cwd);
+        const installMode = (vscode.workspace.getConfiguration('dapper.python').get<string>('installMode') || 'auto') as InstallMode;
+        const forceReinstall = !!vscode.workspace.getConfiguration('dapper.python').get<boolean>('forceReinstall');
+
+        // Prepare environment (create venv & install dapper if needed)
+        const envInfo = await this.envManager.prepareEnvironment(this.extensionVersion, installMode, forceReinstall);
+        const pythonPath = envInfo.pythonPath;
+
+        // Build arguments: use dapper.debug_launcher CLI
+        const args: string[] = ['-m', 'dapper.debug_launcher'];
+        const program = config.program as string | undefined;
+        if (program) {
+          const programPath = String(program).replace(/\\/g, '/');
+          args.push('--program', programPath);
+        } else {
+          vscode.window.showWarningMessage('Dapper: launch.program not set; debug launcher expects a program path.');
         }
-        if (config.module) {
-            args.push('-m', config.module);
-        } else if (config.program) {
-            // Convert Windows paths to forward slashes for Python
-            const programPath = config.program.replace(/\\/g, '/');
-            args.push(programPath);
+        if (config.args && Array.isArray(config.args)) {
+          for (const a of config.args) {
+            args.push('--arg', String(a));
+          }
         }
-        if (config.args) {
-            args.push(...config.args);
+        if (config.stopOnEntry) {
+          args.push('--stop-on-entry');
         }
-        
-        // Start the debug adapter in a separate process
+        if (config.noDebug) {
+          args.push('--no-debug');
+        }
+
+        // Create server for VS Code <-> adapter Protocol
         const server = Net.createServer(socket => {
-          const session = new DapperDebugSession();
-          (session as any).setRunAsServer(true);
-          (session as any).start(socket as NodeJS.ReadableStream, socket);
+          const sessionImpl = new DapperDebugSession();
+          (sessionImpl as any).setRunAsServer(true);
+          (sessionImpl as any).start(socket as NodeJS.ReadableStream, socket);
         }).listen(0);
-        
         this.server = server;
-        
-        // Start the Python debug adapter process
-        // Spawn the debug adapter process with the Python environment
-        const env = {
-            ...process.env,
-            ...config.env,
-            // Ensure Dapper is in the Python path
-            PYTHONPATH: [
-                dapperPath,
-                process.env.PYTHONPATH
-            ].filter(Boolean).join(path.delimiter)
+
+        const envVars = {
+          ...process.env,
+          ...(config.env || {}),
+          // Provide explicit indicator of managed environment
+          DAPPER_MANAGED_VENV: envInfo.venvPath || '',
+          DAPPER_VERSION_EXPECTED: this.extensionVersion,
         };
 
-        this.childProcess = require('child_process').spawn(command, args, {
-            cwd: config.cwd || process.cwd(),
-            env,
-            stdio: ['pipe', 'pipe', 'pipe'],
-            shell: process.platform === 'win32' // Use shell on Windows for .bat/.cmd files
+        // Spawn adapter process
+        this.childProcess = require('child_process').spawn(pythonPath, args, {
+          cwd: config.cwd || process.cwd(),
+          env: envVars,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: process.platform === 'win32'
         });
 
+        const outChannel = this.envManager.getOutputChannel();
         this.childProcess.stdout.on('data', (data: Buffer) => {
-          console.log(`[DAP] ${data.toString().trim()}`);
+          outChannel.appendLine(`[adapter stdout] ${data.toString().trim()}`);
         });
-        
+        this.childProcess.stderr.on('data', (data: Buffer) => {
+          outChannel.appendLine(`[adapter stderr] ${data.toString().trim()}`);
+        });
         this.childProcess.on('error', (err: Error) => {
-          console.error('Failed to start debug adapter:', err);
+          outChannel.appendLine(`[ERROR] Debug adapter spawn failed: ${err.message}`);
           vscode.window.showErrorMessage(`Failed to start Dapper debug adapter: ${err.message}`);
         });
-        
         this.childProcess.on('exit', (code: number) => {
-          console.log(`Debug adapter process exited with code ${code}`);
+          outChannel.appendLine(`[INFO] Debug adapter exited with code ${code}`);
           if (code !== 0) {
             vscode.window.showErrorMessage(`Dapper debug adapter process exited with code ${code}`);
           }
         });
-        
       } catch (error) {
         console.error('Error creating debug adapter:', error);
-        vscode.window.showErrorMessage(
-          'Failed to initialize Python environment. Make sure the Python extension is installed and configured correctly.'
-        );
+        vscode.window.showErrorMessage('Failed to initialize Dapper Python environment.');
         throw error;
       }
     }

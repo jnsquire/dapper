@@ -23,12 +23,7 @@
       "properties": {
         "dapper.logLevel": {
           "type": "string",
-          "enum": [
-            "debug",
-            "info",
-            "warn",
-            "error"
-          ],
+          "enum": ["debug", "info", "warn", "error"],
           "default": "info",
           "description": "Sets the verbosity of logging for the Dapper Debugger."
         },
@@ -36,6 +31,27 @@
           "type": "boolean",
           "default": false,
           "description": "When enabled, logs will also be written to the VS Code developer tools console."
+        },
+        "dapper.python.installMode": {
+          "type": "string",
+          "enum": ["auto", "wheel", "pypi", "workspace"],
+          "default": "auto",
+          "description": "Strategy for installing the dapper Python package. 'auto' tries bundled wheel then falls back to PyPI; 'workspace' skips venv and uses the workspace interpreter."
+        },
+        "dapper.python.baseInterpreter": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the base Python interpreter used to create the managed venv. If empty, the extension will use 'python' (Windows) or 'python3' (POSIX) from PATH."
+        },
+        "dapper.python.forceReinstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force reinstall of the dapper package into the managed environment on activation."
+        },
+        "dapper.python.expectedVersion": {
+          "type": "string",
+          "default": "",
+          "description": "Override the expected dapper package version. By default the extension's version is used."
         }
       }
     },
@@ -170,7 +186,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run prepare-python && npm run build",
+    "prepare-python": "node scripts/copy-wheel.cjs",
     "build": "node esbuild.config.js --production",
     "watch": "node esbuild.config.js --watch",
     "compile": "tsc -p ./",
