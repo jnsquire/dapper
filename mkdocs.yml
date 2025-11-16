@@ -1,0 +1,13 @@
+site_name: Dapper
+docs_dir: doc
+theme:
+  name: mkdocs
+
+plugins:
+  - search
+  - mermaid2
+
+nav:
+  - Home: README.md
+  - Reference:
+      - Message Flows: reference/message_flows.md

@@ -76,6 +76,38 @@ uv build
 python -m build
 ```
 
+### Updating documentation (MkDocs + Mermaid)
+
+We provide a small helper that renders the Mermaid `.mmd` diagrams and builds
+the MkDocs site locally. Recommended (reproducible) command that ensures the
+project and development dependencies are available for the run:
+
+```bash
+# Install dev dependencies for the run and make the project editable so the
+# `docs` console-script entry point is available, then run the docs helper:
+uv run --only-dev --with-editable . docs
+```
+
+If you only want to run the helper directly (without asking uv to install dev
+dependencies for the run), you can invoke the script directly. This requires
+that `mkdocs` and the Mermaid plugin are already available in the active
+environment:
+
+```bash
+uv run python scripts/update_docs.py
+```
+
+Force a full re-render of Mermaid diagrams by appending the extra `--`
+argument which is forwarded to the helper script:
+
+```bash
+uv run --only-dev --with-editable . docs -- --force
+```
+
+The helper will write the built site into `./site/` and will skip re-rendering
+diagrams when the generated SVGs are up-to-date unless `--force` is provided.
+
+
 ### Asynchronous Task Scheduling Helpers
 
 The debugger codebase avoids creating coroutine objects off the target event loop thread. Two helper APIs exist in `PyDebugger` (see `dapper/server.py`) to keep this consistent:

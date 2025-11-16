@@ -18,6 +18,8 @@ from dapper import debug_shared as _ds
 from dapper.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
+from dapper.protocol_types import LegacySourceArguments
+from dapper.protocol_types import LoadedSourcesArguments
 from dapper.protocol_types import Source
 
 # small constant to make argcount checks clearer / lint-friendly
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     from dapper.protocol_types import ContinueArguments
     from dapper.protocol_types import EvaluateArguments
     from dapper.protocol_types import ExceptionInfoArguments
+    from dapper.protocol_types import LegacySourceArguments
     from dapper.protocol_types import Module
     from dapper.protocol_types import ModulesArguments
     from dapper.protocol_types import NextArguments
@@ -39,6 +42,7 @@ if TYPE_CHECKING:
     from dapper.protocol_types import SetExceptionBreakpointsArguments
     from dapper.protocol_types import SetFunctionBreakpointsArguments
     from dapper.protocol_types import SetVariableArguments
+    from dapper.protocol_types import SourceArguments
     from dapper.protocol_types import StackTraceArguments
     from dapper.protocol_types import StepInArguments
     from dapper.protocol_types import StepOutArguments
@@ -597,7 +601,7 @@ def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
 
 
 @command_handler("loadedSources")
-def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
+def handle_loaded_sources(_arguments: LoadedSourcesArguments | None = None) -> None:
     """Handle loadedSources request to return all loaded source files."""
     # Track seen paths to avoid duplicates
     seen_paths = set[str]()
@@ -627,17 +631,45 @@ def handle_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
 
 
 @command_handler("source")
-def handle_source(arguments: dict[str, Any] | None = None) -> None:
-    """Handle 'source' request to return source content by path or sourceReference."""
+def handle_source(arguments: SourceArguments | LegacySourceArguments | dict[str, Any] | None = None) -> None:
+    """Handle 'source' request to return source content by path or sourceReference.
+    
+    According to the Debug Adapter Protocol specification, this handles two formats:
+    
+    1. Preferred format (SourceArguments):
+       {
+           "source": {
+               "sourceReference": 123  // or "path": "/path/to/source"
+           }
+       }
+    
+    2. Legacy format (LegacySourceArguments, for backward compatibility):
+       {
+           "sourceReference": 123
+       }
+    
+    Args:
+        arguments: Either a SourceArguments object (preferred) or LegacySourceArguments
+                  object (for backward compatibility), or a raw dict matching one of
+                  these formats.
+    """
     if arguments is None:
         send_debug_message(
             "response", success=False, message="Missing arguments for source request"
         )
         return
-
-    source = arguments.get("source", {})
-    source_reference = source.get("sourceReference") or arguments.get("sourceReference")
-    path = source.get("path") or arguments.get("path")
+    
+    # Extract source reference and path based on the format
+    # 1. Check for the preferred format with nested 'source' key (SourceArguments)
+    if isinstance(arguments, dict) and "source" in arguments and isinstance(arguments["source"], dict):
+        source = arguments["source"]
+        source_reference = source.get("sourceReference")
+        path = source.get("path")
+    else:
+        # 2. Handle legacy format with direct keys (LegacySourceArguments)
+        source = arguments
+        source_reference = source.get("sourceReference")
+        path = source.get("path")
     # Resolve content (by sourceReference preferred, else by path)
     content = None
     mime_type: str | None = None

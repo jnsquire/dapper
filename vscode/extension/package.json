@@ -1,0 +1,247 @@
+{
+  "name": "dapper-debugger",
+  "displayName": "Dapper Python Debugger",
+  "description": "Enhanced Python debugging with Dapper Debug Adapter and React-based UI",
+  "version": "0.1.0",
+  "publisher": "dapper",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onDebug",
+    "onCommand:dapper.showLogs"
+  ],
+  "type": "module",
+  "browser": "./out/webview/index.mjs",
+  "main": "./out/extension.mjs",
+  "contributes": {
+    "configuration": {
+      "title": "Dapper Debugger",
+      "properties": {
+        "dapper.logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info",
+          "description": "Sets the verbosity of logging for the Dapper Debugger."
+        },
+        "dapper.logToConsole": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, logs will also be written to the VS Code developer tools console."
+        },
+        "dapper.python.installMode": {
+          "type": "string",
+          "enum": ["auto", "wheel", "pypi", "workspace"],
+          "default": "auto",
+          "description": "Strategy for installing the dapper Python package. 'auto' tries bundled wheel then falls back to PyPI; 'workspace' skips venv and uses the workspace interpreter."
+        },
+        "dapper.python.baseInterpreter": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the base Python interpreter used to create the managed venv. If empty, the extension will use 'python' (Windows) or 'python3' (POSIX) from PATH."
+        },
+        "dapper.python.forceReinstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force reinstall of the dapper package into the managed environment on activation."
+        },
+        "dapper.python.expectedVersion": {
+          "type": "string",
+          "default": "",
+          "description": "Override the expected dapper package version. By default the extension's version is used."
+        }
+      }
+    },
+    "breakpoints": [
+      {
+        "language": "python"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "dapper",
+        "label": "Dapper Python Debugger",
+        "program": "./dist/debugAdapter/dapperDebugAdapter.js",
+        "runtime": "node",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "The Python program to debug.",
+                "default": "${file}"
+              },
+              "args": {
+                "type": "array",
+                "description": "Command line arguments passed to the program.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "cwd": {
+                "type": "string",
+                "description": "The working directory for the debug session.",
+                "default": "${workspaceFolder}"
+              },
+              "debugServer": {
+                "type": "number",
+                "description": "Port number for the debug server.",
+                "default": 4711
+              },
+              "useIpc": {
+                "type": "boolean",
+                "description": "Use IPC for communication between debug adapter and launcher.",
+                "default": true
+              },
+              "ipcTransport": {
+                "type": "string",
+                "enum": [
+                  "tcp",
+                  "unix",
+                  "pipe"
+                ],
+                "description": "IPC transport type.",
+                "default": "pipe"
+              },
+              "frameEval": {
+                "type": "boolean",
+                "description": "Enable frame evaluation for better performance.",
+                "default": true
+              },
+              "inProcess": {
+                "type": "boolean",
+                "description": "Run the debug adapter in the same process as the extension.",
+                "default": false
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Break immediately when the program starts.",
+                "default": true
+              },
+              "justMyCode": {
+                "type": "boolean",
+                "description": "Only debug user-written code.",
+                "default": true
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "Dapper: Launch Python File",
+            "description": "A new configuration for debugging a Python file with Dapper.",
+            "body": {
+              "type": "dapper",
+              "request": "launch",
+              "name": "Python: Dapper Debug",
+              "program": "${file}",
+              "console": "integratedTerminal"
+            }
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "dapper.startDebugging",
+        "title": "Dapper: Start Debugging",
+        "category": "Dapper"
+      },
+      {
+        "command": "dapper.toggleBreakpoint",
+        "title": "Dapper: Toggle Breakpoint",
+        "category": "Dapper"
+      },
+      {
+        "command": "dapper.showVariableInspector",
+        "title": "Dapper: Show Variable Inspector",
+        "category": "Dapper"
+      },
+      {
+        "command": "dapper.configureSettings",
+        "title": "Dapper: Configure Settings",
+        "category": "Dapper"
+      }
+      ,
+      {
+        "command": "dapper.addDebugConfiguration",
+        "title": "Dapper: Add Saved Debug Configuration to launch.json",
+        "category": "Dapper"
+      }
+      ,
+      {
+        "command": "dapper.startDebugWithSavedConfig",
+        "title": "Dapper: Start Debugging with Saved Config",
+        "category": "Dapper"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "dapper.showVariableInspector",
+          "when": "debuggersAvailable == true"
+        }
+        ,
+        {
+          "command": "dapper.addDebugConfiguration",
+          "when": "workspaceFolderCount > 0"
+        }
+        ,
+        {
+          "command": "dapper.startDebugWithSavedConfig",
+          "when": "workspaceFolderCount > 0"
+        }
+      ],
+      "debug/toolbar": [
+        {
+          "command": "dapper.showVariableInspector",
+          "group": "dapper_debug",
+          "when": "debugType == 'dapper'"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run prepare-python && npm run build",
+    "prepare-python": "node scripts/copy-wheel.cjs",
+    "build": "node esbuild.config.js --production",
+    "watch": "node esbuild.config.js --watch",
+    "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
+    "compile": "npm run clean && tsc -p ./",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests"
+  },
+  "dependencies": {
+    "@vscode-elements/elements": "^2.3.1",
+    "@vscode/debugprotocol": "^1.68.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "optionalDependencies": {
+    "@vscode/debugadapter": "^1.54.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "esbuild": "^0.25.12",
+    "esbuild-plugin-copy": "^2.1.1",
+    "esbuild-sass-plugin": "^3.3.1",
+    "eslint": "^8.56.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "jest": "^29.6.4",
+    "@types/jest": "^29.5.4",
+    "ts-jest": "^29.1.0"
+  }
+}

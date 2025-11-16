@@ -1,0 +1,111 @@
+@import './variables.css';
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  color: var(--foreground);
+  background-color: var(--background);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.variable-inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.variable-inspector-header {
+  padding: var(--padding);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.variable-inspector-header h2 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.variable-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--padding);
+}
+
+.variable-item {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.variable-header {
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.variable-header:hover {
+  background-color: rgba(90, 93, 94, 0.3);
+}
+
+.toggle-icon {
+  display: inline-block;
+  width: 16px;
+  text-align: center;
+  margin-right: 4px;
+  color: var(--foreground);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.variable-name {
+  color: var(--vscode-debugToken-name, #9cdcfe);
+  margin-right: 8px;
+}
+
+.variable-type {
+  color: var(--vscode-debugToken-type, #4ec9b0);
+  margin-right: 8px;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.variable-value {
+  color: var(--vscode-debugToken-string, #ce9178);
+  word-break: break-all;
+}
+
+.no-variables {
+  color: var(--vscode-descriptionForeground, #989898);
+  font-style: italic;
+  text-align: center;
+  padding: 16px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-corner {
+  background-color: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--vscode-scrollbarSlider-background, transparent);
+}

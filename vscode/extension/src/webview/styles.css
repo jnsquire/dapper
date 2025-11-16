@@ -1,0 +1,105 @@
+/* Import vscode-elements styles */
+@import 'https://unpkg.com/@vscode-elements/elements/dist/vscode-elements.css';
+
+/* Custom styles that work with vscode-elements */
+:host {
+  --vscode-font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Ubuntu', 'Droid Sans', sans-serif);
+  --vscode-font-size: var(--vscode-editor-font-size, 13px);
+  --vscode-foreground: var(--vscode-foreground, #cccccc);
+  --vscode-panel-background: var(--vscode-panel-background, #1e1e1e);
+  --vscode-panel-border: var(--vscode-panel-border, #454545);
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-panel-background);
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Panel styles */
+vscode-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Tree view styles */
+vscode-tree-view {
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  padding: 8px 0;
+}
+
+vscode-tree-item {
+  padding: 2px 0;
+}
+
+/* Console styles */
+.console-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  white-space: pre-wrap;
+}
+
+.console-line {
+  margin: 2px 0;
+  line-height: 1.5;
+}
+
+/* Toolbar styles */
+.toolbar {
+  display: flex;
+  padding: 4px;
+  background-color: var(--vscode-toolbar-activeBackground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.toolbar vscode-button {
+  margin-right: 4px;
+}
+
+/* Status bar */
+.status-bar {
+  display: flex;
+  padding: 4px 8px;
+  background-color: var(--vscode-statusBar-background);
+  color: var(--vscode-statusBar-foreground);
+  font-size: 12px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+/* Debug toolbar */
+.debug-toolbar {
+  display: flex;
+  padding: 4px;
+  background-color: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.debug-toolbar vscode-button {
+  margin-right: 4px;
+  --button-background: var(--vscode-button-background);
+  --button-foreground: var(--vscode-button-foreground);
+}
+
+/* Responsive layout */
+@media (max-width: 600px) {
+  .toolbar, .debug-toolbar {
+    flex-wrap: wrap;
+  }
+  
+  .toolbar vscode-button, 
+  .debug-toolbar vscode-button {
+    margin-bottom: 4px;
+  }
+}

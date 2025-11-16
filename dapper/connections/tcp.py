@@ -1,10 +1,11 @@
-"""TCPServerConnection implementation moved from dapper.connection."""
+"""TCPServerConnection implementation for DAP protocol over TCP."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import socket
 from typing import Any
 
 from dapper.connections import ConnectionBase
@@ -13,13 +14,25 @@ logger = logging.getLogger(__name__)
 
 
 class TCPServerConnection(ConnectionBase):
-    """TCP server connection for DAP."""
+    """TCP server connection for DAP protocol.
+    
+    This class implements a TCP server that listens for incoming DAP client
+    connections. It supports both normal operation and test scenarios where
+    the bound port needs to be known before clients connect.
+    """
 
     def __init__(self, host: str = "localhost", port: int = 4711) -> None:
+        """Initialize the TCP server connection.
+        
+        Args:
+            host: The host address to bind to. Defaults to localhost.
+            port: The port to bind to. Use 0 for an ephemeral port.
+        """
         super().__init__()
         self.host = host
         self.port = port
-        self.server = None
+        self.server: asyncio.Server | None = None
+        self._client_connected: asyncio.Future[bool] | None = None
 
     async def accept(self) -> None:
         """Start listening and wait for the first client to connect.
@@ -28,35 +41,9 @@ class TCPServerConnection(ConnectionBase):
         existing server socket and only waits for a client.
         """
         if self.server is None:
-            logger.info("Starting TCP server on %s:%s", self.host, self.port)
-            self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
-
-            # Update the port to the actual bound port in case an ephemeral port
-            # (port=0) was requested. This makes the object reflect the real
-            # listening port after start_server returns.
-            srv = self.server
-            if srv is not None and srv.sockets:
-                try:
-                    bound = srv.sockets[0].getsockname()
-                    # getsockname() typically returns (host, port)
-                    self.port = bound[1]
-                except Exception:
-                    # Be conservative: if the socket shape is unexpected, leave
-                    # the configured port unchanged.
-                    logger.debug("Unable to determine bound port from server sockets")
-
-            # Prepare the future used to signal the first client connect
-            self._client_connected = asyncio.Future()
-
-        # Wait for the first client to connect; fulfilled in _handle_client
-        await self._client_connected
-
-        logger.info(
-            "Client connected to TCP server on %s:%s",
-            self.host,
-            self.port,
-        )
-        self._is_connected = True
+            await self.start_listening()
+        
+        await self.wait_for_client()
 
     async def start_listening(self) -> None:
         """Start the TCP server listening without waiting for a client.
@@ -64,39 +51,69 @@ class TCPServerConnection(ConnectionBase):
         This allows tests to obtain the bound ephemeral port before a client
         connects (avoiding polling of internal state during a blocking accept).
         """
+        if self.server is not None:
+            logger.warning("Server already listening on %s:%s", self.host, self.port)
+            return
+
         logger.info("Starting TCP server on %s:%s", self.host, self.port)
-        self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
-
-        # Prepare future to be fulfilled when first client connects.
-        self._client_connected = asyncio.Future()
-
-        # Update self.port if an ephemeral port was chosen.
-        srv = getattr(self, "server", None)
-        if srv is not None and getattr(srv, "sockets", None):
-            try:
-                bound = srv.sockets[0].getsockname()
-                self.port = bound[1]
-            except Exception:  # pragma: no cover - defensive
-                logger.debug("Unable to determine bound port from server sockets")
-
-    async def wait_for_client(self) -> None:
-        """Wait until a client connects (after start_listening)."""
-        if not hasattr(self, "_client_connected"):
-            msg = "wait_for_client called before start_listening"
-            raise RuntimeError(msg)
-        await self._client_connected
-        logger.info(
-            "Client connected to TCP server on %s:%s",
-            self.host,
+        self.server = await asyncio.start_server(
+            self._handle_client, 
+            self.host, 
             self.port,
+            reuse_address=True
         )
-        self._is_connected = True
+        self._client_connected = asyncio.Future()
+        self._update_bound_port()
+
+    def _update_bound_port(self) -> None:
+        """Update the bound port from the server socket.
+        
+        This is particularly useful when using an ephemeral port (port=0).
+        """
+        if self.server is None or not self.server.sockets:
+            return
+
+        try:
+            sock = self.server.sockets[0]
+            if sock.family in (socket.AF_INET, socket.AF_INET6):
+                _, port = sock.getsockname()[:2]
+                if port != self.port:
+                    logger.debug("Server bound to ephemeral port %d (requested: %d)", 
+                               port, self.port)
+                    self.port = port
+        except (IndexError, OSError) as e:
+            logger.debug("Could not determine bound port: %s", e)
+
+    async def wait_for_client(self, timeout: float | None = None) -> None:
+        """Wait until a client connects (after start_listening).
+        
+        Args:
+            timeout: Optional timeout in seconds to wait for a client connection.
+            
+        Raises:
+            RuntimeError: If called before start_listening
+            asyncio.TimeoutError: If timeout is reached before a client connects
+        """
+        if self._client_connected is None:
+            raise RuntimeError("wait_for_client called before start_listening")
+        
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._client_connected), 
+                timeout=timeout
+            )
+            logger.info("Client connected to TCP server on %s:%s", self.host, self.port)
+            self._is_connected = True
+        except asyncio.TimeoutError:
+            logger.warning("Timed out waiting for client connection on %s:%s", 
+                         self.host, self.port)
+            raise
 
     async def _handle_client(self, reader, writer) -> None:
         """Handle a new client connection."""
         self.reader = reader
         self.writer = writer
-        if not self._client_connected.done():
+        if self._client_connected is not None and not self._client_connected.done():
             self._client_connected.set_result(True)
 
     async def close(self) -> None:

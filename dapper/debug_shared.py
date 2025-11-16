@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
 from typing import TypedDict
 from typing import cast
 
@@ -122,6 +123,57 @@ class SessionState:
         self.next_source_ref = itertools.count(1)
 
         self._initialized = True
+
+        # ------------------------------------------------------------------
+        # Process-level hooks for termination and exec behavior
+        # ------------------------------------------------------------------
+        # These provide injectable hooks so tests can override process-level
+        # behavior (for example, to raise SystemExit rather than terminating
+        # the process). Defaults preserve prior behavior.
+        # - exit_func(code: int) -> Any: invoked when code wants to terminate
+        #   the process. Default: os._exit
+        # - exec_func(path: str, args: list[str]) -> Any: invoked to replace
+        #   the current process image. Default: os.execv
+        self.exit_func: Callable[[int], Any] = os._exit
+        self.exec_func: Callable[[str, list[str]], Any] = os.execv
+
+    def set_exit_func(self, fn: Callable[[int], Any]) -> None:
+        """Set a custom exit function for the session."""
+        self.exit_func = fn
+
+    def set_exec_func(self, fn: Callable[[str, list[str]], Any]) -> None:
+        """Set a custom exec function for the session."""
+        self.exec_func = fn
+
+    def start_command_receiver(self) -> None:
+        """Start the debug command receiving thread.
+
+        This is a safe, idempotent helper that defers the import to avoid
+        circular-import issues. Failures are logged rather than silently
+        ignored so misconfiguration is visible during startup.
+        """
+        # Avoid starting more than once
+        if getattr(self, "_command_thread_started", False):
+            logger.debug("command receiver already started")
+            return
+
+        try:
+            # Defer import to avoid circular import at module import time
+            from dapper.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
+
+            command_thread = threading.Thread(
+                target=receive_debug_commands, daemon=True, name="dapper-recv-cmd"
+            )
+            command_thread.start()
+            self._command_thread_started = True
+            logger.debug("Started receive_debug_commands thread")
+        except Exception as exc:  # pragma: no cover - best-effort startup
+            # Log at warning level so failures are visible during normal runs
+            logger.warning(
+                "Failed to start receive_debug_commands thread: %s",
+                exc,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Command provider registration and dispatch
@@ -266,20 +318,13 @@ class SessionState:
                     _setup_ipc_pipe(args.ipc_pipe)
                 else:
                     _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path)
-            except Exception:
-                # keep running without IPC if setup failed
+            except Exception as exc:  # pragma: no cover - environment specific
+                # keep running without IPC if setup failed, but log the reason
                 self.ipc_enabled = False
+                logger.warning("IPC setup failed: %s", exc, exc_info=True)
 
-        # start the command receiving thread
-        try:
-            # TODO Fix this, needed to avoid circular import
-            from dapper.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
-
-            command_thread = threading.Thread(target=receive_debug_commands, daemon=True)
-            command_thread.start()
-        except Exception:
-            # best-effort; if thread cannot be started leave state as-is
-            pass
+        # start the command receiving thread (deferred import to avoid cycles)
+        self.start_command_receiver()
 
         # attach a debugger instance
         try:
@@ -289,8 +334,9 @@ class SessionState:
                     self.debugger.stop_on_entry = True
                 except Exception:
                     pass
-        except Exception:
-            # if debugger construction fails, leave debugger as None
+        except Exception as exc:
+            # if debugger construction fails, leave debugger as None but log
+            logger.warning("Failed to construct DebuggerBDB: %s", exc, exc_info=True)
             self.debugger = None
 
 

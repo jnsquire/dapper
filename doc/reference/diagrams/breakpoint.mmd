@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant Editor as Client
+    participant Adapter as Debug Adapter
+    participant Debuggee as Debuggee
+
+    Editor->>Adapter: setBreakpoints(source, breakpoints)
+    Adapter-->>Debuggee: set breakpoint(s)
+    Debuggee-->>Adapter: breakpoint set ack
+    Adapter-->>Editor: setBreakpoints(response)
+
+    Debuggee->>Adapter: stopped(event reason:breakpoint, threadId)
+    Adapter-->>Editor: stopped(event)
+
+    Editor->>Adapter: threads()
+    Adapter-->>Editor: threads(response)
+
+    Editor->>Adapter: stackTrace(threadId)
+    Adapter-->>Editor: stackTrace(response)

@@ -3,7 +3,7 @@ Debug adapter communication and command queue logic.
 """
 
 import json
-import os
+import logging
 import sys
 import traceback
 from queue import Empty
@@ -13,6 +13,8 @@ from typing import cast
 from dapper.dap_command_handlers import COMMAND_HANDLERS
 from dapper.debug_shared import send_debug_message
 from dapper.debug_shared import state
+
+logger = logging.getLogger(__name__)
 
 
 class DapMappingProvider:
@@ -60,7 +62,7 @@ def receive_debug_commands() -> None:
         while not state.is_terminated:
             line = reader.readline()
             if not line:
-                sys.exit(0)
+                state.exit_func(0)
             if line.startswith("DBGCMD:"):
                 command_json = line[7:].strip()
                 try:
@@ -72,9 +74,14 @@ def receive_debug_commands() -> None:
                     traceback.print_exc()
     else:
         while not state.is_terminated:
-            line = sys.stdin.readline()
+            try:
+                line = sys.stdin.readline()
+            except OSError as exc:  # pragma: no cover - pytest stdin replacement
+                logger.debug("stdin read blocked (likely due to capture): %s", exc)
+                break
+
             if not line:
-                os._exit(0)
+                state.exit_func(0)
             if line.startswith("DBGCMD:"):
                 command_json = line[7:].strip()
                 try:

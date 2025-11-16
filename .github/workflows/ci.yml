@@ -2,6 +2,49 @@ name: CI
 
 on:
   push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test --silent
+
+      - name: Run build (optional)
+        run: npm run build --if-present
+
+      - name: Upload coverage (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+name: CI
+
+on:
+  push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
@@ -37,7 +80,7 @@ jobs:
           # Install the package in editable mode so tests can import it
           pip install -e .
           # Install tools used by CI; pin ruff to match local development version
-          pip install pyright "ruff==0.12.12" pytest pytest-cov pytest-xdist
+          pip install pyright "ruff==0.12.12" pytest pytest-cov pytest-xdist mkdocs mkdocs-mermaid2-plugin
 
       - name: Lint (ruff)
         run: |
@@ -46,6 +89,25 @@ jobs:
       - name: Type check (pyright)
         run: |
           pyright
+      - name: Set up Node (for mermaid-cli rendering)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Render Mermaid diagrams and verify
+        run: |
+          chmod +x ./scripts/render-mermaid.sh || true
+          ./scripts/render-mermaid.sh
+          # Fail the job if rendering changed any committed files (ensure renders are committed by PR authors)
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Rendered diagrams differ from repository files. Run ./scripts/render-mermaid.sh and commit the changes." >&2
+            git --no-pager status --porcelain
+            exit 1
+          fi
+
+      - name: Build docs (mkdocs)
+        run: |
+          mkdocs build --clean --site-dir site
 
       - name: Run tests
         run: |

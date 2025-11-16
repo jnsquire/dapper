@@ -1,16 +1,22 @@
 # Debug Python in VS Code with Dapper
 
-*A blog-style walkthrough for wiring up the Dapper debug adapter with Visual Studio Code's Python tooling.*
+*Guide to using the Dapper VS Code extension (managed venv) or the standalone adapter with VS Code's Python tooling.*
 
-## TL;DR
+## TL;DR (Two Paths)
 
-1. Install the **Python** and **Python Debug** extensions in VS Code.
-2. Add `dapper` to your Python environment: `uv pip install dapper` *(or `pip install dapper` if you prefer).* 
-3. Launch the adapter: `python -m dapper --port 4711`.
-4. Point your `launch.json` at that port with a standard Python configuration that sets `"debugServer": 4711`.
-5. Hit **F5** and enjoy step-through debugging, breakpoints, and watch expressions powered by Dapper.
+### A. Using the Dapper VS Code Extension (managed environment)
+1. Install **Dapper Python Debugger** extension.
+2. (Optional) Configure settings under `dapper.python.*` (e.g. `installMode: wheel`).
+3. Press **F5** on a `dapper` launch configuration. The extension creates a venv in global storage, installs the bundled `dapper` wheel (or PyPI), and launches the debug adapter with `-m dapper.debug_launcher`.
 
-Read on for the full story, tips, and troubleshooting recipes.
+### B. Using Dapper Standalone (external adapter)
+1. Install **Python** & **Python Debug** extensions in VS Code.
+2. `uv build` (optional for dev) then `uv pip install dapper` (or `pip install dapper`).
+3. Run `python -m dapper --port 4711` in a terminal.
+4. Use a Python launch config with `"debugServer": 4711`.
+5. Hit **F5**.
+
+Read on for details, options, and troubleshooting.
 
 ---
 
@@ -37,7 +43,7 @@ Before you start, make sure you have:
 
 > 💡 *Check your extensions quickly:* open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`), run **Extensions: Show Installed Extensions**, and verify both "Python" and "Python Debug" are listed.
 
-## Step 1 – Install Dapper into your environment
+## Path B Step 1 – Install Dapper into your environment
 
 Open a terminal that targets the environment used for your project (virtualenv, Poetry shell, conda env, etc.). Then install the adapter:
 
@@ -49,7 +55,7 @@ pip install dapper
 
 > 🛠️ Dapper works from any editable install as well. If you are hacking on the adapter itself, run `uv pip install -e ".[dev]"` inside the cloned repo.
 
-## Step 2 – Start the adapter alongside VS Code
+## Path B Step 2 – Start the adapter alongside VS Code
 
 Dapper runs as a standalone adapter process. You can keep it in a separate terminal or wire it into a task—whatever fits your workflow.
 
@@ -64,7 +70,7 @@ Leave this process running; VS Code will connect to it. The number `4711` is arb
 - **Named pipe / Unix socket:** prefer local IPC over TCP? Use `--pipe` (Windows) or `--unix` (POSIX). See the main [`README.md`](../README.md#subprocess-ipc-adapter--launcher) for the full matrix.
 - **In-process mode:** add `--in-process` if you want the adapter to share the same Python interpreter as your program for faster, more direct control.
 
-## Step 3 – Create a VS Code debug configuration
+## Path B Step 3 – Create a VS Code debug configuration
 
 1. Inside VS Code, open the "Run and Debug" pane (`Ctrl+Shift+D` / `Cmd+Shift+D`).
 2. Click **create a launch.json file** (or the gear icon if one already exists).
@@ -126,7 +132,7 @@ What this does:
 
 These extra switches are interpreted by Dapper; VS Code will happily pass them through.
 
-## Step 4 – Start debugging
+## Path B Step 4 – Start debugging
 
 1. Make sure the adapter terminal is still running.
 2. Select **Python: Run with Dapper** from the debug dropdown.
@@ -136,22 +142,62 @@ You should see your terminal process (running Dapper) log the incoming client co
 
 > ✨ *Hot tip:* Use VS Code's "Python: Select Interpreter" command to match the environment that installed Dapper. If the adapter process lives in a different interpreter, you'll want to pass `--interpreter` when launching it so breakpoint paths align.
 
-## Quality-of-life improvements
+## Extension Path A – Managed venv details
+
+When using the VS Code extension:
+
+- On activation the extension calls its `EnvironmentManager` to:
+    - Create (or reuse) a virtual environment under the extension's global storage path using `python -m venv`.
+    - Install the bundled `dapper-<version>.whl` (or PyPI fallback) via `pip`.
+    - Record a manifest (`dapper-env.json`) with installed version and source.
+- The debug adapter factory launches `python -m dapper.debug_launcher` with flags derived from your launch configuration.
+- Settings you can tune:
+    - `dapper.python.installMode`: `auto | wheel | pypi | workspace`
+    - `dapper.python.baseInterpreter`: path to Python used for venv creation.
+    - `dapper.python.forceReinstall`: force package reinstall on activation.
+    - `dapper.python.expectedVersion`: override target dapper version.
+- To reset: run the internal reset command (planned) or manually delete the venv folder from the extension global storage directory.
+
+### Launch configuration with the extension
+
+Use a debugger type of `dapper` instead of `python`:
+
+```jsonc
+{
+    "type": "dapper",
+    "request": "launch",
+    "name": "Dapper: Launch Current File",
+    "program": "${file}",
+    "stopOnEntry": true,
+    "args": [],
+    "noDebug": false
+}
+```
+
+Breakpoints, stack inspection, variables, and evaluation flow through the extension's adapter process.
+
+## Quality-of-life improvements (Both Paths)
 
 - **Task integration:** Create a VS Code task that runs `python -m dapper --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
 - **multi-root workspaces:** Include one adapter task per workspace folder, each with its own port, and set `debugServer` accordingly.
 - **Version pinning:** If you rely on specific Dapper features, add `dapper==<version>` to your `requirements.txt` to keep teammates in sync.
 - **Source-mapped debugging:** When editing Dapper itself, launch VS Code's debugger against the adapter process so you can step through its code while it controls your program—turtles all the way down.
 
+### Quick configuration UI
+
+- The extension provides a small configuration web UI that you can open via the command palette: **Dapper: Configure Settings**. This opens a form where you can edit and preview a debug configuration.
+- Once you save a configuration, you can insert it directly into `.vscode/launch.json` using the **Save & Insert to launch.json** action, or by running the command **Dapper: Add Saved Debug Configuration to launch.json**. This will insert the configuration into your active workspace `launch.json` and prompt you on conflicts.
+- You can also start a debug session from the UI using **Start Debugging**, or from the command palette with **Dapper: Start Debugging with Saved Config**.
+
 ## Troubleshooting
 
 | Symptom | Quick Fix |
 | --- | --- |
-| VS Code times out with "Cannot connect to runtime" | Confirm the adapter terminal shows `Serving on 4711`. Ports blocked? Pick another port or disable firewalls temporarily. |
-| Breakpoints are hollow (not bound) | Ensure the adapter's interpreter matches your project's interpreter. Verify file paths line up with the `program`/`cwd` values. |
+| VS Code times out with "Cannot connect to runtime" | Path B: ensure the adapter terminal shows a listening port. Path A (extension): check the output channel "Dapper Python Env" for spawn errors. |
+| Breakpoints are hollow (not bound) | Extension path: confirm the managed venv installed the same version of dapper you expect. Standalone path: mismatch between adapter interpreter and project interpreter. |
 | Program launches outside VS Code's environment | Add `"console": "integratedTerminal"` or specify `"env"` / `"envFile"` so Dapper inherits the same environment variables. |
 | No output in the Debug Console | Dapper defaults to forwarding stdout/stderr. If you've changed `redirectOutput`, flip it back to `true` in your configuration. |
-| Need to stop everything fast | Use **Shift+F5** in VS Code or send `Ctrl+C` to the adapter terminal; both will tear down the debug session. |
+| Need to stop everything fast | Shift+F5 stops the session. For standalone adapter, Ctrl+C the terminal. For extension, close the session; the managed venv persists. |
 
 Still stuck? The [`MANUAL_TESTING_GUIDE`](MANUAL_TESTING_GUIDE.md) lists end-to-end flows for validating transports and breakpoints.
 
@@ -161,4 +207,4 @@ Still stuck? The [`MANUAL_TESTING_GUIDE`](MANUAL_TESTING_GUIDE.md) lists end-to-
 - Skim the [ARCHITECTURE](ARCHITECTURE.md) notes if you want to extend or customize the adapter.
 - File issues or share your hacks—Dapper is open-source and eager for contributions!
 
-Happy debugging! 🎯
+Happy debugging—whether via the managed extension or standalone adapter! 🎯

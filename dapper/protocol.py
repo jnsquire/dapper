@@ -11,7 +11,9 @@ import json
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import TypeVar
 from typing import cast
+from typing import overload
 
 if TYPE_CHECKING:
     # Only import the runtime/generic message shapes and ErrorResponse used
@@ -20,6 +22,13 @@ if TYPE_CHECKING:
     from dapper.protocol_types import GenericEvent
     from dapper.protocol_types import GenericRequest
     from dapper.protocol_types import GenericResponse
+    from dapper.protocol_types import ProtocolMessage
+
+# Type variables for generic message types
+T = TypeVar("T", bound="ProtocolMessage")
+RequestT = TypeVar("RequestT", bound="GenericRequest")
+ResponseT = TypeVar("ResponseT", bound="GenericResponse")
+EventT = TypeVar("EventT", bound="GenericEvent")
 
 logger = logging.getLogger(__name__)
 
@@ -256,13 +265,13 @@ class ProtocolHandler:
             raise ProtocolError(msg) from e
 
         if not isinstance(message, dict):
-            raise ProtocolError("Message is not a JSON object")  # noqa: EM101, TRY003
+            raise ProtocolError("Message is not a JSON object")
 
         if "seq" not in message:
-            raise ProtocolError("Message missing 'seq' field")  # noqa: EM101, TRY003
+            raise ProtocolError("Message missing 'seq' field")
 
         if "type" not in message:
-            raise ProtocolError("Message missing 'type' field")  # noqa: EM101, TRY003
+            raise ProtocolError("Message missing 'type' field")
 
         msg_type = message["type"]
 
@@ -275,7 +284,7 @@ class ProtocolHandler:
         if msg_type == "event":
             return self._validate_event(message)
 
-        raise ProtocolError(f"Invalid message type: {msg_type}")  # noqa: EM102, TRY003
+        raise ProtocolError(f"Invalid message type: {msg_type}")  # noqa: EM102
 
     def _validate_request(self, message: dict[str, Any]):
         """Validate and return a request message."""
@@ -304,10 +313,49 @@ class ProtocolHandler:
 
         return cast("GenericEvent", message)
 
+    @overload
     def create_request(
         self, command: str, arguments: dict[str, Any] | None = None
-    ) -> GenericRequest:
-        return self._factory.create_request(command, arguments)
+    ) -> GenericRequest: ...
+
+    @overload
+    def create_request(
+        self, 
+        command: str, 
+        arguments: dict[str, Any] | None = None,
+        *,
+        return_type: type[RequestT]
+    ) -> RequestT: ...
+
+    def create_request(
+        self, 
+        command: str, 
+        arguments: dict[str, Any] | None = None,
+        *,
+        return_type: type[RequestT] | None = None
+    ) -> RequestT | GenericRequest:
+        result = self._factory.create_request(command, arguments)
+        return cast("RequestT", result) if return_type else result  # type: ignore[return-value]
+
+    @overload
+    def create_response(
+        self,
+        request: GenericRequest,
+        success: bool,
+        body: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> GenericResponse: ...
+
+    @overload
+    def create_response(
+        self,
+        request: GenericRequest,
+        success: bool,
+        body: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        *,
+        return_type: type[ResponseT]
+    ) -> ResponseT: ...
 
     def create_response(
         self,
@@ -315,14 +363,63 @@ class ProtocolHandler:
         success: bool,
         body: dict[str, Any] | None = None,
         error_message: str | None = None,
-    ) -> GenericResponse:
-        return self._factory.create_response(request, success, body, error_message)
+        *,
+        return_type: type[ResponseT] | None = None
+    ) -> ResponseT | GenericResponse:
+        result = self._factory.create_response(request, success, body, error_message)
+        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
 
-    def create_error_response(self, request: GenericRequest, error_message: str) -> ErrorResponse:
-        return self._factory.create_error_response(request, error_message)
+    @overload
+    def create_error_response(
+        self, 
+        request: GenericRequest, 
+        error_message: str
+    ) -> ErrorResponse: ...
 
-    def create_event(self, event_type: str, body: dict[str, Any] | None = None) -> GenericEvent:
-        return self._factory.create_event(event_type, body)
+    @overload
+    def create_error_response(
+        self,
+        request: GenericRequest,
+        error_message: str,
+        *,
+        return_type: type[ResponseT]
+    ) -> ResponseT: ...
+
+    def create_error_response(
+        self,
+        request: GenericRequest,
+        error_message: str,
+        *,
+        return_type: type[ResponseT] | None = None
+    ) -> ResponseT | ErrorResponse:
+        result = self._factory.create_error_response(request, error_message)
+        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
+
+    @overload
+    def create_event(
+        self, 
+        event_type: str, 
+        body: dict[str, Any] | None = None
+    ) -> GenericEvent: ...
+
+    @overload
+    def create_event(
+        self,
+        event_type: str,
+        body: dict[str, Any] | None = None,
+        *,
+        return_type: type[EventT]
+    ) -> EventT: ...
+
+    def create_event(
+        self,
+        event_type: str,
+        body: dict[str, Any] | None = None,
+        *,
+        return_type: type[EventT] | None = None
+    ) -> EventT | GenericEvent:
+        result = self._factory.create_event(event_type, body)
+        return cast("EventT", result) if return_type else result  # type: ignore[return-value]
 
     # Specific request creation methods
 
