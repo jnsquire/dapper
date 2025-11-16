@@ -217,9 +217,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run prepare-python && npm run build",
+    "vscode:prepublish": "node ./scripts/prepublish.cjs",
     "prepare-python": "node scripts/copy-wheel.cjs",
-    "build": "node esbuild.config.js --production",
+    "build": "npm run compile && npm run bundle:extension",
+    "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",
     "watch": "node esbuild.config.js --watch",
     "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
@@ -227,12 +228,7 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@vscode-elements/elements": "^2.3.1",
-    "@vscode/debugprotocol": "^1.68.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  },
+  "dependencies": {},
   "optionalDependencies": {
     "@vscode/debugadapter": "^1.54.0"
   },
@@ -244,9 +240,13 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vscode/vsce": "^3.7.0",
+    "@vscode/debugprotocol": "^1.68.0",
     "esbuild": "^0.25.12",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-sass-plugin": "^3.3.1",
+    "@vscode-elements/elements": "^2.3.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "eslint": "^8.56.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.0",

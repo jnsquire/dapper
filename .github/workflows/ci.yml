@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main, master, feature/* ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
-  build-and-test:
+  build-node:
+    name: "Node: Build, Test, Package (Extension)"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -23,17 +24,28 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install extension dependencies
         run: npm ci
+        working-directory: vscode/extension
 
-      - name: Compile TypeScript
+      - name: Compile TypeScript (extension)
         run: npm run compile
+        working-directory: vscode/extension
 
-      - name: Run tests
+      - name: Run tests (extension)
         run: npm test --silent
+        working-directory: vscode/extension
 
-      - name: Run build (optional)
+      - name: Build extension (optional)
         run: npm run build --if-present
+        working-directory: vscode/extension
+
+      - name: Package extension (vsix)
+        if: github.event_name == 'push' && contains(github.ref, 'main')
+        run: |
+          npm ci --omit=dev
+          npm run package
+        working-directory: vscode/extension
 
       - name: Upload coverage (optional)
         if: always()
@@ -41,17 +53,9 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
-name: CI
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-
-jobs:
-  build:
-    name: Lint / Typecheck / Test
+  build-python:
+    name: "Python: Lint / Typecheck / Test"
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -77,9 +81,7 @@ jobs:
       - name: Install project and dev deps
         run: |
           python -m pip install --upgrade pip
-          # Install the package in editable mode so tests can import it
           pip install -e .
-          # Install tools used by CI; pin ruff to match local development version
           pip install pyright "ruff==0.12.12" pytest pytest-cov pytest-xdist mkdocs mkdocs-mermaid2-plugin
 
       - name: Lint (ruff)
@@ -89,6 +91,7 @@ jobs:
       - name: Type check (pyright)
         run: |
           pyright
+
       - name: Set up Node (for mermaid-cli rendering)
         uses: actions/setup-node@v4
         with:
@@ -98,7 +101,6 @@ jobs:
         run: |
           chmod +x ./scripts/render-mermaid.sh || true
           ./scripts/render-mermaid.sh
-          # Fail the job if rendering changed any committed files (ensure renders are committed by PR authors)
           if [ -n "$(git status --porcelain)" ]; then
             echo "Rendered diagrams differ from repository files. Run ./scripts/render-mermaid.sh and commit the changes." >&2
             git --no-pager status --porcelain
@@ -112,3 +114,5 @@ jobs:
       - name: Run tests
         run: |
           pytest -q
+
+

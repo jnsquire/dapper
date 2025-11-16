@@ -47,8 +47,8 @@ const commonConfig = {
       assets: [
         {
           from: ['./src/**/*.css'],
-          to: ['./'],
-          keepStructure: true,
+          to: ['./styles'],
+          keepStructure: false,
         },
       ],
     }),

@@ -5,7 +5,7 @@ import {
     InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent,
     Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from '@vscode/debugadapter';
-import { DebugProtocol } from '@vscode/debugprotocol';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import * as Net from 'net';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
