@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { logger } from '../utils/logger.js';
+import { insertLaunchConfiguration } from '../utils/insertLaunchConfiguration.js';
 
 // Type for view components
 type ViewType = 'debug' | 'config';
@@ -181,6 +182,47 @@ export class DapperWebview {
                 // Handle config save
                 vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
                 vscode.window.showInformationMessage('Configuration saved');
+                break;
+              case 'requestConfig':
+                // Respond with the saved configuration or default
+                (async () => {
+                  try {
+                    const saved = vscode.workspace.getConfiguration('dapper').get('debug');
+                    panel.webview.postMessage({ command: 'updateConfig', config: saved || {} });
+                  } catch (err) {
+                    logger.error('Failed to read saved configuration', err as Error);
+                    panel.webview.postMessage({ command: 'updateConfig', config: {} });
+                  }
+                })();
+                break;
+              case 'saveAndInsert':
+                (async () => {
+                  try {
+                    await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
+                    // Insert into launch.json
+                    const ok = await insertLaunchConfiguration(message.config as any);
+                    if (ok) {
+                      vscode.window.showInformationMessage('Configuration inserted into launch.json');
+                      panel.webview.postMessage({ command: 'updateStatus', text: 'Configuration inserted into launch.json' });
+                    } else {
+                      panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
+                    }
+                  } catch (err) {
+                    logger.error('Failed to save and insert configuration', err as Error);
+                    vscode.window.showErrorMessage('Failed to save and insert configuration');
+                    panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
+                  }
+                })();
+                break;
+              case 'startDebug':
+                (async () => {
+                  try {
+                    await vscode.debug.startDebugging(undefined, message.config);
+                  } catch (err) {
+                    logger.error('Failed to start debug session from webview', err as Error);
+                    vscode.window.showErrorMessage('Failed to start debugging');
+                  }
+                })();
                 break;
               case 'cancelConfig':
                 // Close the webview

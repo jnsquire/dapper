@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DebugAdapterDescriptor, DebugAdapterExecutable, ProviderResult, DebugAdapterServer } from 'vscode';
+import { DebugAdapterDescriptor, DebugAdapterExecutable, DebugAdapterServer } from 'vscode';
 import {
     LoggingDebugSession,
     InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent,
@@ -7,7 +7,6 @@ import {
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import * as Net from 'net';
-import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { EnvironmentManager, InstallMode } from '../env/EnvironmentManager.js';
@@ -30,11 +29,42 @@ export class DapperDebugSession extends LoggingDebugSession {
   private static readonly THREAD_ID = 1;
   private _configurationDone = false;
   private _isRunning = false;
+  private _pythonSocket?: Net.Socket; // Connection to Python debug_launcher for IPC
 
-  public constructor() {
+  public constructor(pythonSocket?: Net.Socket) {
     super();
+    this._pythonSocket = pythonSocket;
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
+  }
+
+  public setPythonSocket(socket: Net.Socket): void {
+    this._pythonSocket = socket;
+    
+    // Set up listener for incoming events from Python
+    socket.on('data', (data: Buffer) => {
+      // Handle incoming data from Python debug_launcher
+      // This will be binary IPC messages that need to be parsed
+      this.handlePythonMessage(data);
+    });
+  }
+
+  private handlePythonMessage(data: Buffer): void {
+    // TODO: Parse and handle messages from Python
+    // These are custom protocol messages with DBGP: prefix
+    console.log('Received from Python:', data.toString());
+  }
+
+  private sendCommandToPython(command: any): void {
+    if (!this._pythonSocket) {
+      console.error('Cannot send command: Python socket not connected');
+      return;
+    }
+    
+    // TODO: Format command for Python debug_launcher
+    // Should be sent as DBGCMD: prefixed JSON
+    const message = `DBGCMD:${JSON.stringify(command)}\n`;
+    this._pythonSocket.write(message);
   }
 
   protected initializeRequest(
@@ -149,6 +179,8 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private childProcess?: any; // Child process for the debug adapter
   private readonly envManager: EnvironmentManager;
   private readonly extensionVersion: string;
+  private _pythonSocket?: Net.Socket; // Socket connection to Python debug_launcher
+  private _currentSession?: DapperDebugSession; // Current debug session
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.envManager = new EnvironmentManager(context);
@@ -190,11 +222,38 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           args.push('--no-debug');
         }
 
-        // Create server for VS Code <-> adapter Protocol
-        const server = Net.createServer(socket => {
-          const sessionImpl = new DapperDebugSession();
+        // Create a second server for Python to connect back with IPC
+        const pythonIpcServer = Net.createServer(pythonSocket => {
+          // This is the IPC connection from Python debug_launcher
+          const outChannel = this.envManager.getOutputChannel();
+          outChannel.appendLine('[INFO] Python debug adapter connected via IPC');
+          
+          // Store the python socket so DapperDebugSession can use it
+          this._pythonSocket = pythonSocket;
+          
+          // If a session already exists, provide it the socket
+          if (this._currentSession) {
+            this._currentSession.setPythonSocket(pythonSocket);
+          }
+          
+          pythonSocket.on('error', (err: Error) => {
+            outChannel.appendLine(`[ERROR] Python IPC socket error: ${err.message}`);
+          });
+        }).listen(0);
+        
+        const pythonIpcPort = (pythonIpcServer.address() as Net.AddressInfo).port;
+        
+        // Pass the IPC port to Python so it can connect back
+        args.push('--ipc', 'tcp');
+        args.push('--ipc-port', pythonIpcPort.toString());
+        args.push('--ipc-binary');
+
+        // Create server for VS Code <-> DapperDebugSession Protocol
+        const server = Net.createServer(vscodeSocket => {
+          const sessionImpl = new DapperDebugSession(this._pythonSocket);
+          this._currentSession = sessionImpl;
           (sessionImpl as any).setRunAsServer(true);
-          (sessionImpl as any).start(socket as NodeJS.ReadableStream, socket);
+          (sessionImpl as any).start(vscodeSocket as NodeJS.ReadableStream, vscodeSocket);
         }).listen(0);
         this.server = server;
 

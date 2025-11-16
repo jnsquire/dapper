@@ -10,6 +10,56 @@ from unittest.mock import patch
 
 import pytest
 
+from dapper import dev_tools
+
+
+def test_run_tests_invokes_pytest_and_js(monkeypatch) -> None:
+    """Ensure run_tests invokes pytest and then the JS test runner."""
+    called = {}
+
+    def fake_pytest_main(arg_list):
+        called["pytest"] = True
+        called["pytest_args"] = arg_list
+        return 0
+
+    def fake_run_js_tests(_js_args=None):
+        called["js"] = True
+
+    monkeypatch.setattr(dev_tools, "run_js_tests", fake_run_js_tests)
+    monkeypatch.setattr(dev_tools.pytest, "main", fake_pytest_main)
+
+    dev_tools.run_tests(["-q", "-k", "foo", "--", "--runInBand"])
+
+    assert called.get("pytest", False) is True
+    assert called.get("pytest_args") == ["-q", "-k", "foo"]
+    assert called.get("js", False) is True
+
+
+def test_run_tests_exits_on_pytest_failure(monkeypatch) -> None:
+    # use dev_tools imported at module scope
+    def fake_pytest_main(_arg_list):
+        return 2
+
+    monkeypatch.setattr(dev_tools.pytest, "main", fake_pytest_main)
+    with pytest.raises(SystemExit) as exc:
+        dev_tools.run_tests()
+    assert exc.value.code == 2
+
+
+def test_run_tests_handles_js_failure(monkeypatch) -> None:
+    # use dev_tools imported at module scope
+    def fake_pytest_main(_arg_list):
+        return 0
+
+    def fake_run_js_tests(_js_args=None):
+        raise dev_tools.JSTestsFailedError(5)
+
+    monkeypatch.setattr(dev_tools.pytest, "main", fake_pytest_main)
+    monkeypatch.setattr(dev_tools, "run_js_tests", fake_run_js_tests)
+    with pytest.raises(SystemExit) as exc:
+        dev_tools.run_tests()
+    assert exc.value.code == 5
+
 
 def test_update_docs_success(tmp_path: Path) -> None:
     """Test that update_docs runs the script successfully."""

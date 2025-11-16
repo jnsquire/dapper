@@ -6,22 +6,23 @@
     "outDir": "out",
     "lib": ["ES2022", "DOM"],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "resolveJsonModule": true,
-    "types": ["node"],
+    "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
       "vscode": ["node_modules/@types/vscode"]
     },
     "allowSyntheticDefaultImports": true,
     "allowJs": true,
+    "isolatedModules": true,
     "noEmit": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test"]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", ".vscode-test", "out"]
 }

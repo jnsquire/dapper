@@ -41,6 +41,7 @@ interface ConfigViewProps {
 const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSave, onCancel, isSubProcess = false }) => {
   const { config, updateConfig, validate } = useConfig();
   const [localErrors, setLocalErrors] = useState<Record<string, string[]>>({});
+  const [status, setStatus] = useState<string | null>(null);
 
   // Handlers from the hook to wire webcomponent events to config updates
   const { createInputHandler, createCheckboxHandler } = useWebComponentEvents<DebugConfiguration>(
@@ -75,14 +76,23 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   // Message listener for updates from the extension host
   useEffect(() => {
     const listener = (ev: MessageEvent) => {
-      const data = ev.data as { command?: string; config?: DebugConfiguration };
+      const data = ev.data as any;
       if (data?.command === 'updateConfig' && data.config) {
         updateConfig(data.config as Partial<DebugConfiguration>);
+      } else if (data?.command === 'updateStatus' && data.text) {
+        setStatus(String((data as any).text));
       }
     };
     window.addEventListener('message', listener);
     return () => window.removeEventListener('message', listener);
   }, [updateConfig]);
+
+  // Clear ephemeral status messages after a short timeout
+  useEffect(() => {
+    if (!status) return;
+    const id = setTimeout(() => setStatus(null), 4000);
+    return () => clearTimeout(id);
+  }, [status]);
 
   const handleSave = useCallback((e?: React.FormEvent) => {
     e?.preventDefault();
@@ -123,6 +133,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
 
   return (
     <div className="config-view">
+      {status && <div className="status">{status}</div>}
       <form onSubmit={(e) => { e.preventDefault(); handleSave(e); }}>
         <vscode-form-group>
           <vscode-label>Name</vscode-label>
@@ -197,6 +208,26 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
 
         <div className="form-actions">
           <vscode-button type="submit">Save Configuration</vscode-button>
+          <vscode-button
+            appearance="primary"
+            onClick={(e) => {
+              e.preventDefault();
+              // Start debugging with current config
+              if (vscode) vscode.postMessage({ command: 'startDebug', config });
+            }}
+          >
+            Start Debugging
+          </vscode-button>
+          <vscode-button
+            secondary
+            onClick={(e) => {
+              e.preventDefault();
+              // save and insert into launch.json
+              if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
+            }}
+          >
+            Save & Insert to launch.json
+          </vscode-button>
           <vscode-button secondary onClick={(e) => { e.preventDefault(); handleCancel(e); }}>Cancel</vscode-button>
         </div>
       </form>

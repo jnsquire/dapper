@@ -1,10 +1,17 @@
+from __future__ import annotations
+
+# isort: skip-file
 import asyncio
 import atexit
 import logging
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+from dapper.dev_tools import JSTestsFailedError
+from dapper.dev_tools import run_js_tests
 
 logger = logging.getLogger(__name__)
 
@@ -127,3 +134,21 @@ def event_loop():
                 asyncio.set_event_loop(None)
             except Exception:
                 logger.exception("Suppressed exception when resetting event loop")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Invoke extension jest tests at the end of a pytest session.
+
+    If jest tests fail, exit the entire pytest run with the jest exit code so CI signals failure.
+    """
+    # If pytest already failed, continue and still run JS tests to gather all results.
+    # Mark args as used to satisfy linters (plugin requires specific arg names)
+    del session, exitstatus
+    # Allow the `run_tests` runner to suppress running JS tests inside pytest
+    if str(os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT", "0")).lower() in ("1", "true", "yes"):
+        return
+    try:
+        run_js_tests()
+    except JSTestsFailedError as exc:
+        logger.exception("Extension JS tests failed")
+        sys.exit(exc.returncode)

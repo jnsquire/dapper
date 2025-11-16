@@ -3,6 +3,7 @@ import { DapperDebugAdapterDescriptorFactory } from './debugAdapter/dapperDebugA
 import { DapperConfigurationProvider } from './debugAdapter/configurationProvider.js';
 import { DapperWebview } from './webview/DapperWebview.js';
 import { logger, registerLoggerCommands } from './utils/logger.js';
+import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js';
 
 function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
@@ -72,6 +73,21 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
   });
 
   // Toggle Breakpoint Command
+    // Add Debug Configuration Command (insert last saved config into launch.json)
+    yield vscode.commands.registerCommand('dapper.addDebugConfiguration', async () => {
+      try {
+        const saved = vscode.workspace.getConfiguration('dapper').get('debug');
+        if (!saved) {
+          vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Configure Settings to create one.');
+          return;
+        }
+        const ok = await insertLaunchConfiguration(saved as any);
+        if (ok) vscode.window.showInformationMessage('Configuration added to launch.json');
+        else vscode.window.showErrorMessage('Failed to insert configuration into launch.json');
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to add debug configuration: ${error}`);
+      }
+    });
   yield vscode.commands.registerCommand('dapper.toggleBreakpoint', async (file: string, line: number) => {
     try {
       const uri = vscode.Uri.file(file);
@@ -96,6 +112,20 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to toggle breakpoint: ${error}`);
+    }
+  });
+
+  // Start Debugging with Saved Config
+  yield vscode.commands.registerCommand('dapper.startDebugWithSavedConfig', async () => {
+    try {
+      const saved = vscode.workspace.getConfiguration('dapper').get('debug');
+      if (!saved) {
+        vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Configure Settings to create one.');
+        return;
+      }
+      await vscode.debug.startDebugging(undefined, saved as any);
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to start debug session from saved config: ${error}`);
     }
   });
 
@@ -164,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register debug adapters
     logger.debug('Registering debug adapters...');
-  const debugDisposables = Array.from(registerDebugAdapters(context));
+    const debugDisposables = Array.from(registerDebugAdapters(context));
     debugDisposables.forEach(disposable => context.subscriptions.push(disposable));
     logger.log(`Registered ${debugDisposables.length} debug adapters`);
 

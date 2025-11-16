@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getUri } from './utils';
+import { getUri } from './utils.js';
 
 export function getWebviewContent(
   webview: vscode.Webview, 

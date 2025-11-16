@@ -183,6 +183,12 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 - **Version pinning:** If you rely on specific Dapper features, add `dapper==<version>` to your `requirements.txt` to keep teammates in sync.
 - **Source-mapped debugging:** When editing Dapper itself, launch VS Code's debugger against the adapter process so you can step through its code while it controls your program—turtles all the way down.
 
+### Quick configuration UI
+
+- The extension provides a small configuration web UI that you can open via the command palette: **Dapper: Configure Settings**. This opens a form where you can edit and preview a debug configuration.
+- Once you save a configuration, you can insert it directly into `.vscode/launch.json` using the **Save & Insert to launch.json** action, or by running the command **Dapper: Add Saved Debug Configuration to launch.json**. This will insert the configuration into your active workspace `launch.json` and prompt you on conflicts.
+- You can also start a debug session from the UI using **Start Debugging**, or from the command palette with **Dapper: Start Debugging with Saved Config**.
+
 ## Troubleshooting
 
 | Symptom | Quick Fix |

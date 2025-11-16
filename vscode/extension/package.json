@@ -168,12 +168,34 @@
         "title": "Dapper: Configure Settings",
         "category": "Dapper"
       }
+      ,
+      {
+        "command": "dapper.addDebugConfiguration",
+        "title": "Dapper: Add Saved Debug Configuration to launch.json",
+        "category": "Dapper"
+      }
+      ,
+      {
+        "command": "dapper.startDebugWithSavedConfig",
+        "title": "Dapper: Start Debugging with Saved Config",
+        "category": "Dapper"
+      }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "dapper.showVariableInspector",
           "when": "debuggersAvailable == true"
+        }
+        ,
+        {
+          "command": "dapper.addDebugConfiguration",
+          "when": "workspaceFolderCount > 0"
+        }
+        ,
+        {
+          "command": "dapper.startDebugWithSavedConfig",
+          "when": "workspaceFolderCount > 0"
         }
       ],
       "debug/toolbar": [
@@ -190,14 +212,18 @@
     "prepare-python": "node scripts/copy-wheel.cjs",
     "build": "node esbuild.config.js --production",
     "watch": "node esbuild.config.js --watch",
-    "compile": "tsc -p ./",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
+    "compile": "npm run clean && tsc -p ./",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests"
   },
   "dependencies": {
     "@vscode-elements/elements": "^2.3.1",
     "@vscode/debugprotocol": "^1.68.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "optionalDependencies": {
+    "@vscode/debugadapter": "^1.54.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -213,6 +239,9 @@
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.0",
     "webpack": "^5.89.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "jest": "^29.6.4",
+    "@types/jest": "^29.5.4",
+    "ts-jest": "^29.1.0"
   }
 }

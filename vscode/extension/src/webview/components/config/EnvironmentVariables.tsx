@@ -64,20 +64,20 @@ export const EnvironmentVariables: React.FC<EnvironmentVariablesProps> = ({
           marginBottom: '8px'
         }}>
           {Object.entries(variables).map(([key, value]) => (
-            <vscode-form-item key={key}>
+            <div key={key} role="group" className="vscode-form-item">
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr auto',
                 gap: '8px',
                 alignItems: 'center'
               }}>
-                <vscode-text-field 
+                <vscode-textfield 
                   placeholder="Variable name"
                   value={key}
                   onInput={(e: any) => handleVariableChange(key, e.target.value, value)}
                   style={{ width: '100%' }}
                 />
-                <vscode-text-field 
+                <vscode-textfield 
                   placeholder="Value"
                   value={value}
                   onInput={(e: any) => handleVariableChange(key, key, e.target.value)}
@@ -97,20 +97,24 @@ export const EnvironmentVariables: React.FC<EnvironmentVariablesProps> = ({
                   } as React.CSSProperties}
                 />
               </div>
-            </vscode-form-item>
+            </div>
           ))}
           
           {Object.keys(variables).length === 0 && (
-            <vscode-form-description style={{
-              textAlign: 'center',
-              padding: '16px',
-              color: 'var(--vscode-descriptionForeground)',
-              fontSize: '13px',
-              border: '1px dashed var(--vscode-panel-border)',
-              borderRadius: '4px'
-            }}>
+            <div
+              role="note"
+              className="vscode-form-description"
+              style={{
+                textAlign: 'center',
+                padding: '16px',
+                color: 'var(--vscode-descriptionForeground)',
+                fontSize: '13px',
+                border: '1px dashed var(--vscode-panel-border)',
+                borderRadius: '4px'
+              }}
+            >
               No environment variables defined. Click "Add Variable" to add one.
-            </vscode-form-description>
+            </div>
           )}
         </div>
       </vscode-form-group>

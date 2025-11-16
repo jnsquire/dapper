@@ -1,10 +1,4 @@
 import * as vscode from 'vscode';
-import { DebugSession, InitializedEvent, TerminatedEvent } from '@vscode/debugadapter';
-import * as DebugProtocol from '@vscode/debugprotocol';
-
-interface DapperDebugSession extends vscode.DebugSession {
-  // Add any custom methods or properties here
-}
 
 export class DebugSessionManager implements vscode.Disposable {
   private sessions = new Map<string, vscode.DebugSession>();
