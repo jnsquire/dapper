@@ -99,7 +99,7 @@ def test_exception_details_typeddict():
         "source": "test_file.py",
         "stackTrace": ["line 1", "line 2", "line 3"],
     }
-    
+
     assert details["message"] == "Test exception message"
     assert details["typeName"] == "ValueError"
     assert details["fullTypeName"] == "builtins.ValueError"
@@ -117,14 +117,14 @@ def test_exception_info_typeddict():
         "source": "nested.py",
         "stackTrace": ["nested line 1"],
     }
-    
+
     exception_info: dp.ExceptionInfo = {
         "exceptionId": "exception_123",
         "description": "Test exception description",
         "breakMode": "always",
         "details": details,
     }
-    
+
     assert exception_info["exceptionId"] == "exception_123"
     assert exception_info["description"] == "Test exception description"
     assert exception_info["breakMode"] == "always"
@@ -136,14 +136,14 @@ def test_presentation_hint_optional_fields():
     # All fields are optional, so we can create empty or partial hints
     empty_hint: dp.PresentationHint = {}
     assert len(empty_hint) == 0
-    
+
     partial_hint: dp.PresentationHint = {
         "kind": "method",
     }
     assert partial_hint["kind"] == "method"
     assert "attributes" not in partial_hint
     assert "visibility" not in partial_hint
-    
+
     full_hint: dp.PresentationHint = {
         "kind": "property",
         "attributes": ["static", "readOnly"],
@@ -161,7 +161,7 @@ def test_variable_typeddict_complete():
         "attributes": ["hasDataBreakpoint"],
         "visibility": "public",
     }
-    
+
     variable: dp.Variable = {
         "name": "test_var",
         "value": "test_value",
@@ -169,7 +169,7 @@ def test_variable_typeddict_complete():
         "variablesReference": 42,
         "presentationHint": hint,
     }
-    
+
     assert variable["name"] == "test_var"
     assert variable["value"] == "test_value"
     assert variable["type"] == "str"
@@ -185,7 +185,7 @@ def test_variable_typeddict_with_lazy_hint():
         "lazy": True,
         "attributes": ["canHaveObjectId"],
     }
-    
+
     variable: dp.Variable = {
         "name": "lazy_prop",
         "value": "<lazy>",
@@ -193,7 +193,7 @@ def test_variable_typeddict_with_lazy_hint():
         "variablesReference": 123,
         "presentationHint": lazy_hint,
     }
-    
+
     assert variable["presentationHint"]["lazy"] is True
     assert "canHaveObjectId" in variable["presentationHint"]["attributes"]
 
@@ -201,19 +201,19 @@ def test_variable_typeddict_with_lazy_hint():
 def test_debugger_like_protocol_var_ref_types():
     # Test the VarRef type union components
     dbg = DummyDebugger()
-    
+
     # Test VarRefObject
     var_ref_object: dp.DebuggerLike.VarRefObject = ("object", {"key": "value"})
     dbg.var_refs[1] = var_ref_object
     assert dbg.var_refs[1][0] == "object"
     assert dbg.var_refs[1][1] == {"key": "value"}
-    
+
     # Test VarRefScope
     var_ref_scope: dp.DebuggerLike.VarRefScope = (42, "locals")
     dbg.var_refs[2] = var_ref_scope
     assert dbg.var_refs[2][0] == 42
     assert dbg.var_refs[2][1] == "locals"
-    
+
     # Test VarRefList
     var_ref_list: dp.DebuggerLike.VarRefList = [
         {
@@ -232,7 +232,7 @@ def test_debugger_like_protocol_var_ref_types():
 def test_debugger_like_protocol_attributes():
     # Test that all protocol attributes are properly typed and accessible
     dbg = DummyDebugger()
-    
+
     # Test basic attributes
     assert isinstance(dbg.next_var_ref, int)
     assert isinstance(dbg.var_refs, dict)
@@ -241,18 +241,18 @@ def test_debugger_like_protocol_attributes():
     assert isinstance(dbg.threads, dict)
     assert isinstance(dbg.current_exception_info, dict)
     assert isinstance(dbg.stepping, bool)
-    
+
     # Test optional attributes (can be None)
     assert dbg.current_frame is None or hasattr(dbg.current_frame, "__dict__")
     assert dbg.data_breakpoints is None or isinstance(dbg.data_breakpoints, list)
     assert isinstance(dbg.stop_on_entry, bool)
-    
+
     # Test data watch attributes
     assert dbg.data_watch_names is None or isinstance(dbg.data_watch_names, (set, list))
     assert dbg.data_watch_meta is None or isinstance(dbg.data_watch_meta, dict)
     assert dbg._data_watches is None or isinstance(dbg._data_watches, dict)
     assert dbg._frame_watches is None or isinstance(dbg._frame_watches, dict)
-    
+
     # Test breakpoint attributes
     assert isinstance(dbg.function_breakpoints, list)
     assert isinstance(dbg.function_breakpoint_meta, dict)
@@ -263,26 +263,26 @@ def test_debugger_like_protocol_attributes():
 def test_debugger_like_protocol_breakpoint_methods():
     # Test all breakpoint-related protocol methods
     dbg = DummyDebugger()
-    
+
     # Test set_break
     result = dbg.set_break("test.py", 10, temporary=False, cond="x > 5", funcname="test_func")
     assert result is not None  # DummyDebugger returns True
-    
+
     # Test record_breakpoint
     dbg.record_breakpoint(
-        "test.py", 
-        15, 
-        condition="y == 10", 
-        hit_condition=None, 
-        log_message="Hit breakpoint"
+        "test.py", 15, condition="y == 10", hit_condition=None, log_message="Hit breakpoint"
     )
     assert len(dbg.recorded) == 1
-    assert dbg.recorded[0] == ("test.py", 15, {"condition": "y == 10", "hit_condition": None, "log_message": "Hit breakpoint"})
-    
+    assert dbg.recorded[0] == (
+        "test.py",
+        15,
+        {"condition": "y == 10", "hit_condition": None, "log_message": "Hit breakpoint"},
+    )
+
     # Test clear methods
     dbg.clear_breaks_for_file("test.py")
     assert "test.py" in dbg.cleared
-    
+
     dbg.clear_break("test.py", 10)
     dbg.clear_break_meta_for_file("test.py")
     dbg.clear_all_function_breakpoints()
@@ -292,18 +292,18 @@ def test_debugger_like_protocol_breakpoint_methods():
 def test_debugger_like_protocol_stepping_methods():
     # Test all stepping and control flow methods
     dbg = DummyDebugger()
-    
+
     # Test stepping control
     dbg.set_continue()
     assert dbg._continued is True
-    
+
     dbg.set_next("dummy_frame")
     assert dbg._next == "dummy_frame"
-    
+
     dbg.set_step()
     assert dbg._step is True
     assert dbg.stepping is True
-    
+
     dbg.set_return("dummy_frame")
     assert dbg._return == "dummy_frame"
 
@@ -311,27 +311,27 @@ def test_debugger_like_protocol_stepping_methods():
 def test_debugger_like_protocol_execution_methods():
     # Test execution and variable creation methods
     dbg = DummyDebugger()
-    
+
     # Test run method
     result = dbg.run("test_command", arg1="value1", arg2="value2")
     assert result is None  # DummyDebugger returns None
-    
+
     # Test make_variable_object with different types
     var_int = dbg.make_variable_object("test_int", 42)
     assert var_int["name"] == "test_int"
     assert var_int["value"] == "42"
     assert var_int["type"] == "int"
-    
+
     var_str = dbg.make_variable_object("test_str", "hello world")
     assert var_str["name"] == "test_str"
     assert var_str["value"] == "'hello world'"  # String values are quoted
     assert var_str["type"] == "str"
-    
+
     var_list = dbg.make_variable_object("test_list", [1, 2, 3])
     assert var_list["name"] == "test_list"
     assert var_list["type"] == "list"
     assert var_list["variablesReference"] > 0  # Lists should have a variable reference
-    
+
     # Test with custom max_string_length
     var_long = dbg.make_variable_object("long_str", "x" * 2000, max_string_length=100)
     assert len(var_long["value"]) <= 103  # Should be truncated with "..." suffix
@@ -340,20 +340,20 @@ def test_debugger_like_protocol_execution_methods():
 def test_debugger_like_protocol_thread_management():
     # Test thread-related attributes and operations
     dbg = DummyDebugger()
-    
+
     # Test stopped_thread_ids
     assert isinstance(dbg.stopped_thread_ids, set)
     dbg.stopped_thread_ids.add(1)
     dbg.stopped_thread_ids.add(2)
     assert 1 in dbg.stopped_thread_ids
     assert 2 in dbg.stopped_thread_ids
-    
+
     # Test frames_by_thread
     dbg.frames_by_thread[1] = ["frame1", "frame2"]
     dbg.frames_by_thread[2] = ["frame3"]
     assert len(dbg.frames_by_thread[1]) == 2
     assert len(dbg.frames_by_thread[2]) == 1
-    
+
     # Test threads dict
     dbg.threads[1] = {"name": "Thread-1"}
     dbg.threads[2] = {"name": "Thread-2"}
@@ -363,13 +363,13 @@ def test_debugger_like_protocol_thread_management():
 def test_debugger_like_protocol_exception_handling():
     # Test exception-related attributes and structures
     dbg = DummyDebugger()
-    
+
     # Test exception breakpoint flags
     dbg.exception_breakpoints_raised = True
     dbg.exception_breakpoints_uncaught = False
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is False
-    
+
     # Test current_exception_info with proper structure
     exception_details: dp.ExceptionDetails = {
         "message": "Test error",
@@ -378,14 +378,14 @@ def test_debugger_like_protocol_exception_handling():
         "source": "test.py",
         "stackTrace": ["line 1", "line 2"],
     }
-    
+
     exception_info: dp.ExceptionInfo = {
         "exceptionId": "test_error_1",
         "description": "A test error occurred",
         "breakMode": "uncaught",
         "details": exception_details,
     }
-    
+
     dbg.current_exception_info[1] = exception_info
     assert dbg.current_exception_info[1]["exceptionId"] == "test_error_1"
     assert dbg.current_exception_info[1]["details"]["message"] == "Test error"
@@ -397,19 +397,19 @@ def test_protocol_type_annotations():
     assert hasattr(Variable, "__required_keys__")
     assert hasattr(ExceptionDetails, "__required_keys__")
     assert hasattr(ExceptionInfo, "__required_keys__")
-    
+
     # Test that Variable has all required keys
     required_var_keys = Variable.__required_keys__
     expected_keys = {"name", "value", "type", "variablesReference", "presentationHint"}
     assert required_var_keys == expected_keys
-    
+
     # Test that PresentationHint has no required keys (total=False)
     required_hint_keys = PresentationHint.__required_keys__
     assert required_hint_keys == set()
-    
+
     # Test that ExceptionInfo and ExceptionDetails have required keys
     assert len(ExceptionDetails.__required_keys__) > 0
     assert len(ExceptionInfo.__required_keys__) > 0
-    
+
     # Test that DebuggerLike is runtime_checkable
     assert hasattr(DebuggerLike, "__protocol_attrs__") or hasattr(DebuggerLike, "__orig_bases__")

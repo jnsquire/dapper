@@ -631,23 +631,25 @@ def handle_loaded_sources(_arguments: LoadedSourcesArguments | None = None) -> N
 
 
 @command_handler("source")
-def handle_source(arguments: SourceArguments | LegacySourceArguments | dict[str, Any] | None = None) -> None:
+def handle_source(
+    arguments: SourceArguments | LegacySourceArguments | dict[str, Any] | None = None,
+) -> None:
     """Handle 'source' request to return source content by path or sourceReference.
-    
+
     According to the Debug Adapter Protocol specification, this handles two formats:
-    
+
     1. Preferred format (SourceArguments):
        {
            "source": {
                "sourceReference": 123  // or "path": "/path/to/source"
            }
        }
-    
+
     2. Legacy format (LegacySourceArguments, for backward compatibility):
        {
            "sourceReference": 123
        }
-    
+
     Args:
         arguments: Either a SourceArguments object (preferred) or LegacySourceArguments
                   object (for backward compatibility), or a raw dict matching one of
@@ -658,10 +660,14 @@ def handle_source(arguments: SourceArguments | LegacySourceArguments | dict[str,
             "response", success=False, message="Missing arguments for source request"
         )
         return
-    
+
     # Extract source reference and path based on the format
     # 1. Check for the preferred format with nested 'source' key (SourceArguments)
-    if isinstance(arguments, dict) and "source" in arguments and isinstance(arguments["source"], dict):
+    if (
+        isinstance(arguments, dict)
+        and "source" in arguments
+        and isinstance(arguments["source"], dict)
+    ):
         source = arguments["source"]
         source_reference = source.get("sourceReference")
         path = source.get("path")
@@ -758,7 +764,7 @@ def handle_modules(arguments: ModulesArguments | None = None) -> None:
 
         if module_count > 0:
             # Return a slice of modules
-            modules = all_modules[start_module:start_module + module_count]
+            modules = all_modules[start_module : start_module + module_count]
         else:
             # Return all modules from start index
             modules = all_modules[start_module:]

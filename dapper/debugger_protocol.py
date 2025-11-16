@@ -141,20 +141,22 @@ class DebuggerLike(Protocol):
 
     # Code execution entry used by launcher
     def run(self, cmd: Any, *args: Any, **kwargs: Any) -> Any: ...
-    
+
     # Frame evaluation integration
     breakpoints: dict[str, list[Any]]
-    
+
     # PyDebugger interface
-    def set_breakpoints(self, source: str, breakpoints: list[dict[str, Any]], **kwargs: Any) -> None: ...
-    
+    def set_breakpoints(
+        self, source: str, breakpoints: list[dict[str, Any]], **kwargs: Any
+    ) -> None: ...
+
     # Optional methods for frame evaluation
     def user_line(self, frame: Any) -> Any | None: ...
     def set_trace(self, frame: Any = None) -> None: ...
-    
+
     # Optional attributes for frame evaluation
     custom_breakpoints: ClassVar[dict[str, Any]]
-    
+
     # Private attributes used by the integration (optional)
     _frame_eval_enabled: bool
     _mock_user_line: Any  # Used for testing
@@ -162,15 +164,17 @@ class DebuggerLike(Protocol):
     # Trace function management
     def get_trace_function(self) -> Callable[[Any | None, str | None, Any | None], Any | None]:
         """Get the current trace function.
-        
+
         Returns:
             The current trace function that takes (frame, event, arg) as arguments.
         """
         ...
-        
-    def set_trace_function(self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None) -> None:
+
+    def set_trace_function(
+        self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None
+    ) -> None:
         """Set a new trace function.
-        
+
         Args:
             trace_func: The new trace function that takes (frame, event, arg) as arguments.
                        If None, clears the current trace function.

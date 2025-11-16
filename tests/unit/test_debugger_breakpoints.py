@@ -42,13 +42,13 @@ class AsyncCallRecorder:
 class TestDebuggerBreakpoints(BaseDebuggerTest):
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Test cases for debugger breakpoint management"""
+    Test cases for debugger breakpoint management"""
 
     async def test_set_breakpoints_no_path(self):
         """Test set_breakpoints with source that has no path"""

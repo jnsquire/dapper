@@ -19,9 +19,7 @@ class TestFuncCodeInfoCache:
     def setup(self):
         """Set up test fixtures."""
         # Patch the _init_code_extra_index method to do nothing
-        self.patcher = patch.object(
-            FuncCodeInfoCache, "_init_code_extra_index", return_value=None
-        )
+        self.patcher = patch.object(FuncCodeInfoCache, "_init_code_extra_index", return_value=None)
         self.mock_init = self.patcher.start()
         yield
         self.patcher.stop()
@@ -30,10 +28,10 @@ class TestFuncCodeInfoCache:
         """Test that the cache initializes correctly."""
         # Create a test instance
         cache = FuncCodeInfoCache(max_size=100, ttl=60)
-        
+
         # Check that _init_code_extra_index was called
         self.mock_init.assert_called_once()
-        
+
         # Check that the cache was initialized with the correct values
         assert cache.max_size == 100
         assert cache.ttl == 60

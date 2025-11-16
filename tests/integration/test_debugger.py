@@ -20,15 +20,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import protocol types for type checking
 
+
 # Type definitions for test mocks
 class Source(TypedDict):
     """Mock Source type for testing."""
+
     path: str
     name: str | None
 
 
 class SourceBreakpoint(TypedDict, total=False):
     """Mock SourceBreakpoint type for testing."""
+
     line: int
     condition: str | None
     hitCondition: str | None
@@ -38,6 +41,7 @@ class SourceBreakpoint(TypedDict, total=False):
 
 class FunctionBreakpoint(TypedDict, total=False):
     """Mock FunctionBreakpoint type for testing."""
+
     name: str
     condition: str | None
     hitCondition: str | None
@@ -45,6 +49,7 @@ class FunctionBreakpoint(TypedDict, total=False):
 
 class BreakpointResponse(TypedDict, total=False):
     """Mock BreakpointResponse type for testing."""
+
     verified: bool
     line: int | None
     condition: str | None
@@ -467,28 +472,26 @@ async def test_step_out(debugger):
 async def test_set_breakpoints(debugger: PyDebugger) -> None:
     """Test setting breakpoints in a source file."""
     # Create source using a simple dict that matches the expected structure
-    source = {
-        "path": "/path/to/test.py"
-    }
-    
+    source = {"path": "/path/to/test.py"}
+
     # Create breakpoints using dicts that match the expected structure
     breakpoint1: SourceBreakpoint = {
         "line": DEFAULT_BREAKPOINT_LINE,
         "condition": f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}",
         "column": 1,  # 1-based column number
-        "hitCondition": ""
+        "hitCondition": "",
     }
     breakpoint2: SourceBreakpoint = {
         "line": TEST_ALT_LINE_1,
         "condition": "",
         "column": 1,
-        "hitCondition": ""
+        "hitCondition": "",
     }
     breakpoints: list[SourceBreakpoint] = [breakpoint1, breakpoint2]
 
     # Call set_breakpoints directly - no need to patch _create_breakpoint
     result = await debugger.set_breakpoints(source, breakpoints)
-    
+
     # Check that breakpoints were stored
     expected_path = str(Path("/path/to/test.py").resolve())
     assert expected_path in debugger.breakpoints
@@ -546,9 +549,8 @@ async def test_set_function_breakpoints(debugger):
     breakpoints = [
         FunctionBreakpoint(name="main"),
         FunctionBreakpoint(
-            name="helper", 
-            condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}"
-        )
+            name="helper", condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}"
+        ),
     ]
 
     result = await debugger.set_function_breakpoints(breakpoints)

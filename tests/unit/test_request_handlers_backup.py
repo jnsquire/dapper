@@ -8,13 +8,13 @@ from dapper.server import RequestHandler
 class TestExecutionFlowHandlers(unittest.IsolatedAsyncioTestCase):
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Test execution flow request handlers"""
+    Test execution flow request handlers"""
 
     async def asyncSetUp(self):
         """Set up for each test"""

@@ -45,7 +45,7 @@ class TestFrameEvalManager:
             debug=False,
             cache_size=1000,
             optimize=True,
-            timeout=30.0
+            timeout=30.0,
         )
         assert self.manager.config == expected_config
 
@@ -54,7 +54,7 @@ class TestFrameEvalManager:
         # Save original values
         original_modules = sys.modules.copy()
         original_environ = os.environ.copy()
-        
+
         try:
             # Test with no incompatible environments
             sys.modules.clear()
@@ -64,7 +64,7 @@ class TestFrameEvalManager:
             # Test with an incompatible debugger
             sys.modules["pdb"] = MagicMock()
             assert self.manager._is_incompatible_environment()
-            
+
             # Clean up
             sys.modules.clear()
             os.environ.clear()
@@ -72,7 +72,7 @@ class TestFrameEvalManager:
             # Test with an incompatible environment variable
             os.environ["PYCHARM_HOSTED"] = "1"
             assert self.manager._is_incompatible_environment()
-            
+
             # Clean up
             sys.modules.clear()
             os.environ.clear()
@@ -80,7 +80,7 @@ class TestFrameEvalManager:
             # Test with coverage tool
             sys.modules["coverage"] = MagicMock()
             assert self.manager._is_incompatible_environment()
-            
+
         finally:
             # Restore original values
             sys.modules.clear()
@@ -91,8 +91,9 @@ class TestFrameEvalManager:
     def test_check_platform_compatibility(self):
         """Test the _check_platform_compatibility method."""
         # Test with supported platform and architecture
-        with patch("platform.system", return_value="Windows"), patch(
-            "platform.architecture", return_value=("64bit", "WindowsPE")
+        with (
+            patch("platform.system", return_value="Windows"),
+            patch("platform.architecture", return_value=("64bit", "WindowsPE")),
         ):
             assert self.manager._check_platform_compatibility()
 
@@ -101,13 +102,15 @@ class TestFrameEvalManager:
             assert not self.manager._check_platform_compatibility()
 
         # Test with unsupported architecture
-        with patch("platform.system", return_value="Linux"), patch(
-            "platform.architecture", return_value=("128bit", "ELF")
+        with (
+            patch("platform.system", return_value="Linux"),
+            patch("platform.architecture", return_value=("128bit", "ELF")),
         ):
             assert not self.manager._check_platform_compatibility()
 
     def test_check_environment_compatibility(self):
         """Test the check_environment_compatibility method."""
+
         # Create a mock for version info with attributes
         class VersionInfo:
             def __init__(self, major, minor, micro, releaselevel, serial):
@@ -116,14 +119,10 @@ class TestFrameEvalManager:
                 self.micro = micro
                 self.releaselevel = releaselevel
                 self.serial = serial
-                
+
         with (
-            patch.object(
-                self.manager, "_check_platform_compatibility", return_value=True
-            ),
-            patch.object(
-                self.manager, "_is_incompatible_environment", return_value=False
-            ),
+            patch.object(self.manager, "_check_platform_compatibility", return_value=True),
+            patch.object(self.manager, "_is_incompatible_environment", return_value=False),
             patch("platform.platform", return_value="Windows-10"),
             patch("sys.platform", "win32"),
             patch("platform.python_implementation", return_value="CPython"),
@@ -155,31 +154,31 @@ class TestFrameEvalManager:
             debug=False,
             cache_size=1000,
             optimize=True,
-            timeout=30.0
+            timeout=30.0,
         )
         assert self.manager.config == expected_config
 
         # Test updating config with validation
         update = {"debug": True, "cache_size": 2000}
         expected_updated = replace(expected_config, **update)
-        
+
         with patch.object(self.manager, "_validate_config", return_value=True):
             result = self.manager.update_config(update)
             assert result is True
             assert self.manager.config == expected_updated
-            
+
         # Test with invalid update (should not change config)
         invalid_updates = {"debug": "not a boolean"}
         with patch.object(self.manager, "_validate_config", return_value=False):
             # Save the current config before the invalid update
             config_before = FrameEvalConfig.from_dict(self.manager.config.to_dict())
-            
+
             result = self.manager.update_config(invalid_updates)
             assert result is False
-            
+
             # Config should remain unchanged from before the invalid update
             assert self.manager.config == config_before
-            
+
             # Verify specific values are as expected
             assert self.manager.config.debug is True  # From the previous successful update
             assert self.manager.config.cache_size == 2000  # From the previous successful update

@@ -12,6 +12,7 @@ class TestInsertCode(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+
         # Create a simple code object for testing
         def test_func():
             x = 1
@@ -28,19 +29,13 @@ class TestInsertCode(TestCase):
         mock_inject = mock.MagicMock()
         mock.patch.object(_bytecode_modifier, "inject_breakpoints", mock_inject).start()
         mock_inject.return_value = (True, mock_modified_code)
-        
-        success, result = insert_code(
-            self.test_code,
-            2,
-            self.breakpoint_lines
-        )
-        
+
+        success, result = insert_code(self.test_code, 2, self.breakpoint_lines)
+
         assert success
         assert result is mock_modified_code
         mock_inject.assert_called_once_with(
-            self.test_code,
-            set(self.breakpoint_lines),
-            debug_mode=True
+            self.test_code, set(self.breakpoint_lines), debug_mode=True
         )
 
     def test_insert_code_failure(self):
@@ -48,13 +43,9 @@ class TestInsertCode(TestCase):
         mock_inject = mock.MagicMock()
         mock.patch.object(_bytecode_modifier, "inject_breakpoints", mock_inject).start()
         mock_inject.side_effect = Exception("Test error")
-        
-        success, result = insert_code(
-            self.test_code,
-            2,
-            self.breakpoint_lines
-        )
-        
+
+        success, result = insert_code(self.test_code, 2, self.breakpoint_lines)
+
         assert not success
         assert result is self.test_code
 
@@ -63,13 +54,9 @@ class TestInsertCode(TestCase):
         mock_inject = mock.MagicMock()
         mock.patch.object(_bytecode_modifier, "inject_breakpoints", mock_inject).start()
         mock_inject.side_effect = Exception("Test error")
-        
-        success, result = insert_code(
-            self.test_code,
-            2,
-            self.breakpoint_lines
-        )
-        
+
+        success, result = insert_code(self.test_code, 2, self.breakpoint_lines)
+
         assert not success
         assert result == self.test_code
 
@@ -79,13 +66,13 @@ class TestInsertCode(TestCase):
         mock_inject = mock.MagicMock()
         mock.patch.object(_bytecode_modifier, "inject_breakpoints", mock_inject).start()
         mock_inject.return_value = (True, mock_modified_code)
-        
+
         success, _ = insert_code(
             self.test_code,
             2,
-            ()  # Empty breakpoint lines
+            (),  # Empty breakpoint lines
         )
-        
+
         assert success
         mock_inject.assert_called_once()
         assert mock_inject.call_args[0][1] == set()  # Should be an empty set
@@ -95,9 +82,9 @@ class TestInsertCode(TestCase):
         success, result = insert_code(
             self.test_code,
             -1,  # Invalid line number
-            self.breakpoint_lines
+            self.breakpoint_lines,
         )
-        
+
         # Should still return successfully but with original code object
         assert not success
         assert result == self.test_code
@@ -105,4 +92,5 @@ class TestInsertCode(TestCase):
 
 if __name__ == "__main__":
     import unittest
+
     unittest.main()

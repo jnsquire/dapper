@@ -18,9 +18,9 @@ class _StubServer:
 @pytest.mark.asyncio
 async def test_pipe_endpoints_closed_on_cleanup() -> None:
     """
-Ensure pipe endpoints are closed during IPC cleanup on Windows.
+    Ensure pipe endpoints are closed during IPC cleanup on Windows.
 
-    Skips on non-Windows platforms.
+        Skips on non-Windows platforms.
     """
     if os.name != "nt":
         pytest.skip("Named pipe cleanup test only applicable on Windows")

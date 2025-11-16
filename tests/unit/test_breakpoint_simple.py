@@ -6,10 +6,10 @@ class MockBreakpointCache:
     def __init__(self, max_entries=1000):
         self.max_entries = max_entries
         self._cache = {}
-        
+
     def set_breakpoints(self, filename, breakpoints):
         self._cache[filename] = set(breakpoints)
-        
+
     def get_breakpoints(self, filename):
         return self._cache.get(filename, set())
 
@@ -29,25 +29,25 @@ class TestBreakpointCache:
         cache = MockBreakpointCache(max_entries=10)
         test_file = "test_file.py"
         test_breakpoints = {1, 5, 10}
-        
+
         # Add breakpoints
         cache.set_breakpoints(test_file, test_breakpoints)
-        
+
         # Verify they can be retrieved
         result = cache.get_breakpoints(test_file)
         assert result == test_breakpoints
-        
+
         # Test getting non-existent file
         assert cache.get_breakpoints("nonexistent.py") == set()
 
     def test_multiple_files(self):
         """Test handling multiple files."""
         cache = MockBreakpointCache(max_entries=10)
-        
+
         # Add breakpoints for multiple files
         cache.set_breakpoints("file1.py", {1, 2, 3})
         cache.set_breakpoints("file2.py", {4, 5, 6})
-        
+
         # Verify both can be retrieved
         assert cache.get_breakpoints("file1.py") == {1, 2, 3}
         assert cache.get_breakpoints("file2.py") == {4, 5, 6}
@@ -55,11 +55,11 @@ class TestBreakpointCache:
     def test_overwrite_breakpoints(self):
         """Test overwriting breakpoints for a file."""
         cache = MockBreakpointCache()
-        
+
         # Initial set
         cache.set_breakpoints("test.py", {1, 2, 3})
         assert cache.get_breakpoints("test.py") == {1, 2, 3}
-        
+
         # Overwrite
         cache.set_breakpoints("test.py", {4, 5})
         assert cache.get_breakpoints("test.py") == {4, 5}

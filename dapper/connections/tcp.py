@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class TCPServerConnection(ConnectionBase):
     """TCP server connection for DAP protocol.
-    
+
     This class implements a TCP server that listens for incoming DAP client
     connections. It supports both normal operation and test scenarios where
     the bound port needs to be known before clients connect.
@@ -23,7 +23,7 @@ class TCPServerConnection(ConnectionBase):
 
     def __init__(self, host: str = "localhost", port: int = 4711) -> None:
         """Initialize the TCP server connection.
-        
+
         Args:
             host: The host address to bind to. Defaults to localhost.
             port: The port to bind to. Use 0 for an ephemeral port.
@@ -42,7 +42,7 @@ class TCPServerConnection(ConnectionBase):
         """
         if self.server is None:
             await self.start_listening()
-        
+
         await self.wait_for_client()
 
     async def start_listening(self) -> None:
@@ -57,17 +57,14 @@ class TCPServerConnection(ConnectionBase):
 
         logger.info("Starting TCP server on %s:%s", self.host, self.port)
         self.server = await asyncio.start_server(
-            self._handle_client, 
-            self.host, 
-            self.port,
-            reuse_address=True
+            self._handle_client, self.host, self.port, reuse_address=True
         )
         self._client_connected = asyncio.Future()
         self._update_bound_port()
 
     def _update_bound_port(self) -> None:
         """Update the bound port from the server socket.
-        
+
         This is particularly useful when using an ephemeral port (port=0).
         """
         if self.server is None or not self.server.sockets:
@@ -78,35 +75,34 @@ class TCPServerConnection(ConnectionBase):
             if sock.family in (socket.AF_INET, socket.AF_INET6):
                 _, port = sock.getsockname()[:2]
                 if port != self.port:
-                    logger.debug("Server bound to ephemeral port %d (requested: %d)", 
-                               port, self.port)
+                    logger.debug(
+                        "Server bound to ephemeral port %d (requested: %d)", port, self.port
+                    )
                     self.port = port
         except (IndexError, OSError) as e:
             logger.debug("Could not determine bound port: %s", e)
 
     async def wait_for_client(self, timeout: float | None = None) -> None:
         """Wait until a client connects (after start_listening).
-        
+
         Args:
             timeout: Optional timeout in seconds to wait for a client connection.
-            
+
         Raises:
             RuntimeError: If called before start_listening
             asyncio.TimeoutError: If timeout is reached before a client connects
         """
         if self._client_connected is None:
             raise RuntimeError("wait_for_client called before start_listening")
-        
+
         try:
-            await asyncio.wait_for(
-                asyncio.shield(self._client_connected), 
-                timeout=timeout
-            )
+            await asyncio.wait_for(asyncio.shield(self._client_connected), timeout=timeout)
             logger.info("Client connected to TCP server on %s:%s", self.host, self.port)
             self._is_connected = True
         except asyncio.TimeoutError:
-            logger.warning("Timed out waiting for client connection on %s:%s", 
-                         self.host, self.port)
+            logger.warning(
+                "Timed out waiting for client connection on %s:%s", self.host, self.port
+            )
             raise
 
     async def _handle_client(self, reader, writer) -> None:

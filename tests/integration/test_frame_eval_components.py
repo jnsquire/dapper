@@ -28,11 +28,15 @@ from dapper._frame_eval.cache_manager import remove_func_code_info
 from dapper._frame_eval.cache_manager import set_breakpoints
 
 # Check if modify_bytecode is available
-MODIFY_BYTECODE_AVAILABLE = importlib.util.find_spec("dapper._frame_eval.modify_bytecode") is not None
+MODIFY_BYTECODE_AVAILABLE = (
+    importlib.util.find_spec("dapper._frame_eval.modify_bytecode") is not None
+)
 from dapper._frame_eval.cache_manager import set_func_code_info
 
 # Check if selective tracer is available
-SELECTIVE_TRACER_AVAILABLE = importlib.util.find_spec("dapper._frame_eval.selective_tracer") is not None
+SELECTIVE_TRACER_AVAILABLE = (
+    importlib.util.find_spec("dapper._frame_eval.selective_tracer") is not None
+)
 
 # Import selective tracer components if available
 if SELECTIVE_TRACER_AVAILABLE:
@@ -57,161 +61,166 @@ if CYTHON_AVAILABLE:
     except ImportError:
         CYTHON_AVAILABLE = False
 
+
 class TestCacheComponents:
     """Test the cache components."""
-    
+
     @patch.object(FuncCodeInfoCache, "_init_code_extra_index")
     def test_func_code_cache_creation(self, mock_init):
         """Test FuncCodeInfoCache creation."""
         # Skip the actual initialization that requires C-API
         mock_init.return_value = None
-        
+
         # Create the cache instance
         with patch("weakref.WeakValueDictionary") as mock_weak_dict:
             # Mock the WeakValueDictionary to return an empty dict
             mock_weak_dict.return_value = {}
-            
+
             # Create the cache instance
             cache = FuncCodeInfoCache(max_size=100, ttl=60)
-            
+
             # Set up the expected attributes that would be set by _init_code_extra_index
             cache._lru_cache = OrderedDict()
             cache._timestamps = {}
             cache._weak_refs = {}
             cache._lock = threading.RLock()
-            
+
             # Verify the cache was initialized correctly
             assert cache.max_size == 100
             assert cache.ttl == 60
             # Check that the internal _lru_cache is empty
             assert len(cache._lru_cache) == 0
-    
+
     def test_breakpoint_cache_creation(self):
         """Test BreakpointCache creation."""
         cache = BreakpointCache(max_entries=50)
-        
+
         assert cache.max_entries == 50
         # Check that the internal _cache is empty
         assert len(cache._cache) == 0
-    
+
     def test_thread_local_cache_creation(self):
         """Test ThreadLocalCache creation."""
         cache = ThreadLocalCache()
-        
+
         assert cache is not None
         # Should have thread-local storage
         assert hasattr(cache, "_local")
         assert hasattr(cache, "get_thread_info")
-    
+
     def test_cache_operations(self):
         """Test basic cache operations."""
         FuncCodeInfoCache()
-        
+
         # Test with a mock code object
         mock_code = Mock()
         mock_info = {"test": "data"}
-        
+
         # Set info
         set_func_code_info(mock_code, mock_info)
-        
+
         # Get info
         result = get_func_code_info(mock_code)
         assert result == mock_info
-        
+
         # Remove info
         removed = remove_func_code_info(mock_code)
         assert removed is True
-        
+
         # Should be gone
         result = get_func_code_info(mock_code)
         assert result is None
-    
+
     def test_breakpoint_operations(self):
         """Test breakpoint cache operations."""
         # Create a new cache instance for testing
         cache = BreakpointCache()
-        
+
         # Create a temporary file for testing
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as temp_file:
             filepath = temp_file.name
             # Write something to the file so it has a valid mtime
             temp_file.write(b"# Test file for breakpoint testing\n")
             temp_file.flush()
-            
+
             breakpoints = {10, 20, 30}
-            
+
             try:
                 # Clear any existing breakpoints
                 cache.clear_all()
-                
+
                 # Debug: Check if file exists and is readable using pathlib
                 file_path = Path(filepath)
                 assert file_path.exists(), f"Test file {filepath} does not exist"
                 assert file_path.is_file(), f"Test file {filepath} is not a file"
                 # Use os.access for readability check as Path.readable() is not available in all Python versions
                 assert os.access(file_path, os.R_OK), f"Cannot read test file {filepath}"
-                
+
                 # Set breakpoints
                 cache.set_breakpoints(filepath, breakpoints)
-                
+
                 # Debug: Check cache contents directly
                 if hasattr(cache, "_cache"):
                     print(f"Cache contents: {cache._cache}")
-                
+
                 # Get breakpoints
                 cached_breakpoints = cache.get_breakpoints(filepath)
-                
+
                 # The cache should return the breakpoints we set
-                assert cached_breakpoints is not None, "Breakpoints should not be None after being set"
+                assert cached_breakpoints is not None, (
+                    "Breakpoints should not be None after being set"
+                )
                 assert cached_breakpoints == breakpoints, "Breakpoints should match what was set"
-                
+
                 # Test getting non-existent breakpoints
                 non_existent = "/non/existent/" + os.urandom(8).hex() + ".py"
                 result = cache.get_breakpoints(non_existent)
                 assert result is None, f"Non-existent file {non_existent} should return None"
-                
+
                 # Test invalidating breakpoints for a file
                 cache.invalidate_file(filepath)
-                assert cache.get_breakpoints(filepath) is None, "Breakpoints should be cleared after invalidation"
-                
+                assert cache.get_breakpoints(filepath) is None, (
+                    "Breakpoints should be cleared after invalidation"
+                )
+
             finally:
                 # Clean up the temporary file using pathlib
                 try:
                     Path(filepath).unlink(missing_ok=True)
                 except Exception as e:
                     print(f"Warning: Could not remove temporary file {filepath}: {e}")
-    
+
     def test_clear_all_caches(self):
         """Test clearing all caches."""
         # Add some data
         mock_code = Mock()
         set_func_code_info(mock_code, {"test": "data"})
         set_breakpoints("/test.py", {10, 20})
-        
+
         # Clear caches
         clear_all_caches()
-        
+
         # Data should be gone
         result = get_func_code_info(mock_code)
         assert result is None
-        
+
         breakpoints = get_breakpoints("/test.py")
         assert breakpoints is None
-    
+
     def test_get_cache_statistics(self):
         """Test getting cache statistics."""
         stats = get_cache_statistics()
-        
+
         assert isinstance(stats, dict)
         # Should have expected structure
         expected_keys = ["func_code_cache", "breakpoint_cache", "global_stats"]
         for key in expected_keys:
             assert key in stats, f"Missing cache stat: {key}"
-    
+
     def test_cleanup_caches(self):
         """Test cache cleanup."""
         results = cleanup_caches()
-        
+
         assert isinstance(results, dict)
         # Should have cleanup results
         expected_keys = ["func_code_expired", "breakpoint_files"]
@@ -222,108 +231,110 @@ class TestCacheComponents:
 @pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython modules not available")
 class TestCythonComponents:
     """Test Cython components."""
-    
+
     def test_thread_info_creation(self):
         """Test ThreadInfo object creation."""
         thread_info = get_thread_info()
-        
+
         assert isinstance(thread_info, ThreadInfo)
         assert hasattr(thread_info, "inside_frame_eval")
         assert hasattr(thread_info, "fully_initialized")
         assert hasattr(thread_info, "is_pydevd_thread")
         assert hasattr(thread_info, "skip_all_frames")
-        
+
         # Check initial values
         assert thread_info.inside_frame_eval == 0
         # fully_initialized might be a boolean in some implementations
         assert thread_info.fully_initialized in (0, False, True)
         assert thread_info.is_pydevd_thread in (0, False)
         assert thread_info.skip_all_frames in (0, False)
-    
+
     def test_thread_info_isolation(self):
         """Test that thread info is isolated between threads."""
         main_thread_info = get_thread_info()
-        
+
         # Modify main thread info
         main_thread_info.fully_initialized = 1
-        
+
         # Create a new thread and check its info
         def check_thread_info():
             thread_info = get_thread_info()
             # Should be different instance
             # The value of fully_initialized might vary by implementation
             # (0, False, or True are all possible)
-            assert isinstance(thread_info.fully_initialized, (int, bool)), \
+            assert isinstance(thread_info.fully_initialized, (int, bool)), (
                 f"fully_initialized should be int or bool, got {type(thread_info.fully_initialized)}"
+            )
             assert thread_info is not main_thread_info
-        
+
         thread = threading.Thread(target=check_thread_info)
         thread.start()
         thread.join()
-        
+
         # Main thread info should be unchanged
-        assert main_thread_info.fully_initialized == 1, \
+        assert main_thread_info.fully_initialized == 1, (
             f"Main thread's fully_initialized was changed to {main_thread_info.fully_initialized}"
-    
+        )
+
     def test_frame_eval_stats(self):
         """Test frame evaluation statistics."""
         stats = get_frame_eval_stats()
-        
+
         assert isinstance(stats, dict)
         assert "active" in stats
         assert "has_breakpoint_manager" in stats
-        
+
         # Check types
         assert isinstance(stats["active"], bool)
         assert isinstance(stats["has_breakpoint_manager"], bool)
-    
+
     def test_frame_eval_activation(self):
         """Test frame evaluation activation/deactivation."""
         # Get initial state
         get_frame_eval_stats()
-        
+
         # Activate
         frame_eval_func()
         active_stats = get_frame_eval_stats()
-        
+
         # Deactivate
         stop_frame_eval()
         inactive_stats = get_frame_eval_stats()
-        
+
         # The simplified implementation might keep some state
         # This is expected behavior
         assert isinstance(active_stats["active"], bool)
         assert isinstance(inactive_stats["active"], bool)
-    
+
     def test_clear_thread_local_info(self):
         """Test clearing thread local info."""
         # Get thread info and modify it
         thread_info = get_thread_info()
         thread_info.fully_initialized = 1
-        
+
         # Clear thread local info
         clear_thread_local_info()
-        
+
         # Get new thread info - should be fresh
         new_thread_info = get_thread_info()
         # In the simplified implementation, this might not reset
         # but the function should not crash
         assert isinstance(new_thread_info, ThreadInfo)
-    
+
     def test_dummy_trace_dispatch(self):
         """Test dummy trace dispatch function."""
         # Skip if dummy_trace_dispatch is not available
         if not hasattr(sys.modules[__name__], "dummy_trace_dispatch"):
             pytest.skip("dummy_trace_dispatch not available")
-            
+
         # Create a mock frame
         mock_frame = Mock()
-        
+
         # Test different events
         dummy_trace_dispatch(mock_frame, "call", None)
         # The actual behavior might vary, so just check it doesn't raise
         assert True
-        
+
         # Test with frame that has trace
         if hasattr(mock_frame, "f_trace"):
             mock_frame.f_trace = Mock(return_value="trace_result")
@@ -340,36 +351,36 @@ class TestCythonComponents:
 
 class TestSelectiveTracer:
     """Test selective tracer component."""
-    
+
     def test_selective_tracer_import(self):
         """Test that selective tracer can be imported."""
         if not SELECTIVE_TRACER_AVAILABLE:
             pytest.skip("Selective tracer not available")
         # If we get here, import succeeded (tested at module level)
         assert True
-    
+
     @patch("dapper._frame_eval.selective_tracer.enable_selective_tracing")
     def test_enable_selective_tracing_mock(self, mock_enable):
         """Test enabling selective tracing (mocked)."""
         if not SELECTIVE_TRACER_AVAILABLE or "enable_selective_tracing" not in globals():
             pytest.skip("Selective tracer not available")
-            
+
         # Call the function with a no-op trace function
         globals()["dapper._frame_eval.selective_tracer"].enable_selective_tracing(lambda *_: None)
-        
+
         # Verify it was called (if mocked)
         if mock_enable:
             mock_enable.assert_called_once()
-    
+
     @patch("dapper._frame_eval.selective_tracer.disable_selective_tracing")
     def test_disable_selective_tracing_mock(self, mock_disable):
         """Test disabling selective tracing (mocked)."""
         if not SELECTIVE_TRACER_AVAILABLE or "disable_selective_tracing" not in globals():
             pytest.skip("Selective tracer not available")
-            
+
         # Call the function
         globals()["dapper._frame_eval.selective_tracer"].disable_selective_tracing()
-        
+
         # Verify it was called (if mocked)
         if mock_disable:
             mock_disable.assert_called_once()
@@ -377,7 +388,7 @@ class TestSelectiveTracer:
 
 class TestBytecodeModifier:
     """Test bytecode modifier component."""
-    
+
     def test_bytecode_modifier_import(self):
         """Test that bytecode modifier can be imported."""
         spec = importlib.util.find_spec("dapper._frame_eval.modify_bytecode")
@@ -385,66 +396,69 @@ class TestBytecodeModifier:
             pytest.skip("Bytecode modifier not available")
         # If we get here, import would succeed
         assert True
-    
+
     def test_bytecode_modifier_creation(self):
         """Test bytecode modifier creation."""
         spec = importlib.util.find_spec("dapper._frame_eval.modify_bytecode")
         if spec is None:
             pytest.skip("Bytecode modifier not available")
-            
+
         # Skip actual creation test since we can't mock the class easily
         # and we're just testing imports here
         assert True
-    
+
     @patch("dapper._frame_eval.modify_bytecode.inject_breakpoint_bytecode")
     def test_inject_breakpoint_bytecode_mock(self, mock_inject):
         """Test breakpoint bytecode injection (mocked)."""
         if not MODIFY_BYTECODE_AVAILABLE:
             pytest.skip("modify_bytecode module not available")
-            
+
         # Create mock code object and breakpoints
         mock_code = Mock()
         breakpoints = {10, 20, 30}
-        
+
         # Set up the mock to return our mock code object
         mock_inject.return_value = mock_code
-        
+
         # Call the function with test data through the mock
         result = mock_inject(mock_code, breakpoints)
-        
+
         # Verify the function was called with the correct arguments
         mock_inject.assert_called_once_with(mock_code, breakpoints)
-        
+
         # Verify the function returned our mock code object
         assert result is mock_code
 
+
 class TestIntegration:
     """Test integration utility functions."""
-    
+
     class _TestError(Exception):
         """Custom exception for testing error handling."""
+
         def __init__(self, message):
             super().__init__(message)
             self.message = message
-    
+
     def test_debugger_detection(self):
         """Test debugger type detection."""
+
         # Create a simple class that simulates a BDB debugger
         class BdbDebugger:
             def user_line(self, frame):
                 pass
-                
+
             def __init__(self):
                 self.breakpoints = {}
-        
+
         # Create a simple class that simulates a PyDebugger
         class PyDebugger:
             def set_breakpoints(self, filename, breakpoints):
                 pass
-                
+
             def __init__(self):
                 self.threads = {}
-        
+
         # Create a non-debugger class with some attributes
         class NonDebugger:
             def __init__(self):
@@ -452,62 +466,71 @@ class TestIntegration:
                 self.breakpoints = "not a dict"
                 self.set_breakpoints = "not a method"
                 self.threads = "not a dict"
-        
+
         # Test BDB debugger detection
         bdb = BdbDebugger()
         assert hasattr(bdb, "user_line"), "BDB debugger should have user_line attribute"
         assert callable(bdb.user_line), "BDB debugger's user_line should be callable"
         assert hasattr(bdb, "breakpoints"), "BDB debugger should have breakpoints attribute"
         assert isinstance(bdb.breakpoints, dict), "BDB debugger's breakpoints should be a dict"
-        
+
         # Test PyDebugger detection
         py_dbg = PyDebugger()
-        assert hasattr(py_dbg, "set_breakpoints"), "PyDebugger should have set_breakpoints attribute"
+        assert hasattr(py_dbg, "set_breakpoints"), (
+            "PyDebugger should have set_breakpoints attribute"
+        )
         assert callable(py_dbg.set_breakpoints), "PyDebugger's set_breakpoints should be callable"
         assert hasattr(py_dbg, "threads"), "PyDebugger should have threads attribute"
         assert isinstance(py_dbg.threads, dict), "PyDebugger's threads should be a dict"
-        
+
         # Test non-debugger
         non_dbg = NonDebugger()
         assert hasattr(non_dbg, "user_line"), "Non-debugger should have user_line attribute"
         assert not callable(non_dbg.user_line), "Non-debugger's user_line should not be callable"
         assert hasattr(non_dbg, "breakpoints"), "Non-debugger should have breakpoints attribute"
-        assert not isinstance(non_dbg.breakpoints, dict), "Non-debugger's breakpoints should not be a dict"
-        assert hasattr(non_dbg, "set_breakpoints"), "Non-debugger should have set_breakpoints attribute"
-        assert not callable(non_dbg.set_breakpoints), "Non-debugger's set_breakpoints should not be callable"
+        assert not isinstance(non_dbg.breakpoints, dict), (
+            "Non-debugger's breakpoints should not be a dict"
+        )
+        assert hasattr(non_dbg, "set_breakpoints"), (
+            "Non-debugger should have set_breakpoints attribute"
+        )
+        assert not callable(non_dbg.set_breakpoints), (
+            "Non-debugger's set_breakpoints should not be callable"
+        )
         assert hasattr(non_dbg, "threads"), "Non-debugger should have threads attribute"
         assert not isinstance(non_dbg.threads, dict), "Non-debugger's threads should not be a dict"
-        
+
         # Test with an object that has no debugger attributes
         class EmptyClass:
             pass
-            
+
         empty = EmptyClass()
         assert not hasattr(empty, "user_line")
         assert not hasattr(empty, "breakpoints")
         assert not hasattr(empty, "set_breakpoints")
         assert not hasattr(empty, "threads")
-    
+
     def test_error_handling_utilities(self):
         """Test error handling utility functions."""
+
         # Test safe function execution
         def safe_function():
             return "success"
-        
+
         def unsafe_function():
             raise self._TestError("Test error occurred")
-        
+
         # Safe execution should work
         try:
             result = safe_function()
             assert result == "success"
         except Exception:
             pytest.fail("Safe function should not raise exception")
-        
+
         # Unsafe function should raise exception
         with pytest.raises(Exception, match="Test error occurred"):
             unsafe_function()
-    
+
     def test_configuration_validation(self):
         """Test configuration validation."""
         # Valid configuration
@@ -519,18 +542,18 @@ class TestIntegration:
             "performance_monitoring": True,
             "fallback_on_error": True,
         }
-        
+
         # All values should be boolean
         for key, value in valid_config.items():
             assert isinstance(value, bool), f"Config {key} should be boolean"
-        
+
         # Invalid configuration types
         invalid_configs = [
             {"enabled": "true"},  # String instead of bool
             {"selective_tracing": 1},  # Number instead of bool
             {"bytecode_optimization": None},  # None instead of bool
         ]
-        
+
         for invalid_config in invalid_configs:
             # In a real implementation, these should be rejected
             # For now, just test that we can detect the invalid types
@@ -540,42 +563,42 @@ class TestIntegration:
 
 class TestPerformanceUtils:
     """Test performance utility functions."""
-    
+
     def test_performance_timing(self):
         """Test performance timing utilities."""
         # Test basic timing
         start_time = time.time()
         time.sleep(0.01)  # Sleep for 10ms
         end_time = time.time()
-        
+
         elapsed = end_time - start_time
         assert 0.01 <= elapsed <= 0.02  # Should be around 10ms
-    
+
     def test_performance_counters(self):
         """Test performance counter functionality."""
         # Simple counter implementation
         counter = {"calls": 0, "errors": 0}
-        
+
         def increment_counter(counter_key):
             counter[counter_key] += 1
-        
+
         # Increment calls
         increment_counter("calls")
         increment_counter("calls")
         increment_counter("errors")
-        
+
         assert counter["calls"] == 2
         assert counter["errors"] == 1
-    
+
     def test_memory_usage_estimation(self):
         """Test memory usage estimation."""
         # Create some objects and estimate memory
         data = [{"key": f"value_{i}", "number": i} for i in range(100)]
-        
+
         # Rough estimation - each dict should take some memory
         estimated_size = len(data) * 100  # Rough estimate in bytes
         assert estimated_size > 0
-        
+
         # Test that we can get sys.getsizeof if available
         if hasattr(sys, "getsizeof"):
             actual_size = sys.getsizeof(data[0])

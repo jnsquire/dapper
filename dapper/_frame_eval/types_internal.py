@@ -11,12 +11,12 @@ from typing import Any
 
 class _FrameEvalState:
     """Internal state management for frame evaluation."""
-    
+
     _frame_eval_active: bool
     _breakpoint_manager: Any | None
     _frame_eval_lock: Any  # threading.Lock
     _thread_local_info: Any  # threading.local
-    
+
     def _initialize_global_state(self) -> None: ...
 
 

@@ -18,7 +18,9 @@ def test_send_debug_message_event_and_logging(monkeypatch):
     # Ensure IPC disabled
     ds.state.ipc_enabled = False
     captured = []
-    ds.state.on_debug_message.add_listener(lambda event_type, **kw: captured.append((event_type, kw)))
+    ds.state.on_debug_message.add_listener(
+        lambda event_type, **kw: captured.append((event_type, kw))
+    )
 
     logged = []
 

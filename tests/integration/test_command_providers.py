@@ -10,7 +10,7 @@ def isolated_registry():
     """
 
 
-Isolate the provider registry for each test and restore afterward."""
+    Isolate the provider registry for each test and restore afterward."""
     old = list(ds.state._providers)
     ds.state._providers = []
     try:

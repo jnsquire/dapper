@@ -3,6 +3,7 @@
 Keep these tiny and import-safe; they are installed into the environment as
 console scripts so tools like `uv run <name>` can invoke them.
 """
+
 from __future__ import annotations
 
 import os

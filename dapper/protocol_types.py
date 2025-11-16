@@ -1155,24 +1155,27 @@ class PauseArguments(TypedDict):
 
 class LoadedSourcesArguments(TypedDict):
     """Arguments for 'loadedSources' request."""
+
     # No required arguments for loadedSources
 
 
 class SourceArguments(TypedDict):
     """Arguments for 'source' request.
-    
+
     This is the preferred format where source information is nested under a 'source' key.
     """
+
     source: NotRequired[Source]
     sourceReference: NotRequired[int]
 
 
 class LegacySourceArguments(TypedDict):
     """Legacy format for 'source' request arguments.
-    
+
     This format is maintained for backward compatibility with older clients.
     The Debug Adapter Protocol prefers the SourceArguments format.
     """
+
     sourceReference: int
     path: NotRequired[str]
 

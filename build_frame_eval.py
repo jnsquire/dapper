@@ -23,72 +23,73 @@ def run_command(cmd, cwd=None):
         print(result.stderr, file=sys.stderr)
     return result.returncode == 0
 
+
 def clean_build():
     """Clean build artifacts."""
     print("Cleaning build artifacts...")
     base_dir = Path(__file__).parent
-    
+
     # Remove build directories
     for build_dir in ["build", "dist"]:
         if (base_dir / build_dir).exists():
-            run_command(f"rmdir /s /q {build_dir}" if sys.platform == "win32" else f"rm -rf {build_dir}")
-    
+            run_command(
+                f"rmdir /s /q {build_dir}" if sys.platform == "win32" else f"rm -rf {build_dir}"
+            )
+
     # Remove Cython generated files
     for pattern in ["**/*.c", "**/*.so", "**/*.pyd", "**/*.html"]:
         for file in base_dir.glob(pattern):
             if file.is_file():
                 file.unlink()
-    
+
     # Remove __pycache__ directories
     for pycache in base_dir.rglob("__pycache__"):
         if pycache.is_dir():
-            run_command(f"rmdir /s /q {pycache}" if sys.platform == "win32" else f"rm -rf {pycache}")
-    
+            run_command(
+                f"rmdir /s /q {pycache}" if sys.platform == "win32" else f"rm -rf {pycache}"
+            )
+
     print("Clean completed.")
+
 
 def build_development():
     """Build in development mode with verbose output."""
     print("Building frame evaluation extensions (development mode)...")
-    
+
     # Set environment variables for development
     env = os.environ.copy()
     env["CYTHON_ANNOTATE"] = "1"  # Generate HTML annotation files
-    
+
     # Build with verbose output
-    cmd = [
-        sys.executable, "setup.py", 
-        "build_ext", "--inplace", "--verbose"
-    ]
-    
+    cmd = [sys.executable, "setup.py", "build_ext", "--inplace", "--verbose"]
+
     result = subprocess.run(cmd, check=False, env=env)
     return result.returncode == 0
+
 
 def build_production():
     """Build in production mode."""
     print("Building frame evaluation extensions (production mode)...")
-    
-    cmd = [
-        sys.executable, "setup.py", 
-        "build_ext", "--inplace"
-    ]
-    
+
+    cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+
     result = subprocess.run(cmd, check=False)
     return result.returncode == 0
+
 
 def install_dev():
     """Install in development mode with frame evaluation."""
     print("Installing Dapper in development mode with frame evaluation...")
-    
-    cmd = [
-        sys.executable, "-m", "pip", "install", "-e", ".[dev,frame-eval]"
-    ]
-    
+
+    cmd = [sys.executable, "-m", "pip", "install", "-e", ".[dev,frame-eval]"]
+
     return run_command(" ".join(cmd))
+
 
 def test_frame_eval():
     """Test frame evaluation functionality."""
     print("Testing frame evaluation...")
-    
+
     # Try to import and test basic functionality
     test_code = """
 import sys
@@ -110,17 +111,20 @@ except ImportError as e:
 except Exception as e:
     print(f"Error: {e}")
 """
-    
+
     return run_command(f'{sys.executable} -c "{test_code}"')
+
 
 def main():
     parser = argparse.ArgumentParser(description="Build script for Dapper frame evaluation")
-    parser.add_argument("command", choices=[
-        "clean", "build-dev", "build-prod", "install-dev", "test"
-    ], help="Command to run")
-    
+    parser.add_argument(
+        "command",
+        choices=["clean", "build-dev", "build-prod", "install-dev", "test"],
+        help="Command to run",
+    )
+
     args = parser.parse_args()
-    
+
     if args.command == "clean":
         clean_build()
     elif args.command == "build-dev":
@@ -135,6 +139,7 @@ def main():
     elif args.command == "test":
         success = test_frame_eval()
         sys.exit(0 if success else 1)
+
 
 if __name__ == "__main__":
     main()

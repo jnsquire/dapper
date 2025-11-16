@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # Create a realistic mock frame object with a code object and line info
 class MockCode:
     def __init__(self, name="test_func", filename="<test>", firstlineno=1):

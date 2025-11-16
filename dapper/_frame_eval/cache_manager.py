@@ -42,6 +42,7 @@ try:
     from dapper._frame_eval._frame_evaluator import (
         _PyEval_RequestCodeExtraIndex as _cython_request_index,
     )
+
     # Alias for consistency with ctypes fallback
     _PyCode_SetExtra = _cython_set_extra
     CYTHON_AVAILABLE = True
@@ -50,7 +51,7 @@ except ImportError:
     _cython_get_extra = None
     _cython_set_extra = None
     _cython_request_index = None
-    
+
     # Define _PyCode_SetExtra using ctypes as fallback
     try:
         _PyCode_SetExtra = ctypes.pythonapi._PyCode_SetExtra
@@ -65,12 +66,14 @@ CLEANUP_INTERVAL: Final[int] = 60  # seconds
 CACHE_EXPIRY_SECONDS: Final[int] = DEFAULT_CACHE_TTL
 MAX_RECURSION_DEPTH: Final[int] = DEFAULT_MAX_RECURSION_DEPTH
 
+
 class GlobalCacheStats(TypedDict):
     """TypedDict for global cache statistics.
-    
+
     Provides type safety for cache statistics returned by the caching system.
     Enables better IDE autocomplete and static type checking with tools like mypy.
     """
+
     hits: int
     misses: int
     evictions: int
@@ -80,10 +83,11 @@ class GlobalCacheStats(TypedDict):
 
 class FuncCodeCacheStats(TypedDict):
     """TypedDict for FuncCodeInfo cache statistics.
-    
+
     Contains detailed statistics about the FuncCodeInfo cache including
     hit rates, memory usage, and configuration parameters.
     """
+
     hits: int
     misses: int
     evictions: int
@@ -97,10 +101,11 @@ class FuncCodeCacheStats(TypedDict):
 
 class BreakpointCacheStats(TypedDict):
     """TypedDict for breakpoint cache statistics.
-    
+
     Provides information about cached breakpoint data including
     file counts and cached file paths.
     """
+
     total_files: int
     max_entries: int
     cached_files: list[str]
@@ -108,10 +113,11 @@ class BreakpointCacheStats(TypedDict):
 
 class CacheStatistics(TypedDict):
     """TypedDict for comprehensive cache statistics.
-    
+
     Combines statistics from all cache subsystems into a single
     typed structure for easy consumption and type checking.
     """
+
     func_code_cache: FuncCodeCacheStats
     breakpoint_cache: BreakpointCacheStats
     global_stats: GlobalCacheStats
@@ -119,12 +125,14 @@ class CacheStatistics(TypedDict):
 
 class CleanupResults(TypedDict):
     """TypedDict for cache cleanup results.
-    
+
     Returns information about cleanup operations including
     how many expired entries were removed.
     """
+
     func_code_expired: int
     breakpoint_files: int
+
 
 class CacheManager:
     # Class variables for caching
@@ -206,7 +214,10 @@ class CacheManager:
                 "total_entries": len(cls._func_code_cache),
                 "max_size": 1000,
                 "ttl": 300,
-                "hit_rate": cls._cache_stats["hits"] / (cls._cache_stats["hits"] + cls._cache_stats["misses"]) if cls._cache_stats["hits"] + cls._cache_stats["misses"] > 0 else 0,
+                "hit_rate": cls._cache_stats["hits"]
+                / (cls._cache_stats["hits"] + cls._cache_stats["misses"])
+                if cls._cache_stats["hits"] + cls._cache_stats["misses"] > 0
+                else 0,
                 "memory_usage": len(cls._func_code_cache) * 200,
                 "code_extra_index_available": True,
             },
@@ -217,6 +228,7 @@ class CacheManager:
             },
             "global_stats": cls._cache_stats.copy(),
         }
+
 
 class FuncCodeInfoCache:
     """
@@ -250,12 +262,12 @@ class FuncCodeInfoCache:
 
     def _init_code_extra_index(self) -> None:
         """Initialize the code extra index for storing additional information on code objects.
-        
+
         This method sets up an index in the code object's extra data array where we can
-        store our cached information. It uses a class variable to ensure consistency 
+        store our cached information. It uses a class variable to ensure consistency
         across all instances.
-        
-        The index is used to store cached information in the code object's extra data 
+
+        The index is used to store cached information in the code object's extra data
         array, allowing for efficient retrieval and storage of cached data.
         """
         with self._code_extra_lock:
@@ -269,13 +281,12 @@ class FuncCodeInfoCache:
                         request_code_extra_index = ctypes.pythonapi._PyEval_RequestCodeExtraIndex
                         request_code_extra_index.argtypes = [
                             ctypes.py_object,  # freefunc
-                            ctypes.c_void_p   # extra
+                            ctypes.c_void_p,  # extra
                         ]
                         request_code_extra_index.restype = ctypes.c_int
-                        
+
                         self._code_extra_index = request_code_extra_index(
-                            ctypes.py_object(self._release_code_extra_ctypes),
-                            ctypes.c_void_p(0)
+                            ctypes.py_object(self._release_code_extra_ctypes), ctypes.c_void_p(0)
                         )
                     except (AttributeError, OSError, TypeError):
                         # Fallback if _PyEval_RequestCodeExtraIndex is not available
@@ -326,9 +337,7 @@ class FuncCodeInfoCache:
                         # Create a pointer to hold the result
                         extra_ptr = c_void_p()
                         result = python_api._PyCode_GetExtra(
-                            py_object(code_obj), 
-                            self._code_extra_index, 
-                            ctypes.byref(extra_ptr)
+                            py_object(code_obj), self._code_extra_index, ctypes.byref(extra_ptr)
                         )
                         if result == 0 and extra_ptr.value is not None:
                             # Successfully retrieved extra data
@@ -387,9 +396,7 @@ class FuncCodeInfoCache:
 
                         # Call the C API function
                         result = python_api._PyCode_SetExtra(
-                            py_object(code_obj), 
-                            self._code_extra_index, 
-                            ctypes.py_object(info)
+                            py_object(code_obj), self._code_extra_index, ctypes.py_object(info)
                         )
                         if result != 0:
                             # Failed to set extra data, decrement ref count
@@ -442,9 +449,7 @@ class FuncCodeInfoCache:
 
                         # Call the C API function with NULL pointer
                         result = python_api._PyCode_SetExtra(
-                            py_object(code_obj), 
-                            self._code_extra_index, 
-                            ctypes.c_void_p(0)
+                            py_object(code_obj), self._code_extra_index, ctypes.c_void_p(0)
                         )
                         if result == 0:
                             removed = True
@@ -508,8 +513,12 @@ class FuncCodeInfoCache:
     def get_stats(self) -> FuncCodeCacheStats:
         """Get cache statistics."""
         with self._lock:
-            total_requests = CacheManager._cache_stats["hits"] + CacheManager._cache_stats["misses"]
-            hit_rate = CacheManager._cache_stats["hits"] / total_requests if total_requests > 0 else 0
+            total_requests = (
+                CacheManager._cache_stats["hits"] + CacheManager._cache_stats["misses"]
+            )
+            hit_rate = (
+                CacheManager._cache_stats["hits"] / total_requests if total_requests > 0 else 0
+            )
 
             return {
                 "hits": CacheManager._cache_stats["hits"],
@@ -538,7 +547,7 @@ class ThreadLocalCache:
         self._ensure_storage()
         self._cleanup_interval = CLEANUP_INTERVAL
         self._last_cleanup = time.time()
-    
+
     def _ensure_storage(self):
         """Ensure that storage is initialized for the current thread."""
         if not hasattr(self._local, "storage"):
@@ -580,7 +589,8 @@ class ThreadLocalCache:
             expired_keys = [
                 key
                 for key, data in self._local.breakpoint_cache.items()
-                if hasattr(data, "timestamp") and current_time - data.timestamp > CACHE_EXPIRY_SECONDS
+                if hasattr(data, "timestamp")
+                and current_time - data.timestamp > CACHE_EXPIRY_SECONDS
             ]
             for key in expired_keys:
                 del self._local.breakpoint_cache[key]
@@ -677,14 +687,16 @@ class BreakpointCache:
         with self._lock:
             # Convert Path to string for consistent handling
             filepath_str = str(filepath)
-            
+
             # Check if we have this file in cache
             if filepath_str in self._cache:
                 # For test files or files that don't exist, don't check modification time
-                is_test_file = ("test_" in filepath_str or 
-                               "test/" in filepath_str or 
-                               "test\\" in filepath_str or
-                               not Path(filepath_str).exists())
+                is_test_file = (
+                    "test_" in filepath_str
+                    or "test/" in filepath_str
+                    or "test\\" in filepath_str
+                    or not Path(filepath_str).exists()
+                )
                 if is_test_file or self._is_file_current(filepath_str):
                     # Update access time for LRU
                     if filepath_str in self._access_order:
@@ -707,18 +719,18 @@ class BreakpointCache:
         """
         if not CacheManager._global_cache_enabled:
             return
-            
+
         filepath_str = str(filepath)
-        
+
         with self._lock:
             # Remove any existing entry for this file
             if filepath_str in self._cache:
                 self._remove_entry(filepath_str)
-            
+
             # If lines is None or empty, just ensure it's not in the cache
             if not lines:
                 return
-                
+
             # If we're at capacity, remove the least recently used file
             if len(self._cache) >= self.max_entries and self._access_order:
                 # Remove the least recently used file (first in access order)
@@ -728,22 +740,22 @@ class BreakpointCache:
                         self._remove_entry(oldest_file)
                         break
                     self._access_order.pop(0)
-            
+
             # Store the breakpoints
             self._cache[filepath_str] = set(lines)  # Create a copy to prevent modification
-            
+
             # Update the file modification time
             try:
                 self._file_mtimes[filepath_str] = Path(filepath).stat().st_mtime
             except (OSError, AttributeError):
                 # If we can't get the mtime, use the current time
                 self._file_mtimes[filepath_str] = time.time()
-            
+
             # Update access time and LRU order
             if filepath_str in self._access_order:
                 self._access_order.remove(filepath_str)
             self._access_order.append(filepath_str)
-            
+
             # Ensure we don't exceed max_entries
             while len(self._cache) > self.max_entries and self._access_order:
                 oldest = self._access_order[0]
@@ -780,7 +792,7 @@ class BreakpointCache:
 
     def _update_access(self, filepath: str) -> None:
         """Update the access time for a file to mark it as recently used.
-        
+
         Args:
             filepath: Path to the source file that was accessed
         """
@@ -812,7 +824,7 @@ class BreakpointCache:
 # Global cache instances (wrapped in a class to avoid module-level state)
 class _GlobalCaches:
     _instance = None
-    
+
     def __init__(self):
         self.func_code = FuncCodeInfoCache()
         self.thread_local = ThreadLocalCache()
@@ -823,23 +835,24 @@ class _GlobalCaches:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-        
+
     def update_func_code_cache(self, max_size: int, ttl: int) -> None:
         """Update the function code cache with new parameters.
-        
+
         Args:
             max_size: Maximum size of the function code cache
             ttl: Time-to-live for cache entries in seconds
         """
         self.func_code = FuncCodeInfoCache(max_size=max_size, ttl=ttl)
-        
+
     def update_breakpoint_cache(self, max_entries: int) -> None:
         """Update the breakpoint cache with a new maximum size.
-        
+
         Args:
             max_entries: Maximum number of entries in the breakpoint cache
         """
         self.breakpoint = BreakpointCache(max_entries=max_entries)
+
 
 # Singleton instance
 _caches = _GlobalCaches.get_instance()
@@ -903,11 +916,13 @@ def clear_all_caches() -> None:
 def get_cache_statistics() -> CacheStatistics:
     """Get comprehensive cache statistics."""
     stats = CacheManager.get_cache_statistics()
-    stats.update({
-        "func_code_cache": _caches.func_code.get_stats(),
-        "breakpoint_cache": _caches.breakpoint.get_stats(),
-        "global_stats": CacheManager._cache_stats.copy(),
-    })
+    stats.update(
+        {
+            "func_code_cache": _caches.func_code.get_stats(),
+            "breakpoint_cache": _caches.breakpoint.get_stats(),
+            "global_stats": CacheManager._cache_stats.copy(),
+        }
+    )
     return stats
 
 
@@ -934,17 +949,14 @@ def configure_caches(
     """
     # Get the global caches instance
     caches = _GlobalCaches.get_instance()
-    
+
     # Update caches with new parameters
     old_stats = get_cache_statistics()
-    
+
     # Update function code cache with new parameters
-    caches.update_func_code_cache(
-        max_size=func_code_max_size,
-        ttl=func_code_ttl
-    )
-    
+    caches.update_func_code_cache(max_size=func_code_max_size, ttl=func_code_ttl)
+
     # Update breakpoint cache with new parameters
     caches.update_breakpoint_cache(max_entries=breakpoint_max_size)
-    
+
     print(f"Cache reconfigured: {old_stats} -> new parameters")

@@ -23,7 +23,7 @@ class TestBreakpointCache:
 
         self.test_breakpoints = {1, 5, 10}
         self.cache = BreakpointCache(max_entries=10)
-        
+
     def teardown_method(self):
         """Clean up after each test method."""
         self.temp_dir.cleanup()
@@ -41,7 +41,7 @@ class TestBreakpointCache:
         """Test adding and getting breakpoints."""
         # Add breakpoints
         self.cache.set_breakpoints(self.test_file, self.test_breakpoints)
-        
+
         # Verify they can be retrieved
         result = self.cache.get_breakpoints(self.test_file)
         assert result == self.test_breakpoints
@@ -50,23 +50,24 @@ class TestBreakpointCache:
         """Test cleaning up the cache."""
         # Create a new cache with max_entries=2
         cache = BreakpointCache(max_entries=2)
-        
+
         # Create temporary files for testing
-        with tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f1, \
-             tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f2, \
-             tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f3:
-            
+        with (
+            tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f1,
+            tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f2,
+            tempfile.NamedTemporaryFile(suffix=".py", dir=self.temp_dir.name, delete=False) as f3,
+        ):
             file1 = f1.name
             file2 = f2.name
             file3 = f3.name
-            
+
         # Add more items than the cache can hold
         cache.set_breakpoints(file1, {1})
         time.sleep(0.01)  # Ensure timestamps are different
         cache.set_breakpoints(file2, {2})
         time.sleep(0.01)
         cache.set_breakpoints(file3, {3})
-        
+
         # The oldest item should be evicted
         assert len(cache._cache) == 2
         assert file1 not in cache._cache  # Oldest item should be removed

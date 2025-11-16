@@ -37,10 +37,12 @@ async def test_loaded_sources():
 
         # Get module names from loaded sources
         found_modules = {s.get("name") for s in loaded_sources if s.get("name")}
-        
+
         # Verify this test file is included
         test_file_name = Path(__file__).name
-        assert test_file_name in found_modules, f"Test file {test_file_name} is missing from loaded sources"
+        assert test_file_name in found_modules, (
+            f"Test file {test_file_name} is missing from loaded sources"
+        )
 
     finally:
         # Clean up

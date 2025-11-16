@@ -49,6 +49,7 @@ try:
     from dapper._frame_eval._cython_wrapper import (
         unmark_thread_as_pydevd as _cython_unmark_pydevd_func,
     )
+
     _cython_enable_frame_eval = _cython_enable_frame_eval_func
     _cython_get_stats = _cython_get_stats_func
     _cython_mark_pydevd = _cython_mark_pydevd_func
@@ -61,7 +62,7 @@ except ImportError:
 
 class FrameEvalState:
     """Singleton class to manage frame evaluation state."""
-    
+
     # Class-level references to Cython functions
     _cython_enable_frame_eval = _cython_enable_frame_eval
     _cython_get_stats = _cython_get_stats
@@ -82,7 +83,7 @@ class FrameEvalState:
 
     def _import_cython(self) -> bool:
         """Check if Cython imports are available.
-        
+
         Returns:
             bool: True if Cython imports are available, False otherwise.
         """
@@ -95,10 +96,10 @@ class FrameEvalState:
 
     def setup_frame_eval(self, config: dict[str, Any] | None = None) -> bool:
         """Set up frame evaluation with the given configuration.
-        
+
         Args:
             config: Optional configuration dictionary
-            
+
         Returns:
             bool: True if setup was successful
         """
@@ -109,13 +110,13 @@ class FrameEvalState:
 
     def get_frame_eval_stats(self) -> dict[str, Any]:
         """Get frame evaluation statistics.
-        
+
         Returns:
             dict: Statistics or error information if Cython is not available
         """
         if not self._import_cython():
             return {"available": False, "error": "Cython wrapper not available"}
-        
+
         if FrameEvalState._cython_get_stats is not None:
             return FrameEvalState._cython_get_stats()
         return {"available": False, "error": "Cython stats function not available"}
@@ -132,7 +133,7 @@ class FrameEvalState:
 
     def set_thread_skip_all(self, skip: bool) -> None:
         """Set whether current thread should skip all frames.
-        
+
         Args:
             skip: If True, skip all frames in this thread
         """
@@ -163,14 +164,14 @@ def enable_frame_eval() -> bool:
     """
     if _state.enabled:
         return True
-        
+
     if not _state.available:
         return False
-        
+
     if _state.setup_frame_eval({}):  # Pass empty config by default
         _state.enabled = True
         return True
-        
+
     _state.enabled = False
     return False
 
@@ -223,16 +224,16 @@ def initialize_with_config(config: dict[str, Any]) -> bool:
 
     Args:
         config: Configuration dictionary for frame evaluation
-        
+
     Returns:
         bool: True if initialization was successful
     """
     if not isinstance(config, dict):
         return False
-        
+
     if not _state.available:
         return False
-        
+
     return frame_eval_manager.setup_frame_eval(config)
 
 
@@ -240,12 +241,10 @@ def initialize_with_config(config: dict[str, Any]) -> bool:
 initialize_frame_eval()
 
 
-
-
 def get_frame_eval_stats() -> dict[str, Any]:
     """
     Get statistics about frame evaluation performance.
-    
+
     Returns:
         dict: Statistics including active status, code extra index, etc.
     """
@@ -265,7 +264,7 @@ def unmark_thread_as_pydevd() -> None:
 def set_thread_skip_all(skip: bool) -> None:
     """
     Set whether current thread should skip all frames.
-    
+
     Args:
         skip: True to skip all frames in this thread
     """

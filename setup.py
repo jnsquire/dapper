@@ -12,6 +12,7 @@ from setuptools.dist import Distribution
 try:
     from Cython.Build import cythonize
     from Cython.Distutils.build_ext import build_ext as cython_build_ext
+
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
@@ -21,19 +22,18 @@ except ImportError:
 
 class BuildExt(build_ext):
     """Custom build_ext to handle optional Cython compilation."""
-    
+
     def build_extensions(self):
         # If Cython is not available, skip Cython extensions
         if not CYTHON_AVAILABLE:
             # Filter out Cython extensions
             self.extensions = [
-                ext for ext in self.extensions
-                if not ext.name.startswith("dapper._frame_eval")
+                ext for ext in self.extensions if not ext.name.startswith("dapper._frame_eval")
             ]
             if not self.extensions:
                 print("Cython not available - skipping frame evaluation extensions")
                 return
-        
+
         super().build_extensions()
 
 
@@ -41,13 +41,13 @@ def get_frame_eval_extensions():
     """Get Cython extensions for frame evaluation if available."""
     if not CYTHON_AVAILABLE:
         return []
-    
+
     # Get the base directory
     base_dir = Path(__file__).parent.resolve()
-    
+
     # Define the frame evaluation extensions
     extensions = []
-    
+
     # Core frame evaluator
     frame_evaluator_ext = Extension(
         "dapper._frame_eval._frame_evaluator",
@@ -57,7 +57,7 @@ def get_frame_eval_extensions():
         extra_compile_args=["-O3"] if sys.platform != "win32" else ["/O2"],
     )
     extensions.append(frame_evaluator_ext)
-    
+
     # Cython wrapper
     wrapper_ext = Extension(
         "dapper._frame_eval._cython_wrapper",
@@ -66,18 +66,18 @@ def get_frame_eval_extensions():
         extra_compile_args=["-O3"] if sys.platform != "win32" else ["/O2"],
     )
     extensions.append(wrapper_ext)
-    
+
     return extensions
 
 
 def get_extensions():
     """Get all extensions for the build."""
     extensions = []
-    
+
     # Add frame evaluation extensions if available
     frame_eval_exts = get_frame_eval_extensions()
     extensions.extend(frame_eval_exts)
-    
+
     # Cythonize extensions if Cython is available
     if CYTHON_AVAILABLE and frame_eval_exts and cythonize is not None:
         cython_extensions = cythonize(
@@ -94,7 +94,7 @@ def get_extensions():
         )
         if cython_extensions is not None:
             extensions = cython_extensions
-    
+
     return extensions
 
 
@@ -102,11 +102,14 @@ def get_extensions():
 # For build, we'll skip frame evaluation to avoid Cython compilation issues
 include_frame_eval = False
 
+
 # Custom Distribution class to force platform-specific wheels
 class BinaryDistribution(Distribution):
     """Distribution which always forces a binary package with platform name."""
+
     def has_ext_modules(self):
         return True
+
 
 # Setup configuration
 setup_kwargs = {

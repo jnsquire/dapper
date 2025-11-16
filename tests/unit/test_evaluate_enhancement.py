@@ -12,13 +12,13 @@ from dapper.server import PyDebugger
 async def test_evaluate_with_response():
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Return the debuggee-provided body when a response exists."""
+    Return the debuggee-provided body when a response exists."""
     server = Mock()
     server.send_event = AsyncMock()
 

@@ -47,12 +47,14 @@ from dapper.protocol_types import Source
 # Local type for breakpoint responses
 class BreakpointResponse(TypedDict, total=False):
     """Type definition for a breakpoint response."""
+
     verified: bool
     message: NotRequired[str]
     line: NotRequired[int]
     condition: NotRequired[str | None]
     hitCondition: NotRequired[str | None]
     logMessage: NotRequired[str | None]
+
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -73,15 +75,18 @@ if TYPE_CHECKING:
         type: Literal["request"]
         seq: int
 
+
 # Type definitions for breakpoint handling
 class BreakpointDict(TypedDict, total=False):
     """Type definition for a breakpoint response."""
+
     verified: bool
     message: str | None
     line: int | None
     condition: str | None
     hitCondition: str | None
     logMessage: str | None
+
 
 # Type aliases
 SourceDict = dict[str, Any]  # Dictionary representing source file information
@@ -221,32 +226,32 @@ class DebugDataExtractor(dict):
 
 class DebugServer(Protocol):
     """Protocol defining the interface expected by PyDebugger for server communication."""
-    
+
     @property
     def debugger(self) -> PyDebugger:
         """Access the debugger instance."""
         ...  # type: ignore[empty-body]
-    
+
     async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
         """Send an event to the debug client.
-        
+
         Args:
             event_name: The event name (e.g., 'stopped', 'output', 'process')
             body: Optional event payload
         """
         ...  # type: ignore[empty-body]
-    
+
     async def send_message(self, message: dict[str, Any]) -> None:
         """Send a raw message to the debug client.
-        
+
         Args:
             message: The complete message dictionary
         """
         ...  # type: ignore[empty-body]
-    
+
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a callback to be run on the server's event loop.
-        
+
         Args:
             callback: The function to call on the server's event loop
         """
@@ -261,7 +266,7 @@ class PyDebugger:
 
     def __init__(self, server: DebugServer, loop: asyncio.AbstractEventLoop | None = None):
         """Initialize the PyDebugger.
-        
+
         Args:
             server: The debug server that implements the DebugServer protocol
             loop: Optional event loop to use. If not provided, gets the current event loop.
@@ -1094,18 +1099,15 @@ class PyDebugger:
             await self.server.send_event("exited", {"exitCode": exit_code})
             await self.server.send_event("terminated")
 
-
     async def set_breakpoints(
-        self, 
-        source: SourceDict | str, 
-        breakpoints: Sequence[SourceBreakpoint]
+        self, source: SourceDict | str, breakpoints: Sequence[SourceBreakpoint]
     ) -> list[BreakpointResponse]:
         """Set breakpoints for a source file.
-        
+
         Args:
             source: Either a path string or a dictionary containing at least a 'path' key
             breakpoints: List of breakpoint specifications to set
-            
+
         Returns:
             List of breakpoint results with verification status
         """
@@ -1122,63 +1124,59 @@ class PyDebugger:
         # Try in-process debugger first
         if self.in_process and self._inproc is not None:
             return await self._set_breakpoints_in_process(path, spec_list, storage_list)
-        
+
         # Fall back to external process debugger
         if self.process and not self.is_terminated:
             await self._set_breakpoints_external_process(path, storage_list)
-        
+
         return storage_list  # type: ignore[return-value]
 
-    def _process_breakpoints(self, breakpoints: Sequence[SourceBreakpoint]) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
+    def _process_breakpoints(
+        self, breakpoints: Sequence[SourceBreakpoint]
+    ) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
         """Process breakpoints into spec and storage lists.
-        
+
         Args:
             breakpoints: List of breakpoint specifications
-            
+
         Returns:
             Tuple of (spec_list, storage_list)
         """
         spec_list: list[SourceBreakpoint] = []
         storage_list: list[BreakpointDict] = []
-        
+
         for bp in breakpoints:
             line_val = int(bp.get("line", 0))
-            
+
             # Extract optional fields
             optional_fields = {}
             for field in ["condition", "hitCondition", "logMessage"]:
                 value = bp.get(field)
                 if value is not None:
                     optional_fields[field] = str(value) if field != "logMessage" else value
-            
+
             # Create spec entry for debugger API
             spec_entry: SourceBreakpoint = {"line": line_val}
             spec_entry.update(optional_fields)
             spec_list.append(spec_entry)
-            
+
             # Create storage entry for response
-            bp_result: BreakpointDict = {
-                "line": line_val,
-                "verified": True
-            }
+            bp_result: BreakpointDict = {"line": line_val, "verified": True}
             bp_result.update(optional_fields)
             storage_list.append(bp_result)
-        
+
         return spec_list, storage_list
 
     async def _set_breakpoints_in_process(
-        self, 
-        path: str, 
-        spec_list: list[SourceBreakpoint], 
-        storage_list: list[BreakpointDict]
+        self, path: str, spec_list: list[SourceBreakpoint], storage_list: list[BreakpointDict]
     ) -> list[BreakpointResponse]:
         """Set breakpoints using in-process debugger.
-        
+
         Args:
             path: Source file path
             spec_list: Breakpoint specs for debugger API
             storage_list: Storage list for fallback
-            
+
         Returns:
             List of breakpoint responses
         """
@@ -1192,7 +1190,7 @@ class PyDebugger:
                     "line": bp.get("line"),
                     "condition": bp.get("condition"),
                     "hitCondition": bp.get("hitCondition"),
-                    "logMessage": bp.get("logMessage")
+                    "logMessage": bp.get("logMessage"),
                 }
                 for bp in result
             ]  # type: ignore[return-value]
@@ -1200,9 +1198,11 @@ class PyDebugger:
             logger.exception("in-process set_breakpoints failed")
             return [{"verified": False} for _ in storage_list]
 
-    async def _set_breakpoints_external_process(self, path: str, storage_list: list[BreakpointDict]) -> None:
+    async def _set_breakpoints_external_process(
+        self, path: str, storage_list: list[BreakpointDict]
+    ) -> None:
         """Set breakpoints using external process debugger.
-        
+
         Args:
             path: Source file path
             storage_list: List of breakpoint dictionaries
@@ -1216,7 +1216,7 @@ class PyDebugger:
                 "breakpoints": storage_list,
             },
         }
-        
+
         # Generate progress ID
         try:
             progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
@@ -1242,7 +1242,7 @@ class PyDebugger:
 
     def _forward_breakpoint_events(self, storage_list: list[BreakpointDict]) -> None:
         """Forward breakpoint-changed events to clients.
-        
+
         Args:
             storage_list: List of breakpoint dictionaries
         """
@@ -1262,7 +1262,9 @@ class PyDebugger:
         except Exception:
             logger.debug("Failed to forward breakpoint events")
 
-    async def set_function_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def set_function_breakpoints(
+        self, breakpoints: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Set breakpoints for functions"""
         spec_funcs: list[dict[str, Any]] = []
         storage_funcs: list[dict[str, Any]] = []
@@ -1856,7 +1858,9 @@ class PyDebugger:
 
         variables: list[Variable] = []
         with self.lock:
-            if variables_reference in self.var_refs and isinstance(self.var_refs[variables_reference], list):
+            if variables_reference in self.var_refs and isinstance(
+                self.var_refs[variables_reference], list
+            ):
                 variables = cast("list[Variable]", self.var_refs[variables_reference])
 
         return variables
@@ -3058,9 +3062,10 @@ class RequestHandler:
 
 class DebugAdapterServer(DebugServer):
     """Server implementation that handles DAP protocol communication.
-    
+
     This class implements the DebugServer protocol expected by PyDebugger.
     """
+
     """
     Debug adapter server that communicates with a DAP client
     """
@@ -3083,25 +3088,25 @@ class DebugAdapterServer(DebugServer):
     def debugger(self) -> PyDebugger:
         """Get the debugger instance."""
         return self._debugger
-        
+
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a callback to be run on the server's event loop.
-        
+
         This implements the DebugServer protocol method.
-        
+
         Args:
             callback: The function to call on the server's event loop
         """
         if not self.loop.is_running():
             logger.warning("Event loop is not running, cannot schedule callback")
             return
-            
+
         def _wrapped() -> None:
             try:
                 callback()
             except Exception:
                 logger.exception("Error in spawn_threadsafe callback")
-        
+
         self.loop.call_soon_threadsafe(_wrapped)
 
     @property

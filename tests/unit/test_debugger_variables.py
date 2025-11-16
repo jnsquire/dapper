@@ -41,13 +41,13 @@ class AsyncCallRecorder:
 class TestDebuggerVariables(BaseDebuggerTest):
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Test cases for debugger variables and stack trace functionality"""
+    Test cases for debugger variables and stack trace functionality"""
 
     async def test_get_stack_trace(self):
         """Test getting stack trace"""

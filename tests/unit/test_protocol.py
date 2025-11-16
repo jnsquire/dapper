@@ -87,7 +87,9 @@ def test_response_message(handler: ProtocolHandler) -> None:
     assert resp_dict.get("body") == body
 
     # Test error response
-    err_resp = cast("GenericResponse", handler.create_response(request, False, None, "Invalid expression"))
+    err_resp = cast(
+        "GenericResponse", handler.create_response(request, False, None, "Invalid expression")
+    )
 
     assert err_resp["seq"] == 3
     assert err_resp["success"] is False
@@ -119,12 +121,12 @@ def test_json_serialization(handler: ProtocolHandler) -> None:
     """Test that all messages can be properly serialized to JSON"""
     # Create a base message with explicit type to satisfy the type checker
     base_message: dict[str, Any] = {"seq": 1, "type": "request"}
-    
+
     # Create test messages
     request_msg = handler.create_request("launch", {"program": "test.py"})
     response_msg = handler.create_response(handler.create_request("launch"), True)
     event_msg = handler.create_event("stopped", {"reason": "breakpoint"})
-    
+
     # Test each message type separately to avoid mixed type issues
     for msg in [
         base_message,
@@ -134,10 +136,10 @@ def test_json_serialization(handler: ProtocolHandler) -> None:
     ]:
         # Convert to JSON string
         json_str = json.dumps(msg)
-        
+
         # Parse back from JSON
         parsed_dict = json.loads(json_str)
-        
+
         # Verify the structure is preserved
         assert parsed_dict == msg
 
@@ -235,10 +237,7 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
 
     # Test error response with message
     error_resp = handler.create_response(
-        request=request,
-        success=False,
-        body=None,
-        error_message="Failed to launch"
+        request=request, success=False, body=None, error_message="Failed to launch"
     )
 
     assert error_resp["seq"] == 2
@@ -246,17 +245,18 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
     assert error_resp["request_seq"] == 1
     assert error_resp["success"] is False
     assert error_resp["command"] == "launch"
-    assert error_resp.get("message") == "Failed to launch"  # Use .get() since message is NotRequired
+    assert (
+        error_resp.get("message") == "Failed to launch"
+    )  # Use .get() since message is NotRequired
     assert "body" not in error_resp
-    
+
     # Test error response without message
     error_resp_no_msg = handler.create_response(
-        request=request,
-        success=False,
-        body=None,
-        error_message=None
+        request=request, success=False, body=None, error_message=None
     )
-    assert "message" not in error_resp_no_msg  # Should not include message when error_message is None
+    assert (
+        "message" not in error_resp_no_msg
+    )  # Should not include message when error_message is None
 
 
 def test_create_initialize_request(handler):

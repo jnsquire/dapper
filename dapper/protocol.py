@@ -320,19 +320,15 @@ class ProtocolHandler:
 
     @overload
     def create_request(
-        self, 
-        command: str, 
-        arguments: dict[str, Any] | None = None,
-        *,
-        return_type: type[RequestT]
+        self, command: str, arguments: dict[str, Any] | None = None, *, return_type: type[RequestT]
     ) -> RequestT: ...
 
     def create_request(
-        self, 
-        command: str, 
+        self,
+        command: str,
         arguments: dict[str, Any] | None = None,
         *,
-        return_type: type[RequestT] | None = None
+        return_type: type[RequestT] | None = None,
     ) -> RequestT | GenericRequest:
         result = self._factory.create_request(command, arguments)
         return cast("RequestT", result) if return_type else result  # type: ignore[return-value]
@@ -354,7 +350,7 @@ class ProtocolHandler:
         body: dict[str, Any] | None = None,
         error_message: str | None = None,
         *,
-        return_type: type[ResponseT]
+        return_type: type[ResponseT],
     ) -> ResponseT: ...
 
     def create_response(
@@ -364,25 +360,19 @@ class ProtocolHandler:
         body: dict[str, Any] | None = None,
         error_message: str | None = None,
         *,
-        return_type: type[ResponseT] | None = None
+        return_type: type[ResponseT] | None = None,
     ) -> ResponseT | GenericResponse:
         result = self._factory.create_response(request, success, body, error_message)
         return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
 
     @overload
     def create_error_response(
-        self, 
-        request: GenericRequest, 
-        error_message: str
+        self, request: GenericRequest, error_message: str
     ) -> ErrorResponse: ...
 
     @overload
     def create_error_response(
-        self,
-        request: GenericRequest,
-        error_message: str,
-        *,
-        return_type: type[ResponseT]
+        self, request: GenericRequest, error_message: str, *, return_type: type[ResponseT]
     ) -> ResponseT: ...
 
     def create_error_response(
@@ -390,25 +380,19 @@ class ProtocolHandler:
         request: GenericRequest,
         error_message: str,
         *,
-        return_type: type[ResponseT] | None = None
+        return_type: type[ResponseT] | None = None,
     ) -> ResponseT | ErrorResponse:
         result = self._factory.create_error_response(request, error_message)
         return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
 
     @overload
     def create_event(
-        self, 
-        event_type: str, 
-        body: dict[str, Any] | None = None
+        self, event_type: str, body: dict[str, Any] | None = None
     ) -> GenericEvent: ...
 
     @overload
     def create_event(
-        self,
-        event_type: str,
-        body: dict[str, Any] | None = None,
-        *,
-        return_type: type[EventT]
+        self, event_type: str, body: dict[str, Any] | None = None, *, return_type: type[EventT]
     ) -> EventT: ...
 
     def create_event(
@@ -416,7 +400,7 @@ class ProtocolHandler:
         event_type: str,
         body: dict[str, Any] | None = None,
         *,
-        return_type: type[EventT] | None = None
+        return_type: type[EventT] | None = None,
     ) -> EventT | GenericEvent:
         result = self._factory.create_event(event_type, body)
         return cast("EventT", result) if return_type else result  # type: ignore[return-value]

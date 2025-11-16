@@ -110,7 +110,7 @@ def test_receive_debug_commands_stdin_fallback(monkeypatch):
     orig_is_terminated = s.is_terminated
     orig_ipc_enabled = s.ipc_enabled
     orig_ipc_rfile = s.ipc_rfile
-    
+
     try:
         s.is_terminated = False
         s.ipc_enabled = False

@@ -10,13 +10,13 @@ from .test_debugger_base import BaseDebuggerTest
 class TestDebuggerCore(BaseDebuggerTest):
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Test cases for core debugger functionality"""
+    Test cases for core debugger functionality"""
 
     async def test_initialization(self):
         """Test that the debugger initializes correctly"""

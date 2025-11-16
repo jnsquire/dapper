@@ -11,7 +11,14 @@ def test_setup_process_state_ipc_failure(caplog):
     state = ds.state
 
     # Provide args that request IPC so the code tries to import launcher_ipc
-    args = SimpleNamespace(ipc="socket", ipc_host="127.0.0.1", ipc_port=0, ipc_path=None, stop_on_entry=False, no_debug=False)
+    args = SimpleNamespace(
+        ipc="socket",
+        ipc_host="127.0.0.1",
+        ipc_port=0,
+        ipc_path=None,
+        stop_on_entry=False,
+        no_debug=False,
+    )
 
     # Force import failure of launcher_ipc helpers
     def bad_setup():

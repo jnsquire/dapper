@@ -16,6 +16,7 @@ It will try to invoke the platform-appropriate render script (PowerShell on
 Windows, shell on POSIX). If those are not available, it will attempt to call
 `npx -p @mermaid-js/mermaid-cli mmdc` directly for each .mmd file.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,7 +59,9 @@ def render_diagrams(force: bool) -> None:
     print("No platform script found or no shell available; falling back to npx mmdc per-file")
     npx = shutil.which("npx")
     if not npx:
-        raise SystemExit("npx not found; please install Node.js or run the provided render scripts")
+        raise SystemExit(
+            "npx not found; please install Node.js or run the provided render scripts"
+        )
 
     diagrams = list((ROOT / "doc" / "reference" / "diagrams").glob("*.mmd"))
     outdir = ROOT / "doc" / "reference" / "images"

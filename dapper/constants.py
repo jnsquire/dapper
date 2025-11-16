@@ -3,6 +3,7 @@ Constants used throughout the Dapper debugger.
 
 This module contains constants to avoid magic numbers in the codebase.
 """
+
 from typing import Final
 
 # Debug Protocol Constants

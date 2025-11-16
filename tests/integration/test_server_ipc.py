@@ -200,13 +200,13 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
 async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     """
 
-from pathlib import Path
+    from pathlib import Path
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
+    # Add the project root to the Python path
+    project_root = str(Path(__file__).parent.parent.parent)
+    if project_root not in sys.path:
 
-Server should forward useBinaryIpc to debugger.launch as use_binary_ipc."""
+    Server should forward useBinaryIpc to debugger.launch as use_binary_ipc."""
     # Setup the mock debugger
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.launch = AsyncCallRecorder(return_value=None)
