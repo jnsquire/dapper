@@ -224,8 +224,12 @@ const renderWebviewHTML = (component: React.ComponentType, props: any) => {
 - `@vscode/test-electron`: VS Code testing utilities
 - `eslint`: Code linting
 - `prettier`: Code formatting
-- `jest`: Testing framework
-- `@types/jest`: Jest type definitions
+- `vitest`: Fast, modern unit test runner
+
+## 💡 Testing
+- `npm run test` → `vitest run` (used in CI/VSIX workflows)
+- `npm run test:watch` → `vitest` watch mode for iterating on extensions
+- `vitest.config.ts` aliases `vscode` to `test/__mocks__/vscode.mjs` and sets `environment: 'node'` + `globals: true`
 
 ## Configuration Schema
 

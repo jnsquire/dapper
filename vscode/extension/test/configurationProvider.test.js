@@ -1,7 +1,7 @@
-import { jest, describe, it, expect } from '@jest/globals';
+import { describe, it, expect, vi } from 'vitest';
 
 const vscode = await import('vscode');
-vscode.workspace.getConfiguration = jest.fn().mockReturnValue({ get: () => undefined });
+vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => undefined });
 const { DapperConfigurationProvider } = await import('../src/debugAdapter/configurationProvider.ts');
 
 describe('DapperConfigurationProvider', () => {
@@ -29,7 +29,7 @@ describe('DapperConfigurationProvider', () => {
     // Ensure no active editor
     vscode.window.activeTextEditor = undefined;
     // Mock showInformationMessage
-    vscode.window.showInformationMessage = jest.fn();
+    vscode.window.showInformationMessage = vi.fn();
     const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
     expect(res).toBeUndefined();
     expect(vscode.window.showInformationMessage).toHaveBeenCalled();

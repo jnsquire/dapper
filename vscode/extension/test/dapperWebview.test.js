@@ -1,7 +1,7 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const vscode = await import('vscode');
-vscode.workspace.getConfiguration = jest.fn().mockReturnValue({ get: () => undefined, update: () => Promise.resolve() });
+vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => undefined, update: () => Promise.resolve() });
 
 // Import the compiled JS DapperWebview from out which already contains the .js extensions
 const { DapperWebview } = await import('../out/src/webview/DapperWebview.js');
@@ -9,9 +9,9 @@ const { DapperWebview } = await import('../out/src/webview/DapperWebview.js');
 describe('DapperWebview message handlers', () => {
   beforeEach(() => {
     // Reset mock calls
-    jest.clearAllMocks();
-    vscode.commands.executeCommand = jest.fn();
-    vscode.debug.startDebugging = jest.fn();
+    vi.clearAllMocks();
+    vscode.commands.executeCommand = vi.fn();
+    vscode.debug.startDebugging = vi.fn();
     // Clear panels list for clean state
     vscode.panelsList.length = 0;
     // Ensure DapperWebview recreates panel each test
@@ -20,7 +20,7 @@ describe('DapperWebview message handlers', () => {
 
   it('should respond to requestConfig with saved configuration', async () => {
     const saved = { type: 'dapper', request: 'launch', name: 'Saved Config' };
-    vscode.workspace.getConfiguration = jest.fn().mockReturnValue({ get: () => saved });
+    vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => saved });
 
     DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
     // wait for asynchronous view setup and registration to complete
@@ -32,7 +32,7 @@ describe('DapperWebview message handlers', () => {
     expect(panel).toBeDefined();
     const webview = panel.webview;
     // Spy on postMessage
-    webview.postMessage = jest.fn();
+    webview.postMessage = vi.fn();
 
     // Simulate receiving a requestConfig message
     expect(webview._messageHandler).toBeDefined();
@@ -46,11 +46,11 @@ describe('DapperWebview message handlers', () => {
 
   it('should call insertLaunchConfiguration on saveAndInsert and post status', async () => {
     const saved = { type: 'dapper', request: 'launch', name: 'Saved Config' };
-    const updateMock = jest.fn().mockResolvedValue(undefined);
-    vscode.workspace.getConfiguration = jest.fn().mockReturnValue({ get: () => saved, update: updateMock });
+    const updateMock = vi.fn().mockResolvedValue(undefined);
+    vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => saved, update: updateMock });
     // Simulate missing launch.json so insertLaunchConfiguration will create a new one
-    vscode.workspace.fs.readFile = jest.fn().mockRejectedValueOnce(new Error('FileNotFound'));
-    vscode.workspace.fs.writeFile = jest.fn().mockResolvedValueOnce(undefined);
+    vscode.workspace.fs.readFile = vi.fn().mockRejectedValueOnce(new Error('FileNotFound'));
+    vscode.workspace.fs.writeFile = vi.fn().mockResolvedValueOnce(undefined);
 
     DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
     // wait for asynchronous view setup and registration to complete
@@ -63,7 +63,7 @@ describe('DapperWebview message handlers', () => {
     const webview = panel.webview;
 
     // Ensure we can spy on postMessage
-    webview.postMessage = jest.fn();
+    webview.postMessage = vi.fn();
     expect(webview._messageHandler).toBeDefined();
     webview._messageHandler && webview._messageHandler({ command: 'saveAndInsert', config: saved });
     // Wait for async handlers and file writes to complete

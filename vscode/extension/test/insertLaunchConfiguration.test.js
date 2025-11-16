@@ -1,24 +1,24 @@
-import { jest, describe, it, expect } from '@jest/globals';
+import { describe, it, expect, vi } from 'vitest';
 
 const vscode = await import('vscode');
-// Ensure we have jest mock functions assigned for fs operations
-vscode.workspace.fs.readFile = jest.fn();
-vscode.workspace.fs.writeFile = jest.fn();
-vscode.workspace.fs.createDirectory = jest.fn();
+// Ensure we have mock functions assigned for fs operations
+vscode.workspace.fs.readFile = vi.fn();
+vscode.workspace.fs.writeFile = vi.fn();
+vscode.workspace.fs.createDirectory = vi.fn();
 const { insertLaunchConfiguration } = await import('../src/utils/insertLaunchConfiguration.ts');
 
 describe('insertLaunchConfiguration helper', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    vscode.workspace.fs.readFile = jest.fn();
-    vscode.workspace.fs.writeFile = jest.fn();
-    vscode.workspace.fs.createDirectory = jest.fn();
-    vscode.window.showWarningMessage = jest.fn();
-    vscode.window.showInformationMessage = jest.fn();
-    vscode.window.showErrorMessage = jest.fn();
-    vscode.workspace.openTextDocument = jest.fn();
-    vscode.window.showTextDocument = jest.fn();
-    vscode.window.showQuickPick = jest.fn();
+-  beforeEach(() => {
+    vi.clearAllMocks();
+    vscode.workspace.fs.readFile = vi.fn();
+    vscode.workspace.fs.writeFile = vi.fn();
+    vscode.workspace.fs.createDirectory = vi.fn();
+    vscode.window.showWarningMessage = vi.fn();
+    vscode.window.showInformationMessage = vi.fn();
+    vscode.window.showErrorMessage = vi.fn();
+    vscode.workspace.openTextDocument = vi.fn();
+    vscode.window.showTextDocument = vi.fn();
+    vscode.window.showQuickPick = vi.fn();
   });
   it('should create a new launch.json when none exists', async () => {
     const tmpDir = '/tmp/dapper-test';
@@ -54,9 +54,9 @@ describe('insertLaunchConfiguration helper', () => {
 
     vscode.workspace.fs.readFile.mockResolvedValueOnce(Buffer.from('not-a-json'));
     // Mock showWarningMessage to return 'Open launch.json' indicating user wants to open
-    vscode.window.showWarningMessage = jest.fn().mockResolvedValue('Open launch.json');
-    vscode.workspace.openTextDocument = jest.fn().mockResolvedValue({});
-    vscode.window.showTextDocument = jest.fn().mockResolvedValue({});
+    vscode.window.showWarningMessage = vi.fn().mockResolvedValue('Open launch.json');
+    vscode.workspace.openTextDocument = vi.fn().mockResolvedValue({});
+    vscode.window.showTextDocument = vi.fn().mockResolvedValue({});
 
     const ok = await insertLaunchConfiguration(config, folder);
 
@@ -80,7 +80,7 @@ describe('insertLaunchConfiguration helper', () => {
     };
     vscode.workspace.fs.readFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(existingJson)));
     // showInformationMessage returns 'Replace existing'
-    vscode.window.showInformationMessage = jest.fn().mockResolvedValue('Replace existing');
+    vscode.window.showInformationMessage = vi.fn().mockResolvedValue('Replace existing');
 
     const ok = await insertLaunchConfiguration(config, folder);
 
@@ -103,7 +103,7 @@ describe('insertLaunchConfiguration helper', () => {
     };
     vscode.workspace.fs.readFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(existingJson)));
     // showInformationMessage returns 'Add duplicate'
-    vscode.window.showInformationMessage = jest.fn().mockResolvedValue('Add duplicate');
+    vscode.window.showInformationMessage = vi.fn().mockResolvedValue('Add duplicate');
 
     const ok = await insertLaunchConfiguration(config, folder);
 
@@ -126,7 +126,7 @@ describe('insertLaunchConfiguration helper', () => {
     };
     vscode.workspace.fs.readFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(existingJson)));
     // showInformationMessage returns undefined for cancel
-    vscode.window.showInformationMessage = jest.fn().mockResolvedValue(undefined);
+    vscode.window.showInformationMessage = vi.fn().mockResolvedValue(undefined);
 
     const ok = await insertLaunchConfiguration(config, folder);
 
@@ -163,7 +163,7 @@ describe('insertLaunchConfiguration helper', () => {
     const config = { type: 'dapper', request: 'launch', name: 'Test Config', program: '${file}' };
 
     // Simulate user picking the second workspace folder
-    vscode.window.showQuickPick = jest.fn().mockResolvedValue('wp2');
+    vscode.window.showQuickPick = vi.fn().mockResolvedValue('wp2');
     vscode.workspace.fs.readFile.mockRejectedValueOnce(new Error('FileNotFound'));
     vscode.workspace.fs.writeFile.mockResolvedValueOnce(undefined);
 

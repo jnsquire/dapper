@@ -214,7 +214,8 @@
     "watch": "node esbuild.config.js --watch",
     "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
     "compile": "npm run clean && tsc -p ./",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@vscode-elements/elements": "^2.3.1",
@@ -238,10 +239,8 @@
     "eslint": "^8.56.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.0",
+    "vitest": "^1.5.5",
     "webpack": "^5.89.0",
-    "webpack-cli": "^5.1.4",
-    "jest": "^29.6.4",
-    "@types/jest": "^29.5.4",
-    "ts-jest": "^29.1.0"
+    "webpack-cli": "^5.1.4"
   }
 }
