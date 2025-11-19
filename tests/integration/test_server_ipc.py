@@ -15,7 +15,7 @@ from tests.mocks import MockConnection
 
 
 def test_write_command_to_channel_ipc_pipe_text():
-    p = PyDebugger(server=None)
+    p = PyDebugger(server=Mock())
     calls = []
 
     class PipeConn:
@@ -32,7 +32,7 @@ def test_write_command_to_channel_ipc_pipe_text():
 
 
 def test_write_command_to_channel_ipc_pipe_binary():
-    p = PyDebugger(server=None)
+    p = PyDebugger(server=Mock())
     calls = []
 
     class PipeConn:
@@ -47,8 +47,8 @@ def test_write_command_to_channel_ipc_pipe_binary():
     assert calls[0][0] == "send_bytes", f"Unexpected method {calls[0][0]!r}"
 
 
-def test_write_command_to_channel_ipc_wfile_text():
-    p = PyDebugger(server=None)
+def test_write_command_to_channel_ipc_socket_text():
+    p = PyDebugger(server=Mock())
     calls = []
 
     class WFile:
@@ -66,7 +66,7 @@ def test_write_command_to_channel_ipc_wfile_text():
 
 
 def test_write_command_to_channel_fallback_to_stdin():
-    p = PyDebugger(server=None)
+    p = PyDebugger(server=Mock())
 
     class Stdin:
         def __init__(self):
@@ -153,8 +153,23 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
                 self._target(*self._args, **self._kwargs)
 
     class DummyServer:
+        def __init__(self):
+            self._debugger = None
+        
         async def send_event(self, *_args, **_kwargs):
             return None
+        
+        async def send_message(self, *_args, **_kwargs):
+            return None
+            
+        def spawn_threadsafe(self, *_args, **_kwargs):
+            return None
+            
+        @property
+        def debugger(self):
+            if self._debugger is None:
+                self._debugger = server_module.PyDebugger(self, loop)
+            return self._debugger
 
     loop = asyncio.get_event_loop()
     debugger = server_module.PyDebugger(DummyServer(), loop)

@@ -75,7 +75,7 @@ async def test_inprocess_variables_bridge():
     debugger.in_process = True
 
     class FakeBridge:
-        async def variables(self, var_ref, *, _filter=None, _start=None, _count=None):
+        def variables(self, var_ref, *, _filter=None, _start=None, _count=None):
             # record call for assertion
             FakeBridge.called = (var_ref, _filter, _start, _count)
             return [{"name": "x", "value": "1", "variablesReference": 0}]

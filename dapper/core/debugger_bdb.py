@@ -6,10 +6,6 @@ from __future__ import annotations
 
 import bdb
 import contextlib
-import importlib
-import logging
-import re
-import sys
 import threading
 import traceback
 from pathlib import Path
@@ -17,176 +13,17 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.core.debug_comm import process_queued_commands
+from dapper.core.debug_comm import send_debug_message
 from dapper.core.debug_helpers import frame_may_handle_exception
+from dapper.core.debug_utils import MAX_STACK_DEPTH
+from dapper.core.debug_utils import evaluate_hit_condition
+from dapper.core.debug_utils import format_log_message
+from dapper.core.debug_utils import get_function_candidate_names
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import ExceptionInfo
     from dapper.protocol.debugger_protocol import Variable
-
-# Cached resolvers for the two external helpers. We prefer the launcher
-# helpers when that module is present (tests commonly patch
-# `dapper.debug_launcher.send_debug_message`) and fall back to the adapter
-# communication helpers otherwise. The resolver updates the cached target if
-# the launcher module appears or its attribute is replaced, so unittest.patch
-# usage continues to work.
-_impl_cache: dict[str, Any | None] = {
-    "cached_send": None,
-    "cached_process": None,
-    "registered_send": None,
-}
-
-
-def send_debug_message(*args, **kwargs):
-    """Call the best available send_debug_message implementation.
-
-    This checks `sys.modules` for `dapper.debug_launcher` and prefers
-    its `send_debug_message` attribute when present (this allows tests that
-    patch that attribute to be observed). If not available, we fall back to
-    `dapper.debug_adapter_comm.send_debug_message` and cache that.
-    """
-    # Prefer explicit registered helper first (tests may call register_debug_helpers)
-    registered = _impl_cache.get("registered_send")
-    if registered is not None:
-        return registered(*args, **kwargs)
-
-    # Prefer patched launcher helper when present in sys.modules
-    mod = sys.modules.get("dapper.launcher.debug_launcher")
-    if mod is not None:
-        fn = getattr(mod, "send_debug_message", None)
-        if callable(fn):
-            if fn is not _impl_cache.get("cached_send"):
-                _impl_cache["cached_send"] = fn
-            impl = _impl_cache.get("cached_send")
-            assert impl is not None
-            return impl(*args, **kwargs)
-
-    # Fallback to adapter comm helper
-    impl = _impl_cache.get("cached_send")
-    if impl is None or getattr(impl, "__module__", "") == "dapper.adapter.debug_adapter_comm":
-        try:
-            mod_fallback = importlib.import_module("dapper.adapter.debug_adapter_comm")
-            _fallback = getattr(mod_fallback, "send_debug_message", None)
-            if callable(_fallback):
-                if impl is not _fallback:
-                    _impl_cache["cached_send"] = _fallback
-                impl = _impl_cache.get("cached_send")
-        except Exception:
-            # Last resort: try dynamic import path again (very rare)
-            try:
-                mod2 = importlib.import_module("dapper.adapter.debug_adapter_comm")
-                fn2 = getattr(mod2, "send_debug_message", None)
-                if callable(fn2):
-                    _impl_cache["cached_send"] = fn2
-                    impl = fn2
-            except Exception:
-                _impl_cache["cached_send"] = None
-                impl = None
-
-    if impl is None:
-        msg = "No send_debug_message implementation available"
-        raise RuntimeError(msg)
-
-    return impl(*args, **kwargs)
-
-
-def process_queued_commands():
-    """Call the best available process_queued_commands implementation.
-
-    Works similarly to send_debug_message: prefer launcher helper if present,
-    otherwise use adapter comm helper.
-    """
-    # Use the single adapter-side implementation. Import lazily to avoid
-    # circular imports when this module is imported early in tests.
-    try:
-        mod = importlib.import_module("dapper.adapter.debug_adapter_comm")
-        fn = getattr(mod, "process_queued_commands", None)
-        if callable(fn):
-            return fn()
-    except Exception:
-        # Fall through to error below
-        pass
-
-    msg = "No process_queued_commands implementation available"
-    raise RuntimeError(msg)
-
-
-def register_debug_helpers(send_fn=None):
-    """Register explicit debug helper functions.
-
-    Tests can call this to inject mocks directly (preferred over patching
-    other modules). Passing None leaves the corresponding helper untouched.
-    """
-    if send_fn is not None:
-        _impl_cache["registered_send"] = send_fn
-
-
-def unregister_debug_helpers():
-    """Remove any registered debug helpers so the module falls back to
-    the normal resolution behavior (launcher helper or adapter comm).
-    """
-    _impl_cache["registered_send"] = None
-
-
-# Module logger for diagnostic messages (merged from alternate implementation)
-logger = logging.getLogger(__name__)
-
-# Safety limit for stack walking to avoid infinite loops on mocked frames
-MAX_STACK_DEPTH = 128
-
-
-def evaluate_hit_condition(expr: str, hit_count: int) -> bool:
-    try:
-        s = expr.strip()
-        m = re.match(r"^%\s*(\d+)$", s)
-        if m:
-            n = int(m.group(1))
-            return n > 0 and (hit_count % n == 0)
-        m = re.match(r"^==\s*(\d+)$", s)
-        if m:
-            return hit_count == int(m.group(1))
-        m = re.match(r"^>=\s*(\d+)$", s)
-        if m:
-            return hit_count >= int(m.group(1))
-        if re.match(r"^\d+$", s):
-            return hit_count == int(s)
-    except Exception:
-        return True
-    return True
-
-
-def format_log_message(template: str, frame) -> str:
-    def repl(match):
-        expr = match.group(1)
-        try:
-            val = eval(expr, frame.f_globals, frame.f_locals)
-            return str(val)
-        except Exception:
-            return "<error>"
-
-    s = template.replace("{{", "\u007b").replace("}}", "\u007d")
-    s = re.sub(r"\{([^{}]+)\}", repl, s)
-    return s.replace("\u007b", "{").replace("\u007d", "}")
-
-
-def get_function_candidate_names(frame) -> set[str]:
-    names: set[str] = set()
-    code = getattr(frame, "f_code", None)
-    if not code:
-        return names
-    func = getattr(code, "co_name", None) or ""
-    mod = frame.f_globals.get("__name__", "")
-    names.add(func)
-    if mod:
-        names.add(f"{mod}.{func}")
-    self_obj = frame.f_locals.get("self") if isinstance(frame.f_locals, dict) else None
-    if self_obj is not None:
-        cls = getattr(self_obj, "__class__", None)
-        cls_name = getattr(cls, "__name__", None)
-        if cls_name:
-            names.add(f"{cls_name}.{func}")
-            if mod:
-                names.add(f"{mod}.{cls_name}.{func}")
-    return names
 
 
 class DebuggerBDB(bdb.Bdb):

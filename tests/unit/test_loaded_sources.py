@@ -6,6 +6,7 @@ Test script to verify loadedSources functionality.
 import asyncio
 import logging
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -27,7 +28,7 @@ async def test_loaded_sources():
 
     # Create the server components
     connection = TCPServerConnection("localhost", 0)  # Use ephemeral port
-    debugger = PyDebugger(None)
+    debugger = PyDebugger(Mock())
 
     try:
         # Start the server

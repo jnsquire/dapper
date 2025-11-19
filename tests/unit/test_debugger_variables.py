@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
@@ -117,6 +118,55 @@ class TestDebuggerVariables(BaseDebuggerTest):
             assert "result" in result
             assert "variablesReference" in result
             assert result["variablesReference"] == 0
+
+    async def test_get_variables_sends_command(self):
+        """Test that get_variables sends a command to the debuggee when var_ref is not in cache."""
+        mock_response = {
+            "body": {
+                "variables": [
+                    {"name": "a", "value": "1", "type": "int", "variablesReference": 0}
+                ]
+            }
+        }
+
+        # Use AsyncCallRecorder to mock the response
+        recorder = AsyncCallRecorder(return_value=mock_response)
+
+        with patch.object(self.debugger, "_send_command_to_debuggee", new=recorder):
+            result = await self.debugger.get_variables(123, filter_type="named", start=1, count=10)
+
+            # Verify command was sent
+            recorder.assert_called_once()
+            assert recorder.call_args is not None
+            call_args = recorder.call_args[0][0]
+            assert call_args["command"] == "variables"
+            assert call_args["arguments"]["variablesReference"] == 123
+            assert call_args["arguments"]["filter"] == "named"
+            assert call_args["arguments"]["start"] == 1
+            assert call_args["arguments"]["count"] == 10
+
+            # Verify result
+            assert len(result) == 1
+            assert result[0]["name"] == "a"
+            assert result[0]["value"] == "1"
+
+    async def test_get_variables_in_process(self):
+        """Test that get_variables delegates to in-process debugger when enabled."""
+        self.debugger.in_process = True
+        self.debugger._inproc = MagicMock()
+
+        expected_variables = [
+            {"name": "ip_a", "value": "99", "variablesReference": 0}
+        ]
+        self.debugger._inproc.variables.return_value = expected_variables
+
+        result = await self.debugger.get_variables(789, filter_type="indexed", start=5, count=20)
+
+        # Verify in-process call
+        self.debugger._inproc.variables.assert_called_once_with(
+            789, _filter="indexed", _start=5, _count=20
+        )
+        assert result == expected_variables
 
 
 if __name__ == "__main__":

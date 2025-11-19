@@ -205,6 +205,6 @@ sort_by_size = true
 [project.scripts]
 # Small developer convenience script so `uv run docs` can invoke the
 # local documentation update helper without requiring an installed package.
-docs = "dapper.dev_tools:update_docs"
-test = "dapper.dev_tools:run_tests"
+docs = "dapper.utils.dev_tools:update_docs"
+test = "dapper.utils.dev_tools:run_tests"
 

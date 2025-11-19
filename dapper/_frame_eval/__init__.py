@@ -45,7 +45,9 @@ try:
     from dapper._frame_eval._frame_evaluator import (
         mark_thread_as_pydevd as _cython_mark_pydevd_func,
     )
-    from dapper._frame_eval._frame_evaluator import set_thread_skip_all as _cython_set_skip_all_func
+    from dapper._frame_eval._frame_evaluator import (
+        set_thread_skip_all as _cython_set_skip_all_func,
+    )
     from dapper._frame_eval._frame_evaluator import (
         unmark_thread_as_pydevd as _cython_unmark_pydevd_func,
     )

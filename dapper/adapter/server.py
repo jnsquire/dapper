@@ -29,7 +29,6 @@ from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Literal
 from typing import TypedDict
 from typing import cast
 
@@ -61,19 +60,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
     from concurrent.futures import Future as _CFuture
-    from typing import Literal
 
     from dapper.ipc.connections import ConnectionBase
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.protocol_types import Breakpoint
     from dapper.protocol.protocol_types import ExceptionInfoRequest
+    from dapper.protocol.protocol_types import FunctionBreakpoint
+    from dapper.protocol.protocol_types import GenericRequest
     from dapper.protocol.protocol_types import Source
     from dapper.protocol.protocol_types import SourceBreakpoint
-
-    class GenericRequest(TypedDict):
-        command: str
-        type: Literal["request"]
-        seq: int
 
 
 # Type definitions for breakpoint handling
@@ -283,8 +278,8 @@ class PyDebugger:
         self.next_var_ref: int = 1000
         self.var_refs: dict[int, object] = {}
         self.breakpoints: dict[str, list[BreakpointDict]] = {}
-        # store function breakpoints as list[dict] at runtime for flexibility
-        self.function_breakpoints: list[dict[str, Any]] = []
+        # store function breakpoints as list[FunctionBreakpoint] at runtime for flexibility
+        self.function_breakpoints: list[FunctionBreakpoint] = []
         # Exception breakpoint flags (two booleans for clarity)
         self.exception_breakpoints_uncaught: bool = False
         self.exception_breakpoints_raised: bool = False
@@ -1264,13 +1259,13 @@ class PyDebugger:
 
     async def set_function_breakpoints(
         self, breakpoints: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    ) -> list[FunctionBreakpoint]:
         """Set breakpoints for functions"""
-        spec_funcs: list[dict[str, Any]] = []
-        storage_funcs: list[dict[str, Any]] = []
+        spec_funcs: list[FunctionBreakpoint] = []
+        storage_funcs: list[FunctionBreakpoint] = []
         for bp in breakpoints:
             name = str(bp.get("name", ""))
-            spec_entry: dict[str, Any] = {"name": name}
+            spec_entry: FunctionBreakpoint = {"name": name}
             cond = bp.get("condition")
             if cond is not None:
                 spec_entry["condition"] = str(cond)
@@ -1825,7 +1820,7 @@ class PyDebugger:
         if self.in_process and self._inproc is not None:
             try:
                 # Use the variables method instead of get_variables
-                result = await self._inproc.variables(
+                result = self._inproc.variables(
                     variables_reference,
                     _filter=filter_type,
                     _start=start,

@@ -77,9 +77,12 @@ def test_update_docs_success(tmp_path: Path) -> None:
         patch("dapper.utils.dev_tools.Path") as mock_path,
         patch("dapper.utils.dev_tools.runpy.run_path") as mock_run_path,
     ):
-        # Make __file__ point to our temp dir
+        # Make Path(__file__) return our mock
         mock_file = MagicMock()
-        mock_file.resolve.return_value.parent.parent = tmp_path
+        # The code does Path(__file__).resolve().parent.parent.parent
+        # So we need to chain the parents to reach the root where 'scripts' is
+        # We set the 3rd parent to be our tmp_path, so the code resolves to tmp_path
+        mock_file.resolve.return_value.parent.parent.parent = tmp_path
         mock_path.return_value = mock_file
 
         # Configure the mock to return a success status

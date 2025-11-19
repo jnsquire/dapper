@@ -85,6 +85,45 @@ def build_mkdocs() -> None:
     run_cmd([mkdocs, "build", "--clean", "--site-dir", "site"])
 
 
+def prepare_docs_for_build() -> dict[Path, str]:
+    """
+    Copy root README and examples README into doc/ so MkDocs can see them.
+    Patch links in existing docs to point to these local copies.
+    Returns a dict of {path: original_content} for restoration.
+    """
+    # 1. Copy README.md -> doc/README.md and patch links
+    readme_content = (ROOT / "README.md").read_text(encoding="utf-8")
+    # Fix links like [Text](doc/FILE.md) -> [Text](FILE.md) since README is now inside doc/
+    readme_patched = readme_content.replace("(doc/", "(")
+    (ROOT / "doc" / "README.md").write_text(readme_patched, encoding="utf-8")
+
+    # 2. Copy examples/README.md -> doc/examples.md
+    shutil.copy(ROOT / "examples" / "README.md", ROOT / "doc" / "examples.md")
+
+    # 3. Patch doc/using-dapper-with-vscode.md
+    #    It links to ../README.md and ../examples/README.md
+    #    We want it to link to README.md and examples.md
+    p = ROOT / "doc" / "using-dapper-with-vscode.md"
+    if p.exists():
+        original = p.read_text(encoding="utf-8")
+        patched = original.replace("../README.md", "README.md") \
+                          .replace("../examples/README.md", "examples.md")
+        p.write_text(patched, encoding="utf-8")
+        return {p: original}
+    return {}
+
+
+def cleanup_docs(backups: dict[Path, str]) -> None:
+    """Restore patched files and remove temporary copies."""
+    # Restore patched files
+    for p, content in backups.items():
+        p.write_text(content, encoding="utf-8")
+
+    # Remove copies
+    (ROOT / "doc" / "README.md").unlink(missing_ok=True)
+    (ROOT / "doc" / "examples.md").unlink(missing_ok=True)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--force", action="store_true", help="Force re-rendering of all diagrams")
@@ -96,11 +135,20 @@ def main() -> int:
         print("Rendering step failed:", e)
         return 2
 
+    backups = {}
     try:
+        print("Preparing docs for build (copying READMEs, patching links)...")
+        backups = prepare_docs_for_build()
         build_mkdocs()
     except subprocess.CalledProcessError as e:
         print("MkDocs build failed:", e)
         return 3
+    except Exception as e:
+        print(f"Unexpected error during build: {e}")
+        return 4
+    finally:
+        print("Cleaning up temporary doc files...")
+        cleanup_docs(backups)
 
     print("Docs updated in ./site/")
     return 0

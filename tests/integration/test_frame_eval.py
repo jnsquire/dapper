@@ -12,9 +12,9 @@ if project_root not in sys.path:
 Simple test script for frame evaluation functionality."""
 
 try:
+    import dapper._frame_eval
     from dapper._frame_eval import enable_frame_eval
     from dapper._frame_eval import is_frame_eval_available
-    import dapper._frame_eval
 
     print(f"CYTHON_AVAILABLE: {dapper._frame_eval.CYTHON_AVAILABLE}")
     print(f"Frame eval available: {is_frame_eval_available()}")

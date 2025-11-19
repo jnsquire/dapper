@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -23,7 +24,7 @@ if project_root not in sys.path:
 
 @pytest.mark.asyncio
 async def test_get_modules_basic():
-    debugger = PyDebugger(None)
+    debugger = PyDebugger(Mock())
     modules = await debugger.get_modules()
     # Should return a non-empty list
     assert isinstance(modules, list)
@@ -62,7 +63,7 @@ async def test_get_modules_user_code_flag(tmp_path, monkeypatch):
         spec.loader.exec_module(module)
 
         # Create debugger and get modules
-        debugger = PyDebugger(None)
+        debugger = PyDebugger(Mock())
         modules = await debugger.get_modules()
 
         # Look for our module in the list

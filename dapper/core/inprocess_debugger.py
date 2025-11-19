@@ -28,9 +28,9 @@ if TYPE_CHECKING:
     from dapper.protocol.protocol_types import EvaluateResponseBody
     from dapper.protocol.protocol_types import FunctionBreakpoint
     from dapper.protocol.protocol_types import SetVariableResponseBody
-    from dapper.protocol_types import SourceBreakpoint
-    from dapper.protocol_types import StackTraceResponseBody
-    from dapper.protocol_types import VariablesResponseBody
+    from dapper.protocol.protocol_types import SourceBreakpoint
+    from dapper.protocol.protocol_types import StackTraceResponseBody
+    from dapper.protocol.protocol_types import VariablesResponseBody
 
 # Length of (frame_id, scope) tuple used in var_refs
 SCOPE_TUPLE_LEN = 2

@@ -13,7 +13,7 @@ A Debug Adapter Protocol implementation in Python.
 ### Debugger Features Overview
 
 For a detailed checklist of implemented and planned debugger features, see:
-- **[Debugger Features Checklist](doc/DEBUGGER_FEATURES_CHECKLIST.md)** - Complete feature matrix with implementation status
+- **[Debugger Features Checklist](doc/CHECKLIST.md)** - Complete feature matrix with implementation status
 
 ### Frame Evaluation System
 

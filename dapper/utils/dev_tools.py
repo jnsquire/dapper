@@ -33,7 +33,7 @@ def run_js_tests(js_args: list[str] | None = None) -> None:
         return
 
     # Base extension path relative to top-level package directory
-    ext_dir = Path(__file__).resolve().parent.parent / "vscode" / "extension"
+    ext_dir = Path(__file__).resolve().parent.parent.parent / "vscode" / "extension"
     if not ext_dir.exists():
         return
 
@@ -63,7 +63,7 @@ def update_docs() -> None:
     This uses runpy.run_path so it works even when the top-level 'scripts'
     directory is not a package.
     """
-    script = Path(__file__).resolve().parent.parent / "scripts" / "update_docs.py"
+    script = Path(__file__).resolve().parent.parent.parent / "scripts" / "update_docs.py"
     if not script.exists():
         msg = f"update_docs script not found: {script}"
         raise SystemExit(msg)
