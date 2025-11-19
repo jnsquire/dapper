@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class DebuggerBDB(bdb.Bdb):
-    def __init__(self, skip=None):
+    def __init__(self, skip=None, enable_frame_eval: bool = False):
         super().__init__(skip)
         self.is_terminated = False
         self.breakpoints = {}
@@ -38,6 +38,14 @@ class DebuggerBDB(bdb.Bdb):
         self.exception_breakpoints_raised = False
         self.custom_breakpoints = {}
         self.current_thread_id = threading.get_ident()
+
+        if enable_frame_eval:
+            try:
+                from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+
+                integrate_debugger_bdb(self)
+            except ImportError:
+                pass
         self.current_frame = None
         self.stepping = False
         self.stop_on_entry = False

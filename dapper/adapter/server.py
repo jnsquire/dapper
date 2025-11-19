@@ -259,17 +259,31 @@ class PyDebugger:
     and communicates back to the DebugAdapterServer.
     """
 
-    def __init__(self, server: DebugServer, loop: asyncio.AbstractEventLoop | None = None):
+    def __init__(
+        self,
+        server: DebugServer,
+        loop: asyncio.AbstractEventLoop | None = None,
+        enable_frame_eval: bool = False,
+    ):
         """Initialize the PyDebugger.
 
         Args:
             server: The debug server that implements the DebugServer protocol
             loop: Optional event loop to use. If not provided, gets the current event loop.
+            enable_frame_eval: Whether to enable frame evaluation optimization.
         """
         self.server: DebugServer = server
         self.loop: asyncio.AbstractEventLoop
         self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)
+
+        if enable_frame_eval:
+            try:
+                from dapper._frame_eval.debugger_integration import integrate_py_debugger
+
+                integrate_py_debugger(self)
+            except ImportError:
+                pass
 
         # Core state
         self.threads: dict[int, PyDebuggerThread] = {}
