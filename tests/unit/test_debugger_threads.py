@@ -2,7 +2,7 @@ import unittest
 
 import pytest
 
-from dapper.server import PyDebuggerThread
+from dapper.adapter.server import PyDebuggerThread
 
 from .test_debugger_base import BaseDebuggerTest
 

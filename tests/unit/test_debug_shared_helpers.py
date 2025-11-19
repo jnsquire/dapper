@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dapper import debug_shared as ds
+from dapper.shared import debug_shared as ds
 from tests.dummy_debugger import DummyDebugger
 
 

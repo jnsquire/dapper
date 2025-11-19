@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from dapper.debugger_protocol import DebuggerLike
-from dapper.debugger_protocol import ExceptionDetails
-from dapper.debugger_protocol import ExceptionInfo
-from dapper.debugger_protocol import PresentationHint
-from dapper.debugger_protocol import Variable
+from dapper.protocol.debugger_protocol import DebuggerLike
+from dapper.protocol.debugger_protocol import ExceptionDetails
+from dapper.protocol.debugger_protocol import ExceptionInfo
+from dapper.protocol.debugger_protocol import PresentationHint
+from dapper.protocol.debugger_protocol import Variable
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    import dapper.debugger_protocol as dp
+    import dapper.protocol.debugger_protocol as dp
 else:
     pass
 

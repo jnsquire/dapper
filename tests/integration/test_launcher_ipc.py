@@ -4,8 +4,8 @@ import io
 from typing import Any
 from typing import cast
 
-from dapper import launcher_ipc
-from dapper.debug_adapter_comm import state
+from dapper.launcher import launcher_ipc
+from dapper.shared.debug_shared import state
 
 
 def teardown_function(_fn):

@@ -8,7 +8,7 @@ and how to register the provider.
 
 from __future__ import annotations
 
-import dapper.debug_shared as ds
+import dapper.shared.debug_shared as ds
 
 
 class HelloProvider:

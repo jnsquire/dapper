@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import MagicMock
 
-from dapper.server import RequestHandler
+from dapper.adapter.server import RequestHandler
 
 
 class TestExecutionFlowHandlers(unittest.IsolatedAsyncioTestCase):

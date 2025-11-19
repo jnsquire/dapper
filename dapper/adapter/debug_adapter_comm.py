@@ -10,9 +10,9 @@ from queue import Empty
 from typing import Any
 from typing import cast
 
-from dapper.dap_command_handlers import COMMAND_HANDLERS
-from dapper.debug_shared import send_debug_message
-from dapper.debug_shared import state
+from dapper.adapter.dap_command_handlers import COMMAND_HANDLERS
+from dapper.shared.debug_shared import send_debug_message
+from dapper.shared.debug_shared import state
 
 logger = logging.getLogger(__name__)
 

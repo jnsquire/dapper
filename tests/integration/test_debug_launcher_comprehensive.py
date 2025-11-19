@@ -16,13 +16,13 @@ from typing import cast
 
 import pytest
 
-from dapper import debug_launcher
-from dapper import debug_shared
+from dapper.launcher import debug_launcher
+from dapper.shared import debug_shared
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    from dapper.protocol_types import FunctionBreakpoint
-    from dapper.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.protocol_types import FunctionBreakpoint
+    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
 
 
 class MockWFile(io.TextIOBase):

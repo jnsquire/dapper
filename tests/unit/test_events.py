@@ -1,4 +1,4 @@
-from dapper.events import EventEmitter
+from dapper.utils.events import EventEmitter
 
 
 def test_add_and_emit_listener():
@@ -62,7 +62,7 @@ def test_listener_exception_is_logged(monkeypatch):
     def fake_exception(*_args, **_kwargs):
         called["logged"] = True
 
-    monkeypatch.setattr("dapper.events.logger.exception", fake_exception)
+    monkeypatch.setattr("dapper.utils.events.logger.exception", fake_exception)
     e.add_listener(bad_listener)
     # Should not raise despite listener exception
     e.emit()
@@ -126,7 +126,7 @@ def test_exception_in_listener_stops_following_and_logs(monkeypatch):
     def fake_exception(*_args, **_kwargs):
         logged["ok"] = True
 
-    monkeypatch.setattr("dapper.events.logger.exception", fake_exception)
+    monkeypatch.setattr("dapper.utils.events.logger.exception", fake_exception)
     e.add_listener(bad)
     e.add_listener(good)
     e.emit()

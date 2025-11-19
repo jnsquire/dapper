@@ -10,12 +10,12 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from dapper.connections.pipe import NamedPipeServerConnection
-from dapper.connections.tcp import TCPServerConnection
-from dapper.server import DebugAdapterServer
+from dapper.adapter.server import DebugAdapterServer
+from dapper.ipc.connections.pipe import NamedPipeServerConnection
+from dapper.ipc.connections.tcp import TCPServerConnection
 
 if TYPE_CHECKING:
-    from dapper.connections import ConnectionBase
+    from dapper.ipc.connections import ConnectionBase
 
 
 logger = logging.getLogger(__name__)

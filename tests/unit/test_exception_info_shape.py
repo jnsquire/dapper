@@ -8,7 +8,7 @@ from typing import cast
 if TYPE_CHECKING:
     from types import TracebackType
 
-from dapper.debugger_bdb import DebuggerBDB
+from dapper.core.debugger_bdb import DebuggerBDB
 
 
 def _raiser(msg: str):

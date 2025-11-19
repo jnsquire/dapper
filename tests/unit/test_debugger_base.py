@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import MagicMock
 
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
 
 
 class BaseDebuggerTest:

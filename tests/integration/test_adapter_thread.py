@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-import dapper.adapter_thread as adapter_thread_mod
+import dapper.adapter.adapter_thread as adapter_thread_mod
 
 
 class PortTimeoutError(Exception):

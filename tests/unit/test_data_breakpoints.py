@@ -4,13 +4,13 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.server import DebugAdapterServer
-from dapper.server import PyDebugger as RealDebugger
+from dapper.adapter.server import DebugAdapterServer
+from dapper.adapter.server import PyDebugger as RealDebugger
 from tests.mocks import MockConnection
 
 
 @pytest.mark.asyncio
-@patch("dapper.server.PyDebugger")
+@patch("dapper.adapter.server.PyDebugger")
 async def test_data_breakpoint_info_and_set(mock_debugger_class):
     mock_debugger = mock_debugger_class.return_value
 
@@ -30,7 +30,7 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
     mock_debugger.set_data_breakpoints = real_dbg.set_data_breakpoints  # type: ignore[assignment]
 
     # Create the server with a mock connection and patch the debugger
-    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
         conn = MockConnection()
         server = DebugAdapterServer(conn, asyncio.get_event_loop())
         # The debugger is now set through the constructor, no need to set it directly

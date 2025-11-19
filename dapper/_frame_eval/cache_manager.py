@@ -25,8 +25,8 @@ from typing import TypedDict
 
 # Third-party imports
 # Local application imports
-from dapper.constants import DEFAULT_CACHE_TTL
-from dapper.constants import DEFAULT_MAX_RECURSION_DEPTH
+from dapper.common.constants import DEFAULT_CACHE_TTL
+from dapper.common.constants import DEFAULT_MAX_RECURSION_DEPTH
 
 if TYPE_CHECKING:
     import os

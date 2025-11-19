@@ -4,7 +4,7 @@ import sys
 import types
 from types import SimpleNamespace
 
-import dapper.debug_shared as ds
+import dapper.shared.debug_shared as ds
 
 
 def test_setup_process_state_ipc_failure(caplog):

@@ -14,30 +14,30 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper import debug_shared as _ds
-from dapper.debug_shared import VAR_REF_TUPLE_SIZE
-from dapper.debug_shared import send_debug_message
-from dapper.debug_shared import state
-from dapper.protocol_types import LegacySourceArguments
-from dapper.protocol_types import LoadedSourcesArguments
-from dapper.protocol_types import Source
+from dapper.protocol.protocol_types import LegacySourceArguments
+from dapper.protocol.protocol_types import LoadedSourcesArguments
+from dapper.protocol.protocol_types import Source
+from dapper.shared import debug_shared as _ds
+from dapper.shared.debug_shared import VAR_REF_TUPLE_SIZE
+from dapper.shared.debug_shared import send_debug_message
+from dapper.shared.debug_shared import state
 
 # small constant to make argcount checks clearer / lint-friendly
 _SIMPLE_MAKE_VAR_ARGCOUNT = 2
 
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import ExceptionInfo
-    from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import ConfigurationDoneArguments
-    from dapper.protocol_types import ContinueArguments
-    from dapper.protocol_types import EvaluateArguments
-    from dapper.protocol_types import ExceptionInfoArguments
-    from dapper.protocol_types import LegacySourceArguments
-    from dapper.protocol_types import Module
-    from dapper.protocol_types import ModulesArguments
-    from dapper.protocol_types import NextArguments
-    from dapper.protocol_types import PauseArguments
+    from dapper.protocol.debugger_protocol import ExceptionInfo
+    from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.protocol_types import ConfigurationDoneArguments
+    from dapper.protocol.protocol_types import ContinueArguments
+    from dapper.protocol.protocol_types import EvaluateArguments
+    from dapper.protocol.protocol_types import ExceptionInfoArguments
+    from dapper.protocol.protocol_types import LegacySourceArguments
+    from dapper.protocol.protocol_types import Module
+    from dapper.protocol.protocol_types import ModulesArguments
+    from dapper.protocol.protocol_types import NextArguments
+    from dapper.protocol.protocol_types import PauseArguments
     from dapper.protocol_types import SetBreakpointsArguments
     from dapper.protocol_types import SetExceptionBreakpointsArguments
     from dapper.protocol_types import SetFunctionBreakpointsArguments

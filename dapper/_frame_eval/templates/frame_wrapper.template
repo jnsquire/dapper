@@ -11,7 +11,7 @@ def _pydevd_frame_eval_wrapper():
             sys.path.insert(0, current_dir)
         
         # Import Dapper debugging functions
-        from dapper.debugger_bdb import DebuggerBDB
+        from dapper.core.debugger_bdb import DebuggerBDB
         
         # Get the current frame and check if we should stop
         frame = sys._getframe(1)

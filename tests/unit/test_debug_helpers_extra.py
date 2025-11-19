@@ -3,7 +3,7 @@ import types
 from types import SimpleNamespace
 from typing import cast
 
-from dapper import debug_helpers as dh
+from dapper.core import debug_helpers as dh
 
 
 def test_safe_getattr_basic_and_none_and_type_mismatch():

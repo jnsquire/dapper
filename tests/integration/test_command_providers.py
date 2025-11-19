@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import dapper.debug_shared as ds
+import dapper.shared.debug_shared as ds
 
 
 @pytest.fixture

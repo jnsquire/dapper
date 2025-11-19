@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.adapter import main
-from dapper.adapter import start_server
+from dapper.adapter.adapter import main
+from dapper.adapter.adapter import start_server
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 @pytest.fixture
 def mock_debug_server():
     """Patch DebugAdapterServer & return (server_cls, instance)."""
-    with patch("dapper.adapter.DebugAdapterServer") as server_cls:
+    with patch("dapper.adapter.adapter.DebugAdapterServer") as server_cls:
         instance = MagicMock()
 
         class AsyncCallRecorder:
@@ -71,7 +71,7 @@ def mock_debug_server():
 @pytest.mark.asyncio
 async def test_start_server_tcp(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.adapter.TCPServerConnection") as tcp_cls:
+    with patch("dapper.adapter.adapter.TCPServerConnection") as tcp_cls:
         conn_instance = MagicMock()
         tcp_cls.return_value = conn_instance
 
@@ -94,7 +94,7 @@ async def test_start_server_tcp(mock_debug_server):
 @pytest.mark.asyncio
 async def test_start_server_pipe_custom_name(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.adapter.NamedPipeServerConnection") as pipe_cls:
+    with patch("dapper.adapter.adapter.NamedPipeServerConnection") as pipe_cls:
         conn_instance = MagicMock()
         pipe_cls.return_value = conn_instance
 
@@ -116,7 +116,7 @@ async def test_start_server_pipe_custom_name(mock_debug_server):
 @pytest.mark.asyncio
 async def test_start_server_pipe_default_name(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.adapter.NamedPipeServerConnection") as pipe_cls:
+    with patch("dapper.adapter.adapter.NamedPipeServerConnection") as pipe_cls:
         conn_instance = MagicMock()
         pipe_cls.return_value = conn_instance
 
@@ -139,7 +139,7 @@ async def test_start_server_pipe_default_name(mock_debug_server):
 
 @pytest.mark.asyncio
 async def test_start_server_unknown_connection_type():
-    with patch("dapper.adapter.logger") as mock_logger:
+    with patch("dapper.adapter.adapter.logger") as mock_logger:
         await start_server("unknown")
         # adapter uses logger.error with printf-style formatting
         mock_logger.error.assert_called_once_with("Unknown connection type: %s", "unknown")
@@ -189,7 +189,7 @@ def _run_main_with_args(
             async def fake_start(*_a, **_kw):  # pragma: no cover - trivial
                 return None
 
-            stack.enter_context(patch("dapper.adapter.start_server", new=fake_start))
+            stack.enter_context(patch("dapper.adapter.adapter.start_server", new=fake_start))
 
         if isinstance(run_side_effect, Exception):
 
@@ -199,23 +199,23 @@ def _run_main_with_args(
                     _coro.close()  # type: ignore[attr-defined]
                 raise run_side_effect
 
-            stack.enter_context(patch("dapper.adapter.asyncio.run", new=raise_exc))
+            stack.enter_context(patch("dapper.adapter.adapter.asyncio.run", new=raise_exc))
         elif callable(run_side_effect):
-            stack.enter_context(patch("dapper.adapter.asyncio.run", new=run_side_effect))
+            stack.enter_context(patch("dapper.adapter.adapter.asyncio.run", new=run_side_effect))
         else:
-            stack.enter_context(patch("dapper.adapter.asyncio.run", new=default_run))
+            stack.enter_context(patch("dapper.adapter.adapter.asyncio.run", new=default_run))
 
         main()
 
 
 def test_main_tcp_connection():
     with ExitStack() as stack:
-        stack.enter_context(patch("dapper.adapter.logger"))
+        stack.enter_context(patch("dapper.adapter.adapter.logger"))
 
         async def fake(*_a, **_kw):  # pragma: no cover - trivial
             return None
 
-        stack.enter_context(patch("dapper.adapter.start_server", new=fake))
+        stack.enter_context(patch("dapper.adapter.adapter.start_server", new=fake))
         calls = []
 
         def run_recorder(coro):
@@ -237,24 +237,24 @@ def test_main_tcp_connection():
 
 
 def test_main_pipe_connection():
-    with patch("dapper.adapter.logger"):
+    with patch("dapper.adapter.adapter.logger"):
         _run_main_with_args(["--pipe", "test_pipe"])
 
 
 def test_main_with_host_argument():
     with ExitStack() as stack:
-        stack.enter_context(patch("dapper.adapter.logger"))
+        stack.enter_context(patch("dapper.adapter.adapter.logger"))
 
         async def fake(*_a, **_kw):  # pragma: no cover - trivial
             return None
 
-        stack.enter_context(patch("dapper.adapter.start_server", new=fake))
+        stack.enter_context(patch("dapper.adapter.adapter.start_server", new=fake))
         _run_main_with_args(["--pipe", "x", "--host", "127.0.0.1"], patch_start=False)
     # Patched with concrete function; no mock assertions applicable.
 
 
 def test_main_log_level():
-    with patch("dapper.adapter.logger"), patch("dapper.adapter.logging.getLogger") as get_logger:
+    with patch("dapper.adapter.adapter.logger"), patch("dapper.adapter.adapter.logging.getLogger") as get_logger:
         mock_root = MagicMock()
         get_logger.return_value = mock_root
         _run_main_with_args(["--port", "4711", "--log-level", "DEBUG"])
@@ -262,12 +262,12 @@ def test_main_log_level():
 
 
 def test_main_no_connection_args():
-    with patch("dapper.adapter.logger"), pytest.raises(SystemExit):
+    with patch("dapper.adapter.adapter.logger"), pytest.raises(SystemExit):
         _run_main_with_args([])
 
 
 def test_main_keyboard_interrupt():
-    with patch("dapper.adapter.logger") as mock_logger:
+    with patch("dapper.adapter.adapter.logger") as mock_logger:
         # Provide a replacement for asyncio.run that immediately raises,
         # ensuring no coroutine returned by start_server is left un-awaited.
         def raise_kb(_coro):  # pragma: no cover - simple path

@@ -21,22 +21,22 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper import debug_shared as _d_shared
-from dapper.debug_shared import state
-from dapper.debugger_bdb import DebuggerBDB
-from dapper.ipc_binary import HEADER_SIZE
-from dapper.ipc_binary import pack_frame
-from dapper.ipc_binary import read_exact
-from dapper.ipc_binary import unpack_header
+from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_binary import read_exact
+from dapper.ipc.ipc_binary import unpack_header
+from dapper.shared import debug_shared as _d_shared
+from dapper.shared.debug_shared import state
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import DebuggerLike
-    from dapper.debugger_protocol import ExceptionInfo
-    from dapper.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import DebuggerLike
+    from dapper.protocol.debugger_protocol import ExceptionInfo
+    from dapper.protocol.debugger_protocol import Variable
 
     # Import protocol TypedDicts for stronger return typing
-    from dapper.protocol_types import SetExceptionBreakpointsResponse
-    from dapper.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.protocol_types import SetExceptionBreakpointsResponse
+    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
 
 """
 Debug launcher entry point. Delegates to split modules.

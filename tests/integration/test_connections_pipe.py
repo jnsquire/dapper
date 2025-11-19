@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from dapper.connections.pipe import NamedPipeServerConnection
+from dapper.ipc.connections.pipe import NamedPipeServerConnection
 
 
 class DummyReader:

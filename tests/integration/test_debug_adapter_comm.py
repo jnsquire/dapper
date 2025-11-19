@@ -5,7 +5,7 @@ from queue import Queue
 
 import pytest
 
-from dapper import debug_adapter_comm as dac
+from dapper.adapter import debug_adapter_comm as dac
 
 
 class DummyLock:

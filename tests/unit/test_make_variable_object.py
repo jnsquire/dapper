@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from dapper import debug_shared as ds
+from dapper.shared import debug_shared as ds
 from tests.dummy_debugger import DummyDebugger
 
 

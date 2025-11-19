@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 from typing import cast
 
-from dapper import debug_helpers as dh
+from dapper.core import debug_helpers as dh
 
 
 def test_safe_getattr_basic_and_type_checks():

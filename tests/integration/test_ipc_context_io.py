@@ -4,8 +4,8 @@ import io
 
 import pytest
 
-from dapper.ipc_binary import pack_frame
-from dapper.ipc_context import IPCContext
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_context import IPCContext
 
 
 class _PipeListener:

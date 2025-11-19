@@ -13,10 +13,10 @@ from unittest.mock import patch
 import pytest
 
 # Import the module to test
-from dapper import debug_launcher as dl
-from dapper import debug_shared
-from dapper.debug_shared import SessionState
-from dapper.debugger_protocol import DebuggerLike
+from dapper.launcher import debug_launcher as dl
+from dapper.protocol.debugger_protocol import DebuggerLike
+from dapper.shared import debug_shared
+from dapper.shared.debug_shared import SessionState
 
 
 # Create a test-specific subclass of SessionState for testing
@@ -85,7 +85,7 @@ class TestDebugLauncherBasic:
         assert args.arg == ["arg1", "arg2"]  # Changed from args.args to args.arg
         assert args.ipc_binary is True
 
-    @patch("dapper.debug_launcher.DebuggerBDB")
+    @patch("dapper.launcher.debug_launcher.DebuggerBDB")
     def test_configure_debugger(self, mock_debugger_class: MagicMock) -> None:
         """Test debugger configuration."""
         # Setup
@@ -160,7 +160,7 @@ class TestBreakpointHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
         """Test setting breakpoints."""
         # Setup
@@ -218,7 +218,7 @@ class TestVariableHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_handle_variables(self, mock_send: MagicMock) -> None:
         """Test variable inspection."""
         # Setup
@@ -242,7 +242,7 @@ class TestVariableHandling:
         dbg.make_variable_object = mock_make_var
 
         # Import the debug_shared module to patch it
-        with patch("dapper.debug_launcher._d_shared") as mock_shared:
+        with patch("dapper.launcher.debug_launcher._d_shared") as mock_shared:
             # Mock the make_variable_object from debug_shared
             mock_shared.make_variable_object.side_effect = mock_make_var
 
@@ -279,7 +279,7 @@ class TestVariableHandling:
 class TestExpressionEvaluation:
     """Tests for expression evaluation."""
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_handle_evaluate(self, mock_send: MagicMock) -> None:
         """Test expression evaluation."""
         # Setup
@@ -341,7 +341,7 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
@@ -362,7 +362,7 @@ class TestControlFlow:
         mock_dbg = MagicMock(spec=DebuggerLike)
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
@@ -385,7 +385,7 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
@@ -503,7 +503,7 @@ class TestUtilityFunctions:
     def test_convert_string_to_value(self):
         """Test string to value conversion."""
         # Test that the internal _convert_string_to_value function is called
-        with patch("dapper.debug_launcher._convert_string_to_value") as mock_convert:
+        with patch("dapper.launcher.debug_launcher._convert_string_to_value") as mock_convert:
             mock_convert.return_value = 42
             result = dl._convert_string_to_value("42")
             mock_convert.assert_called_once_with("42")
@@ -512,7 +512,7 @@ class TestUtilityFunctions:
     def test_evaluate_hit_condition(self):
         """Test hit condition evaluation."""
         # Test that the internal _evaluate_hit_condition function is called
-        with patch("dapper.debug_launcher._evaluate_hit_condition") as mock_eval:
+        with patch("dapper.launcher.debug_launcher._evaluate_hit_condition") as mock_eval:
             mock_eval.return_value = True
             result = dl._evaluate_hit_condition("5", 1)
             mock_eval.assert_called_once_with("5", 1)

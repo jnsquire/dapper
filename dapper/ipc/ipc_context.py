@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 
-from dapper.ipc_binary import HEADER_SIZE
-from dapper.ipc_binary import read_exact
-from dapper.ipc_binary import unpack_header
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import read_exact
+from dapper.ipc.ipc_binary import unpack_header
 
 # NOTE: We deliberately import framing helpers lazily inside methods to avoid
 # creating hard import cycles if server.py structure changes again.

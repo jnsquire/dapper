@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 import types
 
-from dapper import dap_command_handlers as handlers
-from dapper import debug_shared
+from dapper.adapter import dap_command_handlers as handlers
+from dapper.shared import debug_shared
 from tests.dummy_debugger import DummyDebugger
 
 

@@ -19,8 +19,8 @@ from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.selective_tracer import get_trace_manager
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import ExceptionInfo
-    from dapper.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import ExceptionInfo
+    from dapper.protocol.debugger_protocol import Variable
 
 
 class PresentationHint(TypedDict, total=False):

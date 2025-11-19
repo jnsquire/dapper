@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import dapper.debug_shared as ds
+import dapper.shared.debug_shared as ds
 
 
 def test_source_reference_round_trip(tmp_path):

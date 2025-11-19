@@ -8,7 +8,7 @@ import logging
 import socket
 from typing import Any
 
-from dapper.connections import ConnectionBase
+from dapper.ipc.connections import ConnectionBase
 
 logger = logging.getLogger(__name__)
 

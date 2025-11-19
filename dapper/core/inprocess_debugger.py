@@ -15,19 +15,19 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.debugger_bdb import DebuggerBDB
-from dapper.events import EventEmitter
+from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     # TypedDict for variable-shaped dicts
-    from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import Breakpoint
-    from dapper.protocol_types import ContinueResponseBody
-    from dapper.protocol_types import EvaluateResponseBody
-    from dapper.protocol_types import FunctionBreakpoint
-    from dapper.protocol_types import SetVariableResponseBody
+    from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.protocol_types import Breakpoint
+    from dapper.protocol.protocol_types import ContinueResponseBody
+    from dapper.protocol.protocol_types import EvaluateResponseBody
+    from dapper.protocol.protocol_types import FunctionBreakpoint
+    from dapper.protocol.protocol_types import SetVariableResponseBody
     from dapper.protocol_types import SourceBreakpoint
     from dapper.protocol_types import StackTraceResponseBody
     from dapper.protocol_types import VariablesResponseBody

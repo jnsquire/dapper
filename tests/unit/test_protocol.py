@@ -10,12 +10,12 @@ from typing import cast
 
 import pytest
 
-from dapper.protocol import ProtocolError
-from dapper.protocol import ProtocolHandler
-from dapper.protocol_types import GenericEvent
-from dapper.protocol_types import GenericRequest
-from dapper.protocol_types import GenericResponse
-from dapper.protocol_types import ProtocolMessage
+from dapper.protocol.protocol import ProtocolError
+from dapper.protocol.protocol import ProtocolHandler
+from dapper.protocol.protocol_types import GenericEvent
+from dapper.protocol.protocol_types import GenericRequest
+from dapper.protocol.protocol_types import GenericResponse
+from dapper.protocol.protocol_types import ProtocolMessage
 
 # Use the protocol types directly from dapper.protocol_types
 RequestMessage = GenericRequest

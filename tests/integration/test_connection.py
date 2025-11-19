@@ -15,8 +15,8 @@ from unittest import mock
 
 import pytest
 
-from dapper.connections.pipe import NamedPipeServerConnection
-from dapper.connections.tcp import TCPServerConnection
+from dapper.ipc.connections.pipe import NamedPipeServerConnection
+from dapper.ipc.connections.tcp import TCPServerConnection
 
 # ---------------------------------------------------------------------------
 # Fixtures

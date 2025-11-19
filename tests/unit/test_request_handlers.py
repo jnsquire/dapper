@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dapper import debug_shared
-from dapper.server import RequestHandler
+from dapper.adapter.server import RequestHandler
+from dapper.shared import debug_shared
 
 
 # Simple async recorder used in tests

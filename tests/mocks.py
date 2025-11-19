@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from dapper.connections import ConnectionBase
+from dapper.ipc.connections import ConnectionBase
 
 # Expose names for import convenience in tests
 __all__ = ["CodeLike", "FrameLike", "MockCode", "MockConnection", "MockFrame"]

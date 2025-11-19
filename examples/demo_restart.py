@@ -16,8 +16,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from dapper.connections.tcp import TCPServerConnection
-from dapper.server import DebugAdapterServer
+from dapper.adapter.server import DebugAdapterServer
+from dapper.ipc.connections.tcp import TCPServerConnection
 
 
 def _encode_message(msg: dict[str, Any]) -> bytes:

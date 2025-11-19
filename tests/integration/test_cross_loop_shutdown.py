@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
 
 
 def _start_loop(loop: asyncio.AbstractEventLoop) -> None:

@@ -1,5 +1,5 @@
-from dapper.debug_shared import make_variable_object
-from dapper.debugger_bdb import DebuggerBDB
+from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.shared.debug_shared import make_variable_object
 
 
 def test_variable_has_data_breakpoint_for_watched_name():

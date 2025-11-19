@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-import dapper.debug_shared as ds
-from dapper.ipc_binary import unpack_header
+import dapper.shared.debug_shared as ds
+from dapper.ipc.ipc_binary import unpack_header
 
 
 class _PipeConn:

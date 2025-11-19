@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
 
 
 @pytest.mark.asyncio

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 
-from dapper import debug_shared
+from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import Variable
 
 
 class _BreaksCollection:

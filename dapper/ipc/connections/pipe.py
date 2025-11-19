@@ -1,4 +1,4 @@
-"""NamedPipeServerConnection implementation moved from dapper.connection."""
+"""NamedPipeServerConnection implementation moved from dapper.ipc.connections."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dapper.connections import ConnectionBase
+from dapper.ipc.connections import ConnectionBase
 
 logger = logging.getLogger(__name__)
 traffic_logger = logging.getLogger("dapper.connection.traffic")

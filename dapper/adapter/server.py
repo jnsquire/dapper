@@ -36,12 +36,12 @@ from typing import cast
 from typing_extensions import NotRequired
 from typing_extensions import Protocol
 
-from dapper import debug_shared
-from dapper.inprocess_debugger import InProcessDebugger
-from dapper.ipc_binary import pack_frame
-from dapper.ipc_context import IPCContext
-from dapper.protocol import ProtocolHandler
-from dapper.protocol_types import Source
+from dapper.core.inprocess_debugger import InProcessDebugger
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_context import IPCContext
+from dapper.protocol.protocol import ProtocolHandler
+from dapper.protocol.protocol_types import Source
+from dapper.shared import debug_shared
 
 
 # Local type for breakpoint responses
@@ -63,12 +63,12 @@ if TYPE_CHECKING:
     from concurrent.futures import Future as _CFuture
     from typing import Literal
 
-    from dapper.connections import ConnectionBase
-    from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import Breakpoint
-    from dapper.protocol_types import ExceptionInfoRequest
-    from dapper.protocol_types import Source
-    from dapper.protocol_types import SourceBreakpoint
+    from dapper.ipc.connections import ConnectionBase
+    from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.protocol_types import Breakpoint
+    from dapper.protocol.protocol_types import ExceptionInfoRequest
+    from dapper.protocol.protocol_types import Source
+    from dapper.protocol.protocol_types import SourceBreakpoint
 
     class GenericRequest(TypedDict):
         command: str
@@ -485,7 +485,7 @@ class PyDebugger:
         debug_args = [
             sys.executable,
             "-m",
-            "dapper.debug_launcher",
+            "dapper.launcher.debug_launcher",
             "--program",
             self.program_path,
         ]
@@ -571,7 +571,7 @@ class PyDebugger:
         This function assumes the `dapper.inprocess_debugger` module is
         available and will raise the underlying ImportError if not.
         """
-        module = importlib.import_module("dapper.inprocess_debugger")
+        module = importlib.import_module("dapper.core.inprocess_debugger")
         return module.InProcessDebugger  # type: ignore[attr-defined]
 
     def _make_inproc_callbacks(self):

@@ -2,7 +2,7 @@ from types import FrameType
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
-from dapper.debugger_bdb import DebuggerBDB
+from dapper.core.debugger_bdb import DebuggerBDB
 
 
 def make_frame(filename: str, lineno: int, locals_dict):
@@ -14,7 +14,7 @@ def make_frame(filename: str, lineno: int, locals_dict):
     return frame
 
 
-@patch("dapper.debugger_bdb.send_debug_message")
+@patch("dapper.core.debugger_bdb.send_debug_message")
 def test_data_breakpoint_hit_condition_every_other_change(mock_send):
     dbg = DebuggerBDB()
     meta = {"condition": None, "hitCondition": "% 2", "hit": 0}
@@ -41,7 +41,7 @@ def test_data_breakpoint_hit_condition_every_other_change(mock_send):
     assert reasons.count("data breakpoint") == 1
 
 
-@patch("dapper.debugger_bdb.send_debug_message")
+@patch("dapper.core.debugger_bdb.send_debug_message")
 def test_data_breakpoint_with_condition_expression(mock_send):
     dbg = DebuggerBDB()
     meta = {"condition": "x > 3", "hitCondition": None, "hit": 0}

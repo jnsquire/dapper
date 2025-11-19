@@ -140,10 +140,10 @@ if is_frame_eval_available():
 ### Integration Testing
 ```python
 # Test with actual debugging
-import dapper.debugger_bdb
+import dapper.core.debugger_bdb
 
 # Frame evaluation should be automatically used when available
-dbg = dapper.debugger_bdb.DebuggerBDB()
+dbg = dapper.core.debugger_bdb.DebuggerBDB()
 # ... debugging operations
 ```
 

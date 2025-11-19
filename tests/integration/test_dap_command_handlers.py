@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper import dap_command_handlers as dch
-from dapper import debug_shared
+from dapper.adapter import dap_command_handlers as dch
+from dapper.shared import debug_shared
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import Variable
-    from dapper.protocol_types import ExceptionInfoArguments
+    from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.protocol_types import ExceptionInfoArguments
 
     # DAP argument shapes used by handlers (only for type-checking)
     from dapper.protocol_types import SetBreakpointsArguments

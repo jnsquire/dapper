@@ -5,12 +5,12 @@ import struct
 
 import pytest
 
-from dapper.ipc_binary import HEADER_SIZE
-from dapper.ipc_binary import MAGIC
-from dapper.ipc_binary import VERSION
-from dapper.ipc_binary import pack_frame
-from dapper.ipc_binary import read_exact
-from dapper.ipc_binary import unpack_header
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import MAGIC
+from dapper.ipc.ipc_binary import VERSION
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_binary import read_exact
+from dapper.ipc.ipc_binary import unpack_header
 
 
 def test_unpack_header_invalid_size():

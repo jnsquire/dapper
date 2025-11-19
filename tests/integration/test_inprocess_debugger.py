@@ -4,7 +4,7 @@ import threading
 from typing import Any
 from typing import cast
 
-from dapper.inprocess_debugger import InProcessDebugger
+from dapper.core.inprocess_debugger import InProcessDebugger
 from tests.dummy_debugger import DummyDebugger
 
 

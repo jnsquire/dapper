@@ -17,11 +17,11 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.debug_helpers import frame_may_handle_exception
+from dapper.core.debug_helpers import frame_may_handle_exception
 
 if TYPE_CHECKING:
-    from dapper.debugger_protocol import ExceptionInfo
-    from dapper.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import ExceptionInfo
+    from dapper.protocol.debugger_protocol import Variable
 
 # Cached resolvers for the two external helpers. We prefer the launcher
 # helpers when that module is present (tests commonly patch
@@ -50,7 +50,7 @@ def send_debug_message(*args, **kwargs):
         return registered(*args, **kwargs)
 
     # Prefer patched launcher helper when present in sys.modules
-    mod = sys.modules.get("dapper.debug_launcher")
+    mod = sys.modules.get("dapper.launcher.debug_launcher")
     if mod is not None:
         fn = getattr(mod, "send_debug_message", None)
         if callable(fn):
@@ -62,9 +62,9 @@ def send_debug_message(*args, **kwargs):
 
     # Fallback to adapter comm helper
     impl = _impl_cache.get("cached_send")
-    if impl is None or getattr(impl, "__module__", "") == "dapper.debug_adapter_comm":
+    if impl is None or getattr(impl, "__module__", "") == "dapper.adapter.debug_adapter_comm":
         try:
-            mod_fallback = importlib.import_module("dapper.debug_adapter_comm")
+            mod_fallback = importlib.import_module("dapper.adapter.debug_adapter_comm")
             _fallback = getattr(mod_fallback, "send_debug_message", None)
             if callable(_fallback):
                 if impl is not _fallback:
@@ -73,7 +73,7 @@ def send_debug_message(*args, **kwargs):
         except Exception:
             # Last resort: try dynamic import path again (very rare)
             try:
-                mod2 = importlib.import_module("dapper.debug_adapter_comm")
+                mod2 = importlib.import_module("dapper.adapter.debug_adapter_comm")
                 fn2 = getattr(mod2, "send_debug_message", None)
                 if callable(fn2):
                     _impl_cache["cached_send"] = fn2
@@ -98,7 +98,7 @@ def process_queued_commands():
     # Use the single adapter-side implementation. Import lazily to avoid
     # circular imports when this module is imported early in tests.
     try:
-        mod = importlib.import_module("dapper.debug_adapter_comm")
+        mod = importlib.import_module("dapper.adapter.debug_adapter_comm")
         fn = getattr(mod, "process_queued_commands", None)
         if callable(fn):
             return fn()

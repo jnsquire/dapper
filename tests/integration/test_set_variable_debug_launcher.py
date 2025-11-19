@@ -8,11 +8,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from dapper.debug_launcher import _convert_string_to_value
+from dapper.launcher.debug_launcher import _convert_string_to_value
 
 # Import the specific functions we want to test
-from dapper.debug_launcher import handle_set_variable
-from dapper.debug_shared import make_variable_object
+from dapper.launcher.debug_launcher import handle_set_variable
+from dapper.shared.debug_shared import make_variable_object
 
 
 class TestSetVariable(unittest.TestCase):
@@ -48,7 +48,7 @@ class TestSetVariable(unittest.TestCase):
         assert _convert_string_to_value("'hello'") == "hello"
         assert _convert_string_to_value("[1, 2, 3]") == [1, 2, 3]
 
-    @patch("dapper.debug_launcher.state")
+    @patch("dapper.launcher.debug_launcher.state")
     def test_create_variable_object_simple(self, mock_state):
         """Test variable object creation for simple values"""
         mock_state.debugger = self.mock_debugger
@@ -60,7 +60,7 @@ class TestSetVariable(unittest.TestCase):
         assert var_obj["type"] == "int"
         assert var_obj["variablesReference"] == 0
 
-    @patch("dapper.debug_launcher.state")
+    @patch("dapper.launcher.debug_launcher.state")
     def test_handle_set_variable_locals(self, mock_state):
         """Test setting a local variable"""
         # Set up mocks
@@ -86,7 +86,7 @@ class TestSetVariable(unittest.TestCase):
         # Verify variable was set
         assert self.mock_frame.f_locals["x"] == 99
 
-    @patch("dapper.debug_launcher.state")
+    @patch("dapper.launcher.debug_launcher.state")
     def test_handle_set_variable_globals(self, mock_state):
         """Test setting a global variable"""
         # Set up mocks
@@ -116,7 +116,7 @@ class TestSetVariable(unittest.TestCase):
         # Verify variable was set
         assert self.mock_frame.f_globals["new_global"] == "test_string"
 
-    @patch("dapper.debug_launcher.state")
+    @patch("dapper.launcher.debug_launcher.state")
     def test_handle_set_variable_invalid_ref(self, mock_state):
         """Test setting variable with invalid reference"""
         # Set up mocks

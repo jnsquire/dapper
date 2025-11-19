@@ -530,12 +530,12 @@ profile_memory()
 **Solutions**:
 ```python
 # In your debug configuration
-import dapper.debugger
+import dapper.core.debugger_bdb
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 
 # Enable frame evaluation before starting debugger
 bridge = DebuggerFrameEvalBridge()
-bridge.auto_integrate_debugger(dapper.debugger)
+bridge.auto_integrate_debugger(dapper.core.debugger_bdb)
 
 # Start debugging
 dapper.debugger.start()

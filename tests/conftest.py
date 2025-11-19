@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from dapper.dev_tools import JSTestsFailedError
-from dapper.dev_tools import run_js_tests
+from dapper.utils.dev_tools import JSTestsFailedError
+from dapper.utils.dev_tools import run_js_tests
 
 logger = logging.getLogger(__name__)
 

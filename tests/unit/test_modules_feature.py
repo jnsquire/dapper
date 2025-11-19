@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
 
 # Add the project root to the Python path
 project_root = str(Path(__file__).parent.parent.parent)

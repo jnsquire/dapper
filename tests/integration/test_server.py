@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.server import DebugAdapterServer
+from dapper.adapter.server import DebugAdapterServer
 from tests.mocks import MockConnection
 
 
@@ -59,7 +59,7 @@ def mock_connection():
 
 
 @pytest.mark.asyncio
-@patch("dapper.server.PyDebugger")
+@patch("dapper.adapter.server.PyDebugger")
 async def test_initialization_sequence(mock_debugger_class):
     """Test the initialization sequence"""
     # Setup mocked debugger
@@ -68,7 +68,7 @@ async def test_initialization_sequence(mock_debugger_class):
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
     # Create mock connection and server with patched debugger
-    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
         mock_connection = MockConnection()
         loop = asyncio.get_event_loop()
         server = DebugAdapterServer(mock_connection, loop)
@@ -130,7 +130,7 @@ async def test_initialization_sequence(mock_debugger_class):
 
 
 @pytest.mark.asyncio
-@patch("dapper.server.PyDebugger")
+@patch("dapper.adapter.server.PyDebugger")
 async def test_attach_request_routed(mock_debugger_class):
     """Attach should be routed to debugger.attach"""
     # Setup mocked debugger
@@ -139,7 +139,7 @@ async def test_attach_request_routed(mock_debugger_class):
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
     # Create server with patched debugger
-    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
         conn = MockConnection()
         server = DebugAdapterServer(conn, asyncio.get_event_loop())
 
@@ -178,7 +178,7 @@ async def test_attach_request_routed(mock_debugger_class):
 
 
 @pytest.mark.asyncio
-@patch("dapper.server.PyDebugger")
+@patch("dapper.adapter.server.PyDebugger")
 async def test_error_handling(mock_debugger_class):
     """Test error handling in server"""
     # Setup mocked debugger
@@ -187,7 +187,7 @@ async def test_error_handling(mock_debugger_class):
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
     # Create mock connection and server with patched debugger
-    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
         mock_connection = MockConnection()
         loop = asyncio.get_event_loop()
         server = DebugAdapterServer(mock_connection, loop)
@@ -259,7 +259,7 @@ async def test_sequence_numbers():
 
 
 @pytest.mark.asyncio
-@patch("dapper.server.PyDebugger")
+@patch("dapper.adapter.server.PyDebugger")
 async def test_modules_request(mock_debugger_class):
     """Test the modules request handler"""
     # Setup mocked debugger
@@ -281,7 +281,7 @@ async def test_modules_request(mock_debugger_class):
     mock_debugger.get_modules = AsyncCallRecorder(return_value=mock_modules)
 
     # Create mock connection and server with patched debugger
-    with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
         mock_connection = MockConnection()
         loop = asyncio.get_event_loop()
         server = DebugAdapterServer(mock_connection, loop)

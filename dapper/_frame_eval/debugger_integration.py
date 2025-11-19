@@ -38,8 +38,8 @@ from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.selective_tracer import update_breakpoints
 
 # Check module availability
-debugger_bdb_available = importlib.util.find_spec("dapper.debugger_bdb") is not None
-server_available = importlib.util.find_spec("dapper.server") is not None
+debugger_bdb_available = importlib.util.find_spec("dapper.core.debugger_bdb") is not None
+server_available = importlib.util.find_spec("dapper.adapter.server") is not None
 
 
 class FrameEvalConfig(TypedDict):
@@ -549,9 +549,9 @@ def patch_debugger_bdb_module() -> None:
             return
 
         # ruff: noqa: PLC0415 - Local import needed for conditional module loading
-        import dapper.debugger_bdb
+        import dapper.core.debugger_bdb
 
-        original_init = dapper.debugger_bdb.DebuggerBDB.__init__
+        original_init = dapper.core.debugger_bdb.DebuggerBDB.__init__
 
         def enhanced_init(self, *args, **kwargs):
             # Call original init
@@ -559,7 +559,7 @@ def patch_debugger_bdb_module() -> None:
             # Auto-integrate frame evaluation
             integrate_debugger_bdb(self)
 
-        dapper.debugger_bdb.DebuggerBDB.__init__ = enhanced_init
+        dapper.core.debugger_bdb.DebuggerBDB.__init__ = enhanced_init
 
     except Exception:
         # Silently fail if module not available
@@ -573,9 +573,9 @@ def patch_py_debugger_module() -> None:
             return
 
         # ruff: noqa: PLC0415 - Local import needed for conditional module loading
-        import dapper.server
+        import dapper.adapter.server
 
-        original_init = dapper.server.PyDebugger.__init__
+        original_init = dapper.adapter.server.PyDebugger.__init__
 
         def enhanced_init(self, *args, **kwargs):
             # Call original init

@@ -12,7 +12,7 @@ import os
 import socket
 from multiprocessing import connection as _mpc
 
-from dapper.debug_adapter_comm import state
+from dapper.shared.debug_shared import state
 
 
 class PipeIO(io.TextIOBase):

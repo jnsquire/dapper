@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from dapper.ipc_binary import pack_frame
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
+from dapper.ipc.ipc_binary import pack_frame
 
 
 class _CapturingServer:

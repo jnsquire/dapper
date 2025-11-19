@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from dapper.dap_command_handlers import handle_loaded_sources
-from dapper.dap_command_handlers import handle_source
-from dapper.debug_shared import state
+from dapper.adapter.dap_command_handlers import handle_loaded_sources
+from dapper.adapter.dap_command_handlers import handle_source
+from dapper.shared.debug_shared import state
 
 
 def _call_loaded_sources_and_find_ref() -> tuple[int, str]:

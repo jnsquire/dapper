@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from dapper.debug_launcher import _format_log_message
-from dapper.debugger_bdb import DebuggerBDB
-from dapper.server import DebugAdapterServer
+from dapper.adapter.server import DebugAdapterServer
+from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.launcher.debug_launcher import _format_log_message
 
 from .test_server import AsyncCallRecorder
 from .test_server import MockConnection
@@ -133,7 +133,7 @@ class TestLogPointsIntegration(unittest.TestCase):
             # Restore original function if we mocked it
             pass
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_basic_log_point_execution(self, mock_send_debug_message):
         """Test that log points output messages and continue execution"""
         # Create a temporary Python file
@@ -184,7 +184,7 @@ print("Done")
             # Clean up temp file
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_log_point_with_condition(self, mock_send_debug_message):
         """Test log points with conditions"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -228,7 +228,7 @@ for i in range(5):
         finally:
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_log_point_with_hit_condition(self, mock_send_debug_message):
         """Test log points with hit conditions"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -273,7 +273,7 @@ for i in range(10):
         finally:
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_log_point_expression_error_handling(self, mock_send_debug_message):
         """Test log points handle expression errors gracefully"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -320,7 +320,7 @@ class TestFunctionLogPoints(unittest.TestCase):
         """Set up debugger for function breakpoint tests"""
         self.debugger = DebuggerBDB()
 
-    @patch("dapper.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.debug_launcher.send_debug_message")
     def test_function_log_point(self, mock_send_debug_message):
         """Test log points on function breakpoints"""
         # Set up function breakpoint with log message
@@ -355,7 +355,7 @@ class TestFunctionLogPoints(unittest.TestCase):
 @pytest.mark.asyncio
 async def test_log_points_server_integration():
     """Test log points through the server DAP interface"""
-    with patch("dapper.server.PyDebugger") as mock_debugger_class:
+    with patch("dapper.adapter.server.PyDebugger") as mock_debugger_class:
         # Setup mocked debugger
         mock_debugger = mock_debugger_class.return_value
         mock_debugger.launch = AsyncCallRecorder(return_value=None)
@@ -365,7 +365,7 @@ async def test_log_points_server_integration():
         )
 
         # Create server with patched debugger
-        with patch("dapper.server.PyDebugger", return_value=mock_debugger):
+        with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
             mock_connection = MockConnection()
             loop = asyncio.get_event_loop()
             server = DebugAdapterServer(mock_connection, loop)

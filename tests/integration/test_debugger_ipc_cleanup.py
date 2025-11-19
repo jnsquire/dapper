@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from dapper.server import PyDebugger
+from dapper.adapter.server import PyDebugger
 
 if TYPE_CHECKING:
     from pathlib import Path

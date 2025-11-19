@@ -17,16 +17,16 @@ from typing import Callable
 from typing import TypedDict
 from typing import cast
 
-from dapper.debugger_bdb import DebuggerBDB
-from dapper.events import EventEmitter
-from dapper.ipc_binary import pack_frame  # lightweight util
+from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.ipc.ipc_binary import pack_frame  # lightweight util
+from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
     import io
     from typing import Protocol
 
-    from dapper.debugger_protocol import DebuggerLike
-    from dapper.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import DebuggerLike
+    from dapper.protocol.debugger_protocol import Variable
 
     class CommandProvider(Protocol):
         def can_handle(self, command: str) -> bool: ...
@@ -159,7 +159,7 @@ class SessionState:
 
         try:
             # Defer import to avoid circular import at module import time
-            from dapper.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
+            from dapper.adapter.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
 
             command_thread = threading.Thread(
                 target=receive_debug_commands, daemon=True, name="dapper-recv-cmd"

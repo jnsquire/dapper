@@ -1,8 +1,8 @@
 import asyncio
 import unittest
 
-from dapper.server import PyDebugger
-from dapper.server import PyDebuggerThread
+from dapper.adapter.server import PyDebugger
+from dapper.adapter.server import PyDebuggerThread
 
 from .test_debugger_base import BaseDebuggerTest
 

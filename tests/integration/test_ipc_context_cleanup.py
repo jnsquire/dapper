@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from dapper.ipc_context import IPCContext
+from dapper.ipc.ipc_context import IPCContext
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from pathlib import Path
