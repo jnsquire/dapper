@@ -3,8 +3,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const vscode = await import('vscode');
 vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => undefined, update: () => Promise.resolve() });
 
-// Import the compiled JS DapperWebview from out which already contains the .js extensions
-const { DapperWebview } = await import('../out/src/webview/DapperWebview.js');
+// Import the source DapperWebview directly
+const { DapperWebview } = await import('../src/webview/DapperWebview.ts');
 
 describe('DapperWebview message handlers', () => {
   beforeEach(() => {

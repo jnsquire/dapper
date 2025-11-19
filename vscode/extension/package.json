@@ -228,7 +228,6 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {},
   "optionalDependencies": {
     "@vscode/debugadapter": "^1.54.0"
   },
@@ -239,18 +238,18 @@
     "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "@vscode/vsce": "^3.7.0",
+    "@vscode-elements/elements": "^2.3.1",
     "@vscode/debugprotocol": "^1.68.0",
+    "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.25.12",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-sass-plugin": "^3.3.1",
-    "@vscode-elements/elements": "^2.3.1",
+    "eslint": "^8.56.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "eslint": "^8.56.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.0",
-    "vitest": "^1.5.5",
+    "vitest": "^4.0.10",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4"
   }

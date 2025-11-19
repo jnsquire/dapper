@@ -48,23 +48,38 @@ uv run python --version
 ```bash
 # Run all tests
 uv run pytest
-
-# Run specific test file
-uv run pytest tests/test_debugger_launch.py
-
-# Run with coverage
-uv run pytest --cov=dapper --cov-report=html
 ```
 
-**Using traditional Python (if uv is not available):**
-```bash
-# Install dependencies manually
-pip install -e .
-pip install pytest pytest-asyncio pytest-cov
+## VS Code Extension Development
 
-# Run tests
-pytest
-```
+The VS Code extension source code is located in `vscode/extension`. This is a separate npm project that needs to be built before running the Python unit tests.
+
+### Setup
+
+1. **Navigate to the extension directory:**
+   ```bash
+   cd vscode/extension
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Build the extension:**
+   ```bash
+   npm run build
+   ```
+
+   Or for development with auto-rebuild:
+   ```bash
+   npm run watch
+   ```
+
+### Running the Extension
+
+1. Open the `vscode/extension` folder in VS Code.
+2. Press `F5` to launch the Extension Development Host.
 
 ### Building the Package
 

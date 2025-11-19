@@ -429,6 +429,12 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
     name = arguments.get("name")
     value = arguments.get("value")
 
+    if not isinstance(name, str) or not isinstance(value, str):
+        return {
+            "success": False,
+            "message": "Invalid arguments: name and value must be strings",
+        }
+
     if dbg and isinstance(var_ref, int) and var_ref in dbg.var_refs:
         frame_info = dbg.var_refs[var_ref]
 
@@ -449,7 +455,7 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
                 scope: str = second
                 frame = dbg.frame_id_to_frame.get(frame_id)
                 if frame:
-                    return _set_scope_variable(frame, scope, cast("Any", name), cast("Any", value))
+                    return _set_scope_variable(frame, scope, name, value)
 
     # Invalid variable reference
     return {
@@ -458,7 +464,7 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
     }
 
 
-def _set_scope_variable(frame, scope: str, name: Any, value: Any):
+def _set_scope_variable(frame: Any, scope: str, name: str, value: str) -> dict[str, Any]:
     """Set a variable in a frame scope (locals or globals)"""
     try:
         # Enhanced value conversion with frame context
@@ -513,7 +519,7 @@ def _set_scope_variable(frame, scope: str, name: Any, value: Any):
         }
 
 
-def _set_object_member(parent_obj, name, value):
+def _set_object_member(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
     """Set an attribute or item of an object using a consolidated dispatch and single error path."""
     try:
         new_value = _convert_value_with_context(value, None, parent_obj)

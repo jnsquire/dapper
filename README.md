@@ -54,7 +54,19 @@ uv sync
 uv run pytest
 ```
 
-> **Note:** For detailed development setup instructions including uv usage, testing, and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
+### VS Code Extension
+
+The repository includes a VS Code extension in `vscode/extension`. This is a complete npm project that requires separate setup:
+
+```bash
+cd vscode/extension
+npm install
+npm run build
+```
+
+See [DEVELOPMENT.md](doc/DEVELOPMENT.md#vs-code-extension-development) for full details.
+
+> **Note:** For detailed development setup instructions including uv usage, testing, and troubleshooting, see [DEVELOPMENT.md](doc/DEVELOPMENT.md).
 
 ## Usage
 
