@@ -14,10 +14,10 @@ import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from dapper.launcher.debug_launcher import _convert_value_with_context
-from dapper.launcher.debug_launcher import _set_object_member
-from dapper.launcher.debug_launcher import _set_scope_variable
-from dapper.launcher.debug_launcher import handle_set_variable
+from dapper.launcher.handlers import _convert_value_with_context
+from dapper.launcher.handlers import _set_object_member
+from dapper.launcher.handlers import _set_scope_variable
+from dapper.launcher.handlers import handle_set_variable
 
 
 class TestEnhancedSetVariable(unittest.TestCase):

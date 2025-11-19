@@ -8,7 +8,6 @@ import contextlib
 import json
 import logging
 import sys
-from typing import Any
 
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.shared.debug_shared import state

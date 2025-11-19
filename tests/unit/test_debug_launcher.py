@@ -14,6 +14,7 @@ import pytest
 
 # Import the module to test
 from dapper.launcher import debug_launcher as dl
+from dapper.launcher import handlers
 from dapper.protocol.debugger_protocol import DebuggerLike
 from dapper.shared import debug_shared
 from dapper.shared.debug_shared import SessionState
@@ -127,7 +128,7 @@ class TestDebugLauncherBasic:
         request = {"type": "request", "command": "initialize", "seq": 1, "arguments": {}}
 
         # Call the function and get the response
-        response = dl.handle_initialize(dbg, request)
+        response = handlers.handle_initialize(dbg, request)
 
         # Verify the response structure
         assert isinstance(response, dict), "Response should be a dictionary"
@@ -160,7 +161,7 @@ class TestBreakpointHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.handlers.send_debug_message")
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
         """Test setting breakpoints."""
         # Setup
@@ -172,7 +173,7 @@ class TestBreakpointHandling:
         line1, line2 = 10, 20
 
         # Execute
-        response = dl.handle_set_breakpoints(
+        response = handlers.handle_set_breakpoints(
             dbg,
             {
                 "source": {"path": path},
@@ -218,7 +219,7 @@ class TestVariableHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.handlers.send_debug_message")
     def test_handle_variables(self, mock_send: MagicMock) -> None:
         """Test variable inspection."""
         # Setup
@@ -242,7 +243,7 @@ class TestVariableHandling:
         dbg.make_variable_object = mock_make_var
 
         # Import the debug_shared module to patch it
-        with patch("dapper.launcher.debug_launcher._d_shared") as mock_shared:
+        with patch("dapper.launcher.handlers._d_shared") as mock_shared:
             # Mock the make_variable_object from debug_shared
             mock_shared.make_variable_object.side_effect = mock_make_var
 
@@ -253,7 +254,7 @@ class TestVariableHandling:
             }
 
             # Execute
-            dl.handle_variables(dbg, args)
+            handlers.handle_variables(dbg, args)
 
             # Verify send_debug_message was called with the expected arguments
             assert mock_send.called, "send_debug_message was not called"
@@ -279,7 +280,7 @@ class TestVariableHandling:
 class TestExpressionEvaluation:
     """Tests for expression evaluation."""
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
+    @patch("dapper.launcher.handlers.send_debug_message")
     def test_handle_evaluate(self, mock_send: MagicMock) -> None:
         """Test expression evaluation."""
         # Setup
@@ -292,7 +293,7 @@ class TestExpressionEvaluation:
         args = {"expression": "x + y", "context": "watch"}
 
         # Execute
-        dl.handle_evaluate(dl.state.debugger, args)
+        handlers.handle_evaluate(dl.state.debugger, args)
 
         # Verify the expression was evaluated and result sent
         assert mock_send.called
@@ -320,7 +321,7 @@ class TestControlFlow:
         mock_dbg.stopped_thread_ids = {1}  # Simulate a stopped thread
 
         # Execute with matching thread ID
-        dl.handle_continue(mock_dbg, {"threadId": 1})
+        handlers.handle_continue(mock_dbg, {"threadId": 1})
 
         # Verify thread was removed from stopped_thread_ids and set_continue was called
         assert 1 not in mock_dbg.stopped_thread_ids
@@ -330,7 +331,7 @@ class TestControlFlow:
         mock_dbg.reset_mock()
         mock_dbg.stopped_thread_ids = {2}  # Different thread ID
 
-        dl.handle_continue(mock_dbg, {"threadId": 1})
+        handlers.handle_continue(mock_dbg, {"threadId": 1})
         mock_dbg.set_continue.assert_not_called()
 
     def test_handle_step_over(self) -> None:
@@ -341,11 +342,11 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            dl.handle_next(mock_dbg, {"threadId": 1})
+            handlers.handle_next(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_next was called
             assert mock_dbg.stepping is True
@@ -353,7 +354,7 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            dl.handle_next(mock_dbg, {"threadId": 2})
+            handlers.handle_next(mock_dbg, {"threadId": 2})
             mock_dbg.set_next.assert_not_called()
 
     def test_handle_step_in(self) -> None:
@@ -362,11 +363,11 @@ class TestControlFlow:
         mock_dbg = MagicMock(spec=DebuggerLike)
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            dl.handle_step_in(mock_dbg, {"threadId": 1})
+            handlers.handle_step_in(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_step was called
             assert mock_dbg.stepping is True
@@ -374,7 +375,7 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            dl.handle_step_in(mock_dbg, {"threadId": 2})
+            handlers.handle_step_in(mock_dbg, {"threadId": 2})
             mock_dbg.set_step.assert_not_called()
 
     def test_handle_step_out(self) -> None:
@@ -385,11 +386,11 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.launcher.debug_launcher.threading") as mock_threading:
+        with patch("dapper.launcher.handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            dl.handle_step_out(mock_dbg, {"threadId": 1})
+            handlers.handle_step_out(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_return was called
             assert mock_dbg.stepping is True
@@ -397,7 +398,7 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            dl.handle_step_out(mock_dbg, {"threadId": 2})
+            handlers.handle_step_out(mock_dbg, {"threadId": 2})
             mock_dbg.set_return.assert_not_called()
 
 
@@ -407,7 +408,7 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_empty(self):
         """Test with empty filters list."""
         mock_dbg = MagicMock()
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": []})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": []})
 
         assert response is not None
         assert response["success"] is True
@@ -420,7 +421,7 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_raised(self):
         """Test with 'raised' filter."""
         mock_dbg = MagicMock()
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
 
         assert response is not None
         assert response["success"] is True
@@ -434,7 +435,7 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_uncaught(self):
         """Test with 'uncaught' filter."""
         mock_dbg = MagicMock()
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": ["uncaught"]})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["uncaught"]})
 
         assert response is not None
         assert response["success"] is True
@@ -448,7 +449,7 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_both_filters(self):
         """Test with both 'raised' and 'uncaught' filters."""
         mock_dbg = MagicMock()
-        response = dl.handle_set_exception_breakpoints(
+        response = handlers.handle_set_exception_breakpoints(
             mock_dbg, {"filters": ["raised", "uncaught"]}
         )
 
@@ -466,12 +467,12 @@ class TestExceptionBreakpoints:
         mock_dbg = MagicMock()
 
         # Test with non-list filters
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": "invalid"})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": "invalid"})
         assert response is not None
         assert response["body"]["breakpoints"] == []
 
         # Test with non-string elements
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": [123, None]})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": [123, None]})
         assert response is not None
         assert len(response["body"]["breakpoints"]) == 2
         assert all(bp["verified"] for bp in response["body"]["breakpoints"])
@@ -488,7 +489,7 @@ class TestExceptionBreakpoints:
         type(mock_dbg).exception_breakpoints_raised = PropertyMock(side_effect=raise_on_set_raised)
 
         # The debugger should still be called with the filter
-        response = dl.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
+        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
 
         assert response is not None
         # The response should still be successful
@@ -503,18 +504,18 @@ class TestUtilityFunctions:
     def test_convert_string_to_value(self):
         """Test string to value conversion."""
         # Test that the internal _convert_string_to_value function is called
-        with patch("dapper.launcher.debug_launcher._convert_string_to_value") as mock_convert:
+        with patch("dapper.launcher.handlers._convert_string_to_value") as mock_convert:
             mock_convert.return_value = 42
-            result = dl._convert_string_to_value("42")
+            result = handlers._convert_string_to_value("42")
             mock_convert.assert_called_once_with("42")
             assert result == 42
 
     def test_evaluate_hit_condition(self):
         """Test hit condition evaluation."""
         # Test that the internal _evaluate_hit_condition function is called
-        with patch("dapper.launcher.debug_launcher._evaluate_hit_condition") as mock_eval:
+        with patch("dapper.launcher.handlers._evaluate_hit_condition") as mock_eval:
             mock_eval.return_value = True
-            result = dl._evaluate_hit_condition("5", 1)
+            result = handlers._evaluate_hit_condition("5", 1)
             mock_eval.assert_called_once_with("5", 1)
             assert result is True
 

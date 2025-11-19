@@ -26,7 +26,6 @@ from dapper.launcher.comm import send_debug_message
 from dapper.launcher.handlers import handle_debug_command
 from dapper.shared.debug_shared import state
 
-
 """
 Debug launcher entry point. Delegates to split modules.
 """

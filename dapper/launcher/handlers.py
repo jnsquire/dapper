@@ -5,17 +5,17 @@ Debug command handlers for the launcher.
 from __future__ import annotations
 
 import ast
+import sys
 import threading
 import traceback
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.launcher.comm import send_debug_message
 from dapper.shared import debug_shared as _d_shared
 from dapper.shared.debug_shared import state
-from dapper.launcher.comm import send_debug_message
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import DebuggerLike

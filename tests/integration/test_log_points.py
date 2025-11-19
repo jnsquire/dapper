@@ -19,7 +19,7 @@ import pytest
 
 from dapper.adapter.server import DebugAdapterServer
 from dapper.core.debugger_bdb import DebuggerBDB
-from dapper.launcher.debug_launcher import _format_log_message
+from dapper.launcher.handlers import _format_log_message
 
 from .test_server import AsyncCallRecorder
 from .test_server import MockConnection
