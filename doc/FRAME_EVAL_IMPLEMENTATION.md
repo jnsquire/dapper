@@ -56,7 +56,6 @@ dapper/
 │   ├── __init__.py
 │   ├── frame_eval_main.py          # Main entry point and configuration
 │   ├── frame_evaluator.pyx         # Core Cython implementation
-│   ├── frame_eval_cython_wrapper.pyx  # Python/Cython interface
 │   ├── frame_tracing.py            # Tracing utilities
 │   └── modify_bytecode.py          # Bytecode manipulation
 ```

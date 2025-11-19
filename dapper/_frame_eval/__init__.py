@@ -38,15 +38,15 @@ _cython_unmark_pydevd: CythonFuncType | None = None
 # and ensure thread safety. The imports are wrapped in a try/except
 # to handle cases where the Cython extensions are not available.
 try:
-    from dapper._frame_eval._cython_wrapper import (
-        enable_frame_eval as _cython_enable_frame_eval_func,
+    from dapper._frame_eval._frame_evaluator import (
+        frame_eval_func as _cython_enable_frame_eval_func,
     )
-    from dapper._frame_eval._cython_wrapper import get_frame_eval_stats as _cython_get_stats_func
-    from dapper._frame_eval._cython_wrapper import (
+    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats as _cython_get_stats_func
+    from dapper._frame_eval._frame_evaluator import (
         mark_thread_as_pydevd as _cython_mark_pydevd_func,
     )
-    from dapper._frame_eval._cython_wrapper import set_thread_skip_all as _cython_set_skip_all_func
-    from dapper._frame_eval._cython_wrapper import (
+    from dapper._frame_eval._frame_evaluator import set_thread_skip_all as _cython_set_skip_all_func
+    from dapper._frame_eval._frame_evaluator import (
         unmark_thread_as_pydevd as _cython_unmark_pydevd_func,
     )
 
@@ -87,8 +87,7 @@ class FrameEvalState:
         Returns:
             bool: True if Cython imports are available, False otherwise.
         """
-        if not hasattr(self, "_cython_imported"):
-            self._cython_imported = CYTHON_AVAILABLE
+        self._cython_imported = CYTHON_AVAILABLE
         return self._cython_imported
 
     def check_environment_compatibility(self):

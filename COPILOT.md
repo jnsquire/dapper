@@ -1,5 +1,7 @@
 # Dapper AI - GitHub Copilot Instructions
 
+> **CRITICAL INSTRUCTION**: This project uses `uv` for all dependency management and task execution. Always use `uv run` to execute python scripts, tests, or tools. Do not use `pip` or `python` directly unless specifically instructing the user on how to install `uv` itself.
+
 ## Project Overview
 Debug Adapter Protocol (DAP) implementation for Python debugging. Core components:
 - `dapper/debugger.py` - Main debugger with subprocess integration
@@ -19,6 +21,7 @@ uv sync
 
 # Activate environment
 uv run python --version
+```
 
 # Dapper — Copilot guidance (concise)
 

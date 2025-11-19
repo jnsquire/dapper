@@ -47,8 +47,11 @@ For development:
 # Install uv, the Rust-based Python package installer and resolver
 pip install uv
 
-# Install for development
-uv pip install -e ".[dev]"
+# Install dependencies and sync environment
+uv sync
+
+# Run tests
+uv run pytest
 ```
 
 > **Note:** For detailed development setup instructions including uv usage, testing, and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).

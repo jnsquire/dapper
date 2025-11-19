@@ -101,9 +101,7 @@ dapper/
 ├── _frame_eval/
 │   ├── __init__.py              # Python interface
 │   ├── _frame_evaluator.pyx     # Core Cython implementation
-│   ├── _cython_wrapper.pyx      # Python/Cython interface
 │   ├── _frame_evaluator.c       # Generated C code (build output)
-│   ├── _cython_wrapper.c        # Generated C code (build output)
 │   └── _frame_evaluator.html    # Annotation file (dev build)
 └── ...
 ```

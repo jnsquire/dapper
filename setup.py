@@ -58,15 +58,6 @@ def get_frame_eval_extensions():
     )
     extensions.append(frame_evaluator_ext)
 
-    # Cython wrapper
-    wrapper_ext = Extension(
-        "dapper._frame_eval._cython_wrapper",
-        sources=[str(Path("dapper") / "_frame_eval" / "_cython_wrapper.pyx")],
-        include_dirs=[str(base_dir / "dapper" / "_frame_eval")],
-        extra_compile_args=["-O3"] if sys.platform != "win32" else ["/O2"],
-    )
-    extensions.append(wrapper_ext)
-
     return extensions
 
 
@@ -99,8 +90,7 @@ def get_extensions():
 
 
 # Determine if we should include frame evaluation
-# For build, we'll skip frame evaluation to avoid Cython compilation issues
-include_frame_eval = False
+include_frame_eval = CYTHON_AVAILABLE
 
 
 # Custom Distribution class to force platform-specific wheels
@@ -120,6 +110,7 @@ setup_kwargs = {
     "author": "Joel Squire",
     "author_email": "joel@squire.org",
     "packages": find_packages(),
+    "include_package_data": True,
     "install_requires": [
         "pyright>=1.1.405",
     ],
