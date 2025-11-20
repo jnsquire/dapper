@@ -79,8 +79,7 @@ async function buildExtension() {
            const __filename = fileURLToPath(import.meta.url);
            const __dirname = dirname(__filename);`
     },
-    // Ensure proper file extensions in imports
-    outExtension: { '.js': '.mjs' },
+    // Use default '.js' extensions for Node build (vsce expects .js)
   });
 }
 

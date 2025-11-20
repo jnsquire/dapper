@@ -8,10 +8,10 @@ import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js'
 function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
   // Show Debug Panel Command
-  yield vscode.commands.registerCommand('dapper.showDebugPanel', () => {
+  yield vscode.commands.registerCommand('dapper.showDebugPanel', async () => {
     logger.log('Executing command: dapper.showDebugPanel');
     try {
-      DapperWebview.createOrShow(context.extensionUri);
+      await DapperWebview.createOrShow(context.extensionUri);
       logger.log('Debug panel opened successfully');
     } catch (error) {
       logger.error('Failed to open debug panel', error as Error);
@@ -20,8 +20,8 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
   });
 
   // Show Variable Inspector Command
-  yield vscode.commands.registerCommand('dapper.showVariableInspector', () => {
-    DapperWebview.createOrShow(context.extensionUri);
+  yield vscode.commands.registerCommand('dapper.showVariableInspector', async () => {
+    await DapperWebview.createOrShow(context.extensionUri);
     vscode.window.showInformationMessage('Variable inspector is now active');
   });
 
@@ -66,7 +66,7 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
       }
 
       // Create or show the webview with configuration
-      DapperWebview.createOrShow(context.extensionUri, 'config');
+      await DapperWebview.createOrShow(context.extensionUri, 'config');
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to open settings: ${error}`);
     }
@@ -95,7 +95,7 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
       const position = new vscode.Position(line - 1, 0);
       const range = new vscode.Range(position, position);
       
-      const existingBreakpoints = vscode.debug.breakpoints.filter(bp => {
+      const existingBreakpoints = vscode.debug.breakpoints.filter((bp: vscode.Breakpoint) => {
         const bpLocation = (bp as vscode.SourceBreakpoint).location;
         return bpLocation && 
                bpLocation.uri.toString() === uri.toString() && 
@@ -169,6 +169,45 @@ function* registerWebview(context: vscode.ExtensionContext): Iterable<vscode.Dis
   }
 }
 
+/**
+ * Register all extension disposables and return a single composite Disposable.
+ * This aggregates the commands, debug adapters, webview handlers and logger
+ * cleanup into one `vscode.Disposable` so the extension host can clean up
+ * the entire registration easily.
+ */
+export function register(context: vscode.ExtensionContext): vscode.Disposable {
+  // Collect all disposables that would normally be pushed to context.subscriptions
+  const allDisposables: vscode.Disposable[] = [];
+
+  // Logger commands (returns a Disposable)
+  const loggerCommandDisposable = registerLoggerCommands(context);
+  allDisposables.push(loggerCommandDisposable);
+
+  // Commands
+  const commandDisposables = Array.from(registerCommands(context));
+  allDisposables.push(...commandDisposables);
+
+  // Debug Adapters
+  const debugDisposables = Array.from(registerDebugAdapters(context));
+  allDisposables.push(...debugDisposables);
+
+  // Webview serializers / handlers
+  const webviewDisposables = Array.from(registerWebview(context));
+  allDisposables.push(...webviewDisposables);
+
+  // Add a cleanup disposable (equivalent of the inline object previously pushed)
+  const cleanupDisposable = new vscode.Disposable(() => {
+    logger.log('Dapper Debugger extension is deactivating...');
+    const subscriptionCount = context.subscriptions.length;
+    logger.log(`Cleaning up ${subscriptionCount} subscriptions...`);
+    logger.dispose();
+  });
+  allDisposables.push(cleanupDisposable);
+
+  // Return a single composite disposable that encapsulates all the pieces
+  return vscode.Disposable.from(...allDisposables);
+}
+
 export function activate(context: vscode.ExtensionContext) {
   logger.log('Dapper Debugger extension is activating...');
   logger.log(`Extension version: ${context.extension.packageJSON.version}`);
@@ -182,37 +221,11 @@ export function activate(context: vscode.ExtensionContext) {
   try {
     logger.debug('Starting extension initialization...');
     
-    // Register logger commands
-    logger.debug('Registering logger commands...');
-    registerLoggerCommands(context);
-    
-    // Register all commands
-    logger.debug('Registering extension commands...');
-    const commandDisposables = Array.from(registerCommands(context));
-    commandDisposables.forEach(disposable => context.subscriptions.push(disposable));
-    logger.log(`Registered ${commandDisposables.length} command handlers`);
-
-    // Register debug adapters
-    logger.debug('Registering debug adapters...');
-    const debugDisposables = Array.from(registerDebugAdapters(context));
-    debugDisposables.forEach(disposable => context.subscriptions.push(disposable));
-    logger.log(`Registered ${debugDisposables.length} debug adapters`);
-
-    // Register webview
-    logger.debug('Registering webview...');
-    const webviewDisposables = Array.from(registerWebview(context));
-    webviewDisposables.forEach(disposable => context.subscriptions.push(disposable));
-    logger.log(`Registered ${webviewDisposables.length} webview handlers`);
-
-    // Register logger for cleanup
-    context.subscriptions.push({
-      dispose: () => {
-        logger.log('Dapper Debugger extension is deactivating...');
-        const subscriptionCount = context.subscriptions.length;
-        logger.log(`Cleaning up ${subscriptionCount} subscriptions...`);
-        logger.dispose();
-      }
-    });
+    // Register everything and put the composite disposable into context.subscriptions
+    logger.debug('Registering extension components...');
+    const mainDisposable = register(context);
+    context.subscriptions.push(mainDisposable);
+    logger.log('Extension components registered');
 
     // Show the output channel on first activation in development
     const isDevelopment = context.extensionMode === vscode.ExtensionMode.Development;

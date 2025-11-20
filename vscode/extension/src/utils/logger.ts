@@ -21,7 +21,7 @@ export class Logger {
             Logger.logToConsole = config.get<boolean>('logToConsole', false);
             
             // Listen for configuration changes
-            vscode.workspace.onDidChangeConfiguration(e => {
+            vscode.workspace.onDidChangeConfiguration((e: vscode.ConfigurationChangeEvent) => {
                 if (e.affectsConfiguration('dapper.logLevel')) {
                     const newLevel = vscode.workspace.getConfiguration('dapper').get<string>('logLevel', 'info');
                     Logger.setLogLevel(newLevel);
@@ -133,9 +133,10 @@ export class Logger {
 export const logger = Logger.getInstance();
 
 // Register command to show logs
-export function registerLoggerCommands(context: vscode.ExtensionContext) {
+export function registerLoggerCommands(context: vscode.ExtensionContext): vscode.Disposable {
     const showLogsCommand = vscode.commands.registerCommand('dapper.showLogs', () => {
         logger.show();
     });
-    context.subscriptions.push(showLogsCommand);
+    // Return the disposable so callers can manage subscription lifecycle
+    return showLogsCommand;
 }

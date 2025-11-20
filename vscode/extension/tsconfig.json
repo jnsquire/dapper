@@ -13,7 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "resolveJsonModule": true,
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vscode", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
       "vscode": ["node_modules/@types/vscode"]

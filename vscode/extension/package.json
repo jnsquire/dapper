@@ -19,7 +19,10 @@
     "onCommand:dapper.showLogs"
   ],
   "type": "module",
-  "main": "./out/extension.mjs",
+  "readme": "README.md",
+  "changelog": "CHANGELOG.md",
+  "icon": "images/icon.png",
+  "main": "./out/extension.js",
   "contributes": {
     "configuration": {
       "title": "Dapper Debugger",
@@ -232,7 +235,7 @@
     "@vscode/debugadapter": "^1.54.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.25",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.99.0",
