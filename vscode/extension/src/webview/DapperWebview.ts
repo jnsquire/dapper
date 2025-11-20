@@ -25,10 +25,9 @@ export class DapperWebview {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-    this.setViewType('debug');
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, viewType: 'debug' | 'config' = 'debug') {
+  public static async createOrShow(extensionUri: vscode.Uri, viewType: 'debug' | 'config' = 'debug') {
     logger.debug(`Creating or showing ${viewType} webview`);
     
     const column = vscode.window.activeTextEditor
@@ -68,12 +67,12 @@ export class DapperWebview {
 
     logger.debug(`Initializing new ${viewType} webview instance`);
     DapperWebview.currentPanel = new DapperWebview(panel, extensionUri);
-    DapperWebview.currentPanel.setViewType(viewType);
+    await DapperWebview.currentPanel.setViewType(viewType);
     logger.log(`Successfully created and initialized ${viewType} webview`);
     DapperWebview.currentPanel = DapperWebview.currentPanel;
   }
 
-  private setViewType(viewType: ViewType) {
+  private async setViewType(viewType: ViewType) {
     logger.debug(`Setting webview type to: ${viewType}`);
     this._viewType = viewType;
     
@@ -83,7 +82,7 @@ export class DapperWebview {
     logger.debug(`Updated webview title to: ${newTitle}`);
     
     // Load the appropriate view component
-    this.loadViewComponent(viewType);
+    await this.loadViewComponent(viewType);
   }
 
   private async loadViewComponent(viewType: ViewType) {
@@ -95,13 +94,9 @@ export class DapperWebview {
       
       switch (viewType) {
         case 'config':
+        default:
           logger.debug('Creating config view component');
           component = await this.createConfigView();
-          break;
-        case 'debug':
-        default:
-          logger.debug('Creating debug view component');
-          component = await this.createDebugView();
           break;
       }
       
@@ -124,42 +119,6 @@ export class DapperWebview {
     }
   }
 
-  private async createDebugView(): Promise<ViewComponent> {
-    // In a real implementation, you would import the actual component
-    return {
-      render: () => `
-        <html>
-          <head>
-            <title>Dapper Debugger</title>
-            <script type="module" src="${this.getWebviewUri('debug.js')}"></script>
-          </head>
-          <body>
-            <div id="root"></div>
-          </body>
-        </html>`,
-      setupMessageHandlers: (panel: vscode.WebviewPanel) => {
-        // Setup debug view message handlers
-        panel.webview.onDidReceiveMessage(
-          (message) => {
-            switch (message.command) {
-              case 'startDebugging':
-                vscode.commands.executeCommand('dapper.startDebugging');
-                break;
-              case 'setBreakpoint':
-                vscode.commands.executeCommand('dapper.toggleBreakpoint', message.file, message.line);
-                break;
-              case 'inspectVariable':
-                vscode.commands.executeCommand('dapper.inspectVariable', message.variableName);
-                break;
-            }
-          },
-          null,
-          this._disposables
-        );
-      }
-    };
-  }
-
   private async createConfigView(): Promise<ViewComponent> {
     // In a real implementation, you would import the actual component
     return {
@@ -176,53 +135,47 @@ export class DapperWebview {
       setupMessageHandlers: (panel: vscode.WebviewPanel) => {
         // Setup config view message handlers
         panel.webview.onDidReceiveMessage(
-          (message) => {
+          async (message) => {
             switch (message.command) {
               case 'saveConfig':
                 // Handle config save
-                vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
+                await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
                 vscode.window.showInformationMessage('Configuration saved');
                 break;
               case 'requestConfig':
                 // Respond with the saved configuration or default
-                (async () => {
-                  try {
-                    const saved = vscode.workspace.getConfiguration('dapper').get('debug');
-                    panel.webview.postMessage({ command: 'updateConfig', config: saved || {} });
-                  } catch (err) {
-                    logger.error('Failed to read saved configuration', err as Error);
-                    panel.webview.postMessage({ command: 'updateConfig', config: {} });
-                  }
-                })();
+                try {
+                  const saved = vscode.workspace.getConfiguration('dapper').get('debug');
+                  panel.webview.postMessage({ command: 'updateConfig', config: saved || {} });
+                } catch (err) {
+                  logger.error('Failed to read saved configuration', err as Error);
+                  panel.webview.postMessage({ command: 'updateConfig', config: {} });
+                }
                 break;
               case 'saveAndInsert':
-                (async () => {
-                  try {
-                    await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
-                    // Insert into launch.json
-                    const ok = await insertLaunchConfiguration(message.config as any);
-                    if (ok) {
-                      vscode.window.showInformationMessage('Configuration inserted into launch.json');
-                      panel.webview.postMessage({ command: 'updateStatus', text: 'Configuration inserted into launch.json' });
-                    } else {
-                      panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
-                    }
-                  } catch (err) {
-                    logger.error('Failed to save and insert configuration', err as Error);
-                    vscode.window.showErrorMessage('Failed to save and insert configuration');
+                try {
+                  await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
+                  // Insert into launch.json
+                  const ok = await insertLaunchConfiguration(message.config as any);
+                  if (ok) {
+                    vscode.window.showInformationMessage('Configuration inserted into launch.json');
+                    panel.webview.postMessage({ command: 'updateStatus', text: 'Configuration inserted into launch.json' });
+                  } else {
                     panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
                   }
-                })();
+                } catch (err) {
+                  logger.error('Failed to save and insert configuration', err as Error);
+                  vscode.window.showErrorMessage('Failed to save and insert configuration');
+                  panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
+                }
                 break;
               case 'startDebug':
-                (async () => {
-                  try {
-                    await vscode.debug.startDebugging(undefined, message.config);
-                  } catch (err) {
-                    logger.error('Failed to start debug session from webview', err as Error);
-                    vscode.window.showErrorMessage('Failed to start debugging');
-                  }
-                })();
+                try {
+                  await vscode.debug.startDebugging(undefined, message.config);
+                } catch (err) {
+                  logger.error('Failed to start debug session from webview', err as Error);
+                  vscode.window.showErrorMessage('Failed to start debugging');
+                }
                 break;
               case 'cancelConfig':
                 // Close the webview

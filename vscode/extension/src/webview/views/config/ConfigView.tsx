@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { ConfigProvider, useConfig } from '../../contexts/ConfigContext.js';
 import { DebugConfiguration } from '../../types/debug.js';
 import { useWebComponentEvents } from '../../hooks/useWebComponentEvents.js';
@@ -38,23 +38,55 @@ interface ConfigViewProps {
   isSubProcess?: boolean;
 }
 
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
 const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSave, onCancel, isSubProcess = false }) => {
   const { config, updateConfig, validate } = useConfig();
   const [localErrors, setLocalErrors] = useState<Record<string, string[]>>({});
   const [status, setStatus] = useState<string | null>(null);
+
+  // Local state for lists to maintain stable IDs and focus
+  const [argsList, setArgsList] = useState<{ id: string, value: string }[]>([]);
+  const [envList, setEnvList] = useState<{ id: string, key: string, value: string }[]>([]);
 
   // Handlers from the hook to wire webcomponent events to config updates
   const { createInputHandler, createCheckboxHandler } = useWebComponentEvents<DebugConfiguration>(
     (field, value) => updateConfig({ [field]: value } as Partial<DebugConfiguration>)
   );
 
+  const initialConfigApplied = useRef(false);
   useEffect(() => {
-    if (initialConfig && Object.keys(initialConfig).length > 0) {
+    if (!initialConfigApplied.current && initialConfig && Object.keys(initialConfig).length > 0) {
       updateConfig(initialConfig as Partial<DebugConfiguration>);
+      initialConfigApplied.current = true;
     }
     // Request config from host in case it's provided asynchronously
     if (vscode) vscode.postMessage({ command: 'requestConfig' });
   }, [initialConfig, updateConfig]);
+
+  // Sync Config -> Local State (Args)
+  useEffect(() => {
+    const currentConfigArgs = config?.args || [];
+    const currentLocalArgs = argsList.map(a => a.value);
+    if (JSON.stringify(currentConfigArgs) !== JSON.stringify(currentLocalArgs)) {
+      setArgsList(currentConfigArgs.map(a => ({ id: generateId(), value: a })));
+    }
+  }, [config?.args]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync Config -> Local State (Env)
+  useEffect(() => {
+    const currentConfigEnv = config?.env || {};
+    const currentLocalEnvObj = envList.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
+    
+    const configKeys = Object.keys(currentConfigEnv).sort();
+    const localKeys = Object.keys(currentLocalEnvObj).sort();
+    const keysMatch = JSON.stringify(configKeys) === JSON.stringify(localKeys);
+    const valuesMatch = keysMatch && configKeys.every(k => currentConfigEnv[k] === currentLocalEnvObj[k]);
+
+    if (!valuesMatch) {
+      setEnvList(Object.entries(currentConfigEnv).map(([k, v]) => ({ id: generateId(), key: k, value: v as string })));
+    }
+  }, [config?.env]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const { valid, errors } = validate();
@@ -131,6 +163,20 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     };
   };
 
+  const updateArgs = (newList: { id: string, value: string }[]) => {
+    setArgsList(newList);
+    updateConfig({ args: newList.map(a => a.value) });
+  };
+
+  const updateEnv = (newList: { id: string, key: string, value: string }[]) => {
+    setEnvList(newList);
+    const newEnv = newList.reduce((acc, curr) => {
+      if (curr.key) acc[curr.key] = curr.value;
+      return acc;
+    }, {} as Record<string, string>);
+    updateConfig({ env: newEnv });
+  };
+
   return (
     <div className="config-view">
       {status && <div className="status">{status}</div>}
@@ -150,57 +196,57 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
 
           <vscode-form-group>
             <vscode-label>Arguments</vscode-label>
-            {(Array.isArray(config?.args) ? config!.args! : []).map((arg, idx) => (
-              <div key={idx} className="form-row">
+            {argsList.map((arg, idx) => (
+              <div key={arg.id} className="form-row">
                 <vscode-textfield
-                  value={String(arg)}
+                  value={arg.value}
                   onInput={(e: any) => {
                     const v = (e.target as HTMLInputElement).value;
-                    const next = [...(config?.args || [])];
-                    next[idx] = v;
-                    updateConfig({ args: next });
+                    const next = [...argsList];
+                    next[idx] = { ...next[idx], value: v };
+                    updateArgs(next);
                   }}
                 />
                 <vscode-button
                   {...({ appearance: 'icon' } as any)}
-                  onClick={() => updateConfig({ args: (config?.args || []).filter((_, i) => i !== idx) })}
+                  onClick={() => updateArgs(argsList.filter((_, i) => i !== idx))}
                 >
                   <span slot="start" className="codicon codicon-remove" />
                 </vscode-button>
               </div>
             ))}
-            <vscode-button icon="add" secondary onClick={() => updateConfig({ args: [...(config?.args || []), ''] })}>Add Argument</vscode-button>
+            <vscode-button icon="add" secondary onClick={() => updateArgs([...argsList, { id: generateId(), value: '' }])}>Add Argument</vscode-button>
           </vscode-form-group>
 
           <vscode-form-group>
             <vscode-label>Environment Variables</vscode-label>
-            {Object.entries(config?.env || {}).map(([k, v]) => (
-              <div key={k} className="form-row">
+            {envList.map((entry, idx) => (
+              <div key={entry.id} className="form-row">
                 <vscode-textfield
-                  value={k}
+                  value={entry.key}
                   onInput={(e: any) => {
-                    const newKey = (e.target as HTMLInputElement).value;
-                    const env = { ...(config?.env || {}) };
-                    delete env[k];
-                    env[newKey] = v;
-                    updateConfig({ env });
+                    const v = (e.target as HTMLInputElement).value;
+                    const next = [...envList];
+                    next[idx] = { ...next[idx], key: v };
+                    updateEnv(next);
                   }}
                   placeholder="Name"
                 />
                 <vscode-textfield
-                  value={String(v)}
-                  onInput={(e: any) => updateConfig({ env: { ...(config?.env || {}), [k]: (e.target as HTMLInputElement).value } })}
+                  value={entry.value}
+                  onInput={(e: any) => {
+                    const v = (e.target as HTMLInputElement).value;
+                    const next = [...envList];
+                    next[idx] = { ...next[idx], value: v };
+                    updateEnv(next);
+                  }}
                   placeholder="Value"
                 />
-                <vscode-button icon="remove" onClick={() => {
-                  const newEnv = { ...(config?.env || {}) } as Record<string, string>;
-                  delete newEnv[k];
-                  updateConfig({ env: newEnv });
-                }}>
+                <vscode-button icon="remove" onClick={() => updateEnv(envList.filter((_, i) => i !== idx))}>
                 </vscode-button>
               </div>
             ))}
-            <vscode-button secondary onClick={() => updateConfig({ env: { ...(config?.env || {}), ['NEW_VAR_' + Date.now()]: '' } })}>
+            <vscode-button secondary onClick={() => updateEnv([...envList, { id: generateId(), key: 'NEW_VAR_' + Date.now(), value: '' }])}>
               <span slot="start" className="codicon codicon-add" />Add Environment Variable
             </vscode-button>
           </vscode-form-group>

@@ -30,6 +30,14 @@ export class DapperDebugSession extends LoggingDebugSession {
   private _configurationDone = false;
   private _isRunning = false;
   private _pythonSocket?: Net.Socket; // Connection to Python debug_launcher for IPC
+  private _buffer: Buffer = Buffer.alloc(0);
+  private _nextRequestId = 1;
+  private _pendingRequestsMap = new Map<number, (response: any) => void>();
+  private _eventWaiters: Array<{
+    event: string;
+    filter: (data: any) => boolean;
+    resolve: (data: any) => void;
+  }> = [];
 
   public constructor(pythonSocket?: Net.Socket) {
     super();
@@ -38,55 +46,157 @@ export class DapperDebugSession extends LoggingDebugSession {
     this.setDebuggerColumnsStartAt1(false);
   }
 
+  get configurationDone(): boolean {
+    return this._configurationDone;
+  }
+
+  get isRunning(): boolean {
+    return this._isRunning;
+  }
+
   public setPythonSocket(socket: Net.Socket): void {
     this._pythonSocket = socket;
     
     // Set up listener for incoming events from Python
     socket.on('data', (data: Buffer) => {
-      // Handle incoming data from Python debug_launcher
-      // This will be binary IPC messages that need to be parsed
       this.handlePythonMessage(data);
     });
   }
 
   private handlePythonMessage(data: Buffer): void {
-    // TODO: Parse and handle messages from Python
-    // These are custom protocol messages with DBGP: prefix
-    console.log('Received from Python:', data.toString());
+    this._buffer = Buffer.concat([this._buffer, data]);
+
+    while (true) {
+      if (this._buffer.length < 8) {
+        return; // Need more data for header
+      }
+
+      // Header: MAGIC(2) + VER(1) + KIND(1) + LEN(4)
+      // MAGIC = "DP" (0x44 0x50)
+      if (this._buffer[0] !== 0x44 || this._buffer[1] !== 0x50) {
+        console.error('Invalid magic bytes in IPC stream');
+        this._buffer = Buffer.alloc(0);
+        return;
+      }
+
+      const length = this._buffer.readUInt32BE(4);
+      if (this._buffer.length < 8 + length) {
+        return; // Need more data for payload
+      }
+
+      const payload = this._buffer.subarray(8, 8 + length);
+      this._buffer = this._buffer.subarray(8 + length);
+
+      try {
+        const message = JSON.parse(payload.toString('utf8'));
+        this.processPythonMessage(message);
+      } catch (e) {
+        console.error('Failed to parse Python message', e);
+      }
+    }
   }
 
-  private sendCommandToPython(command: any): void {
+  private processPythonMessage(message: any) {
+    // Handle responses to requests
+    if (message.event === 'response' && message.id) {
+      const resolve = this._pendingRequestsMap.get(message.id);
+      if (resolve) {
+        this._pendingRequestsMap.delete(message.id);
+        resolve(message);
+        return;
+      }
+    }
+
+    // Handle event waiters
+    const eventName = message.event;
+    const waiterIndex = this._eventWaiters.findIndex(w => w.event === eventName && w.filter(message));
+    if (waiterIndex !== -1) {
+      const waiter = this._eventWaiters[waiterIndex];
+      this._eventWaiters.splice(waiterIndex, 1);
+      waiter.resolve(message);
+      // Don't return here, as we might also want to emit the event generally
+    }
+
+    // Handle general events
+    this.handleGeneralEvent(message);
+  }
+
+  private handleGeneralEvent(message: any) {
+    if (message.event === 'stopped') {
+      this.sendEvent(new StoppedEvent(message.reason, DapperDebugSession.THREAD_ID));
+    } else if (message.event === 'output') {
+      this.sendEvent(new OutputEvent(message.output, message.category));
+    } else if (message.event === 'initialized') {
+      this.sendEvent(new InitializedEvent());
+    } else if (message.event === 'terminated') {
+      this.sendEvent(new TerminatedEvent());
+    }
+  }
+
+  private sendRequestToPython(command: string, args: any = {}): Promise<any> {
+    return new Promise((resolve) => {
+      const requestId = this._nextRequestId++;
+      this._pendingRequestsMap.set(requestId, resolve);
+      this.sendCommandToPython(command, args, requestId);
+    });
+  }
+
+  private waitForEvent(event: string, filter: (data: any) => boolean = () => true): Promise<any> {
+    return new Promise(resolve => {
+      this._eventWaiters.push({ event, filter, resolve });
+    });
+  }
+
+  private sendCommandToPython(command: string, args: any = {}, id?: number): void {
     if (!this._pythonSocket) {
       console.error('Cannot send command: Python socket not connected');
       return;
     }
+
+    const payloadObj: any = { command, arguments: args };
+    if (id !== undefined) {
+      payloadObj.id = id;
+    }
     
-    // TODO: Format command for Python debug_launcher
-    // Should be sent as DBGCMD: prefixed JSON
-    const message = `DBGCMD:${JSON.stringify(command)}\n`;
-    this._pythonSocket.write(message);
+    const payload = Buffer.from(JSON.stringify(payloadObj), 'utf8');
+    
+    const header = Buffer.alloc(8);
+    header.write('DP', 0); // MAGIC
+    header.writeUInt8(1, 2); // VER
+    header.writeUInt8(2, 3); // KIND (2 = Command)
+    header.writeUInt32BE(payload.length, 4); // LEN
+
+    this._pythonSocket.write(Buffer.concat([header, payload]));
   }
 
-  protected initializeRequest(
+  protected async initializeRequest(
     response: DebugProtocol.InitializeResponse,
-    _args: DebugProtocol.InitializeRequestArguments
-  ): void {
+    args: DebugProtocol.InitializeRequestArguments
+  ): Promise<void> {
+    // Send initialize to Python and wait for response
+    const result = await this.sendRequestToPython('initialize', args);
+    
     response.body = response.body || {};
+    if (result.success && result.body) {
+      Object.assign(response.body, result.body);
+    }
+    
+    // Ensure we set these if Python didn't
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsSetVariable = true;
     response.body.supportsEvaluateForHovers = true;
-    response.body.supportsStepBack = false;
 
     this.sendResponse(response);
-    this.sendEvent(new InitializedEvent());
+    // Note: Python sends 'initialized' event separately, which handleGeneralEvent will forward
   }
 
   protected configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
-    _args: DebugProtocol.ConfigurationDoneArguments,
+    args: DebugProtocol.ConfigurationDoneArguments,
     _request?: DebugProtocol.Request
   ): void {
     this._configurationDone = true;
+    this.sendRequestToPython('configurationDone', args);
     this.sendResponse(response);
   }
 
@@ -97,15 +207,15 @@ export class DapperDebugSession extends LoggingDebugSession {
   ): Promise<void> {
     this._isRunning = true;
     this.sendResponse(response);
-    // TODO: Implement actual launch logic
   }
 
   protected async disconnectRequest(
     response: DebugProtocol.DisconnectResponse,
-    _args: DebugProtocol.DisconnectArguments,
+    args: DebugProtocol.DisconnectArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
     this._isRunning = false;
+    await this.sendRequestToPython('disconnect', args);
     this.sendResponse(response);
   }
 
@@ -114,61 +224,62 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.SetBreakpointsArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    // TODO: Implement breakpoint setting logic
+    const result = await this.sendRequestToPython('setBreakpoints', args);
     response.body = {
-      breakpoints: []
+      breakpoints: (result.body && result.body.breakpoints) || []
     };
     this.sendResponse(response);
   }
 
-  protected threadsRequest(
+  protected async threadsRequest(
     response: DebugProtocol.ThreadsResponse,
     _request?: DebugProtocol.Request
-  ): void {
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('threads', {});
     response.body = {
-      threads: [
-        {
-          id: DapperDebugSession.THREAD_ID,
-          name: 'Thread 1'
-        }
-      ]
+      threads: (result.body && result.body.threads) || []
     };
     this.sendResponse(response);
   }
 
   protected async stackTraceRequest(
     response: DebugProtocol.StackTraceResponse,
-    _args: DebugProtocol.StackTraceArguments,
+    args: DebugProtocol.StackTraceArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    // TODO: Implement stack trace logic
+    const result = await this.sendRequestToPython('stackTrace', args);
     response.body = {
-      stackFrames: [],
-      totalFrames: 0
+      stackFrames: (result.body && result.body.stackFrames) || [],
+      totalFrames: (result.body && result.body.totalFrames) || 0
     };
     this.sendResponse(response);
   }
 
-  protected scopesRequest(
+  protected async scopesRequest(
     response: DebugProtocol.ScopesResponse,
-    _args: DebugProtocol.ScopesArguments,
+    args: DebugProtocol.ScopesArguments,
     _request?: DebugProtocol.Request
-  ): void {
-    // TODO: Implement scopes logic
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('scopes', args);
     response.body = {
-      scopes: []
+      scopes: (result.body && result.body.scopes) || []
     };
     this.sendResponse(response);
   }
 
-  protected variablesRequest(
+  protected async variablesRequest(
     response: DebugProtocol.VariablesResponse,
-    _args: DebugProtocol.VariablesArguments,
+    args: DebugProtocol.VariablesArguments,
     _request?: DebugProtocol.Request
-  ): void {
-    // TODO: Implement variables logic
+  ): Promise<void> {
+    // Send request
+    this.sendCommandToPython('variables', args);
+    
+    // Wait for 'variables' event with matching reference
+    const event = await this.waitForEvent('variables', (e) => e.variablesReference === args.variablesReference);
+    
     response.body = {
-      variables: []
+      variables: event.variables || []
     };
     this.sendResponse(response);
   }
@@ -227,22 +338,20 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           // This is the IPC connection from Python debug_launcher
           const outChannel = this.envManager.getOutputChannel();
           outChannel.appendLine('[INFO] Python debug adapter connected via IPC');
-          
+
           // Store the python socket so DapperDebugSession can use it
           this._pythonSocket = pythonSocket;
-          
+
           // If a session already exists, provide it the socket
-          if (this._currentSession) {
-            this._currentSession.setPythonSocket(pythonSocket);
-          }
-          
+          this._currentSession?.setPythonSocket(pythonSocket);
+
           pythonSocket.on('error', (err: Error) => {
             outChannel.appendLine(`[ERROR] Python IPC socket error: ${err.message}`);
           });
         }).listen(0);
-        
+
         const pythonIpcPort = (pythonIpcServer.address() as Net.AddressInfo).port;
-        
+
         // Pass the IPC port to Python so it can connect back
         args.push('--ipc', 'tcp');
         args.push('--ipc-port', pythonIpcPort.toString());
@@ -252,8 +361,8 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         const server = Net.createServer(vscodeSocket => {
           const sessionImpl = new DapperDebugSession(this._pythonSocket);
           this._currentSession = sessionImpl;
-          (sessionImpl as any).setRunAsServer(true);
-          (sessionImpl as any).start(vscodeSocket as NodeJS.ReadableStream, vscodeSocket);
+          sessionImpl.setRunAsServer(true);
+          sessionImpl.start(vscodeSocket, vscodeSocket);
         }).listen(0);
         this.server = server;
 

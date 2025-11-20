@@ -14,7 +14,6 @@ const isWatch = process.argv.includes('--watch');
 const commonConfig = {
   entryPoints: {
     'extension': './src/extension.ts', // Extension entry point
-    'webview/views/debug/DebugView': './src/webview/views/debug/DebugView.tsx',
     'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
   },
   bundle: true,
@@ -90,7 +89,6 @@ const buildWebview = async () => {
   return esbuild.build({
     ...commonConfig,
     entryPoints: {
-      'webview/views/debug/DebugView': './src/webview/views/debug/DebugView.tsx',
       'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
     },
     platform: 'browser',

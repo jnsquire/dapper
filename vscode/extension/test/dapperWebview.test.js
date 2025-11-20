@@ -22,10 +22,7 @@ describe('DapperWebview message handlers', () => {
     const saved = { type: 'dapper', request: 'launch', name: 'Saved Config' };
     vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => saved });
 
-    DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
-    // wait for asynchronous view setup and registration to complete
-    await Promise.resolve();
-    await Promise.resolve();
+    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
     const panels = vscode.panelsList;
     expect(panels.length).toBeGreaterThan(0);
     const panel = panels[panels.length - 1];
@@ -36,9 +33,8 @@ describe('DapperWebview message handlers', () => {
 
     // Simulate receiving a requestConfig message
     expect(webview._messageHandler).toBeDefined();
-    webview._messageHandler && webview._messageHandler({ command: 'requestConfig' });
-    // Wait for async handlers to complete
-    await Promise.resolve();
+
+    await webview._messageHandler({ command: 'requestConfig' });
 
     // The webview should have been posted the saved config
     expect(webview.postMessage).toHaveBeenCalledWith({ command: 'updateConfig', config: saved });
@@ -52,10 +48,7 @@ describe('DapperWebview message handlers', () => {
     vscode.workspace.fs.readFile = vi.fn().mockRejectedValueOnce(new Error('FileNotFound'));
     vscode.workspace.fs.writeFile = vi.fn().mockResolvedValueOnce(undefined);
 
-    DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
-    // wait for asynchronous view setup and registration to complete
-    await Promise.resolve();
-    await Promise.resolve();
+    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
     const panels = vscode.panelsList;
     expect(panels.length).toBeGreaterThan(0);
     const panel = panels[panels.length - 1];
@@ -65,9 +58,7 @@ describe('DapperWebview message handlers', () => {
     // Ensure we can spy on postMessage
     webview.postMessage = vi.fn();
     expect(webview._messageHandler).toBeDefined();
-    webview._messageHandler && webview._messageHandler({ command: 'saveAndInsert', config: saved });
-    // Wait for async handlers and file writes to complete
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await webview._messageHandler({ command: 'saveAndInsert', config: saved });
     expect(updateMock).toHaveBeenCalled();
 
     // Should have posted status update confirming insert
@@ -76,19 +67,14 @@ describe('DapperWebview message handlers', () => {
 
   it('should call startDebugging on startDebug message', async () => {
     const cfg = { type: 'dapper', request: 'launch', name: 'Run Now', program: '${file}' };
-    DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
-    // wait for asynchronous view setup and registration to complete
-    await Promise.resolve();
-    await Promise.resolve();
+    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
     const panel = vscode.panelsList[vscode.panelsList.length - 1];
     expect(panel).toBeDefined();
     const webview = panel.webview;
 
     expect(webview._messageHandler).toBeDefined();
     
-    webview._messageHandler && webview._messageHandler({ command: 'startDebug', config: cfg });
-    // Wait for async handlers to complete
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await webview._messageHandler({ command: 'startDebug', config: cfg });
 
     expect(vscode.debug.startDebugging).toHaveBeenCalledWith(undefined, cfg);
   });
