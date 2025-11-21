@@ -107,9 +107,6 @@ def receive_debug_commands() -> None:
             _handle_command_bytes(line[7:].strip().encode("utf-8"))
 
 
-
-
-
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Python Debug Launcher")
@@ -228,9 +225,15 @@ def start_command_listener() -> threading.Thread:
     return thread
 
 
+    # launcher-specific processing function moved into SessionState
+
+
 def configure_debugger(stop_on_entry: bool) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""
-    dbg = DebuggerBDB()
+    dbg = DebuggerBDB(
+        send_message=send_debug_message,
+        process_commands=state.process_queued_commands_launcher,
+    )
     if stop_on_entry:
         dbg.stop_on_entry = True
     state.debugger = cast("Any", dbg)

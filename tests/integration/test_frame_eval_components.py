@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+import weakref
 from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import Mock
@@ -80,16 +81,15 @@ class TestCacheComponents:
             cache = FuncCodeInfoCache(max_size=100, ttl=60)
 
             # Set up the expected attributes that would be set by _init_code_extra_index
-            cache._lru_cache = OrderedDict()
-            cache._timestamps = {}
-            cache._weak_refs = {}
+            cache._lru_order = OrderedDict()
+            cache._weak_map = weakref.WeakKeyDictionary()
             cache._lock = threading.RLock()
 
             # Verify the cache was initialized correctly
             assert cache.max_size == 100
             assert cache.ttl == 60
-            # Check that the internal _lru_cache is empty
-            assert len(cache._lru_cache) == 0
+            # Check that the internal weak-key LRU is empty
+            assert len(cache._lru_order) == 0
 
     def test_breakpoint_cache_creation(self):
         """Test BreakpointCache creation."""

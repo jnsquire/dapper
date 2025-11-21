@@ -21,10 +21,9 @@ class TestFuncCodeInfoCache:
         assert cache.max_size == 100
         assert cache.ttl == 60
 
-        # Verify the cache has the expected attributes
-        assert hasattr(cache, "_lru_cache")
-        assert hasattr(cache, "_timestamps")
-        assert hasattr(cache, "_weak_refs")
+        # Verify the cache has the expected attributes (weak-key LRU)
+        assert hasattr(cache, "_lru_order")
+        assert hasattr(cache, "_weak_map")
         assert hasattr(cache, "_lock")
 
     def test_get_set_item(self):

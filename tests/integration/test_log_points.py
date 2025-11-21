@@ -121,20 +121,15 @@ class TestLogPointsIntegration(unittest.TestCase):
 
     def setUp(self):
         """Set up debugger and test environment"""
-        self.debugger = DebuggerBDB()
+        self.mock_send = MagicMock()
+        self.debugger = DebuggerBDB(send_message=self.mock_send)
         self.messages = []
-
-        # Mock send_debug_message to capture output
-        self.original_send_debug_message = None
 
     def tearDown(self):
         """Clean up after tests"""
-        if self.original_send_debug_message:
-            # Restore original function if we mocked it
-            pass
+        pass
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
-    def test_basic_log_point_execution(self, mock_send_debug_message):
+    def test_basic_log_point_execution(self):
         """Test that log points output messages and continue execution"""
         # Create a temporary Python file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -173,7 +168,7 @@ print("Done")
             self.debugger.user_line(frame)
 
             # Verify that send_debug_message was called with correct output
-            mock_send_debug_message.assert_called_with(
+            self.mock_send.assert_called_with(
                 "output", category="console", output="Calculating: x=10, y=20, result=30"
             )
 
@@ -184,8 +179,7 @@ print("Done")
             # Clean up temp file
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
-    def test_log_point_with_condition(self, mock_send_debug_message):
+    def test_log_point_with_condition(self):
         """Test log points with conditions"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             test_file = f.name
@@ -221,15 +215,14 @@ for i in range(5):
             self.debugger.user_line(frame)
 
             # Should log since condition is met
-            mock_send_debug_message.assert_called_with(
+            self.mock_send.assert_called_with(
                 "output", category="console", output="Loop iteration: i=3, x=6"
             )
 
         finally:
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
-    def test_log_point_with_hit_condition(self, mock_send_debug_message):
+    def test_log_point_with_hit_condition(self):
         """Test log points with hit conditions"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             test_file = f.name
@@ -268,13 +261,12 @@ for i in range(10):
 
             # Should only log on hits 3 and 6 (multiples of 3)
             # Check that send_debug_message was called twice (hits 3 and 6)
-            assert mock_send_debug_message.call_count == 2
+            assert self.mock_send.call_count == 2
 
         finally:
             Path(test_file).unlink(missing_ok=True)
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
-    def test_log_point_expression_error_handling(self, mock_send_debug_message):
+    def test_log_point_expression_error_handling(self):
         """Test log points handle expression errors gracefully"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             test_file = f.name
@@ -305,7 +297,7 @@ y = None  # Line 3
             self.debugger.user_line(frame)
 
             # Should still output something, with <error> for failed expression
-            mock_send_debug_message.assert_called_with(
+            self.mock_send.assert_called_with(
                 "output", category="console", output="x=10, length of y=<error>"
             )
 
@@ -318,10 +310,10 @@ class TestFunctionLogPoints(unittest.TestCase):
 
     def setUp(self):
         """Set up debugger for function breakpoint tests"""
-        self.debugger = DebuggerBDB()
+        self.mock_send = MagicMock()
+        self.debugger = DebuggerBDB(send_message=self.mock_send)
 
-    @patch("dapper.launcher.debug_launcher.send_debug_message")
-    def test_function_log_point(self, mock_send_debug_message):
+    def test_function_log_point(self):
         """Test log points on function breakpoints"""
         # Set up function breakpoint with log message
         function_name = "test_function"
@@ -347,7 +339,7 @@ class TestFunctionLogPoints(unittest.TestCase):
         self.debugger.user_call(frame, None)
 
         # Verify log message was sent
-        mock_send_debug_message.assert_called_with(
+        self.mock_send.assert_called_with(
             "output", category="console", output="Called function: test_function with args: (1, 2)"
         )
 

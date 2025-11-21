@@ -9,6 +9,7 @@ data structures.
 from __future__ import annotations
 
 import ctypes
+import logging
 import threading
 import time
 import weakref
@@ -52,14 +53,6 @@ except ImportError:
     _cython_set_extra = None
     _cython_request_index = None
 
-    # Define _PyCode_SetExtra using ctypes as fallback
-    try:
-        _PyCode_SetExtra = ctypes.pythonapi._PyCode_SetExtra
-        _PyCode_SetExtra.argtypes = [ctypes.py_object, ctypes.c_int, ctypes.c_void_p]
-        _PyCode_SetExtra.restype = ctypes.c_int
-    except (AttributeError, OSError, TypeError):
-        # If _PyCode_SetExtra is not available, set to None
-        _PyCode_SetExtra = None
 
 # Constants for magic numbers
 CLEANUP_INTERVAL: Final[int] = 60  # seconds
@@ -132,6 +125,75 @@ class CleanupResults(TypedDict):
 
     func_code_expired: int
     breakpoint_files: int
+
+
+logger = logging.getLogger(__name__)
+
+
+class _CodeExtraAPI:
+    """Helper for interacting with the CPython _PyCode_* APIs using ctypes.
+
+    Provides a consistent, centralized wrapper so we can set argtypes/restype once
+    and provide a stable interface across platforms.
+    """
+
+    def __init__(self):
+        self._available = False
+        self._get = None
+        self._set = None
+        self._request = None
+        try:
+            api = ctypes.pythonapi
+            # _PyCode_GetExtra: int _PyCode_GetExtra(PyCodeObject *code, int index, void **extra)
+            self._get = api._PyCode_GetExtra
+            self._get.argtypes = [py_object, c_int, ctypes.POINTER(c_void_p)]
+            self._get.restype = c_int
+
+            # _PyCode_SetExtra: int _PyCode_SetExtra(PyCodeObject *code, int index, PyObject *value)
+            self._set = api._PyCode_SetExtra
+            self._set.argtypes = [py_object, c_int, py_object]
+            self._set.restype = c_int
+
+            # Request index
+            self._request = api._PyEval_RequestCodeExtraIndex
+            self._request.argtypes = [py_object, c_void_p]
+            self._request.restype = c_int
+
+            self._available = True
+        except Exception:
+            # On some Python builds these private APIs may be hidden; fall back gracefully
+            self._available = False
+
+    def is_available(self) -> bool:
+        return self._available
+
+    def request_index(self, release_cb) -> int:
+        if not self._available:
+            raise RuntimeError("Code extra API not available")
+        cb = ctypes.c_void_p(0) if release_cb is None else py_object(release_cb)
+        return self._request(cb, ctypes.c_void_p(0))
+
+    def set_extra(self, code_obj, index: int, value) -> int:
+        """Set extra on code object. value may be None or a Python object.
+
+        Returns 0 on success, non-zero on failure.
+        """
+        if not self._available:
+            raise RuntimeError("Code extra API not available")
+        v = None if value is None else py_object(value)
+        return self._set(py_object(code_obj), index, v)
+
+    def get_extra(self, code_obj, index: int):
+        if not self._available:
+            raise RuntimeError("Code extra API not available")
+        extra_ptr = c_void_p()
+        result = self._get(py_object(code_obj), index, ctypes.byref(extra_ptr))
+        if result == 0 and extra_ptr.value is not None:
+            return ctypes.cast(extra_ptr.value, py_object).value
+        return None
+
+
+_code_extra_api = _CodeExtraAPI()
 
 
 class CacheManager:
@@ -252,9 +314,16 @@ class FuncCodeInfoCache:
         """
         self.max_size = max_size
         self.ttl = ttl
-        self._lru_cache = OrderedDict()
-        self._timestamps = {}
-        self._weak_refs = weakref.WeakValueDictionary()
+        # WeakKeyDictionary mapping actual code object -> record
+        # to avoid holding strong references to code objects and
+        # to prevent id reuse issues.
+        # Record layout: {"info": info, "timestamp": timestamp, "wr": weakref_to_codeobj}
+        self._weak_map = weakref.WeakKeyDictionary()
+        # Ordered list of weakref refs to maintain LRU ordering.
+        # Keys are weakref.ref(code_obj) objects. Values are True placeholders.
+        self._lru_order = OrderedDict()
+        # Timestamp map for caching entries used by cleanup
+        self._timestamps: dict[Any, float] = {}
         self._lock = threading.RLock()
 
         # Initialize code extra index
@@ -277,19 +346,16 @@ class FuncCodeInfoCache:
                     self._code_extra_index = _cython_request_index()
                 else:
                     try:
-                        # Fallback to ctypes if Cython is not available
-                        request_code_extra_index = ctypes.pythonapi._PyEval_RequestCodeExtraIndex
-                        request_code_extra_index.argtypes = [
-                            ctypes.py_object,  # freefunc
-                            ctypes.c_void_p,  # extra
-                        ]
-                        request_code_extra_index.restype = ctypes.c_int
-
-                        self._code_extra_index = request_code_extra_index(
-                            ctypes.py_object(self._release_code_extra_ctypes), ctypes.c_void_p(0)
-                        )
-                    except (AttributeError, OSError, TypeError):
-                        # Fallback if _PyEval_RequestCodeExtraIndex is not available
+                        # Fallback to ctypes API via helper wrapper
+                        if _code_extra_api.is_available():
+                            try:
+                                self._code_extra_index = _code_extra_api.request_index(self._release_code_extra_ctypes)
+                            except Exception as exc:
+                                logger.debug("request_index via ctypes failed: %s", exc)
+                                self._code_extra_index = -1
+                        else:
+                            self._code_extra_index = -1
+                    except Exception:
                         self._code_extra_index = -1
 
     def _release_code_extra(self, obj) -> None:
@@ -328,37 +394,45 @@ class FuncCodeInfoCache:
                             return extra
                     # Fall through to ctypes fallback if Cython not available
                 except (ImportError, AttributeError):
-                    # Fallback: use ctypes to access the C API
+                    # This branch is only for Cython-specific import errors
+                    logger.debug("Cython _PyCode_GetExtra not available (ImportError/AttributeError)")
+                # Try ctypes fallback (unified wrapper)
+                if _code_extra_api.is_available():
                     try:
-                        python_api = ctypes.pythonapi
-                        python_api._PyCode_GetExtra.argtypes = [py_object, c_int, c_void_p]
-                        python_api._PyCode_GetExtra.restype = c_int
-
-                        # Create a pointer to hold the result
-                        extra_ptr = c_void_p()
-                        result = python_api._PyCode_GetExtra(
-                            py_object(code_obj), self._code_extra_index, ctypes.byref(extra_ptr)
-                        )
-                        if result == 0 and extra_ptr.value is not None:
-                            # Successfully retrieved extra data
-                            extra_obj = ctypes.cast(extra_ptr.value, ctypes.py_object).value
+                        extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
+                        if extra is not None:
                             CacheManager._cache_stats["hits"] += 1
-                            return extra_obj
-                    except Exception:
-                        pass
+                            return extra
+                    except Exception as exc:
+                        logger.debug("ctypes _PyCode_GetExtra fallback failed: %s", exc)
 
             # Fallback to LRU cache
-            cache_key = id(code_obj)
-            if cache_key in self._lru_cache:
-                # Check TTL
-                if time.time() - self._timestamps.get(cache_key, 0) < self.ttl:
-                    # Move to end (LRU update)
-                    self._lru_cache.move_to_end(cache_key)
+            # For weak-key cache, directly lookup in the WeakKeyDictionary
+            rec = self._weak_map.get(code_obj)
+            if rec is not None:
+                timestamp = rec.get("timestamp", 0)
+                wr = rec.get("wr")
+                # TTL check
+                if time.time() - timestamp < self.ttl:
+                    # Update LRU order
+                    try:
+                        if wr in self._lru_order:
+                            self._lru_order.move_to_end(wr)
+                    except Exception:
+                        # Best-effort: ignore LRU move failures
+                        pass
                     CacheManager._cache_stats["hits"] += 1
-                    return self._lru_cache[cache_key]
-                # Expired entry
-                del self._lru_cache[cache_key]
-                del self._timestamps[cache_key]
+                    return rec.get("info")
+                # Expired
+                try:
+                    if wr in self._lru_order:
+                        del self._lru_order[wr]
+                except Exception:
+                    pass
+                try:
+                    del self._weak_map[code_obj]
+                except Exception:
+                    pass
                 CacheManager._cache_stats["evictions"] += 1
 
             CacheManager._cache_stats["misses"] += 1
@@ -376,10 +450,11 @@ class FuncCodeInfoCache:
             return
 
         with self._lock:
-            cache_key = id(code_obj)
+            # Do not materialize a strong reference via the LRU structure.
+            cache_key = code_obj
             current_time = time.time()
 
-            # Store in code object extra data if available
+            # Store in code object extra data if available (use Cython if present otherwise ctypes fallback)
             if self._code_extra_index >= 0 and _PyCode_SetExtra is not None:
                 try:
                     # Try to use Cython module first
@@ -387,37 +462,70 @@ class FuncCodeInfoCache:
                 except (ImportError, AttributeError, TypeError):
                     # Fallback: use ctypes to access the C API
                     try:
-                        python_api = ctypes.pythonapi
-                        python_api._PyCode_SetExtra.argtypes = [py_object, c_int, c_void_p]
-                        python_api._PyCode_SetExtra.restype = c_int
-
-                        # Increment reference count manually
+                        # Use unified wrapper
                         ctypes.pythonapi.Py_IncRef(ctypes.py_object(info))
-
-                        # Call the C API function
-                        result = python_api._PyCode_SetExtra(
-                            py_object(code_obj), self._code_extra_index, ctypes.py_object(info)
-                        )
+                        result = _code_extra_api.set_extra(code_obj, self._code_extra_index, info)
                         if result != 0:
                             # Failed to set extra data, decrement ref count
                             ctypes.pythonapi.Py_DecRef(ctypes.py_object(info))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("ctypes _PyCode_SetExtra failed during set: %s", exc)
 
             # Also store in LRU cache for statistics and fallback
-            self._lru_cache[cache_key] = info
-            self._timestamps[cache_key] = current_time
+            # Keep a weak reference to the original code object to detect id reuse
+            # Maintain a weak-key mapping and a weakref-based LRU order.
+            try:
+                wr = None
+                rec = self._weak_map.get(code_obj)
+                if rec is not None:
+                    # Update existing record
+                    rec["info"] = info
+                    rec["timestamp"] = current_time
+                    wr = rec.get("wr")
+                else:
+                    # Create a weakref with callback to cleanup LRU
+                    def _remove_wr(weak_ref):
+                        try:
+                            # Remove from LRU order when object is GC'd
+                            if weak_ref in self._lru_order:
+                                del self._lru_order[weak_ref]
+                        except Exception:
+                            pass
+
+                    wr = weakref.ref(code_obj, _remove_wr)
+                    self._weak_map[code_obj] = {"info": info, "timestamp": current_time, "wr": wr}
+                # Update timestamp index for cleanup
+                self._timestamps[cache_key] = current_time
+
+                # Update or insert into LRU order
+                self._lru_order[wr] = True
+                # Move to end to mark recently used
+                try:
+                    self._lru_order.move_to_end(wr)
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
             # Maintain size limit
-            while len(self._lru_cache) > self.max_size:
-                oldest_key = next(iter(self._lru_cache))
-                del self._lru_cache[oldest_key]
-                if oldest_key in self._timestamps:
-                    del self._timestamps[oldest_key]
-                CacheManager._cache_stats["evictions"] += 1
+            # Evict if over size limit. Pop from the LRU ordered list. We may need to
+            # skip entries that were already GC'd.
+            while len(self._lru_order) > self.max_size:
+                try:
+                    oldest_wr, _ = self._lru_order.popitem(last=False)
+                    oldest_obj = oldest_wr()
+                    if oldest_obj is not None:
+                        # remove from weak_map if present
+                        try:
+                            del self._weak_map[oldest_obj]
+                        except Exception:
+                            pass
+                    CacheManager._cache_stats["evictions"] += 1
+                except KeyError:
+                    break
 
             # Update statistics
-            CacheManager._cache_stats["total_entries"] = len(self._lru_cache)
+            CacheManager._cache_stats["total_entries"] = len(self._lru_order)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
 
     def remove(self, code_obj: Any) -> bool:
@@ -431,7 +539,7 @@ class FuncCodeInfoCache:
             True if entry was removed, False if not found
         """
         with self._lock:
-            cache_key = id(code_obj)
+            cache_key = code_obj
             removed = False
 
             # Remove from code object extra data
@@ -443,28 +551,34 @@ class FuncCodeInfoCache:
                 except (ImportError, AttributeError):
                     # Fallback: use ctypes to access the C API
                     try:
-                        python_api = ctypes.pythonapi
-                        python_api._PyCode_SetExtra.argtypes = [py_object, c_int, c_void_p]
-                        python_api._PyCode_SetExtra.restype = c_int
-
-                        # Call the C API function with NULL pointer
-                        result = python_api._PyCode_SetExtra(
-                            py_object(code_obj), self._code_extra_index, ctypes.c_void_p(0)
-                        )
+                        result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
                         if result == 0:
                             removed = True
+                    except Exception as exc:
+                        logger.debug("ctypes _PyCode_SetExtra failed during remove: %s", exc)
+
+            # Remove from weak-map and LRU order
+            if cache_key in self._weak_map:
+                rec = self._weak_map.get(cache_key)
+                try:
+                    wr = rec.get("wr")
+                    if wr in self._lru_order:
+                        del self._lru_order[wr]
+                except Exception:
+                    pass
+                try:
+                    del self._weak_map[cache_key]
+                except Exception:
+                    pass
+                if cache_key in self._timestamps:
+                    try:
+                        del self._timestamps[cache_key]
                     except Exception:
                         pass
-
-            # Remove from LRU cache
-            if cache_key in self._lru_cache:
-                del self._lru_cache[cache_key]
-                if cache_key in self._timestamps:
-                    del self._timestamps[cache_key]
                 removed = True
 
             # Update statistics
-            CacheManager._cache_stats["total_entries"] = len(self._lru_cache)
+            CacheManager._cache_stats["total_entries"] = len(self._weak_map)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
 
             return removed
@@ -472,9 +586,8 @@ class FuncCodeInfoCache:
     def clear(self) -> None:
         """Clear all cached entries."""
         with self._lock:
-            self._lru_cache.clear()
-            self._timestamps.clear()
-            self._weak_refs.clear()
+            self._lru_order.clear()
+            self._weak_map.clear()
 
             # Update statistics
             CacheManager._cache_stats["total_entries"] = 0
@@ -496,11 +609,13 @@ class FuncCodeInfoCache:
                     expired_keys.append(cache_key)
 
             for key in expired_keys:
-                del self._lru_cache[key]
-                del self._timestamps[key]
+                if key in self._weak_map:
+                    del self._weak_map[key]
+                if key in self._timestamps:
+                    del self._timestamps[key]
 
             CacheManager._cache_stats["evictions"] += len(expired_keys)
-            CacheManager._cache_stats["total_entries"] = len(self._lru_cache)
+            CacheManager._cache_stats["total_entries"] = len(self._weak_map)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
 
             return len(expired_keys)
@@ -508,7 +623,7 @@ class FuncCodeInfoCache:
     def _estimate_memory_usage(self) -> int:
         """Estimate memory usage of the cache in bytes."""
         # Rough estimation - each entry is approximately 200 bytes
-        return len(self._lru_cache) * 200
+        return len(self._weak_map) * 200
 
     def get_stats(self) -> FuncCodeCacheStats:
         """Get cache statistics."""
@@ -524,7 +639,7 @@ class FuncCodeInfoCache:
                 "hits": CacheManager._cache_stats["hits"],
                 "misses": CacheManager._cache_stats["misses"],
                 "evictions": CacheManager._cache_stats["evictions"],
-                "total_entries": len(self._lru_cache),
+                "total_entries": len(self._weak_map),
                 "max_size": self.max_size,
                 "ttl": self.ttl,
                 "hit_rate": hit_rate,

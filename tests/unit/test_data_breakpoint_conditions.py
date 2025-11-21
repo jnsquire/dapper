@@ -14,9 +14,9 @@ def make_frame(filename: str, lineno: int, locals_dict):
     return frame
 
 
-@patch("dapper.core.debugger_bdb.send_debug_message")
-def test_data_breakpoint_hit_condition_every_other_change(mock_send):
-    dbg = DebuggerBDB()
+def test_data_breakpoint_hit_condition_every_other_change():
+    mock_send = MagicMock()
+    dbg = DebuggerBDB(send_message=mock_send)
     meta = {"condition": None, "hitCondition": "% 2", "hit": 0}
     dbg.register_data_watches(["x"], [("x", meta)])
 
@@ -41,9 +41,9 @@ def test_data_breakpoint_hit_condition_every_other_change(mock_send):
     assert reasons.count("data breakpoint") == 1
 
 
-@patch("dapper.core.debugger_bdb.send_debug_message")
-def test_data_breakpoint_with_condition_expression(mock_send):
-    dbg = DebuggerBDB()
+def test_data_breakpoint_with_condition_expression():
+    mock_send = MagicMock()
+    dbg = DebuggerBDB(send_message=mock_send)
     meta = {"condition": "x > 3", "hitCondition": None, "hit": 0}
     dbg.register_data_watches(["x"], [("x", meta)])
 
@@ -57,6 +57,13 @@ def test_data_breakpoint_with_condition_expression(mock_send):
     dbg.user_line(make_frame("foo.py", 12, {"x": 3}))
     # change and condition true now (x=4) -> should stop
     dbg.user_line(make_frame("foo.py", 13, {"x": 4}))
+
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
+    assert reasons.count("data breakpoint") == 1
 
     reasons = [
         c.kwargs.get("reason")

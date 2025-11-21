@@ -14,9 +14,9 @@ def make_frame(filename: str, lineno: int, locals_dict):
     return frame
 
 
-@patch("dapper.core.debugger_bdb.send_debug_message")
-def test_data_breakpoint_triggers_on_change(mock_send):
-    dbg = DebuggerBDB()
+def test_data_breakpoint_triggers_on_change():
+    mock_send = MagicMock()
+    dbg = DebuggerBDB(send_message=mock_send)
     dbg.register_data_watches(["x"])  # watch variable x
 
     frame1 = make_frame("foo.py", 10, {"x": 1})
@@ -42,9 +42,9 @@ def test_data_breakpoint_triggers_on_change(mock_send):
     assert "data breakpoint" in reasons
 
 
-@patch("dapper.core.debugger_bdb.send_debug_message")
-def test_data_breakpoint_no_trigger_without_change(mock_send):
-    dbg = DebuggerBDB()
+def test_data_breakpoint_no_trigger_without_change():
+    mock_send = MagicMock()
+    dbg = DebuggerBDB(send_message=mock_send)
     dbg.register_data_watches(["x"])  # watch variable x
 
     frame1 = make_frame("foo.py", 10, {"x": 5})

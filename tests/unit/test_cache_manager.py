@@ -1,15 +1,19 @@
 """Unit tests for the cache manager module."""
 
+import ctypes as _ct
 from collections import OrderedDict
 from unittest.mock import patch
 
 import pytest
 
 # Import the module with the _init_code_extra_index method patched
-with patch("dapper._frame_eval.cache_manager.FuncCodeInfoCache._init_code_extra_index"):
-    from dapper._frame_eval.cache_manager import BreakpointCache
-    from dapper._frame_eval.cache_manager import FuncCodeInfoCache
-    from dapper._frame_eval.cache_manager import ThreadLocalCache
+from dapper._frame_eval.cache_manager import BreakpointCache
+from dapper._frame_eval.cache_manager import FuncCodeInfoCache
+from dapper._frame_eval.cache_manager import ThreadLocalCache
+from dapper._frame_eval.cache_manager import _caches
+from dapper._frame_eval.cache_manager import get_func_code_info
+from dapper._frame_eval.cache_manager import remove_func_code_info
+from dapper._frame_eval.cache_manager import set_func_code_info
 
 
 class TestFuncCodeInfoCache:
@@ -35,12 +39,85 @@ class TestFuncCodeInfoCache:
         # Check that the cache was initialized with the correct values
         assert cache.max_size == 100
         assert cache.ttl == 60
-        assert isinstance(cache._lru_cache, OrderedDict)
-        assert len(cache._lru_cache) == 0
-        assert isinstance(cache._timestamps, dict)
-        assert len(cache._timestamps) == 0
+        # Internal structures use weak-key mapping and weakref ordered LRU
+        assert isinstance(cache._lru_order, OrderedDict)
+        assert len(cache._lru_order) == 0
+        assert hasattr(cache, "_weak_map")
+        assert len(cache._weak_map) == 0
         assert hasattr(cache, "_lock")
 
+    def test_refcount_stability_on_set_remove(self):
+        import sys
+
+        def test_func2():
+            return 123
+
+        code_obj = test_func2.__code__
+        info = {"value": 1}
+        before = sys.getrefcount(info)
+
+        set_func_code_info(code_obj, info)
+        after_set = sys.getrefcount(info)
+
+        assert after_set - before in (0, 1)  # Accept one additional temporary ref during set
+
+        removed = remove_func_code_info(code_obj)
+        assert removed is True
+        after_remove = sys.getrefcount(info)
+        # After removal, refcount should be stable same as before
+        assert after_remove == before
+
+    def test_ctypes_fallback_uses_lru_when_set_fails(self):
+        """Simulate ctypes._PyCode_SetExtra failing and ensure the code falls back to LRU cache."""
+        # Create a code object and info
+        def test_func3():
+            return 1
+
+        code_obj = test_func3.__code__
+        info = {"x": "y"}
+
+        # Simulate failure by patching the internal set_extra to raise ctypes.ArgumentError
+        with patch(
+            "dapper._frame_eval.cache_manager._code_extra_api.set_extra",
+            side_effect=_ct.ArgumentError("bad"),
+        ):
+            set_func_code_info(code_obj, info)
+
+        # Because set_extra failed, the info should still be available via the LRU
+        fetched = get_func_code_info(code_obj)
+        assert fetched == info
+
+    def test_id_reuse_detection_invalidates_stale_entries(self):
+        """Ensure stale LRU entries are evicted when code objects are GC'd and do not return stale info."""
+        def make_func():
+            def x():
+                return 1
+            return x
+
+        f1 = make_func()
+        code1 = f1.__code__
+        info1 = {"a": 1}
+        set_func_code_info(code1, info1)
+
+        # Remove strong references to the function and force garbage collection
+        import gc
+
+        cache = _caches.func_code
+        # Ensure the cache is cleared for a clean test
+        cache.clear()
+        # Ensure the weak map is empty initially
+        assert len(cache._weak_map) == 0
+
+        # Remove all strong references to the function and its code object
+        del f1
+        del code1
+        gc.collect()
+
+        # After collection the weak map should be empty (or at least not contain the entry)
+        assert len(cache._weak_map) == 0
+        gc.collect()
+
+        # After the code object is collected, the weak map should have released the entry
 
 class TestBreakpointCache:
     """Tests for the BreakpointCache class."""

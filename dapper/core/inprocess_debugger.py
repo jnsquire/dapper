@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.adapter.debug_adapter_comm import process_queued_commands
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.utils.events import EventEmitter
 
@@ -55,15 +56,28 @@ class InProcessDebugger:
     """
 
     def __init__(self) -> None:
-        self.debugger: DebuggerBDB = DebuggerBDB()
-        self.command_lock = threading.RLock()
-
         # Optional event callbacks (set by adapter).
-
         self.on_stopped = EventEmitter()
         self.on_thread = EventEmitter()
         self.on_exited = EventEmitter()
         self.on_output = EventEmitter()
+
+        self.debugger: DebuggerBDB = DebuggerBDB(
+            send_message=self._handle_debug_message,
+            process_commands=process_queued_commands,
+        )
+        self.command_lock = threading.RLock()
+
+    def _handle_debug_message(self, event_type: str, **kwargs: Any) -> None:
+        """Route debug messages to the appropriate EventEmitter."""
+        if event_type == "stopped":
+            self.on_stopped.emit(kwargs)
+        elif event_type == "thread":
+            self.on_thread.emit(kwargs)
+        elif event_type == "exited":
+            self.on_exited.emit(kwargs)
+        elif event_type == "output":
+            self.on_output.emit(kwargs.get("category"), kwargs.get("output"))
 
     def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[Breakpoint]:
         """Set line breakpoints for a file."""

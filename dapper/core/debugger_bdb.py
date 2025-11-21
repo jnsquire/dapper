@@ -11,10 +11,9 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
 from typing import cast
 
-from dapper.core.debug_comm import process_queued_commands
-from dapper.core.debug_comm import send_debug_message
 from dapper.core.debug_helpers import frame_may_handle_exception
 from dapper.core.debug_utils import MAX_STACK_DEPTH
 from dapper.core.debug_utils import evaluate_hit_condition
@@ -27,8 +26,18 @@ if TYPE_CHECKING:
 
 
 class DebuggerBDB(bdb.Bdb):
-    def __init__(self, skip=None, enable_frame_eval: bool = False):
+    def __init__(
+        self,
+        skip=None,
+        enable_frame_eval: bool = False,
+        send_message: Callable[..., Any] | None = None,
+        process_commands: Callable[[], Any] | None = None,
+    ):
         super().__init__(skip)
+        # Use injected callbacks or fall back to no-ops
+        self.send_message = send_message or (lambda *args, **kwargs: None)
+        self.process_commands = process_commands or (lambda: None)
+
         self.is_terminated = False
         self.breakpoints = {}
         self.function_breakpoints = []
@@ -288,7 +297,7 @@ class DebuggerBDB(bdb.Bdb):
         if thread_id not in self.threads:
             thread_name = threading.current_thread().name
             self.threads[thread_id] = thread_name
-            send_debug_message(
+            self.send_message(
                 "thread",
                 threadId=thread_id,
                 reason="started",
@@ -317,7 +326,7 @@ class DebuggerBDB(bdb.Bdb):
                     rendered = format_log_message(str(log_msg), frame)
                 except Exception:
                     rendered = str(log_msg)
-                send_debug_message("output", category="console", output=str(rendered))
+                self.send_message("output", category="console", output=str(rendered))
                 self.set_continue()
                 return True
         return False
@@ -337,7 +346,7 @@ class DebuggerBDB(bdb.Bdb):
         if description:
             event_args["description"] = description
 
-        send_debug_message("stopped", **event_args)
+        self.send_message("stopped", **event_args)
 
     def user_line(self, frame):
         filename = frame.f_code.co_filename
@@ -373,7 +382,7 @@ class DebuggerBDB(bdb.Bdb):
             self.stepping = False
 
         self._emit_stopped_event(frame, thread_id, reason)
-        process_queued_commands()
+        self.process_commands()
         self.set_continue()
 
     def user_exception(self, frame, exc_info):
@@ -421,14 +430,14 @@ class DebuggerBDB(bdb.Bdb):
             self.frames_by_thread[thread_id] = stack_frames
             # Notify the client that execution has paused. The adapter inspects the text/frames
             # payload to populate the exception UI.
-            send_debug_message(
+            self.send_message(
                 "stopped",
                 threadId=thread_id,
                 reason="exception",
                 text=f"{exc_type.__name__}: {exc_value!s}",
                 allThreadsStopped=True,
             )
-            process_queued_commands()
+            self.process_commands()
             try:
                 # Resume the interpreter once the client responds (mirrors line breakpoint flow).
                 self.set_continue()
@@ -555,13 +564,13 @@ class DebuggerBDB(bdb.Bdb):
                 rendered = format_log_message(str(log_msg), frame)
             except Exception:
                 rendered = str(log_msg)
-            send_debug_message("output", category="console", output=str(rendered))
+            self.send_message("output", category="console", output=str(rendered))
             return
         thread_id = threading.get_ident()
         if thread_id not in self.threads:
             thread_name = threading.current_thread().name
             self.threads[thread_id] = thread_name
-            send_debug_message(
+            self.send_message(
                 "thread",
                 threadId=thread_id,
                 reason="started",
@@ -571,11 +580,11 @@ class DebuggerBDB(bdb.Bdb):
         self.stopped_thread_ids.add(thread_id)
         stack_frames = self._get_stack_frames(frame)
         self.frames_by_thread[thread_id] = stack_frames
-        send_debug_message(
+        self.send_message(
             "stopped",
             threadId=thread_id,
             reason="function breakpoint",
             allThreadsStopped=True,
         )
-        process_queued_commands()
+        self.process_commands()
         self.set_continue()

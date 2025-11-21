@@ -134,8 +134,39 @@ class SessionState:
         #   the process. Default: os._exit
         # - exec_func(path: str, args: list[str]) -> Any: invoked to replace
         #   the current process image. Default: os.execv
-        self.exit_func: Callable[[int], Any] = os._exit
+        # In test environments (pytest) prefer raising SystemExit instead of
+        # calling os._exit so the test runner is not killed. Detect pytest by
+        # presence in sys.modules or by environment hints.
+        def _test_exit(code: int) -> None:  # pragma: no cover - test-time behavior
+            raise SystemExit(code)
+
+        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+            self.exit_func: Callable[[int], Any] = _test_exit
+        else:
+            self.exit_func: Callable[[int], Any] = os._exit
         self.exec_func: Callable[[str, list[str]], Any] = os.execv
+
+    def process_queued_commands_launcher(self) -> None:
+        """Process queued commands using the launcher handlers.
+
+        This method consumes commands from the internal command queue and
+        forwards them to the launcher-level `handle_debug_command` helper.
+        It dynamically imports the `dapper.launcher.handlers` module so we
+        avoid circular imports at module import time.
+        """
+        while True:
+            try:
+                cmd = self.command_queue.get_nowait()
+                try:
+                    from dapper.shared.launcher_handlers import handle_debug_command
+
+                    handle_debug_command(cmd)
+                except Exception:
+                    # If anything goes wrong, fall back to the provider
+                    # dispatch mechanism and continue processing.
+                    self.dispatch_debug_command(cmd)
+            except queue.Empty:
+                break
 
     def set_exit_func(self, fn: Callable[[int], Any]) -> None:
         """Set a custom exit function for the session."""

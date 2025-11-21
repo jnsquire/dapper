@@ -40,9 +40,16 @@ def format_log_message(template: str, frame) -> str:
         except Exception:
             return "<error>"
 
-    s = template.replace("{{", "\u007b").replace("}}", "\u007d")
+    # Use rare codepoints as placeholders so escaped double-braces are not
+    # treated as expressions by the subsequent regex. Using U+007B/U+007D
+    # (which are '{' and '}') defeats the purpose — we need non-brace
+    # placeholders that won't match the r"\{([^{}]+)\}" regex.
+    left_placeholder = "\u0001"
+    right_placeholder = "\u0002"
+    s = template.replace("{{", left_placeholder).replace("}}", right_placeholder)
     s = re.sub(r"\{([^{}]+)\}", repl, s)
-    return s.replace("\u007b", "{").replace("\u007d", "}")
+    # Restore the original literal braces
+    return s.replace(left_placeholder, "{").replace(right_placeholder, "}")
 
 
 def get_function_candidate_names(frame) -> set[str]:
