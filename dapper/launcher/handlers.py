@@ -24,6 +24,7 @@ _shared.threading = threading
 _shared._d_shared = _d_shared  # noqa: SLF001 - compatibility shim, tests patch this symbol
 _shared._convert_string_to_value = None  # assigned below when helper is defined  # noqa: SLF001
 _shared._evaluate_hit_condition = _evaluate_hit_condition_impl  # noqa: SLF001
+_shared._convert_value_with_context_override = None  # noqa: SLF001
 def _shared_send_proxy(event_type: str, **kwargs):
     # Delegate to the handlers module-level send_debug_message so tests that
     # patch `dapper.launcher.handlers.send_debug_message` are honored.
@@ -105,6 +106,7 @@ def _evaluate_hit_condition(expr: str, hit_count: int) -> bool:
 # `dapper.shared.launcher_handlers`.
 try:
     _shared._convert_string_to_value = _convert_string_to_value  # noqa: SLF001
+    _shared._convert_value_with_context_override = _convert_value_with_context  # noqa: SLF001
     _shared._d_shared = _d_shared  # noqa: SLF001
     # Re-export internal compatibility helpers used by tests
     def _format_log_message(template: str, frame):

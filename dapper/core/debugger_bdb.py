@@ -25,6 +25,11 @@ if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import ExceptionInfo
     from dapper.protocol.debugger_protocol import Variable
 
+try:
+    from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
+except Exception:  # pragma: no cover - optional integration
+    integrate_debugger_bdb = None
+
 def _noop_send_message(*args, **kwargs):
     pass
 

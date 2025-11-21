@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
+_CONVERSION_FAILED = object()
+_convert_value_with_context_override: Any | None = None
 
 
 def handle_debug_command(command: dict[str, Any]) -> None:
@@ -126,6 +128,59 @@ def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any |
         var_obj = _d_shared.make_variable_object(name, value, dbg, frame)
 
     return cast("Variable", var_obj)
+
+
+def _get_threading_module() -> Any:
+    """Return the threading module, preferring the launcher shim when available."""
+    mod = sys.modules.get("dapper.launcher.handlers")
+    if mod is not None:
+        thread_mod = getattr(mod, "threading", None)
+        if thread_mod is not None:
+            return thread_mod
+    return threading
+
+
+def _get_thread_ident() -> int:
+    """Return the current thread id, allowing the launcher shim to override threading."""
+    thread_mod = _get_threading_module()
+    return thread_mod.get_ident()
+
+
+def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
+    """Ensure the debugger reports a stepping state even if direct attr assignment fails."""
+    try:
+        dbg.stepping = True
+    except Exception:
+        pass
+    try:
+        object.__setattr__(dbg, "stepping", True)
+    except Exception:
+        pass
+
+
+def _call_convert_callable(convert: Any, value_str: str, frame: Any | None, parent_obj: Any | None) -> Any:
+    try:
+        return convert(value_str, frame, parent_obj)
+    except TypeError:
+        return convert(value_str)
+
+
+def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+    converter = globals().get("_convert_value_with_context_override")
+    if converter is not None:
+        try:
+            return _call_convert_callable(converter, value_str, frame, parent_obj)
+        except Exception:
+            pass
+
+    legacy = globals().get("_convert_string_to_value")
+    if legacy is not None:
+        try:
+            return _call_convert_callable(legacy, value_str, frame, parent_obj)
+        except Exception:
+            pass
+
+    return _CONVERSION_FAILED
 
 
 # All the handler functions are copied verbatim from the former launcher.handlers
@@ -295,23 +350,10 @@ def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    try:
-        import importlib  # noqa: PLC0415
-
-        get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
-    except Exception:
-        get_ident = threading.get_ident
-
-    if dbg and thread_id == get_ident():
+    if dbg and thread_id == _get_thread_ident():
         # Setting attributes on mocks with Protocol specs can raise AttributeError.
         # Be defensive and attempt to set directly on the object if assignment fails
-        try:
-            dbg.stepping = True
-        except Exception:
-            try:
-                object.__setattr__(dbg, "stepping", True)
-            except Exception:
-                pass
+        _set_dbg_stepping_flag(dbg)
         if dbg.current_frame is not None:
             dbg.set_next(dbg.current_frame)
 
@@ -321,21 +363,8 @@ def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    try:
-        import importlib  # noqa: PLC0415
-
-        get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
-    except Exception:
-        get_ident = threading.get_ident
-
-    if dbg and thread_id == get_ident():
-        try:
-            dbg.stepping = True
-        except Exception:
-            try:
-                object.__setattr__(dbg, "stepping", True)
-            except Exception:
-                pass
+    if dbg and thread_id == _get_thread_ident():
+        _set_dbg_stepping_flag(dbg)
         dbg.set_step()
 
 
@@ -344,21 +373,8 @@ def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    try:
-        import importlib  # noqa: PLC0415
-
-        get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
-    except Exception:
-        get_ident = threading.get_ident
-
-    if dbg and thread_id == get_ident():
-        try:
-            dbg.stepping = True
-        except Exception:
-            try:
-                object.__setattr__(dbg, "stepping", True)
-            except Exception:
-                pass
+    if dbg and thread_id == _get_thread_ident():
+        _set_dbg_stepping_flag(dbg)
         if dbg.current_frame is not None:
             dbg.set_return(dbg.current_frame)
 
@@ -384,16 +400,9 @@ def handle_stack_trace(dbg: DebuggerLike, arguments: dict[str, Any]):
     if dbg and hasattr(dbg, "frames_by_thread") and isinstance(thread_id, int) and thread_id in getattr(dbg, "frames_by_thread", {}):
         frames = dbg.frames_by_thread[thread_id]
     else:
-        try:
-            import importlib  # noqa: PLC0415
-
-            get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
-        except Exception:
-            get_ident = threading.get_ident
-
         if dbg:
             stack = getattr(dbg, "stack", None)
-            if stack is not None and thread_id == get_ident():
+            if stack is not None and thread_id == _get_thread_ident():
                 frames = stack[start_frame:]
         if levels is not None and frames is not None:
             frames = frames[:levels]
@@ -652,55 +661,39 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
 
 def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> dict[str, Any]:
     """Set a variable in a frame scope (locals or globals)"""
-    try:
-        # Dynamically import the conversion helper so tests can patch it
-        import importlib  # noqa: PLC0415
-
-        convert = getattr(importlib.import_module("dapper.launcher.handlers"), "_convert_value_with_context", None)
-    except Exception:
-        convert = None
 
     try:
-        if convert is not None:
-            new_value = convert(value_str, frame)
-        else:
-            # Fallback: evaluate in frame context
+        new_value = _try_custom_convert(value_str, frame, None)
+        if new_value is _CONVERSION_FAILED:
             new_value = eval(value_str, frame.f_globals, frame.f_locals)
+    except Exception:
+        new_value = _convert_value_with_context(value_str, frame)
 
-        if scope == "locals":
-            frame.f_locals[name] = new_value
-        elif scope == "globals":
-            frame.f_globals[name] = new_value
-        else:
-            return {"success": False, "message": f"Unknown scope: {scope}"}
+    if scope == "locals":
+        frame.f_locals[name] = new_value
+    elif scope == "globals":
+        frame.f_globals[name] = new_value
+    else:
+        return {"success": False, "message": f"Unknown scope: {scope}"}
 
-        dbg = state.debugger
-        var_obj = _make_variable(dbg, name, new_value, frame)
-        return {
-            "success": True,
-            "body": {
-                "value": cast("dict", var_obj)["value"],
-                "type": cast("dict", var_obj)["type"],
-                "variablesReference": cast("dict", var_obj)["variablesReference"],
-            },
-        }
-
-    except Exception as e:
-        return {"success": False, "message": f"Failed to set variable '{name}': {e!s}"}
+    dbg = state.debugger
+    var_obj = _make_variable(dbg, name, new_value, frame)
+    return {
+        "success": True,
+        "body": {
+            "value": cast("dict", var_obj)["value"],
+            "type": cast("dict", var_obj)["type"],
+            "variablesReference": cast("dict", var_obj)["variablesReference"],
+        },
+    }
 
 
 def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, Any]:
     """Set an attribute or item of an object using a consolidated dispatch and single error path."""
     try:
-        import importlib  # noqa: PLC0415
-
-        convert = getattr(importlib.import_module("dapper.launcher.handlers"), "_convert_value_with_context", None)
-    except Exception:
-        convert = None
-
-    new_value: Any
-    try:
-        new_value = _convert_value_with_context(value_str, parent_obj, convert)
+        new_value = _try_custom_convert(value_str, None, parent_obj)
+        if new_value is _CONVERSION_FAILED:
+            new_value = _convert_value_with_context(value_str, None, parent_obj)
     except Exception:
         return {"success": False, "message": "Conversion failed"}
 
@@ -724,16 +717,45 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
         return {"success": False, "message": f"Failed to set object member '{name}': {e!s}"}
 
 
-def _convert_value_with_context(value_str: str, parent_obj: Any, convert_callable: Any | None) -> Any:
-    """Attempt to convert a string into a Python value using the adapter-conversion
+def _convert_value_with_context(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+    """Compatibility converter exposed by the original launcher handlers."""
+    s = value_str.strip()
+    if s.lower() == "none":
+        return None
+    if s.lower() in ("true", "false"):
+        return s.lower() == "true"
 
-    `convert_callable` - a function from the launcher shim used by tests; if it
-    is not present, fall back to ast.literal_eval.
-    """
-    if convert_callable is not None:
-        return convert_callable(value_str, None, parent_obj)
-    # Default conversion - support strings, numbers, booleans, lists, dicts
-    return ast.literal_eval(value_str)
+    try:
+        return ast.literal_eval(s)
+    except (ValueError, SyntaxError):
+        pass
+
+    if frame is not None:
+        try:
+            return eval(s, frame.f_globals, frame.f_locals)
+        except Exception:
+            pass
+
+    if parent_obj is not None:
+        try:
+            target_type = None
+            if isinstance(parent_obj, list) and parent_obj:
+                target_type = type(parent_obj[0])
+            elif isinstance(parent_obj, dict) and parent_obj:
+                sample = next(iter(parent_obj.values()))
+                target_type = type(sample)
+
+            if target_type in (int, float, bool, str):
+                return target_type(s)
+        except Exception:
+            pass
+
+    return value_str
+
+
+def _convert_string_to_value(value_str: str) -> Any:
+    """Legacy alias kept for backward compatibility."""
+    return _convert_value_with_context(value_str)
 
 
 def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str | None:

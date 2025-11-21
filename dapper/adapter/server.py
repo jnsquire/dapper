@@ -1,4 +1,3 @@
-# ruff: noqa: PLC0415
 """
 Implementation of the Debug Adapter Protocol Server and integrated Python debugger.
 
@@ -43,6 +42,12 @@ from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.protocol_types import Source
 from dapper.protocol.protocol_types import SourceBreakpoint
 from dapper.shared import debug_shared
+
+try:
+    # Optional integration module; may not be present on all platforms.
+    from dapper._frame_eval.debugger_integration import integrate_py_debugger
+except Exception:  # pragma: no cover - optional feature
+    integrate_py_debugger = None
 
 
 # Local type for breakpoint responses
@@ -278,15 +283,11 @@ class PyDebugger:
         self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)
 
-        if enable_frame_eval:
-            try:
-                # Dynamic import guarded by feature config - avoid top-level import
-                # to prevent circular import issues when frame eval is not enabled.
-                from dapper._frame_eval.debugger_integration import integrate_py_debugger
-
-                integrate_py_debugger(self)
-            except ImportError:
-                pass
+        if enable_frame_eval and integrate_py_debugger is not None:
+            # Optional integration - resolved at import time to avoid dynamic
+            # imports at runtime. The integration function may be None if the
+            # frame-eval module is not available on this platform.
+            integrate_py_debugger(self)
 
         # Core state
         self.threads: dict[int, PyDebuggerThread] = {}
