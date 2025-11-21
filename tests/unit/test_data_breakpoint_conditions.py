@@ -1,6 +1,5 @@
 from types import FrameType
 from unittest.mock import MagicMock
-from unittest.mock import patch
 
 from dapper.core.debugger_bdb import DebuggerBDB
 

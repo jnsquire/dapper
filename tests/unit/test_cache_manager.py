@@ -1,6 +1,8 @@
 """Unit tests for the cache manager module."""
 
 import ctypes as _ct
+import gc
+import sys
 from collections import OrderedDict
 from unittest.mock import patch
 
@@ -47,7 +49,6 @@ class TestFuncCodeInfoCache:
         assert hasattr(cache, "_lock")
 
     def test_refcount_stability_on_set_remove(self):
-        import sys
 
         def test_func2():
             return 123
@@ -100,7 +101,6 @@ class TestFuncCodeInfoCache:
         set_func_code_info(code1, info1)
 
         # Remove strong references to the function and force garbage collection
-        import gc
 
         cache = _caches.func_code
         # Ensure the cache is cleared for a clean test
@@ -116,6 +116,39 @@ class TestFuncCodeInfoCache:
         # After collection the weak map should be empty (or at least not contain the entry)
         assert len(cache._weak_map) == 0
         gc.collect()
+
+    def test_cleanup_expired_removes_old_entries(self):
+        """Ensure that expired entries are removed from the LRU fallback cache."""
+        # Use the singleton cache managed by _caches so helpers like
+        # set_func_code_info / get_func_code_info operate on the same instance.
+        cache = _caches.func_code
+        cache.ttl = 1
+
+        # Create a simple code object and set info
+        def f():
+            return 42
+
+        code_obj = f.__code__
+        info = {"x": 1}
+
+        # Set the info into the global cache via helper (mirrors real use)
+        set_func_code_info(code_obj, info)
+
+        # Ensure it was added
+        assert get_func_code_info(code_obj) == info
+
+        # Artificially age the timestamp to make it expired
+        for k in list(_caches.func_code._timestamps.keys()):
+            _caches.func_code._timestamps[k] = _caches.func_code._timestamps[k] - (
+                _caches.func_code.ttl + 10
+            )
+
+        # Cleanup should remove one entry
+        # Use the global cache's cleanup implementation
+        removed = _caches.func_code.cleanup_expired()
+        assert removed >= 1
+        # Cache should no longer contain code info
+        assert get_func_code_info(code_obj) is None
 
         # After the code object is collected, the weak map should have released the entry
 

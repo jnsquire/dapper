@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 from typing import Any
 
@@ -183,3 +184,26 @@ async def test_port_future_resolves_when_server_created(monkeypatch):
         # Cancel the future if it's still pending
         if not port_future.done():
             port_future.cancel()
+
+
+def test_cancel_thread_futures_cancelled_future_does_not_raise():
+    """Verify that AdapterThread._cancel_thread_futures handles cancelled
+    futures without raising an error.
+    """
+
+    # Create an adapter runner instance but do not start it. We just need the
+    # instance to call the private helper.
+    runner = adapter_thread_mod.AdapterThread(connection_type="tcp", port=None)
+
+    # Submit a long running task so we can cancel it
+    # Use a bare Future so cancellation will reliably mark it cancelled
+    fut = concurrent.futures.Future()
+    # Append to internal futures list
+    runner._thread_futures.append(fut)
+
+    # Call the private helper with low timeout - it should cancel the future
+    # and not raise even if the future is still running or cancelled
+    runner._cancel_thread_futures(timeout=0.01)
+
+    # After cancellation attempt the future should be either cancelled or finished
+    assert fut.cancelled() or fut.done()

@@ -1,9 +1,15 @@
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+
+# This file is intentionally present at repo root for local helpers used in
+# development; ruff flags it as part of an implicit namespace package. Silence
+# the rule here to avoid changing package layout.
+# ruff: noqa: INP001
+from typing import Any
 
 from dapper.shared import debug_shared
 
 
-def handle_terminate(dbg: Any, args: Dict[str, Any]) -> None:
+def handle_terminate(_dbg: Any, _args: dict[str, Any]) -> None:
     """
     Terminate handler must set the termination flag on the shared state and then
     call the configured exit function. Tests expect is_terminated to be True
@@ -17,13 +23,13 @@ def handle_terminate(dbg: Any, args: Dict[str, Any]) -> None:
     s.exit_func(0)
 
 
-def handle_threads(dbg: Any, args: Dict[str, Any]) -> Dict[str, Any]:
+def handle_threads(dbg: Any, _args: dict[str, Any]) -> dict[str, Any]:
     """
     Return the list of threads in the format expected by the tests:
       { "success": True, "body": { "threads": [ { "id": 1, "name": "MainThread" }, ... ] } }
     Accepts dbg possibly being None and threads mapping keys may be ints or strings.
     """
-    threads_list: List[Dict[str, Any]] = []
+    threads_list: list[dict[str, Any]] = []
     try:
         threads_mapping = getattr(dbg, "threads", None) or {}
         # If mapping is dict-like
@@ -40,13 +46,13 @@ def handle_threads(dbg: Any, args: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "body": {"threads": threads_list}}
 
 
-def extract_variables(dbg: Optional[Any], variables: List[Dict[str, Any]], value: Any, name: Optional[str] = None) -> None:
+def extract_variables(dbg: Any | None, variables: list[dict[str, Any]], value: Any, name: str | None = None) -> None:
     """
     Extract variables recursively into `variables` as a list of dicts:
       { "name": <name>, "value": <value>, "type": <type_name> }
     Handles dict, list/tuple and simple scalars. Name is composed with dot notation for dict keys and [index] for lists.
     """
-    def append_var(n: Optional[str], v: Any) -> None:
+    def append_var(n: str | None, v: Any) -> None:
         variables.append({
             "name": n if n is not None else "",
             "value": v,

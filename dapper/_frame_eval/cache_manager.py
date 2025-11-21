@@ -384,56 +384,16 @@ class FuncCodeInfoCache:
 
         with self._lock:
             # First try code object extra data (fastest)
-            if self._code_extra_index >= 0:
-                try:
-                    # Try to get from Cython module first
-                    if CYTHON_AVAILABLE and _cython_get_extra is not None:
-                        extra = _cython_get_extra(code_obj)
-                        if extra is not None:
-                            CacheManager._cache_stats["hits"] += 1
-                            return extra
-                    # Fall through to ctypes fallback if Cython not available
-                except (ImportError, AttributeError):
-                    # This branch is only for Cython-specific import errors
-                    logger.debug("Cython _PyCode_GetExtra not available (ImportError/AttributeError)")
-                # Try ctypes fallback (unified wrapper)
-                if _code_extra_api.is_available():
-                    try:
-                        extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
-                        if extra is not None:
-                            CacheManager._cache_stats["hits"] += 1
-                            return extra
-                    except Exception as exc:
-                        logger.debug("ctypes _PyCode_GetExtra fallback failed: %s", exc)
+            extra = self._get_from_code_extra(code_obj)
+            if extra is not None:
+                CacheManager._cache_stats["hits"] += 1
+                return extra
 
-            # Fallback to LRU cache
-            # For weak-key cache, directly lookup in the WeakKeyDictionary
-            rec = self._weak_map.get(code_obj)
-            if rec is not None:
-                timestamp = rec.get("timestamp", 0)
-                wr = rec.get("wr")
-                # TTL check
-                if time.time() - timestamp < self.ttl:
-                    # Update LRU order
-                    try:
-                        if wr in self._lru_order:
-                            self._lru_order.move_to_end(wr)
-                    except Exception:
-                        # Best-effort: ignore LRU move failures
-                        pass
-                    CacheManager._cache_stats["hits"] += 1
-                    return rec.get("info")
-                # Expired
-                try:
-                    if wr in self._lru_order:
-                        del self._lru_order[wr]
-                except Exception:
-                    pass
-                try:
-                    del self._weak_map[code_obj]
-                except Exception:
-                    pass
-                CacheManager._cache_stats["evictions"] += 1
+            # Fallback to LRU cache (weak key mapping)
+            info = self._get_from_weak_map(code_obj)
+            if info is not None:
+                CacheManager._cache_stats["hits"] += 1
+                return info
 
             CacheManager._cache_stats["misses"] += 1
             return None
@@ -451,7 +411,7 @@ class FuncCodeInfoCache:
 
         with self._lock:
             # Do not materialize a strong reference via the LRU structure.
-            cache_key = code_obj
+            # cache_key not needed; use code_obj directly
             current_time = time.time()
 
             # Store in code object extra data if available (use Cython if present otherwise ctypes fallback)
@@ -470,63 +430,145 @@ class FuncCodeInfoCache:
                             ctypes.pythonapi.Py_DecRef(ctypes.py_object(info))
                     except Exception as exc:
                         logger.debug("ctypes _PyCode_SetExtra failed during set: %s", exc)
+                # We intentionally fall-through to LRU insertion even on failure
+                        # We swallow exceptions here but provide a fallback via LRU
 
             # Also store in LRU cache for statistics and fallback
             # Keep a weak reference to the original code object to detect id reuse
             # Maintain a weak-key mapping and a weakref-based LRU order.
-            try:
-                wr = None
-                rec = self._weak_map.get(code_obj)
-                if rec is not None:
-                    # Update existing record
-                    rec["info"] = info
-                    rec["timestamp"] = current_time
-                    wr = rec.get("wr")
-                else:
-                    # Create a weakref with callback to cleanup LRU
-                    def _remove_wr(weak_ref):
-                        try:
-                            # Remove from LRU order when object is GC'd
-                            if weak_ref in self._lru_order:
-                                del self._lru_order[weak_ref]
-                        except Exception:
-                            pass
-
-                    wr = weakref.ref(code_obj, _remove_wr)
-                    self._weak_map[code_obj] = {"info": info, "timestamp": current_time, "wr": wr}
-                # Update timestamp index for cleanup
-                self._timestamps[cache_key] = current_time
-
-                # Update or insert into LRU order
-                self._lru_order[wr] = True
-                # Move to end to mark recently used
-                try:
-                    self._lru_order.move_to_end(wr)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+            # Insert into LRU with proper weak ref handling and timestamp
 
             # Maintain size limit
             # Evict if over size limit. Pop from the LRU ordered list. We may need to
             # skip entries that were already GC'd.
-            while len(self._lru_order) > self.max_size:
-                try:
-                    oldest_wr, _ = self._lru_order.popitem(last=False)
-                    oldest_obj = oldest_wr()
-                    if oldest_obj is not None:
-                        # remove from weak_map if present
-                        try:
-                            del self._weak_map[oldest_obj]
-                        except Exception:
-                            pass
-                    CacheManager._cache_stats["evictions"] += 1
-                except KeyError:
-                    break
+            self._insert_into_lru(code_obj, info, current_time)
+
+            # Evict if over size limit; helper handles weakref GC and limits
+            self._evict_if_needed()
 
             # Update statistics
             CacheManager._cache_stats["total_entries"] = len(self._lru_order)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
+
+    def _set_code_extra(self, code_obj: Any, info: Any) -> None:
+        """Set extra info using the C API with fallback to ctypes."""
+        try:
+            _PyCode_SetExtra(code_obj, self._code_extra_index, info)
+        except (ImportError, AttributeError, TypeError):
+            try:
+                ctypes.pythonapi.Py_IncRef(ctypes.py_object(info))
+                result = _code_extra_api.set_extra(code_obj, self._code_extra_index, info)
+                if result != 0:
+                    ctypes.pythonapi.Py_DecRef(ctypes.py_object(info))
+            except Exception as exc:
+                logger.debug("ctypes _PyCode_SetExtra failed during set: %s", exc)
+
+    def _insert_into_lru(self, code_obj: Any, info: Any, timestamp: float) -> None:
+        """Insert or update an entry in the weak-key LRU cache."""
+        wr = None
+        rec = self._weak_map.get(code_obj)
+        if rec is not None:
+            rec["info"] = info
+            rec["timestamp"] = timestamp
+            wr = rec.get("wr")
+        else:
+            # callback to remove from lru order when object is GC'd
+            def _remove_wr(weak_ref):
+                try:
+                    if weak_ref in self._lru_order:
+                        del self._lru_order[weak_ref]
+                except Exception:
+                    pass
+
+            wr = weakref.ref(code_obj, _remove_wr)
+            self._weak_map[code_obj] = {"info": info, "timestamp": timestamp, "wr": wr}
+
+        # Update timestamp index for cleanup
+        self._timestamps[code_obj] = timestamp
+
+        # Update or insert into LRU order and move to end
+        self._lru_order[wr] = True
+        try:
+            self._lru_order.move_to_end(wr)
+        except Exception:
+            pass
+
+    def _evict_if_needed(self) -> None:
+        """Evict entries until the LRU has <= max_size entries.
+
+        Skips entries that were already collected and handles weakref cleanup.
+        """
+        while len(self._lru_order) > self.max_size:
+            if not self._lru_order:
+                break
+            oldest_wr, _ = self._lru_order.popitem(last=False)
+            oldest_obj = oldest_wr()
+            if oldest_obj is not None:
+                try:
+                    del self._weak_map[oldest_obj]
+                except Exception:
+                    pass
+            CacheManager._cache_stats["evictions"] += 1
+
+    def _get_from_code_extra(self, code_obj: Any) -> Any | None:
+        """Try to retrieve FuncCodeInfo from code object extra storage.
+
+        This encapsulates the Cython and ctypes fallback logic to keep
+        the main `get` method small and readable.
+        """
+        try:
+            # Try to get from Cython module first
+            if CYTHON_AVAILABLE and _cython_get_extra is not None:
+                extra = _cython_get_extra(code_obj)
+                if extra is not None:
+                    return extra
+        except (ImportError, AttributeError):
+            logger.debug("Cython _PyCode_GetExtra not available (ImportError/AttributeError)")
+
+        # Try ctypes fallback (unified wrapper)
+        if _code_extra_api.is_available():
+            try:
+                extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
+                if extra is not None:
+                    return extra
+            except Exception as exc:
+                logger.debug("ctypes _PyCode_GetExtra fallback failed: %s", exc)
+        return None
+
+    def _get_from_weak_map(self, code_obj: Any) -> Any | None:
+        """Retrieve info from weak-key LRU fallback storage.
+
+        Also handles TTL checks, promotion to MRU and eviction.
+        """
+        rec = self._weak_map.get(code_obj)
+        if rec is None:
+            return None
+
+        timestamp = rec.get("timestamp", 0)
+        wr = rec.get("wr")
+        # TTL check
+        if time.time() - timestamp < self.ttl:
+            # Update LRU order
+            try:
+                if wr in self._lru_order:
+                    self._lru_order.move_to_end(wr)
+            except Exception:
+                # Best-effort: ignore LRU move failures
+                pass
+            return rec.get("info")
+
+        # Expired
+        try:
+            if wr in self._lru_order:
+                del self._lru_order[wr]
+        except Exception:
+            pass
+        try:
+            del self._weak_map[code_obj]
+        except Exception:
+            pass
+        CacheManager._cache_stats["evictions"] += 1
+        return None
 
     def remove(self, code_obj: Any) -> bool:
         """
@@ -558,14 +600,12 @@ class FuncCodeInfoCache:
                         logger.debug("ctypes _PyCode_SetExtra failed during remove: %s", exc)
 
             # Remove from weak-map and LRU order
-            if cache_key in self._weak_map:
-                rec = self._weak_map.get(cache_key)
-                try:
+            if code_obj in self._weak_map:
+                rec = self._weak_map.get(code_obj)
+                if rec:
                     wr = rec.get("wr")
                     if wr in self._lru_order:
                         del self._lru_order[wr]
-                except Exception:
-                    pass
                 try:
                     del self._weak_map[cache_key]
                 except Exception:

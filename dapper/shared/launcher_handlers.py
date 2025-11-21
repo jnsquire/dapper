@@ -12,7 +12,6 @@ output and `dapper.shared.debug_shared.state` for session state.
 from __future__ import annotations
 
 import ast
-import importlib
 import sys
 import threading
 import traceback
@@ -102,6 +101,31 @@ def handle_debug_command(command: dict[str, Any]) -> None:
             msg = f"Error handling command {command_type}: {exc!s}"
             send_debug_message("error", message=msg)
         traceback.print_exc()
+
+
+def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any | None) -> Variable:
+    """Create a Variable object using the debugger-provided factory if available.
+
+    The helper centralizes the logic used across handlers to call the debugger's
+    `make_variable_object` if present or fall back to the shared default.
+    """
+
+    fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
+    var_obj = None
+    if callable(fn):
+        try:
+            # Some debuggers support an optional frame argument.
+            if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT:
+                var_obj = fn(name, value, frame)
+            else:
+                var_obj = fn(name, value)
+        except Exception:
+            var_obj = None
+
+    if not isinstance(var_obj, dict):
+        var_obj = _d_shared.make_variable_object(name, value, dbg, frame)
+
+    return cast("Variable", var_obj)
 
 
 # All the handler functions are copied verbatim from the former launcher.handlers
@@ -272,7 +296,7 @@ def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
     thread_id = arguments.get("threadId")
 
     try:
-        import importlib
+        import importlib  # noqa: PLC0415
 
         get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
     except Exception:
@@ -298,7 +322,7 @@ def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
     thread_id = arguments.get("threadId")
 
     try:
-        import importlib
+        import importlib  # noqa: PLC0415
 
         get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
     except Exception:
@@ -321,7 +345,7 @@ def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
     thread_id = arguments.get("threadId")
 
     try:
-        import importlib
+        import importlib  # noqa: PLC0415
 
         get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
     except Exception:
@@ -357,39 +381,42 @@ def handle_stack_trace(dbg: DebuggerLike, arguments: dict[str, Any]):
 
     # Support both 'frames_by_thread' (adapter style) and 'stack' (legacy BDB)
     frames = None
-    if dbg and hasattr(dbg, "frames_by_thread") and thread_id in getattr(dbg, "frames_by_thread", {}):
+    if dbg and hasattr(dbg, "frames_by_thread") and isinstance(thread_id, int) and thread_id in getattr(dbg, "frames_by_thread", {}):
         frames = dbg.frames_by_thread[thread_id]
     else:
         try:
-            import importlib
+            import importlib  # noqa: PLC0415
 
             get_ident = importlib.import_module("dapper.launcher.handlers").threading.get_ident
         except Exception:
             get_ident = threading.get_ident
 
-        if dbg and getattr(dbg, "stack", None) is not None and thread_id == get_ident():
-            frames = dbg.stack[start_frame:]
-        if levels is not None:
+        if dbg:
+            stack = getattr(dbg, "stack", None)
+            if stack is not None and thread_id == get_ident():
+                frames = stack[start_frame:]
+        if levels is not None and frames is not None:
             frames = frames[:levels]
 
-        for i, entry in enumerate(frames, start=start_frame):
-            if isinstance(entry, dict):
-                frame = entry
-                name = frame.get("name")
-                source_path = frame.get("file", frame.get("path")) or ""
-                lineno = frame.get("line", 0)
-            else:
-                frame, lineno = entry
-                name = frame.f_code.co_name
-                source_path = frame.f_code.co_filename
-            
-            stack_frames.append({
-                "id": i,
-                "name": name,
-                "source": {"name": Path(source_path).name, "path": source_path},
-                "line": lineno,
-                "column": 0,
-            })
+        if frames is not None:
+            for i, entry in enumerate(frames, start=start_frame):
+                if isinstance(entry, dict):
+                    frame = entry
+                    name = frame.get("name")
+                    source_path = frame.get("file", frame.get("path")) or ""
+                    lineno = frame.get("line", 0)
+                else:
+                    frame, lineno = entry
+                    name = frame.f_code.co_name
+                    source_path = frame.f_code.co_filename
+
+                stack_frames.append({
+                    "id": i,
+                    "name": name,
+                    "source": {"name": Path(source_path).name, "path": source_path},
+                    "line": lineno,
+                    "column": 0,
+                })
 
     # Send stack trace event similar to the original implementation
     try:
@@ -413,10 +440,7 @@ def handle_threads(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
         for tid, t in dbg.threads.items():
             # Support both thread objects with a 'name' attribute and simple
             # string names used in unit tests.
-            if isinstance(t, str):
-                name = t
-            else:
-                name = getattr(t, "name", f"Thread-{tid}")
+            name = t if isinstance(t, str) else getattr(t, "name", f"Thread-{tid}")
             threads.append({"id": tid, "name": name})
     
     try:
@@ -440,7 +464,11 @@ def handle_scopes(dbg: DebuggerLike, arguments: dict[str, Any]):
             frame = dbg.frame_id_to_frame.get(frame_id)
         elif dbg and getattr(dbg, "stack", None):
             try:
-                frame, _ = dbg.stack[frame_id]
+                stack = getattr(dbg, "stack", None)
+                if stack is not None and frame_id is not None and frame_id < len(stack):
+                    frame, _ = stack[frame_id]
+                else:
+                    frame = None
             except Exception:
                 frame = None
         if frame is not None:
@@ -479,7 +507,7 @@ def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
         content = ""
         if path:
             try:
-                with open(path, "r", encoding="utf-8") as fh:
+                with Path(path).open(encoding="utf-8") as fh:
                     content = fh.read()
             except Exception:
                 content = ""
@@ -497,7 +525,7 @@ def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
 
-    variables: list[dict[str, Any]] = []
+    variables: list[Variable] = []
     if not (dbg and isinstance(variables_reference, int) and variables_reference in getattr(dbg, "var_refs", {})):
         try:
             send_debug_message("variables", variablesReference=variables_reference, variables=variables)
@@ -507,38 +535,43 @@ def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
 
     frame_info = dbg.var_refs[variables_reference]
 
-    # Cached list of Variables is the simplest path
-    if isinstance(frame_info, list):
-        variables.extend([cast("Variable", v) for v in frame_info if isinstance(v, dict)])
-        try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-        except Exception:
-            pass
-        return None
+    variables = _resolve_variables_for_reference(dbg, frame_info)
 
-    # Expect tuple form of (frame_id, scope)
+    try:
+        send_debug_message("variables", variablesReference=variables_reference, variables=variables)
+    except Exception:
+        pass
+
+    return {"success": True, "body": {"variables": variables}}
+
+
+def _resolve_variables_for_reference(dbg: DebuggerLike | None, frame_info: Any) -> list[Variable]:
+    """Return variables for a var_refs entry.
+
+    This consolidates the branching logic for `handle_variables` into a testable
+    helper which returns an empty list on invalid input.
+    """
+    vars_out: list[Variable] = []
+
+    if isinstance(frame_info, list):
+        vars_out.extend([cast("Variable", v) for v in frame_info if isinstance(v, dict)])
+        return vars_out
+
     if not (isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE):
-        try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-        except Exception:
-            pass
-        return None
+        return vars_out
 
     kind, payload = frame_info
 
     if kind == "object":
         parent_obj = payload
-        # fall back to legacy extraction
+
         def _extract_variables(parent):
             if isinstance(parent, dict):
                 for name, val in parent.items():
-                    var_obj = dbg.make_variable_object(name, val) if dbg else None
-                    variables.append(cast("Variable", var_obj) if var_obj else _d_shared.make_variable_object(name, val, dbg))
+                    vars_out.append(_make_variable(dbg, name, val, None))
             elif isinstance(parent, list):
                 for idx, val in enumerate(parent):
-                    name = str(idx)
-                    var_obj = dbg.make_variable_object(name, val) if dbg else None
-                    variables.append(cast("Variable", var_obj) if var_obj else _d_shared.make_variable_object(name, val, dbg))
+                    vars_out.append(_make_variable(dbg, str(idx), val, None))
             else:
                 for name in dir(parent):
                     if name.startswith("_"):
@@ -547,49 +580,32 @@ def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
                         val = getattr(parent, name)
                     except Exception:
                         continue
-                    if dbg:
-                        variables.append(dbg.make_variable_object(name, val))
-                    else:
-                        variables.append(_d_shared.make_variable_object(name, val, dbg))
+                    vars_out.append(_make_variable(dbg, name, val, None))
 
         _extract_variables(parent_obj)
-        try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-        except Exception:
-            pass
-        return {"success": True, "body": {"variables": variables}}
+        return vars_out
 
-    # Scope-backed tuple (frame id, 'locals' or 'globals')
     if isinstance(kind, int) and payload in ("locals", "globals"):
         frame_id = kind
         scope = payload
         frame = getattr(dbg, "frame_id_to_frame", {}).get(frame_id)
         if not frame:
-            try:
-                send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-            except Exception:
-                pass
-            return None
+            return []
 
         mapping = frame.f_locals if scope == "locals" else frame.f_globals
-        for name, val in mapping.items():
-            var_obj = dbg.make_variable_object(name, val, frame) if dbg else None
-            if var_obj:
-                variables.append(cast("Variable", var_obj))
-            else:
-                variables.append(_d_shared.make_variable_object(name, val, dbg, frame))
-        try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-        except Exception:
-            pass
-        return {"success": True, "body": {"variables": variables}}
-    
-    try:
-        send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-    except Exception:
-        pass
+        vars_out.extend(_extract_variables_from_mapping(dbg, mapping, frame))
+        return vars_out
 
-    return {"success": True, "body": {"variables": variables}}
+    return vars_out
+
+
+def _extract_variables_from_mapping(dbg: DebuggerLike | None, mapping: dict[str, Any], frame: Any | None) -> list[Variable]:
+    """Convert a mapping of names -> values into a list of Variable objects."""
+
+    out: list[Variable] = []
+    for name, val in mapping.items():
+        out.append(_make_variable(dbg, name, val, frame))
+    return out
 
 
 def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
@@ -599,8 +615,6 @@ def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
     name = arguments.get("name")
     value = arguments.get("value")
     
-    success = False
-    new_value = "<error>"
     
     # Validate the reference
     if not (dbg and isinstance(variables_reference, int) and name and value is not None):
@@ -640,7 +654,7 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
     """Set a variable in a frame scope (locals or globals)"""
     try:
         # Dynamically import the conversion helper so tests can patch it
-        import importlib
+        import importlib  # noqa: PLC0415
 
         convert = getattr(importlib.import_module("dapper.launcher.handlers"), "_convert_value_with_context", None)
     except Exception:
@@ -661,21 +675,7 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
             return {"success": False, "message": f"Unknown scope: {scope}"}
 
         dbg = state.debugger
-        fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
-        var_obj = None
-        if callable(fn):
-            try:
-                if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT:
-                    var_obj = fn(name, new_value, frame)
-                else:
-                    var_obj = fn(name, new_value)
-            except Exception:
-                var_obj = None
-
-        if not isinstance(var_obj, dict):
-            var_obj = _d_shared.make_variable_object(name, new_value, dbg, frame)
-
-        var_obj = cast("Variable", var_obj)
+        var_obj = _make_variable(dbg, name, new_value, frame)
         return {
             "success": True,
             "body": {
@@ -692,60 +692,26 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
 def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, Any]:
     """Set an attribute or item of an object using a consolidated dispatch and single error path."""
     try:
-        import importlib
+        import importlib  # noqa: PLC0415
 
         convert = getattr(importlib.import_module("dapper.launcher.handlers"), "_convert_value_with_context", None)
     except Exception:
         convert = None
 
+    new_value: Any
     try:
-        if convert is not None:
-            new_value = convert(value_str, None, parent_obj)
-        else:
-            new_value = ast.literal_eval(value_str)
+        new_value = _convert_value_with_context(value_str, parent_obj, convert)
     except Exception:
-        try:
-            new_value = value_str
-        except Exception:
-            return {"success": False, "message": "Conversion failed"}
+        return {"success": False, "message": "Conversion failed"}
+
+    err = _assign_to_parent_member(parent_obj, name, new_value)
 
     try:
-        if isinstance(parent_obj, dict):
-            parent_obj[name] = new_value
-        elif isinstance(parent_obj, list):
-            try:
-                index = int(name)
-            except Exception:
-                return {"success": False, "message": f"Invalid list index: {name}"}
-            if not (0 <= index < len(parent_obj)):
-                return {"success": False, "message": f"List index {index} out of range"}
-            parent_obj[index] = new_value
-        elif isinstance(parent_obj, tuple):
-            return {"success": False, "message": "Cannot modify tuple - tuples are immutable"}
-        else:
-            try:
-                setattr(parent_obj, name, new_value)
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Cannot set attribute '{name}' on {type(parent_obj).__name__}: {e!s}",
-                }
+        if err is not None:
+            return {"success": False, "message": err}
 
         dbg = state.debugger
-        fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
-        var_obj = None
-        if callable(fn):
-            try:
-                candidate = fn(name, new_value)
-                if isinstance(candidate, dict):
-                    var_obj = candidate
-            except Exception:
-                var_obj = None
-
-        if not isinstance(var_obj, dict):
-            var_obj = _d_shared.make_variable_object(name, new_value, dbg, None)
-
-        var_obj = cast("Variable", var_obj)
+        var_obj = _make_variable(dbg, name, new_value, None)
         return {
             "success": True,
             "body": {
@@ -754,42 +720,51 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
                 "variablesReference": cast("dict", var_obj)["variablesReference"],
             },
         }
-
     except Exception as e:
         return {"success": False, "message": f"Failed to set object member '{name}': {e!s}"}
+
+
+def _convert_value_with_context(value_str: str, parent_obj: Any, convert_callable: Any | None) -> Any:
+    """Attempt to convert a string into a Python value using the adapter-conversion
+
+    `convert_callable` - a function from the launcher shim used by tests; if it
+    is not present, fall back to ast.literal_eval.
+    """
+    if convert_callable is not None:
+        return convert_callable(value_str, None, parent_obj)
+    # Default conversion - support strings, numbers, booleans, lists, dicts
+    return ast.literal_eval(value_str)
+
+
+def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str | None:
+    """Assign value into parent container/object and return an error message on failure.
+
+    Returns None on success, otherwise a human-readable error string.
+    """
+
+    err: str | None = None
+
+    if isinstance(parent_obj, dict):
+        parent_obj[name] = new_value
+    elif isinstance(parent_obj, list):
         try:
-            # Extract frame ID and scope from variables reference
-            frame_id = variables_reference // VAR_REF_TUPLE_SIZE
-            scope_type = variables_reference % VAR_REF_TUPLE_SIZE
-            
-            if hasattr(dbg, 'stack') and dbg.stack and frame_id < len(dbg.stack):
-                frame, _ = dbg.stack[frame_id]
-                
-                if scope_type == 0:  # Locals
-                    var_dict = frame.f_locals
-                else:  # Globals
-                    var_dict = frame.f_globals
-                
-                if name in var_dict:
-                    try:
-                        # Evaluate the new value in the frame context
-                        new_val = eval(value, frame.f_globals, frame.f_locals)
-                        var_dict[name] = new_val
-                        new_value = repr(new_val)
-                        success = True
-                    except Exception as e:
-                        new_value = f"<error: {e}>"
+            index = int(name)
         except Exception:
-            pass
-    
-    return {
-        "success": True,
-        "body": {
-            "value": new_value,
-            "type": "string",
-            "variablesReference": 0,
-        }
-    }
+            err = f"Invalid list index: {name}"
+        else:
+            if not (0 <= index < len(parent_obj)):
+                err = f"List index {index} out of range"
+            else:
+                parent_obj[index] = new_value
+    elif isinstance(parent_obj, tuple):
+        err = "Cannot modify tuple - tuples are immutable"
+    else:
+        try:
+            setattr(parent_obj, name, new_value)
+        except Exception as e:
+            err = f"Cannot set attribute '{name}' on {type(parent_obj).__name__}: {e!s}"
+
+    return err
 
 
 def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
@@ -797,30 +772,29 @@ def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
     arguments = arguments or {}
     expression = arguments.get("expression", "")
     frame_id = arguments.get("frameId")
-    context = arguments.get("context", "")
-    
+    # Context not used by the simple evaluate implementation; keep API compatibility
+    # but don't store into an unused local variable.
+
     result = "<error>"
-    success = False
-    
+
     if dbg and expression:
         if not isinstance(expression, str):
             raise TypeError("expression must be a string")
         try:
-            if hasattr(dbg, 'stack') and dbg.stack and frame_id is not None and frame_id < len(dbg.stack):
-                frame, _ = dbg.stack[frame_id]
+            stack = getattr(dbg, "stack", None)
+            if stack and frame_id is not None and frame_id < len(stack):
+                frame, _ = stack[frame_id]
                 # Evaluate in the frame context
                 try:
                     value = eval(expression, frame.f_globals, frame.f_locals)
                     result = repr(value)
-                    success = True
                 except Exception as e:
                     result = f"<error: {e}>"
-            elif hasattr(dbg, 'current_frame') and dbg.current_frame:
+            elif hasattr(dbg, "current_frame") and dbg.current_frame:
                 # Fallback to current frame
                 try:
                     value = eval(expression, dbg.current_frame.f_globals, dbg.current_frame.f_locals)
                     result = repr(value)
-                    success = True
                 except Exception as e:
                     result = f"<error: {e}>"
         except Exception:
@@ -851,9 +825,10 @@ def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
     breakpoints = arguments.get("breakpoints", [])
     
     # Clear existing data breakpoints
-    if hasattr(dbg, 'clear_all_data_breakpoints'):
+    clear_all = getattr(dbg, "clear_all_data_breakpoints", None)
+    if callable(clear_all):
         try:
-            dbg.clear_all_data_breakpoints()
+            clear_all()
         except Exception:
             pass
     
@@ -863,9 +838,10 @@ def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
         access_type = bp.get("accessType", "readWrite")
         verified = False
         
-        if data_id and hasattr(dbg, 'set_data_breakpoint'):
+        set_db = getattr(dbg, "set_data_breakpoint", None)
+        if data_id and callable(set_db):
             try:
-                dbg.set_data_breakpoint(data_id, access_type)
+                set_db(data_id, access_type)
                 verified = True
             except Exception:
                 pass
@@ -898,7 +874,7 @@ def handle_data_breakpoint_info(_dbg: DebuggerLike, arguments: dict[str, Any]):
 def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
     """Handle exceptionInfo command"""
     arguments = arguments or {}
-    thread_id = arguments.get("threadId")
+    # The thread id is not used by the simple exceptionInfo handler; ignore.
     
     exception_info = {
         "exceptionId": "Exception",
@@ -911,10 +887,10 @@ def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
     }
     
     # Try to get actual exception info if available
-    if dbg and hasattr(dbg, 'current_exception'):
-        try:
-            exc = dbg.current_exception
-            if exc:
+    if dbg:
+        exc = getattr(dbg, "current_exception", None)
+        if exc:
+            try:
                 exception_info.update({
                     "exceptionId": type(exc).__name__,
                     "description": str(exc),
@@ -923,8 +899,8 @@ def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
                         "typeName": type(exc).__name__,
                     }
                 })
-        except Exception:
-            pass
+            except Exception:
+                pass
     
     return {"success": True, "body": exception_info}
 
@@ -956,29 +932,20 @@ def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _n
     This helper keeps the legacy `handlers.extract_variables` contract so tests
     that call it via the compatibility shim continue to work.
     """
+    def _create_variable_object(key: str, val: Any) -> dict[str, Any]:
+        """Create a variable object, using debugger method if available, otherwise fallback."""
+        return cast("dict", _make_variable(dbg, key, val, None))
+
     # dict -> iterate items
     if isinstance(parent, dict):
         for key, val in parent.items():
-            try:
-                obj = dbg.make_variable_object(key, val) if dbg else None
-            except Exception:
-                obj = None
-            if not isinstance(obj, dict):
-                obj = _d_shared.make_variable_object(key, val, dbg)
-            variables.append(cast("dict", obj))
+            variables.append(_create_variable_object(key, val))
         return
 
     # list/tuple -> index
     if isinstance(parent, (list, tuple)):
         for i, val in enumerate(parent):
-            key = str(i)
-            try:
-                obj = dbg.make_variable_object(key, val) if dbg else None
-            except Exception:
-                obj = None
-            if not isinstance(obj, dict):
-                obj = _d_shared.make_variable_object(key, val, dbg)
-            variables.append(cast("dict", obj))
+            variables.append(_create_variable_object(str(i), val))
         return
 
     # object -> iterate public attributes
@@ -987,15 +954,9 @@ def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _n
             continue
         try:
             val = getattr(parent, attr)
+            variables.append(_create_variable_object(attr, val))
         except Exception:
             continue
-        try:
-            obj = dbg.make_variable_object(attr, val) if dbg else None
-        except Exception:
-            obj = None
-        if not isinstance(obj, dict):
-            obj = _d_shared.make_variable_object(attr, val, dbg)
-        variables.append(cast("dict", obj))
 
 
 def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):

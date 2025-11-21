@@ -1,3 +1,4 @@
+# ruff: noqa: PLC0415
 """
 Implementation of the Debug Adapter Protocol Server and integrated Python debugger.
 
@@ -40,6 +41,7 @@ from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_context import IPCContext
 from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.protocol_types import Source
+from dapper.protocol.protocol_types import SourceBreakpoint
 from dapper.shared import debug_shared
 
 
@@ -68,7 +70,6 @@ if TYPE_CHECKING:
     from dapper.protocol.protocol_types import FunctionBreakpoint
     from dapper.protocol.protocol_types import GenericRequest
     from dapper.protocol.protocol_types import Source
-    from dapper.protocol.protocol_types import SourceBreakpoint
 
 
 # Type definitions for breakpoint handling
@@ -279,6 +280,8 @@ class PyDebugger:
 
         if enable_frame_eval:
             try:
+                # Dynamic import guarded by feature config - avoid top-level import
+                # to prevent circular import issues when frame eval is not enabled.
                 from dapper._frame_eval.debugger_integration import integrate_py_debugger
 
                 integrate_py_debugger(self)
@@ -1165,14 +1168,10 @@ class PyDebugger:
                     optional_fields[field] = str(value) if field != "logMessage" else value
 
             # Create spec entry for debugger API
-            spec_entry: SourceBreakpoint = {"line": line_val}
-            spec_entry.update(optional_fields)
-            spec_list.append(spec_entry)
+            spec_list.append(SourceBreakpoint(line=line_val, **optional_fields))
 
             # Create storage entry for response
-            bp_result: BreakpointDict = {"line": line_val, "verified": True}
-            bp_result.update(optional_fields)
-            storage_list.append(bp_result)
+            storage_list.append(BreakpointDict(line=line_val, verified=True, **optional_fields))
 
         return spec_list, storage_list
 

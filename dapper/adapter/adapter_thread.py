@@ -272,9 +272,24 @@ class AdapterThread:
             )
 
         for future in done:
-            exc = future.exception()
-            if exc is None or isinstance(exc, concurrent.futures.CancelledError):
+            # Ignore cancelled futures - they represent expected shutdown
+            if future.cancelled():
                 continue
+
+            try:
+                exc = future.exception()
+            except concurrent.futures.CancelledError:
+                # Cancelled by caller while retrieving exception - ignore
+                continue
+            except Exception as e:
+                # Something went wrong while querying the future - log and continue
+                logger.debug("Error retrieving exception from future: %s", e)
+                continue
+
+            if exc is None:
+                continue
+
+            # Non-cancelled futures that completed with an error are noteworthy
             logger.debug("Error waiting for background future to finish: %s", exc)
 
     def _join_thread(self, join: bool, timeout: float | None) -> None:

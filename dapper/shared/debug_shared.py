@@ -154,19 +154,20 @@ class SessionState:
         It dynamically imports the `dapper.launcher.handlers` module so we
         avoid circular imports at module import time.
         """
-        while True:
+        # Use non-blocking reads until the queue is empty. Avoid try/except in
+        # the loop to reduce overhead and satisfy linter suggestions.
+        while not self.command_queue.empty():
+            cmd = self.command_queue.get_nowait()
             try:
-                cmd = self.command_queue.get_nowait()
-                try:
-                    from dapper.shared.launcher_handlers import handle_debug_command
+                # Deferred import to avoid circular imports at module import time
+                from dapper.shared.launcher_handlers import handle_debug_command  # noqa: PLC0415
 
-                    handle_debug_command(cmd)
-                except Exception:
-                    # If anything goes wrong, fall back to the provider
-                    # dispatch mechanism and continue processing.
-                    self.dispatch_debug_command(cmd)
-            except queue.Empty:
-                break
+                handle_debug_command(cmd)
+            except Exception:
+                # If anything goes wrong, fall back to the provider
+                # dispatch mechanism and continue processing.
+                self.dispatch_debug_command(cmd)
+            
 
     def set_exit_func(self, fn: Callable[[int], Any]) -> None:
         """Set a custom exit function for the session."""

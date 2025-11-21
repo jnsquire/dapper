@@ -21,13 +21,13 @@ from dapper.shared.launcher_handlers import *  # noqa: F403
 # patch the symbols on the handlers module and have the patched value used
 # by the shared implementation.
 _shared.threading = threading
-_shared._d_shared = _d_shared
-_shared._convert_string_to_value = None  # assigned below when helper is defined
-_shared._evaluate_hit_condition = _evaluate_hit_condition_impl
+_shared._d_shared = _d_shared  # noqa: SLF001 - compatibility shim, tests patch this symbol
+_shared._convert_string_to_value = None  # assigned below when helper is defined  # noqa: SLF001
+_shared._evaluate_hit_condition = _evaluate_hit_condition_impl  # noqa: SLF001
 def _shared_send_proxy(event_type: str, **kwargs):
     # Delegate to the handlers module-level send_debug_message so tests that
     # patch `dapper.launcher.handlers.send_debug_message` are honored.
-    import importlib
+    import importlib  # noqa: PLC0415
 
     try:
         mod = importlib.import_module("dapper.launcher.handlers")
@@ -104,8 +104,8 @@ def _evaluate_hit_condition(expr: str, hit_count: int) -> bool:
 # `dapper.launcher.handlers` get seen by the implementation in
 # `dapper.shared.launcher_handlers`.
 try:
-    _shared._convert_string_to_value = _convert_string_to_value
-    _shared._d_shared = _d_shared
+    _shared._convert_string_to_value = _convert_string_to_value  # noqa: SLF001
+    _shared._d_shared = _d_shared  # noqa: SLF001
     # Re-export internal compatibility helpers used by tests
     def _format_log_message(template: str, frame):
         return _format_log_message_impl(template, frame)
@@ -115,13 +115,13 @@ try:
     # expose them here as aliases.
     try:
         from dapper.shared.launcher_handlers import (
-            _set_object_member as _set_object_member,  # type: ignore
+            _set_object_member,  # type: ignore[attr-defined]
         )
     except Exception:
         _set_object_member = None
     try:
         from dapper.shared.launcher_handlers import (
-            _set_scope_variable as _set_scope_variable,  # type: ignore
+            _set_scope_variable,  # type: ignore[attr-defined]
         )
     except Exception:
         _set_scope_variable = None

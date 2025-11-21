@@ -1,3 +1,4 @@
+# ruff: noqa: PLC0415
 """
 DebuggerBDB class and related helpers for debug launcher.
 """
@@ -24,19 +25,24 @@ if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import ExceptionInfo
     from dapper.protocol.debugger_protocol import Variable
 
+def _noop_send_message(*args, **kwargs):
+    pass
+
+def _noop_process_commands():
+    pass
 
 class DebuggerBDB(bdb.Bdb):
     def __init__(
         self,
         skip=None,
         enable_frame_eval: bool = False,
-        send_message: Callable[..., Any] | None = None,
-        process_commands: Callable[[], Any] | None = None,
+        send_message: Callable[..., Any] = _noop_send_message,
+        process_commands: Callable[[], Any] = _noop_process_commands,
     ):
         super().__init__(skip)
         # Use injected callbacks or fall back to no-ops
-        self.send_message = send_message or (lambda *args, **kwargs: None)
-        self.process_commands = process_commands or (lambda: None)
+        self.send_message = send_message
+        self.process_commands = process_commands
 
         self.is_terminated = False
         self.breakpoints = {}
@@ -50,6 +56,7 @@ class DebuggerBDB(bdb.Bdb):
 
         if enable_frame_eval:
             try:
+                # Dynamic import to avoid top-level cycles when frame eval is optional
                 from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 
                 integrate_debugger_bdb(self)

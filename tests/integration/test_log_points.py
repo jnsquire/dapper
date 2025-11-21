@@ -127,7 +127,6 @@ class TestLogPointsIntegration(unittest.TestCase):
 
     def tearDown(self):
         """Clean up after tests"""
-        pass
 
     def test_basic_log_point_execution(self):
         """Test that log points output messages and continue execution"""
