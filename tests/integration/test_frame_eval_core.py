@@ -243,8 +243,14 @@ class TestCoreCacheFunctions:
 
     def test_func_code_info_operations(self):
         """Test function code info cache operations."""
-        # Create mock code object
-        mock_code = Mock()
+        # Create a real code object for testing
+        def _make_code_obj():
+            def _inner():
+                return 10
+
+            return _inner.__code__
+
+        mock_code = _make_code_obj()
         mock_info = {"test": "data", "breakpoints": [10, 20, 30]}
 
         # Test setting and getting info
@@ -292,7 +298,14 @@ class TestCoreCacheFunctions:
     def test_cache_statistics_and_cleanup(self):
         """Test cache statistics and cleanup."""
         # Add some data to caches
-        mock_code = Mock()
+        # Use a real code object rather than a Mock
+        def _make_code_obj2():
+            def _inner2():
+                return 20
+
+            return _inner2.__code__
+
+        mock_code = _make_code_obj2()
         set_func_code_info(mock_code, {"test": "data"})
         set_breakpoints("/test.py", {10, 20})
 

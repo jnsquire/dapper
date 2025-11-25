@@ -21,6 +21,7 @@ import threading
 import sys
 import os
 from typing import TYPE_CHECKING
+import types
 
 if TYPE_CHECKING:
     from typing import Any, Optional
@@ -283,9 +284,16 @@ def _PyEval_RequestCodeExtraIndex():
     return _PyEval_RequestCodeExtraIndex_C(_cleanup_code_extra)
 
 def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
-    """Set extra data on code object."""
+    """Set extra data on code object.
+
+    Raise TypeError if the provided `code` is not a Python code object. This
+    provides a clearer error for incorrect usage instead of allowing the
+    underlying C API to raise a SystemError or other low-level exception.
+    """
+    if not isinstance(code, types.CodeType):
+        raise TypeError("code argument must be a code object")
+
     if extra is not None:
-        Py_INCREF(extra)
         return _PyCode_SetExtra_C(code, index, <void*>extra)
     else:
         return _PyCode_SetExtra_C(code, index, NULL)

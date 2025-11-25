@@ -112,8 +112,14 @@ class TestCacheComponents:
         """Test basic cache operations."""
         FuncCodeInfoCache()
 
-        # Test with a mock code object
-        mock_code = Mock()
+        # Test with a real code object (ensures code-object storage paths exercised)
+        def _make_code_obj():
+            def _inner():
+                return 1
+
+            return _inner.__code__
+
+        mock_code = _make_code_obj()
         mock_info = {"test": "data"}
 
         # Set info
@@ -193,7 +199,14 @@ class TestCacheComponents:
     def test_clear_all_caches(self):
         """Test clearing all caches."""
         # Add some data
-        mock_code = Mock()
+        # Use a real code object here as well
+        def _make_code_obj2():
+            def _inner2():
+                return 2
+
+            return _inner2.__code__
+
+        mock_code = _make_code_obj2()
         set_func_code_info(mock_code, {"test": "data"})
         set_breakpoints("/test.py", {10, 20})
 
