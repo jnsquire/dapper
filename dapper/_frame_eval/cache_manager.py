@@ -519,7 +519,7 @@ class FuncCodeInfoCache:
         try:
             # Try to get from Cython module first
             if CYTHON_AVAILABLE and _cython_get_extra is not None:
-                extra = _cython_get_extra(code_obj)
+                extra = _cython_get_extra(code_obj, self._code_extra_index)
                 if extra is not None:
                     return extra
         except (ImportError, AttributeError):
