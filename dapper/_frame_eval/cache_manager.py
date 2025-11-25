@@ -457,7 +457,7 @@ class FuncCodeInfoCache:
         if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
             try:
                 _PyCode_SetExtra(code_obj, self._code_extra_index, info)
-                return
+                return  # noqa: TRY300
             except (ImportError, AttributeError, TypeError) as exc:
                 # Fall through to ctypes fallback
                 logger.debug("Cython _PyCode_SetExtra failed: %s", exc)

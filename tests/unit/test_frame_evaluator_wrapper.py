@@ -19,8 +19,6 @@ def test_pycodesetextra_raises_on_non_code():
     a non-code object instead of allowing the underlying C API to raise a
     confusing SystemError.
     """
-    import importlib
-
     m = importlib.import_module("dapper._frame_eval._frame_evaluator")
     if not hasattr(m, "_PyCode_SetExtra"):
         pytest.skip("_PyCode_SetExtra not exported by compiled Cython module in this build")
