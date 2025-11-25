@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Streamlined test runner for Dapper debug adapter.
 

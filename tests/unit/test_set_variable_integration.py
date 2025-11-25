@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Integration test for setVariable functionality.
 This test verifies that variables can actually be set during debugging.

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Comprehensive tests for frame evaluation system."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Coverage runner script for Dapper AI project.
 Run tests with coverage reporting.

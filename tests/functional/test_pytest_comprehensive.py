@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Comprehensive pytest-style tests for the complete frame evaluation system."""
 
 import sys

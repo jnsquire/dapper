@@ -66,7 +66,7 @@ def test_start_command_receiver_failure_logged(monkeypatch, caplog):
         monkeypatch.setattr(sys.modules["dapper.adapter"], "debug_adapter_comm", mod, raising=False)
 
     # Make thread constructor raise to trigger the warning path
-    def bad_thread(*args, **kwargs):  # simple callable matching Thread signature
+    def bad_thread(*_args, **_kwargs):  # simple callable matching Thread signature
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ds.threading, "Thread", bad_thread)

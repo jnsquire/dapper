@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test script for verifying the Dapper debug adapter setup.
 

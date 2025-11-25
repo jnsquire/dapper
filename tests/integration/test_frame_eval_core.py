@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Core tests for frame evaluation system focusing on critical functionality.
 """

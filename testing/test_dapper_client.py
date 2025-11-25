@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Debug Adapter Protocol client for testing the Dapper debug adapter.
 

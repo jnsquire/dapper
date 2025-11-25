@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test to verify unittest discovery works with our configuration."""
 
 import sys

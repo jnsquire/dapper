@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 scripts/update_docs.py
 

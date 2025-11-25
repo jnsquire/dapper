@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Pytest-style tests for frame evaluation system.
 """
