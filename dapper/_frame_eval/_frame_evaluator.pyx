@@ -294,6 +294,10 @@ def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
         raise TypeError("code argument must be a code object")
 
     if extra is not None:
+        # Ensure the passed object has its refcount incremented so the code
+        # object takes ownership of a new reference. This prevents the value
+        # from being collected unexpectedly and avoids use-after-free.
+        Py_INCREF(extra)
         return _PyCode_SetExtra_C(code, index, <void*>extra)
     else:
         return _PyCode_SetExtra_C(code, index, NULL)
