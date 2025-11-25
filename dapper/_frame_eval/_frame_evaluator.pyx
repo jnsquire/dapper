@@ -266,5 +266,42 @@ cpdef set_thread_skip_all(bint skip):
     thread_info.skip_all_frames = skip
 
 
+# External C APIs for code object extra data
+cdef extern from "Python.h":
+    ctypedef void (*freefunc)(void *)
+    int _PyCode_SetExtra_C "_PyCode_SetExtra"(object code, Py_ssize_t index, void *extra)
+    int _PyCode_GetExtra_C "_PyCode_GetExtra"(object code, Py_ssize_t index, void **extra)
+    Py_ssize_t _PyEval_RequestCodeExtraIndex_C "_PyEval_RequestCodeExtraIndex"(freefunc)
+
+# Cleanup function for code extra data
+cdef void _cleanup_code_extra(void *obj) noexcept:
+    if obj != NULL:
+        Py_DECREF(<object>obj)
+
+def _PyEval_RequestCodeExtraIndex():
+    """Request a new code extra index with our cleanup function."""
+    return _PyEval_RequestCodeExtraIndex_C(_cleanup_code_extra)
+
+def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
+    """Set extra data on code object."""
+    if extra is not None:
+        Py_INCREF(extra)
+        return _PyCode_SetExtra_C(code, index, <void*>extra)
+    else:
+        return _PyCode_SetExtra_C(code, index, NULL)
+
+def _PyCode_GetExtra(object code, Py_ssize_t index):
+    """Get extra data from code object."""
+    cdef void *extra = NULL
+    cdef int res
+    
+    res = _PyCode_GetExtra_C(code, index, &extra)
+    
+    if res < 0 or extra == NULL:
+        return None
+        
+    return <object>extra
+
+
 # Initialize module
 _initialize_global_state()
