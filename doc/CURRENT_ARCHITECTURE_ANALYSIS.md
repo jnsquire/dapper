@@ -26,15 +26,15 @@ This document analyzes Dapper's current debugging architecture to understand how
   - Handles subprocess vs in-process execution modes
   - Manages thread state and breakpoints storage
 
-#### 3. InProcessDebugger (`dapper/inprocess_debugger.py`)
+#### 3. InProcessDebugger (`dapper/core/inprocess_debugger.py`)
 - **Purpose**: Lightweight wrapper for in-process debugging mode
-- **Features**: Event-based communication instead of stdio/JSON
+- **Features**: Event-based communication instead of IPC/binary framing
 - **Integration**: Wraps DebuggerBDB with explicit APIs
 
-#### 4. Debug Launcher (`dapper/debug_launcher.py`)
+#### 4. Debug Launcher (`dapper/launcher/debug_launcher.py`)
 - **Function**: Entry point for debuggee process
-- **Communication**: Sends/receives commands via stdio or IPC
-- **Modes**: Supports both subprocess and in-process debugging
+- **Communication**: Sends/receives commands via IPC (binary framing)
+- **Modes**: Supports subprocess debugging with mandatory IPC
 
 ## Current Tracing Flow
 
@@ -103,7 +103,7 @@ def _handle_regular_breakpoint(self, filename, line, frame):
 
 ### Subprocess Mode (Default)
 ```
-Client <-> Debug Adapter (asyncio) <-> IPC/stdio <-> Debug Launcher (bdb)
+Client <-> Debug Adapter (asyncio) <-> IPC (binary framing) <-> Debug Launcher (bdb)
 ```
 
 ### In-Process Mode (Opt-in)

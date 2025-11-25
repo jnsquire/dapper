@@ -12,7 +12,7 @@ The debugger is split into two main runtime roles:
 
 There are now two transport/execution modes:
 
-1) Subprocess mode (default, existing): The debuggee runs as a separate Python process launched by the adapter. The adapter and debuggee communicate via a simple protocol over stdin/stdout.
+1) Subprocess mode (default): The debuggee runs as a separate Python process launched by the adapter. The adapter and debuggee communicate via a local IPC channel using binary framing.
 
 2) In-process mode (opt-in): The debuggee runs in the same process as the adapter. The debugee program remains on the main thread, while the debug adapter server runs on a background thread with its own asyncio event loop. In this mode, the adapter calls the debug engine directly via an in-process bridge for faster, simpler control flow.
 
@@ -20,7 +20,7 @@ Enable in-process mode by setting `inProcess: true` in the DAP `launch` request 
 
 ## Adapter ↔ Launcher IPC (subprocess mode)
 
-By default the adapter and launcher communicate over the launcher process's stdio. For lower overhead and better framing guarantees, you can enable a local IPC channel by setting `useIpc: true` in the DAP `launch` request. This affects only the adapter↔launcher hop; client↔adapter transport remains whatever the adapter server exposes (TCP or named pipe).
+The adapter and launcher communicate via a local IPC channel using binary framing. This provides lower overhead and better framing guarantees than plain text protocols. IPC is always enabled in subprocess mode; there is no fallback to stdio.
 
 Transports supported:
 
@@ -28,15 +28,17 @@ Transports supported:
 - Unix domain sockets (AF_UNIX): preferred on POSIX; the adapter creates a temporary socket path (e.g., in `tempfile.gettempdir()`), cleans up the filesystem entry on close, and passes it to the launcher (`--ipc unix --ipc-path <path>`).
 - TCP loopback: cross-platform fallback; binds to `127.0.0.1` on an ephemeral port and passes host/port (`--ipc tcp --ipc-host 127.0.0.1 --ipc-port <port>`).
 
-Platform defaults when `useIpc` is true:
+Platform defaults:
 
 - Windows: `pipe` (named pipe) by default.
 - Non-Windows: `unix` (AF_UNIX) by default when available; otherwise automatic fallback to `tcp`.
 
+Binary framing (default) wraps each message in an 8-byte header containing message kind and payload length, enabling efficient parsing and eliminating delimiter issues.
+
 Request wiring:
 
-- Server forwards `useIpc` and optional `ipcTransport`/`ipcPipeName` to `PyDebugger.launch(...)` only when `useIpc` is truthy, preserving positional-args expectations in legacy tests.
-- The launcher accepts `--ipc` options and connects accordingly. Messages tagged `DBGP:` flow adapter→launcher; `DBGCMD:` flow launcher→adapter.
+- Server passes optional `ipcTransport`/`ipcPipeName` to `PyDebugger.launch(...)`. IPC is always enabled.
+- The launcher requires `--ipc` (mandatory) and connects accordingly. Binary framing is the default.
 
 Resource management:
 
@@ -182,10 +184,10 @@ In-process mode keeps the debugged program (debugee) on the main thread and runs
       - `on_exited(data: dict) -> None`
       - `on_output(category: str, output: str) -> None`
 
-- `dapper/debugger.py` — PyDebugger additions
+- `dapper/adapter/server.py` — PyDebugger additions
    - `in_process` flag and an internal `_inproc` reference.
    - `_launch_in_process()` performs a lazy import of `InProcessDebugger`, sets up callbacks to forward DAP events (`stopped`, `thread`, `exited`, `output`) via `server.send_event(...)`, and signals a `process` event with the current PID.
-   - `_send_command_to_debuggee(...)` maps DAP commands directly to `InProcessDebugger` methods in in-process mode; subprocess JSON/stdio path remains for the default mode.
+   - `_send_command_to_debuggee(...)` maps DAP commands directly to `InProcessDebugger` methods in in-process mode; subprocess IPC path remains for the default mode.
 
 - `dapper/server.py` — request handlers
    - Passes `inProcess` from the `launch` request to `PyDebugger.launch(...)`.
@@ -215,7 +217,7 @@ In-process mode keeps the debugged program (debugee) on the main thread and runs
    - Events are forwarded via callbacks without stdio serialization.
 
 - When `inProcess` is omitted or false:
-   - The legacy subprocess path is used; the adapter speaks to the debuggee over stdin/stdout.
+   - The subprocess IPC path is used; the adapter speaks to the debuggee via a local IPC channel (named pipes, Unix sockets, or TCP loopback).
 
 ### Termination & disconnect semantics
 

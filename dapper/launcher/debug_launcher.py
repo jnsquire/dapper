@@ -24,6 +24,7 @@ from dapper.ipc.ipc_binary import read_exact
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.comm import send_debug_message
 from dapper.launcher.handlers import handle_debug_command
+from dapper.launcher.launcher_ipc import connector as default_connector
 from dapper.shared.debug_shared import state
 
 """
@@ -84,27 +85,18 @@ def _recv_binary_from_stream(rfile: Any) -> None:
 
 def receive_debug_commands() -> None:
     """
-    Listen for commands from the debug adapter on stdin.
-    These are prefixed with DBGCMD: to distinguish them from regular input.
+    Listen for commands from the debug adapter via IPC.
+
+    IPC is mandatory; the launcher will not fall back to stdio.
     """
-    # read-only access to state.is_terminated
-    if state.ipc_enabled:
-        # Binary IPC path
-        conn = state.ipc_pipe_conn
-        if conn is not None:
-            _recv_binary_from_pipe(conn)
-            return
+    state.require_ipc()
+
+    # Binary IPC path (default)
+    conn = state.ipc_pipe_conn
+    if conn is not None:
+        _recv_binary_from_pipe(conn)
+    else:
         _recv_binary_from_stream(state.ipc_rfile)
-        return
-
-    while not state.is_terminated:
-        line = sys.stdin.readline()
-        if not line:
-            # End of input stream, debug adapter has closed connection
-            state.exit_func(0)
-
-        if line.startswith("DBGCMD:"):
-            _handle_command_bytes(line[7:].strip().encode("utf-8"))
 
 
 def parse_args():
@@ -135,8 +127,9 @@ def parse_args():
     parser.add_argument(
         "--ipc",
         choices=["tcp", "unix", "pipe"],
+        required=True,
         help=(
-            "Optional IPC transport type to connect back to the adapter. "
+            "IPC transport type to connect back to the adapter. "
             "On Windows use 'tcp' or 'pipe'."
         ),
     )
@@ -144,7 +137,12 @@ def parse_args():
     parser.add_argument("--ipc-port", type=int, help="IPC TCP port")
     parser.add_argument("--ipc-path", type=str, help="IPC UNIX socket path")
     parser.add_argument("--ipc-pipe", type=str, help="IPC Windows pipe name")
-    parser.add_argument("--ipc-binary", action="store_true", help="Use binary IPC frames")
+    parser.add_argument(
+        "--ipc-binary",
+        action="store_true",
+        default=True,
+        help="Use binary IPC frames (default: True)",
+    )
     return parser.parse_args()
 
 
@@ -157,9 +155,8 @@ def _setup_ipc_pipe(ipc_pipe: str | None) -> None:
         msg = "Pipe IPC requested but not on Windows or missing pipe name"
         raise RuntimeError(msg)
 
-    conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
     state.ipc_enabled = True
-    state.ipc_pipe_conn = conn
+    state.ipc_pipe_conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
 
 
 def _setup_ipc_socket(
@@ -168,54 +165,52 @@ def _setup_ipc_socket(
     port: int | None,
     path: str | None,
     ipc_binary: bool = False,
+    connector: Any = None,
 ) -> None:
     """Initialize TCP/UNIX socket IPC and configure state.
 
     kind: "tcp" or "unix"
     """
-    sock = None
-    if kind == "unix":
-        af_unix = getattr(socket, "AF_UNIX", None)
-        if af_unix and path:
-            sock = socket.socket(af_unix, socket.SOCK_STREAM)
-            sock.connect(path)
+    # Use the provided connector or fall back to the default one
+    if connector is None:
+        connector = default_connector
+
+    try:
+        if kind == "unix":
+            sock = connector.connect_unix(path)
         else:
-            msg = "UNIX sockets unsupported or missing path"
-            raise RuntimeError(msg)
-    else:
-        # Default to TCP
-        if port is None:
-            msg = "Missing --ipc-port for TCP IPC"
-            raise RuntimeError(msg)
-        h = host or "127.0.0.1"
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((h, int(port)))
+            sock = connector.connect_tcp(host, port)
+    except Exception as exc:  # pragma: no cover - platform specific
+        raise RuntimeError("failed to connect socket") from exc
+
+    if sock is None:
+        msg = "failed to connect socket"
+        raise RuntimeError(msg)
 
     state.ipc_sock = sock
-    state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
-    state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
+    if ipc_binary:
+        # binary sockets use buffering=0 for raw bytes
+        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
+    else:
+        state.ipc_rfile = cast("Any", sock.makefile("r", encoding="utf-8", newline=""))
+        state.ipc_wfile = cast("Any", sock.makefile("w", encoding="utf-8", newline=""))
     state.ipc_enabled = True
     # record whether binary frames are used
     state.ipc_binary = bool(ipc_binary)
 
 
 def setup_ipc_from_args(args: Any) -> None:
-    """Best-effort IPC initialization based on parsed CLI args.
+    """Initialize IPC based on parsed CLI args.
 
-    Any failure will leave IPC disabled and fall back to stdio.
+    IPC is mandatory; raises RuntimeError on failure.
     """
-    if not args.ipc:
-        return
-    try:
-        if args.ipc == "pipe":
-            _setup_ipc_pipe(args.ipc_pipe)
-        else:
-            _setup_ipc_socket(
-                args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary
-            )
-    except Exception:
-        # If IPC fails, proceed with stdio
-        state.ipc_enabled = False
+    if args.ipc == "pipe":
+        _setup_ipc_pipe(args.ipc_pipe)
+    else:
+        _setup_ipc_socket(
+            args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary
+        )
 
 
 def start_command_listener() -> threading.Thread:

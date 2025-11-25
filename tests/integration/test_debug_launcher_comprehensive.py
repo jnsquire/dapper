@@ -75,13 +75,16 @@ class MockFrame:
 
 
 def setup_function(_func):
-    """Reset singleton session state for each test."""
+    """Reset singleton session state for each test.
+
+    IPC is now mandatory, so we enable it with a mock file by default.
+    """
     s = debug_shared.state
     s.debugger = None
     s.is_terminated = False
-    s.ipc_enabled = False
+    s.ipc_enabled = True
     s.ipc_rfile = None
-    s.ipc_wfile = None
+    s.ipc_wfile = MockWFile()  # Use mock file so IPC writes don't fail
     s.command_queue = queue.Queue()
 
 
@@ -1002,46 +1005,35 @@ def test_extract_variables():
     assert len(variables) > 0
 
 
-def test_send_debug_message_stdout():
-    """Test send_debug_message fallback to stdout."""
+def test_send_debug_message_requires_ipc():
+    """Test send_debug_message requires IPC to be enabled."""
     s = debug_shared.state
     s.ipc_enabled = False
 
-    # Test that the function doesn't crash when IPC is disabled
-    try:
+    # Should raise RuntimeError when IPC is not enabled
+    with pytest.raises(RuntimeError, match="IPC is required"):
         debug_launcher.send_debug_message("test", data="value")
-    except Exception:
-        pass  # May have stdout issues in test environment
-
-
-def test_send_debug_message_ipc_text():
-    """Test send_debug_message with text IPC."""
-    s = debug_shared.state
-    s.ipc_enabled = True
-    s.ipc_binary = False
-
-    mock_wfile = MockWFile()
-    s.ipc_wfile = mock_wfile
-
-    debug_launcher.send_debug_message("test", data="value")
-
-    # Should write to wfile
-    assert len(mock_wfile.written) > 0
-    assert mock_wfile.flushed is True
-
-    # Check the written content
-    written = mock_wfile.written[0]
-    assert written.startswith("DBGP:")
-    assert "test" in written
 
 
 def test_send_debug_message_ipc_binary():
-    """Test send_debug_message with binary IPC."""
+    """Test send_debug_message with binary IPC (the default mode)."""
     s = debug_shared.state
     s.ipc_enabled = True
-    s.ipc_binary = True
 
-    mock_wfile = MockWFile()
+    # Need a bytes-capable mock file
+    class MockBytesFile:
+        def __init__(self):
+            self.written = []
+            self.flushed = False
+
+        def write(self, data):
+            self.written.append(data)
+            return len(data)
+
+        def flush(self):
+            self.flushed = True
+
+    mock_wfile = MockBytesFile()
     s.ipc_wfile = mock_wfile
 
     debug_launcher.send_debug_message("test", data="value")
@@ -1049,6 +1041,8 @@ def test_send_debug_message_ipc_binary():
     # Should write binary frame to wfile
     assert len(mock_wfile.written) > 0
     assert mock_wfile.flushed is True
+    # The frame should be bytes
+    assert isinstance(mock_wfile.written[0], bytes)
 
 
 def test_send_debug_message_ipc_pipe():

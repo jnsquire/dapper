@@ -52,20 +52,23 @@ class TestDebugLauncherBasic:
 
     def test_parse_args_basic(self) -> None:
         """Test basic argument parsing."""
-        test_args = ["--program", "script.py"]
+        # --ipc is now required
+        test_args = ["--program", "script.py", "--ipc", "tcp"]
 
         with patch.object(sys, "argv", ["debug_launcher.py", *test_args]):
             args = dl.parse_args()
 
         assert args.program == "script.py"
         assert args.arg == []  # Changed from args.args to args.arg
-        # debug flag is not present in the current implementation
+        assert args.ipc == "tcp"
 
     def test_parse_args_with_options(self) -> None:
         """Test argument parsing with various options."""
         test_args = [
             "--program",
             "script.py",
+            "--ipc",
+            "tcp",
             "--ipc-host",
             "localhost",
             "--ipc-port",
@@ -80,6 +83,7 @@ class TestDebugLauncherBasic:
         with patch.object(sys, "argv", ["debug_launcher.py", *test_args]):
             args = dl.parse_args()
 
+        assert args.ipc == "tcp"
         assert args.ipc_host == "localhost"
         assert args.ipc_port == 5678
         assert args.program == "script.py"

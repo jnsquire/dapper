@@ -65,32 +65,16 @@ def test_write_command_to_channel_ipc_socket_text():
     assert any("DBGCMD:bbb" in c[1] for c in calls if c[0] == "write")
 
 
-def test_write_command_to_channel_fallback_to_stdin():
+def test_write_command_to_channel_requires_ipc():
+    """Test that _write_command_to_channel raises RuntimeError when IPC is not configured."""
     p = PyDebugger(server=Mock())
 
-    class Stdin:
-        def __init__(self):
-            self.written = []
-
-        def write(self, s):
-            self.written.append(s)
-
-        def flush(self):
-            pass
-
-    class Proc:
-        def __init__(self):
-            self.stdin = Stdin()
-
     p.disable_ipc()
-    mock_stdin = Mock()
     p.process = Mock()
-    p.process.stdin = mock_stdin
 
-    p._write_command_to_channel("kkk")
-
-    # Verify that stdin.write was called with a string containing the DBGCMD marker
-    assert any("DBGCMD:kkk" in call.args[0] for call in mock_stdin.write.call_args_list)
+    # Should raise RuntimeError since IPC is mandatory
+    with pytest.raises(RuntimeError, match="IPC is required"):
+        p._write_command_to_channel("kkk")
 
 
 @pytest.mark.asyncio
@@ -123,12 +107,13 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
 
     # Verify the debugger was called with the expected kwargs
     # Positional args are program, args (list), stop_on_entry, no_debug
+    # IPC is now always enabled, so use_ipc is no longer passed
     assert len(mock_debugger.launch.calls) == 1
     args, kwargs = mock_debugger.launch.calls[0]
     assert args == ("test.py", [], False, False)
-    assert kwargs.get("use_ipc") is True
     assert kwargs.get("ipc_transport") == "pipe"
     assert kwargs.get("ipc_pipe_name") == r"\\.\pipe\dapper-test-pipe"
+    assert kwargs.get("use_binary_ipc") is True
 
 
 @pytest.mark.asyncio
@@ -190,8 +175,7 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     await debugger.launch(
         "test.py",
         args=[],
-        use_ipc=True,
-        ipc_transport="pipe",
+        ipc_transport="pipe",  # IPC is now always enabled
     )
 
     pipe_listener = debugger.ipc.pipe_listener
@@ -251,7 +235,8 @@ async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     await asyncio.wait_for(server_task, timeout=1.0)
 
     # Verify debugger.launch received the forwarded flag
+    # IPC is now always enabled, so use_ipc is no longer passed
     assert len(mock_debugger.launch.calls) == 1
     _args, kwargs = mock_debugger.launch.calls[0]
-    assert kwargs.get("use_ipc") is True
     assert kwargs.get("use_binary_ipc") is True
+    assert kwargs.get("ipc_transport") == "tcp"

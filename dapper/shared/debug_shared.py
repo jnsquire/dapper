@@ -17,7 +17,6 @@ from typing import Callable
 from typing import TypedDict
 from typing import cast
 
-from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.ipc.ipc_binary import pack_frame  # lightweight util
 from dapper.utils.events import EventEmitter
 
@@ -146,6 +145,24 @@ class SessionState:
             self.exit_func: Callable[[int], Any] = os._exit
         self.exec_func: Callable[[str, list[str]], Any] = os.execv
 
+    def require_ipc(self) -> None:
+        """Raise RuntimeError if IPC is not enabled.
+
+        Use this method to guard code paths that require IPC to be active.
+        """
+        if not self.ipc_enabled:
+            msg = "IPC is required but not enabled"
+            raise RuntimeError(msg)
+
+    def require_ipc_write_channel(self) -> None:
+        """Raise RuntimeError if IPC is enabled but no write channel is available.
+
+        Use this after require_ipc() when a write channel (pipe_conn or wfile) is needed.
+        """
+        if self.ipc_pipe_conn is None and self.ipc_wfile is None:
+            msg = "IPC enabled but no connection available"
+            raise RuntimeError(msg)
+
     def process_queued_commands_launcher(self) -> None:
         """Process queued commands using the launcher handlers.
 
@@ -184,20 +201,21 @@ class SessionState:
         circular-import issues. Failures are logged rather than silently
         ignored so misconfiguration is visible during startup.
         """
-        # Avoid starting more than once
-        if getattr(self, "_command_thread_started", False):
-            logger.debug("command receiver already started")
-            return
-
         try:
             # Defer import to avoid circular import at module import time
-            from dapper.adapter.debug_adapter_comm import receive_debug_commands  # noqa: PLC0415
+            from dapper.adapter import debug_adapter_comm  # noqa: PLC0415
 
-            command_thread = threading.Thread(
-                target=receive_debug_commands, daemon=True, name="dapper-recv-cmd"
+            # Avoid starting more than once
+            if debug_adapter_comm.command_thread is not None:
+                logger.debug("command receiver already started")
+                return
+
+            debug_adapter_comm.command_thread = threading.Thread(
+                target=debug_adapter_comm.receive_debug_commands,
+                daemon=True,
+                name="dapper-recv-cmd",
             )
-            command_thread.start()
-            self._command_thread_started = True
+            debug_adapter_comm.command_thread.start()
             logger.debug("Started receive_debug_commands thread")
         except Exception as exc:  # pragma: no cover - best-effort startup
             # Log at warning level so failures are visible during normal runs
@@ -326,61 +344,14 @@ class SessionState:
         except Exception:
             return None
 
-    def setup_process_state(self, args: Any) -> None:
-        """Configure process-global state from parsed launcher arguments.
-
-        This was previously a top-level helper. Moving it onto the
-        SessionState instance keeps process configuration close to the
-        state it mutates. Heavy imports are performed locally to avoid
-        import-time cycles.
-        """
-        # set flags
-        self.stop_at_entry = getattr(args, "stop_on_entry", False)
-        self.no_debug = getattr(args, "no_debug", False)
-
-        logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
-
-        # attempt IPC setup (imports deferred to avoid circular imports)
-        if getattr(args, "ipc", None):
-            try:
-                from dapper.launcher_ipc import _setup_ipc_pipe  # noqa: PLC0415
-                from dapper.launcher_ipc import _setup_ipc_socket  # noqa: PLC0415
-
-                if args.ipc == "pipe" and os.name == "nt" and getattr(args, "ipc_pipe", None):
-                    _setup_ipc_pipe(args.ipc_pipe)
-                else:
-                    _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path)
-            except Exception as exc:  # pragma: no cover - environment specific
-                # keep running without IPC if setup failed, but log the reason
-                self.ipc_enabled = False
-                logger.warning("IPC setup failed: %s", exc, exc_info=True)
-
-        # start the command receiving thread (deferred import to avoid cycles)
-        self.start_command_receiver()
-
-        # attach a debugger instance
-        try:
-            self.debugger = DebuggerBDB()
-            if self.stop_at_entry:
-                try:
-                    self.debugger.stop_on_entry = True
-                except Exception:
-                    pass
-        except Exception as exc:
-            # if debugger construction fails, leave debugger as None but log
-            logger.warning("Failed to construct DebuggerBDB: %s", exc, exc_info=True)
-            self.debugger = None
-
 
 # Module-level singleton instance used throughout the codebase
 state = SessionState()
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
-    """Send a debug message via IPC/logging and emit to subscribers.
-
-    Back-compat: this function remains available; new code can subscribe to
-    `state.on_debug_message` to observe messages without monkeypatching.
+    """Send a debug message via IPC and emit to subscribers.
+    Binary framing is the default transport.
     """
     message = {"event": event_type}
     message.update(kwargs)
@@ -389,38 +360,24 @@ def send_debug_message(event_type: str, **kwargs) -> None:
     with contextlib.suppress(Exception):
         state.on_debug_message.emit(event_type, **kwargs)
 
-    # Prefer IPC when enabled; fall back to logging/flush.
-    if state.ipc_enabled:
-        # Binary IPC path
-        if getattr(state, "ipc_binary", False):
-            payload = json.dumps(message).encode("utf-8")
-            frame = pack_frame(1, payload)
-            # Prefer pipe conn if available
-            conn = state.ipc_pipe_conn
-            if conn is not None:
-                with contextlib.suppress(Exception):
-                    conn.send_bytes(frame)
-                    return
-            # Else try binary file
-            wfile = state.ipc_wfile
-            if wfile is not None:
-                with contextlib.suppress(Exception):
-                    # Assume binary BufferedWriter
-                    wfile.write(frame)  # type: ignore[arg-type]
-                    with contextlib.suppress(Exception):
-                        wfile.flush()  # type: ignore[call-arg]
-                    return
-        # Text IPC path
-        if state.ipc_wfile is not None:
-            try:
-                state.ipc_wfile.write(f"DBGP:{json.dumps(message)}\n")
-                state.ipc_wfile.flush()
-            except Exception:
-                pass
-            else:
-                return
-    send_logger.debug(json.dumps(message))
-    sys.stdout.flush()
+    state.require_ipc()
+    state.require_ipc_write_channel()
+
+    # Binary IPC (default)
+    payload = json.dumps(message).encode("utf-8")
+    frame = pack_frame(1, payload)
+
+    # Prefer pipe conn if available
+    conn = state.ipc_pipe_conn
+    if conn is not None:
+        conn.send_bytes(frame)
+        return
+
+    wfile = state.ipc_wfile
+    assert wfile is not None  # guaranteed by require_ipc_write_channel
+    wfile.write(frame)  # type: ignore[arg-type]
+    with contextlib.suppress(Exception):
+        wfile.flush()  # type: ignore[call-arg]
 
 
 # Module-level helpers extracted from make_variable_object to reduce function size

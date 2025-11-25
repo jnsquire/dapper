@@ -126,7 +126,8 @@ async def test_initialization_sequence(mock_debugger_class):
         assert launch_response["success"] is True
 
     # Verify the debugger was called with correct args
-    mock_debugger.launch.assert_called_once_with("test.py", [], False, False)
+    # IPC is now always enabled with binary mode, so check kwargs as well
+    mock_debugger.launch.assert_called_once_with("test.py", [], False, False, use_binary_ipc=True)
 
 
 @pytest.mark.asyncio

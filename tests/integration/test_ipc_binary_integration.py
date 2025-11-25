@@ -52,8 +52,7 @@ async def test_binary_ipc_frame_roundtrip_exited_event():
             stop_on_entry=False,
             no_debug=False,
             in_process=False,
-            use_ipc=True,
-            use_binary_ipc=True,
+            use_binary_ipc=True,  # IPC is now always enabled
             ipc_transport=transport,
         )
     finally:

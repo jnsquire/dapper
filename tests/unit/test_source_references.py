@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,25 @@ import pytest
 from dapper.adapter.dap_command_handlers import handle_loaded_sources
 from dapper.adapter.dap_command_handlers import handle_source
 from dapper.shared.debug_shared import state
+
+
+class MockWFile(io.BytesIO):
+    """Mock file for IPC writes."""
+
+    def flush(self):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _setup_ipc_for_tests():
+    """Enable IPC with mock file for tests."""
+    orig_enabled = state.ipc_enabled
+    orig_wfile = state.ipc_wfile
+    state.ipc_enabled = True
+    state.ipc_wfile = MockWFile()
+    yield
+    state.ipc_enabled = orig_enabled
+    state.ipc_wfile = orig_wfile
 
 
 def _call_loaded_sources_and_find_ref() -> tuple[int, str]:

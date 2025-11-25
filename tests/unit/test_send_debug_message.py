@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import dapper.shared.debug_shared as ds
 from dapper.ipc.ipc_binary import unpack_header
 
@@ -14,8 +16,11 @@ class _PipeConn:
         self.sent.append(frame)
 
 
-def test_send_debug_message_event_and_logging(monkeypatch):
-    # Ensure IPC disabled
+
+
+def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch):
+    """Test that send_debug_message emits to listeners but requires IPC."""
+    # IPC disabled should still emit to listeners before raising
     ds.state.ipc_enabled = False
     captured = []
     ds.state.on_debug_message.add_listener(
@@ -29,10 +34,12 @@ def test_send_debug_message_event_and_logging(monkeypatch):
 
     monkeypatch.setattr(ds.send_logger, "debug", fake_debug)
 
-    ds.send_debug_message("response", id=1, success=True)
+    # Should raise RuntimeError since IPC is mandatory
+    with pytest.raises(RuntimeError, match="IPC is required"):
+        ds.send_debug_message("response", id=1, success=True)
 
+    # But listeners should still have been called before the raise
     assert captured == [("response", {"id": 1, "success": True})]
-    assert logged == [{"event": "response", "id": 1, "success": True}]
 
 
 def test_send_debug_message_binary_ipc():

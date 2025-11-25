@@ -1,8 +1,33 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
+import pytest
+
 import dapper.shared.debug_shared as ds
+
+
+class MockWFile(io.BytesIO):
+    """Mock file for IPC writes."""
+
+    def flush(self):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _setup_ipc_for_tests():
+    """Enable IPC with mock file so any background threads don't fail."""
+    orig_enabled = ds.state.ipc_enabled
+    orig_wfile = ds.state.ipc_wfile
+    orig_rfile = ds.state.ipc_rfile
+    ds.state.ipc_enabled = True
+    ds.state.ipc_wfile = MockWFile()
+    ds.state.ipc_rfile = io.StringIO("")  # Empty reader to cause immediate exit
+    yield
+    ds.state.ipc_enabled = orig_enabled
+    ds.state.ipc_wfile = orig_wfile
+    ds.state.ipc_rfile = orig_rfile
 
 
 def test_source_reference_round_trip(tmp_path):

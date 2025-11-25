@@ -2,11 +2,13 @@
 Debug adapter communication and command queue logic.
 """
 
+from __future__ import annotations
+
 import json
 import logging
-import sys
 import traceback
 from queue import Empty
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -14,7 +16,13 @@ from dapper.adapter.dap_command_handlers import COMMAND_HANDLERS
 from dapper.shared.debug_shared import send_debug_message
 from dapper.shared.debug_shared import state
 
+if TYPE_CHECKING:
+    import threading
+
 logger = logging.getLogger(__name__)
+
+# Global reference to the command receiver thread
+command_thread: threading.Thread | None = None
 
 
 class DapMappingProvider:
@@ -54,43 +62,30 @@ state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)
 
 def receive_debug_commands() -> None:
     """
-    Continuously reads debug commands from either an IPC file or stdin, parses them,
+    Continuously reads debug commands from the IPC channel, parses them,
     and dispatches them for processing until termination is requested.
-    """
-    if state.ipc_enabled and state.ipc_rfile is not None:
-        reader = state.ipc_rfile
-        while not state.is_terminated:
-            line = reader.readline()
-            if not line:
-                state.exit_func(0)
-            if line.startswith("DBGCMD:"):
-                command_json = line[7:].strip()
-                try:
-                    command = json.loads(command_json)
-                    state.command_queue.put(command)
-                    state.dispatch_debug_command(command)
-                except Exception as e:
-                    send_debug_message("error", message=f"Error receiving command: {e!s}")
-                    traceback.print_exc()
-    else:
-        while not state.is_terminated:
-            try:
-                line = sys.stdin.readline()
-            except OSError as exc:  # pragma: no cover - pytest stdin replacement
-                logger.debug("stdin read blocked (likely due to capture): %s", exc)
-                break
 
-            if not line:
-                state.exit_func(0)
-            if line.startswith("DBGCMD:"):
-                command_json = line[7:].strip()
-                try:
-                    command = json.loads(command_json)
-                    state.command_queue.put(command)
-                    state.dispatch_debug_command(command)
-                except Exception as e:
-                    send_debug_message("error", message=f"Error receiving command: {e!s}")
-                    traceback.print_exc()
+    IPC is mandatory; raises RuntimeError if IPC is not enabled.
+    """
+    state.require_ipc()
+    if state.ipc_rfile is None:
+        msg = "IPC is enabled but no read channel is available."
+        raise RuntimeError(msg)
+
+    reader = state.ipc_rfile
+    while not state.is_terminated:
+        line = reader.readline()
+        if not line:
+            state.exit_func(0)
+        if line.startswith("DBGCMD:"):
+            command_json = line[7:].strip()
+            try:
+                command = json.loads(command_json)
+                state.command_queue.put(command)
+                state.dispatch_debug_command(command)
+            except Exception as e:
+                send_debug_message("error", message=f"Error receiving command: {e!s}")
+                traceback.print_exc()
 
 
 def process_queued_commands():

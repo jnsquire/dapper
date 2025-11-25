@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import socket
 from typing import Any
 from typing import cast
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
+from dapper.launcher import debug_launcher
 from dapper.launcher import launcher_ipc
 from dapper.shared.debug_shared import state
 
@@ -16,114 +20,55 @@ def teardown_function(_fn):
     state.ipc_wfile = None
 
 
-def test_setup_ipc_pipe_success(monkeypatch):
-    class FakeConn:
-        def send(self, s):
-            pass
+def test_socket_connector_tcp_success():
+    with patch("socket.socket") as mock_socket_cls:
+        mock_sock = MagicMock()
+        mock_socket_cls.return_value = mock_sock
 
-        def recv(self):
-            return "msg"
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_tcp("127.0.0.1", 12345)
 
-        def close(self):
-            pass
-
-    def fake_client(*_args, **_kwargs):
-        return FakeConn()
-
-    class M:
-        Client = fake_client
-
-    monkeypatch.setattr(launcher_ipc, "_mpc", M)
-
-    ok = launcher_ipc._setup_ipc_pipe(r"\\.\pipe\test")
-    assert ok is True
-    assert state.ipc_enabled is True
-    assert state.ipc_rfile is not None
-    assert state.ipc_wfile is not None
-    # exercise the read/write API
-    assert hasattr(state.ipc_rfile, "readline")
-    assert hasattr(state.ipc_wfile, "write")
+        assert sock is mock_sock
+        mock_sock.connect.assert_called_with(("127.0.0.1", 12345))
 
 
-def test_setup_ipc_pipe_failure(monkeypatch):
-    def bad_client(*_args, **_kwargs):
-        msg = "no pipe"
-        raise RuntimeError(msg)
-
-    class M:
-        Client = bad_client
-
-    monkeypatch.setattr(launcher_ipc, "_mpc", M)
-    ok = launcher_ipc._setup_ipc_pipe(r"\\.\pipe\test")
-    assert ok is False
-    assert state.ipc_enabled is False
-
-
-def test_connect_tcp_success(monkeypatch):
-    created = {}
-
-    class FakeSocket:
-        def __init__(self):
-            created["sock"] = True
-
-        def connect(self, addr):
-            # accept any address
-            created["addr"] = addr
-
-        def makefile(self, _mode):
-            return io.StringIO()
-
-        def close(self):
-            created["closed"] = True
-
-    def fake_socket(*_args, **_kwargs):
-        return FakeSocket()
-
-    monkeypatch.setattr(launcher_ipc.socket, "socket", fake_socket)
-
-    sock = launcher_ipc._connect_tcp_socket("127.0.0.1", 12345)
-    assert sock is not None
-
-
-def test_connect_tcp_failure_bad_port():
+def test_socket_connector_tcp_failure_bad_port():
+    connector = launcher_ipc.SocketConnector()
     # None port should return None
-    sock = launcher_ipc._connect_tcp_socket("127.0.0.1", None)
+    sock = connector.connect_tcp("127.0.0.1", None)
     assert sock is None
 
 
-def test_connect_tcp_failure_bad_port_string():
+def test_socket_connector_tcp_failure_bad_port_string():
+    connector = launcher_ipc.SocketConnector()
     # non-numeric port should return None
-    # cast to satisfy static type checkers; runtime will attempt int() and fail
-    sock = launcher_ipc._connect_tcp_socket("127.0.0.1", cast("Any", "notanint"))
+    sock = connector.connect_tcp("127.0.0.1", cast("Any", "notanint"))
     assert sock is None
 
 
-def test_connect_unix_no_af(monkeypatch):
-    # Remove AF_UNIX attribute to simulate environment without unix sockets
-    monkeypatch.delattr(launcher_ipc.os, "AF_UNIX", raising=False)
-    sock = launcher_ipc._connect_unix_socket("/tmp/x")
-    assert sock is None
+def test_socket_connector_unix_no_af():
+    # Simulate environment without unix sockets
+    # We patch 'os' in launcher_ipc module
+    with patch("dapper.launcher.launcher_ipc.os") as mock_os:
+        del mock_os.AF_UNIX
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_unix("/tmp/x")
+        assert sock is None
 
 
-def test_connect_unix_success(monkeypatch):
-    class FakeSock:
-        def __init__(self):
-            self.connected = False
+def test_socket_connector_unix_success():
+    with patch("socket.socket") as mock_socket_cls, \
+            patch("dapper.launcher.launcher_ipc.os") as mock_os:
 
-        def connect(self, path):  # noqa: ARG002
-            self.connected = True
+        mock_os.AF_UNIX = getattr(socket, "AF_UNIX", 1)
+        mock_sock = MagicMock()
+        mock_socket_cls.return_value = mock_sock
 
-        def close(self):
-            pass
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_unix("/tmp/x")
 
-    def fake_socket(*_args):
-        return FakeSock()
-
-    monkeypatch.setattr(launcher_ipc.socket, "socket", fake_socket)
-    # Ensure AF_UNIX present for the test
-    monkeypatch.setattr(launcher_ipc.os, "AF_UNIX", 1, raising=False)
-    sock = launcher_ipc._connect_unix_socket("/tmp/x")
-    assert sock is not None
+        assert sock is mock_sock
+        mock_sock.connect.assert_called_with("/tmp/x")
 
 
 def test_pipeio_readline_and_write():
@@ -151,38 +96,39 @@ def test_pipeio_readline_and_write():
     assert p.readline(5) == "hello"
 
 
-def test_setup_ipc_socket_unix_and_tcp(monkeypatch):
-    # Test unix path success via monkeypatching _connect_unix_socket
+def test_setup_ipc_socket_with_connector():
+    """Test that we can inject a mock connector into _setup_ipc_socket."""
+
     class FakeSock:
         def makefile(self, mode, encoding=None, newline=None):  # noqa: ARG002
             return io.StringIO()
 
-    def fake_unix(_p):
-        return FakeSock()
+        def close(self):
+            pass
 
-    def fake_tcp(_h, _p):
-        return None
+    class MockConnector:
+        def connect_unix(self, _path):
+            return FakeSock()
 
-    monkeypatch.setattr(launcher_ipc, "_connect_unix_socket", fake_unix)
-    monkeypatch.setattr(launcher_ipc, "_connect_tcp_socket", fake_tcp)
-    ok = launcher_ipc._setup_ipc_socket("unix", None, None, "/tmp/x")
-    assert ok is True
+        def connect_tcp(self, _host, _port):
+            return FakeSock()
+
+    connector = MockConnector()
+
+    # Test unix path
+    debug_launcher._setup_ipc_socket(
+        "unix", None, None, "/tmp/x", ipc_binary=False, connector=connector
+    )
     assert state.ipc_enabled is True
+
     # reset
     state.ipc_enabled = False
     state.ipc_sock = None
     state.ipc_rfile = None
     state.ipc_wfile = None
 
-    # Test tcp path via _connect_tcp_socket
-    def fake_unix_none(_p):
-        return None
-
-    def fake_tcp_sock(_h, _p):
-        return FakeSock()
-
-    monkeypatch.setattr(launcher_ipc, "_connect_unix_socket", fake_unix_none)
-    monkeypatch.setattr(launcher_ipc, "_connect_tcp_socket", fake_tcp_sock)
-    ok2 = launcher_ipc._setup_ipc_socket("tcp", "127.0.0.1", 12345, None)
-    assert ok2 is True
+    # Test tcp path
+    debug_launcher._setup_ipc_socket(
+        "tcp", "127.0.0.1", 12345, None, ipc_binary=False, connector=connector
+    )
     assert state.ipc_enabled is True

@@ -19,45 +19,62 @@ class _DummyThread:
 
 def test_start_command_receiver_idempotent(monkeypatch):
     state = ds.state
-    # Remove flag if set from previous tests
-    if hasattr(state, "_command_thread_started"):
-        delattr(state, "_command_thread_started")
 
-    # Provide dummy module with receive_debug_commands
-    mod = types.ModuleType("dapper.debug_adapter_comm")
+    # Provide dummy module with receive_debug_commands and command_thread
+    mod = types.ModuleType("dapper.adapter.debug_adapter_comm")
+    mod.command_thread = None
 
     def _recv():  # pragma: no cover - never actually called
         pass
 
     mod.receive_debug_commands = _recv  # type: ignore[attr-defined]
-    sys.modules["dapper.debug_adapter_comm"] = mod
+    
+    # Patch the module in sys.modules so the import inside the function finds it
+    monkeypatch.setitem(sys.modules, "dapper.adapter.debug_adapter_comm", mod)
+    
+    # Also ensure dapper.adapter has it if it's already imported
+    if "dapper.adapter" in sys.modules:
+        monkeypatch.setattr(sys.modules["dapper.adapter"], "debug_adapter_comm", mod, raising=False)
 
     # Monkeypatch Thread
     monkeypatch.setattr(ds.threading, "Thread", _DummyThread)
 
     state.start_command_receiver()
-    assert getattr(state, "_command_thread_started", False) is True
-    # Second call should not create new thread (would raise inside _DummyThread)
-    state.start_command_receiver()
+    
+    # Check that command_thread was set on the module
+    assert mod.command_thread is not None
+    assert isinstance(mod.command_thread, _DummyThread)
+    assert mod.command_thread.started is True
+    
+    first_thread = mod.command_thread
 
-    # Cleanup sys.modules entry
-    sys.modules.pop("dapper.debug_adapter_comm", None)
+    # Second call should not create new thread
+    state.start_command_receiver()
+    assert mod.command_thread is first_thread
 
 
 def test_start_command_receiver_failure_logged(monkeypatch, caplog):
     state = ds.state
-    # Force import failure by removing module and making import raise
-    if hasattr(state, "_command_thread_started"):
-        delattr(state, "_command_thread_started")
+    
+    # Mock module
+    mod = types.ModuleType("dapper.adapter.debug_adapter_comm")
+    mod.command_thread = None
+    mod.receive_debug_commands = lambda: None
+    
+    monkeypatch.setitem(sys.modules, "dapper.adapter.debug_adapter_comm", mod)
+    if "dapper.adapter" in sys.modules:
+        monkeypatch.setattr(sys.modules["dapper.adapter"], "debug_adapter_comm", mod, raising=False)
 
     # Make thread constructor raise to trigger the warning path
-    def bad_thread():  # simple callable matching Thread signature for our test
+    def bad_thread(*args, **kwargs):  # simple callable matching Thread signature
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ds.threading, "Thread", bad_thread)
     state.start_command_receiver()
-    # Should not set started flag
-    assert not getattr(state, "_command_thread_started", False)
+    
+    # Should not set command_thread
+    assert mod.command_thread is None
+    
     # Expect a warning log mentioning failure
     found = any("Failed to start receive_debug_commands" in r.message for r in caplog.records)
     assert found

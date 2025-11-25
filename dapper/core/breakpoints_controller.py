@@ -12,7 +12,12 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from concurrent.futures import Future
 
 
 @dataclass(frozen=True)
@@ -51,11 +56,19 @@ class BreakpointController:
         self._debugger = debugger  # PyDebugger
 
     # ---- scheduling helper
-    def _schedule(self, coro: Any) -> Any:
+    def _schedule(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
+        """Schedule a coroutine on the adapter event loop and return a Future.
+        
+        Args:
+            coro: The coroutine to schedule.
+            
+        Returns:
+            A Future that will be resolved with the coroutine's result.
+        """
         return asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     # ---- line/source breakpoints
-    def set_source(self, path: str | Path, breakpoints: list[LineBreakpointSpec]) -> Any:
+    def set_source(self, path: str | Path, breakpoints: list[LineBreakpointSpec]) -> Future[Any]:
         return self._schedule(self.async_set_source(path, breakpoints))
 
     async def async_set_source(
@@ -75,7 +88,7 @@ class BreakpointController:
         return await self._debugger.set_breakpoints(path_str, bp_list)
 
     # ---- function breakpoints
-    def set_function(self, breakpoints: list[FunctionBreakpointSpec]) -> Any:
+    def set_function(self, breakpoints: list[FunctionBreakpointSpec]) -> Future[Any]:
         return self._schedule(self.async_set_function(breakpoints))
 
     async def async_set_function(

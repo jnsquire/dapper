@@ -474,12 +474,12 @@ class PyDebugger:
         stop_on_entry: bool = False,
         no_debug: bool = False,
         in_process: bool = False,
-        use_ipc: bool = False,
-        use_binary_ipc: bool = False,
+        use_binary_ipc: bool = True,
         ipc_transport: str | None = None,
         ipc_pipe_name: str | None = None,
     ) -> None:
-        """Launch a new Python program for debugging."""
+        """Launch a new Python program for debugging.
+        """
         if self.program_running:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
@@ -514,12 +514,12 @@ class PyDebugger:
             debug_args.append("--no-debug")
 
         # If IPC is requested, prepare a listener and pass coordinates.
-        self._use_ipc = bool(use_ipc)
+        # IPC is now mandatory; always enable it.
+        self._use_ipc = True
         self.set_ipc_binary(bool(use_binary_ipc))
-        if self._use_ipc:
-            self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
-            if self.ipc.binary:
-                debug_args.append("--ipc-binary")
+        self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
+        if self.ipc.binary:
+            debug_args.append("--ipc-binary")
 
         logger.info("Launching program: %s", self.program_path)
         logger.debug("Debug command: %s", " ".join(debug_args))
@@ -537,10 +537,8 @@ class PyDebugger:
             except Exception:
                 await asyncio.to_thread(self._start_debuggee_process, debug_args)
 
-        # If IPC is enabled, accept the connection from the launcher
-        if self._use_ipc and (
-            self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None
-        ):
+        # Accept the IPC connection from the launcher (IPC is mandatory)
+        if self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None:
             threading.Thread(target=self._run_ipc_accept_and_read, daemon=True).start()
 
         self.program_running = True
@@ -628,16 +626,19 @@ class PyDebugger:
     async def attach(  # noqa: PLR0915
         self,
         *,
-        use_ipc: bool = False,
         ipc_transport: str | None = None,
         ipc_host: str | None = None,
         ipc_port: int | None = None,
         ipc_path: str | None = None,
         ipc_pipe_name: str | None = None,
+        use_ipc: bool = True,  # Kept for compatibility, must be True
     ) -> None:
-        """Attach to an already running debuggee via IPC."""
+        """Attach to an already running debuggee via IPC.
+
+        IPC is mandatory for attach; the use_ipc parameter must be True.
+        """
         if not use_ipc:
-            msg = "attach without useIpc is not supported yet"
+            msg = "attach requires IPC (use_ipc must be True)"
             raise RuntimeError(msg)
 
         default_transport = "pipe" if os.name == "nt" else "unix"
@@ -1497,7 +1498,8 @@ class PyDebugger:
             return None
 
     def _write_command_to_channel(self, cmd_str: str) -> None:
-        """Safely write a DBGCMD line to the active IPC or stdio channel."""
+        """Write a command to the active IPC channel.
+        """
         if self.ipc.enabled and self.ipc.pipe_conn is not None:
             with contextlib.suppress(Exception):
                 if self.ipc.binary:
@@ -1515,12 +1517,8 @@ class PyDebugger:
                     self.ipc.wfile.flush()
             return
 
-        stdin = getattr(self.process, "stdin", None)
-        if self.process and stdin:
-            with contextlib.suppress(Exception):
-                stdin.write(f"DBGCMD:{cmd_str}\n")
-                with contextlib.suppress(Exception):
-                    stdin.flush()
+        msg = "IPC is required but no IPC channel is available. Cannot send command."
+        raise RuntimeError(msg)
 
     # (old _schedule_coroutine implementation removed; use spawn/spawn_threadsafe)
 
@@ -2373,41 +2371,29 @@ class RequestHandler:
         stop_on_entry = args.get("stopOnEntry", False)
         no_debug = args.get("noDebug", False)
         in_process = args.get("inProcess", False)
-        use_ipc = args.get("useIpc", False)
-        use_binary_ipc = args.get("useBinaryIpc", False)
-        # Optional IPC transport details (used only when useIpc is True)
+        # useBinaryIpc defaults to True; IPC is always enabled
+        use_binary_ipc = args.get("useBinaryIpc", True)
+        # Optional IPC transport details
         ipc_transport = args.get("ipcTransport")
         ipc_pipe_name = args.get("ipcPipeName")
 
-        # Only include the in_process/use_ipc kwargs if explicitly enabled to
-        # keep backward-compat tests (which assert four positional args) happy.
-        if in_process or use_ipc:
-            launch_kwargs: dict[str, Any] = {}
-            if in_process:
-                launch_kwargs["in_process"] = True
-            if use_ipc:
-                launch_kwargs["use_ipc"] = True
-                if ipc_transport is not None:
-                    launch_kwargs["ipc_transport"] = ipc_transport
-                if ipc_pipe_name is not None:
-                    launch_kwargs["ipc_pipe_name"] = ipc_pipe_name
-                if use_binary_ipc:
-                    launch_kwargs["use_binary_ipc"] = True
+        # Build launch kwargs - IPC is always enabled
+        launch_kwargs: dict[str, Any] = {}
+        if in_process:
+            launch_kwargs["in_process"] = True
+        if ipc_transport is not None:
+            launch_kwargs["ipc_transport"] = ipc_transport
+        if ipc_pipe_name is not None:
+            launch_kwargs["ipc_pipe_name"] = ipc_pipe_name
+        launch_kwargs["use_binary_ipc"] = use_binary_ipc
 
-            await self.server.debugger.launch(
-                program,
-                program_args,
-                stop_on_entry,
-                no_debug,
-                **launch_kwargs,
-            )
-        else:
-            await self.server.debugger.launch(
-                program,
-                program_args,
-                stop_on_entry,
-                no_debug,
-            )
+        await self.server.debugger.launch(
+            program,
+            program_args,
+            stop_on_entry,
+            no_debug,
+            **launch_kwargs,
+        )
 
         return {
             "type": "response",
@@ -2419,13 +2405,13 @@ class RequestHandler:
     async def _handle_attach(self, request: dict[str, Any]) -> dict[str, Any]:
         """Handle attach request.
 
-        MVP attach connects to an existing debuggee IPC endpoint.
-        The client should specify useIpc and the endpoint coordinates
+        Attach connects to an existing debuggee via IPC endpoint.
+        The client should specify the endpoint coordinates
         (transport + host/port or path or pipe name).
+        IPC is always required for attach.
         """
         args = request.get("arguments", {})
 
-        use_ipc: bool = bool(args.get("useIpc", False))
         ipc_transport = args.get("ipcTransport")
         ipc_host = args.get("ipcHost")
         ipc_port = args.get("ipcPort")
@@ -2434,7 +2420,7 @@ class RequestHandler:
 
         try:
             await self.server.debugger.attach(
-                use_ipc=use_ipc,
+                use_ipc=True,  # IPC is always required
                 ipc_transport=ipc_transport,
                 ipc_host=ipc_host,
                 ipc_port=ipc_port,

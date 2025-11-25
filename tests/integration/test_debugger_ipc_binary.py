@@ -43,8 +43,7 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
             stop_on_entry=False,
             no_debug=False,
             in_process=False,
-            use_ipc=True,
-            use_binary_ipc=True,
+            use_binary_ipc=True,  # IPC is now always enabled
             ipc_transport=ipc_transport,
         )
     finally:

@@ -1,6 +1,5 @@
 import io
 import json
-import sys
 from queue import Queue
 
 import pytest
@@ -103,10 +102,10 @@ def test_process_queued_commands(monkeypatch):
     assert s.command_queue.empty()
 
 
-def test_receive_debug_commands_stdin_fallback(monkeypatch):
+def test_receive_debug_commands_requires_ipc():
+    """Test that receive_debug_commands raises RuntimeError when IPC is not enabled."""
     s = dac.state
     # Save original state
-    orig_stdin = sys.stdin
     orig_is_terminated = s.is_terminated
     orig_ipc_enabled = s.ipc_enabled
     orig_ipc_rfile = s.ipc_rfile
@@ -115,39 +114,15 @@ def test_receive_debug_commands_stdin_fallback(monkeypatch):
         s.is_terminated = False
         s.ipc_enabled = False
         s.ipc_rfile = None
-        s.command_queue = Queue()
 
-        cmd = {"command": "stdin_cmd", "seq": 9}
-        line = "DBGCMD:" + json.dumps(cmd) + "\n"
-
-        # Create a StringIO with the test input
-        test_input = io.StringIO(line)
-        # Patch sys.stdin to use our test input
-        monkeypatch.setattr(sys, "stdin", test_input)
-
-        called = []
-
-        def fake_dispatch(c):
-            called.append(c)
-            s.is_terminated = True
-
-        monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
-
-        # Run the function under test
-        dac.receive_debug_commands()
-
-        # Verify results
-        assert called, "No commands were processed"
-        assert called[0]["command"] == "stdin_cmd"
-        assert not s.command_queue.empty(), "Command queue is empty"
-        got = s.command_queue.get_nowait()
+        # Should raise RuntimeError since IPC is mandatory
+        with pytest.raises(RuntimeError, match="IPC is required"):
+            dac.receive_debug_commands()
     finally:
         # Restore original state
         s.is_terminated = orig_is_terminated
         s.ipc_enabled = orig_ipc_enabled
         s.ipc_rfile = orig_ipc_rfile
-        sys.stdin = orig_stdin
-    assert got["command"] == "stdin_cmd"
 
 
 def test_receive_debug_commands_malformed_json_ipc(monkeypatch):

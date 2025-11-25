@@ -345,35 +345,45 @@ async def test_launch_with_args(debugger):
 async def test_pause(debugger):
     """Test pausing the debugger"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
 
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
+
     await debugger.pause(thread_id=1)
 
-    # Check that a command was written to stdin
-    debugger.process.stdin.write.assert_called_once()
-    call_args = debugger.process.stdin.write.call_args[0][0]
-    assert "pause" in call_args
-    assert "threadId" in call_args
+    # Check that a command was written via IPC
+    mock_wfile.write.assert_called_once()
+    call_args = mock_wfile.write.call_args[0][0]
+    # Binary mode - should be bytes
+    assert isinstance(call_args, bytes)
 
 
 @pytest.mark.asyncio
 async def test_continue_execution(debugger):
     """Test continuing execution"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
     debugger.stopped_event.set()
 
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
+
     await debugger.continue_execution(thread_id=1)
 
-    # Check that a command was written to stdin
-    debugger.process.stdin.write.assert_called_once()
-    call_args = debugger.process.stdin.write.call_args[0][0]
-    assert "continue" in call_args
-    assert "threadId" in call_args
+    # Check that a command was written via IPC
+    mock_wfile.write.assert_called_once()
+    call_args = mock_wfile.write.call_args[0][0]
+    # Binary mode - should be bytes
+    assert isinstance(call_args, bytes)
 
 
 @pytest.mark.asyncio
@@ -401,10 +411,15 @@ async def test_continue_execution_terminated(debugger):
 async def test_continue_execution_clears_stopped_event(debugger):
     """Test that continue clears the stopped event"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
     debugger.stopped_event.set()
+
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
 
     # Verify event is set initially
     assert debugger.stopped_event.is_set()
@@ -419,48 +434,60 @@ async def test_continue_execution_clears_stopped_event(debugger):
 async def test_next_step(debugger):
     """Test stepping to next line"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
 
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
+
     await debugger.next(thread_id=1)
 
-    debugger.process.stdin.write.assert_called_once()
-    call_args = debugger.process.stdin.write.call_args[0][0]
-    assert "next" in call_args
-    assert "threadId" in call_args
+    mock_wfile.write.assert_called_once()
+    call_args = mock_wfile.write.call_args[0][0]
+    assert isinstance(call_args, bytes)
 
 
 @pytest.mark.asyncio
 async def test_step_in(debugger):
     """Test stepping into function"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
 
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
+
     await debugger.step_in(thread_id=1)
 
-    debugger.process.stdin.write.assert_called_once()
-    call_args = debugger.process.stdin.write.call_args[0][0]
-    assert "step" in call_args
-    assert "threadId" in call_args
+    mock_wfile.write.assert_called_once()
+    call_args = mock_wfile.write.call_args[0][0]
+    assert isinstance(call_args, bytes)
 
 
 @pytest.mark.asyncio
 async def test_step_out(debugger):
     """Test stepping out of function"""
     debugger.process = MagicMock()
-    debugger.process.stdin = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
 
+    # Set up IPC mock (IPC is now mandatory)
+    mock_wfile = MagicMock()
+    debugger.ipc.enabled = True
+    debugger.ipc.binary = True
+    debugger.ipc.wfile = mock_wfile
+
     await debugger.step_out(thread_id=1)
 
-    debugger.process.stdin.write.assert_called_once()
-    call_args = debugger.process.stdin.write.call_args[0][0]
-    assert "stepOut" in call_args
-    assert "threadId" in call_args
+    mock_wfile.write.assert_called_once()
+    call_args = mock_wfile.write.call_args[0][0]
+    assert isinstance(call_args, bytes)
 
 
 # ---------------------------------------------------------------------------

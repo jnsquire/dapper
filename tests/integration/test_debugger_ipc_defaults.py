@@ -18,7 +18,7 @@ class _StubServer:
 
 @pytest.mark.asyncio
 async def test_unix_is_default_on_non_windows():
-    """When use_ipc=True on non-Windows, default transport is 'unix'."""
+    """On non-Windows, default transport is 'unix' (IPC is now always enabled)."""
 
     if os.name == "nt":
         pytest.skip("UNIX sockets not default on Windows")
@@ -45,8 +45,7 @@ async def test_unix_is_default_on_non_windows():
         stop_on_entry=False,
         no_debug=False,
         in_process=False,
-        use_ipc=True,
-        ipc_transport=None,
+        ipc_transport=None,  # IPC is now always enabled, let it default
     )
 
     # We should have exactly one start invocation captured
