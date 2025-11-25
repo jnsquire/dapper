@@ -14,12 +14,10 @@ if [ ! -d "$INPUT_DIR" ]; then
 fi
 mkdir -p "$OUTPUT_DIR"
 
-if command -v mmdc >/dev/null 2>&1; then
-  USE_NPX=0
-elif command -v npx >/dev/null 2>&1; then
+if command -v npx >/dev/null 2>&1; then
   USE_NPX=1
 else
-  echo "Neither mmdc nor npx found in PATH. Install mermaid-cli globally (npm i -g @mermaid-js/mermaid-cli) or install Node.js to use npx" >&2
+  echo "npx not found in PATH. Install Node.js / npm to use npx and render diagrams (npm i -g npm)." >&2
   exit 2
 fi
 
@@ -40,9 +38,5 @@ for in in "$INPUT_DIR"/*.mmd; do
   fi
 
   echo "Rendering $in -> $out"
-  if [ $USE_NPX -eq 1 ]; then
-    npx -p @mermaid-js/mermaid-cli mmdc -i "$in" -o "$out"
-  else
-    mmdc -i "$in" -o "$out"
-  fi
+  npx -p @mermaid-js/mermaid-cli mmdc -i "$in" -o "$out"
 done
