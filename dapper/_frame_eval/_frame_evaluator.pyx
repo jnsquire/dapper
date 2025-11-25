@@ -304,6 +304,10 @@ def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
 
 def _PyCode_GetExtra(object code, Py_ssize_t index):
     """Get extra data from code object."""
+    # Validate code object input to provide a clear error when misused
+    if not isinstance(code, types.CodeType):
+        raise TypeError("code argument must be a code object")
+
     cdef void *extra = NULL
     cdef int res
     
@@ -312,7 +316,13 @@ def _PyCode_GetExtra(object code, Py_ssize_t index):
     if res < 0 or extra == NULL:
         return None
         
-    return <object>extra
+    # The C API provides a borrowed pointer to the stored object. To return
+    # a safe Python-level object we must increment its refcount so the
+    # caller receives an owned reference and the object can't be freed
+    # unexpectedly (which could lead to use-after-free / segfaults).
+    py_obj = <object>extra
+    Py_INCREF(py_obj)
+    return py_obj
 
 
 # Initialize module
