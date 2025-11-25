@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simple test script for the integrated debugging example.
 This script verifies that the example can be imported and run.
