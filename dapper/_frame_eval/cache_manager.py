@@ -414,13 +414,14 @@ class FuncCodeInfoCache:
             # Do not materialize a strong reference via the LRU structure.
             # cache_key not needed; use code_obj directly
             current_time = time.time()
+            success = False
 
             # Store in code object extra data if available. Use a helper
             # that will safely call the C API only for real code objects
             # and fall back to ctypes if needed.
             if self._code_extra_index >= 0:
                 try:
-                    self._set_code_extra(code_obj, info)
+                    success = self._set_code_extra(code_obj, info)
                 except Exception as exc:
                     # Best-effort: log and continue with LRU fallback
                     logger.debug("_set_code_extra failed: %s", exc)
@@ -433,7 +434,12 @@ class FuncCodeInfoCache:
             # Maintain size limit
             # Evict if over size limit. Pop from the LRU ordered list. We may need to
             # skip entries that were already GC'd.
-            self._insert_into_lru(code_obj, info, current_time)
+            # If the info was successfully stored on the code object extra
+            # then avoid keeping a second strong reference in the LRU fallback
+            # (prevents double-refcount increases). Store None as the info
+            # in the LRU entry when the C API is authoritative.
+            info_to_store = info if not (self._code_extra_index >= 0 and success) else None
+            self._insert_into_lru(code_obj, info_to_store, current_time)
 
             # Evict if over size limit; helper handles weakref GC and limits
             self._evict_if_needed()
@@ -442,7 +448,7 @@ class FuncCodeInfoCache:
             CacheManager._cache_stats["total_entries"] = len(self._lru_order)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
 
-    def _set_code_extra(self, code_obj: Any, info: Any) -> None:
+    def _set_code_extra(self, code_obj: Any, info: Any) -> bool:
         """Set extra info using the C API with fallback to ctypes.
 
         Only attempt to use the C API for real code objects. This prevents
@@ -451,13 +457,13 @@ class FuncCodeInfoCache:
         """
         if not isinstance(code_obj, types.CodeType):
             # Not a real code object; nothing to do here
-            return
+            return False
 
         # Prefer Cython implementation when available
         if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
             try:
                 _PyCode_SetExtra(code_obj, self._code_extra_index, info)
-                return  # noqa: TRY300
+                return True  # noqa: TRY300
             except (ImportError, AttributeError, TypeError) as exc:
                 # Fall through to ctypes fallback
                 logger.debug("Cython _PyCode_SetExtra failed: %s", exc)
@@ -472,6 +478,9 @@ class FuncCodeInfoCache:
                 ctypes.pythonapi.Py_DecRef(ctypes.py_object(info))
         except Exception as exc:
             logger.debug("ctypes _PyCode_SetExtra failed during set: %s", exc)
+            return False
+        else:
+            return result == 0
 
     def _insert_into_lru(self, code_obj: Any, info: Any, timestamp: float) -> None:
         """Insert or update an entry in the weak-key LRU cache."""
@@ -610,13 +619,31 @@ class FuncCodeInfoCache:
         if self._code_extra_index >= 0 and isinstance(code_obj, types.CodeType):
             try:
                 # Try Cython first; helper handles its own errors
-                if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
-                    _PyCode_SetExtra(code_obj, self._code_extra_index, None)
-                    removed = True
-                else:
-                    result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
-                    if result == 0:
-                        removed = True
+                    # Only remove if something is actually stored so we can
+                    # return False when nothing existed.
+                    extra_exists = False
+                    if CYTHON_AVAILABLE and _cython_get_extra is not None:
+                        try:
+                            extra = _cython_get_extra(code_obj, self._code_extra_index)
+                            extra_exists = extra is not None
+                        except Exception:
+                            extra_exists = False
+                    elif _code_extra_api.is_available():
+                        try:
+                            extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
+                            extra_exists = extra is not None
+                        except Exception:
+                            extra_exists = False
+
+                    if extra_exists:
+                        # Try to use Cython module first; helper handles refcounts
+                        if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
+                            _PyCode_SetExtra(code_obj, self._code_extra_index, None)
+                            removed = True
+                        else:
+                            result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
+                            if result == 0:
+                                removed = True
             except (ImportError, AttributeError, Exception) as exc:
                 logger.debug("_PyCode_SetExtra failed during remove: %s", exc)
 
@@ -650,6 +677,19 @@ class FuncCodeInfoCache:
     def clear(self) -> None:
         """Clear all cached entries."""
         with self._lock:
+            # Attempt to clear code-object extras for entries we know about
+            if self._code_extra_index >= 0:
+                for code_obj in list(self._weak_map.keys()):
+                    try:
+                        if isinstance(code_obj, types.CodeType):
+                            if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
+                                _PyCode_SetExtra(code_obj, self._code_extra_index, None)
+                            elif _code_extra_api.is_available():
+                                _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
+                    except Exception:
+                        # Best-effort only; ignore failures
+                        pass
+
             self._lru_order.clear()
             self._weak_map.clear()
 
@@ -673,6 +713,16 @@ class FuncCodeInfoCache:
                     expired_keys.append(cache_key)
 
             for key in expired_keys:
+                # Clear per-code extras for expired entries where applicable
+                try:
+                    if self._code_extra_index >= 0 and isinstance(key, types.CodeType):
+                        if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
+                            _PyCode_SetExtra(key, self._code_extra_index, None)
+                        elif _code_extra_api.is_available():
+                            _code_extra_api.set_extra(key, self._code_extra_index, None)
+                except Exception:
+                    pass
+
                 if key in self._weak_map:
                     del self._weak_map[key]
                 if key in self._timestamps:

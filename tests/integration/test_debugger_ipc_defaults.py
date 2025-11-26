@@ -28,7 +28,11 @@ async def test_unix_is_default_on_non_windows():
     # Capture the debug command that would be used to start the debuggee
     captured_args: list[list[str]] = []
 
-    def _capture_start(self: PyDebugger, debug_args: list[str]) -> None:  # type: ignore[override]  # noqa: ARG001
+    # _start_debuggee_process is called from a thread and invoked as a
+    # normal function with a single argument (debug_args). Define the
+    # replacement to accept one positional argument so it's compatible with
+    # both direct calls and bound/unbound situations.
+    def _capture_start(debug_args: list[str]) -> None:  # noqa: ARG001
         captured_args.append(list(debug_args))
 
     # Build debugger with a stub server and patch the process starter

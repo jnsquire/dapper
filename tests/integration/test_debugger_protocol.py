@@ -411,5 +411,16 @@ def test_protocol_type_annotations():
     assert len(ExceptionDetails.__required_keys__) > 0
     assert len(ExceptionInfo.__required_keys__) > 0
 
-    # Test that DebuggerLike is runtime_checkable
-    assert hasattr(DebuggerLike, "__protocol_attrs__") or hasattr(DebuggerLike, "__orig_bases__")
+    # Test that DebuggerLike is runtime_checkable / a Protocol. Different
+    # Python versions expose different internals (e.g. __protocol_attrs__,
+    # __orig_bases__, __runtime_checkable__ or _is_protocol). Accept any
+    # of those indicators so the test is robust across versions.
+    assert any(
+        hasattr(DebuggerLike, attr)
+        for attr in (
+            "__protocol_attrs__",
+            "__orig_bases__",
+            "__runtime_checkable__",
+            "_is_protocol",
+        )
+    )
