@@ -89,7 +89,10 @@ def get_extensions():
     return extensions
 
 
-# Determine if we should include frame evaluation
+# Determine if we should include frame evaluation extensions.
+# Include them whenever Cython is available in the build environment. This
+# ensures `uv build` (which installs build-time requirements) will compile
+# the Cython components.
 include_frame_eval = CYTHON_AVAILABLE
 
 

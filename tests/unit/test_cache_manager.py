@@ -1,14 +1,10 @@
 """Unit tests for the cache manager module."""
 
-import ctypes as _ct
 import gc
 import sys
 from collections import OrderedDict
-from unittest.mock import patch
 
-import pytest
-
-# Import the module with the _init_code_extra_index method patched
+# Import the module for cache manager tests
 from dapper._frame_eval.cache_manager import BreakpointCache
 from dapper._frame_eval.cache_manager import FuncCodeInfoCache
 from dapper._frame_eval.cache_manager import ThreadLocalCache
@@ -21,22 +17,11 @@ from dapper._frame_eval.cache_manager import set_func_code_info
 class TestFuncCodeInfoCache:
     """Tests for the FuncCodeInfoCache class."""
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Set up test fixtures."""
-        # Patch the _init_code_extra_index method to do nothing
-        self.patcher = patch.object(FuncCodeInfoCache, "_init_code_extra_index", return_value=None)
-        self.mock_init = self.patcher.start()
-        yield
-        self.patcher.stop()
-
     def test_initialization(self):
         """Test that the cache initializes correctly."""
         # Create a test instance
         cache = FuncCodeInfoCache(max_size=100, ttl=60)
 
-        # Check that _init_code_extra_index was called
-        self.mock_init.assert_called_once()
 
         # Check that the cache was initialized with the correct values
         assert cache.max_size == 100
@@ -68,25 +53,6 @@ class TestFuncCodeInfoCache:
         # After removal, refcount should be stable same as before
         assert after_remove == before
 
-    def test_ctypes_fallback_uses_lru_when_set_fails(self):
-        """Simulate ctypes._PyCode_SetExtra failing and ensure the code falls back to LRU cache."""
-        # Create a code object and info
-        def test_func3():
-            return 1
-
-        code_obj = test_func3.__code__
-        info = {"x": "y"}
-
-        # Simulate failure by patching the internal set_extra to raise ctypes.ArgumentError
-        with patch(
-            "dapper._frame_eval.cache_manager._code_extra_api.set_extra",
-            side_effect=_ct.ArgumentError("bad"),
-        ):
-            set_func_code_info(code_obj, info)
-
-        # Because set_extra failed, the info should still be available via the LRU
-        fetched = get_func_code_info(code_obj)
-        assert fetched == info
 
     def test_id_reuse_detection_invalidates_stale_entries(self):
         """Ensure stale LRU entries are evicted when code objects are GC'd and do not return stale info."""

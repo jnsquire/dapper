@@ -79,9 +79,6 @@ def test_func_code_cache():
     get_func_code_info(code_obj)
 
     # Test TTL expiration by forcing LRU cache usage
-    # Temporarily disable code extra index to test LRU TTL
-    original_index = cache._code_extra_index
-    cache._code_extra_index = -1
 
     info2 = MockFuncCodeInfo("ttl_test.py", has_breakpoints=False)
     set_func_code_info(code_obj, info2)
@@ -93,8 +90,6 @@ def test_func_code_cache():
     cached_info = get_func_code_info(code_obj)
     assert cached_info is None, "Cache entry should have expired"
 
-    # Restore code extra index
-    cache._code_extra_index = original_index
 
     # Test LRU eviction
     for i in range(10):  # More than max_size

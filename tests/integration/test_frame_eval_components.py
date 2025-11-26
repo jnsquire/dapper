@@ -66,11 +66,8 @@ if CYTHON_AVAILABLE:
 class TestCacheComponents:
     """Test the cache components."""
 
-    @patch.object(FuncCodeInfoCache, "_init_code_extra_index")
-    def test_func_code_cache_creation(self, mock_init):
+    def test_func_code_cache_creation(self):
         """Test FuncCodeInfoCache creation."""
-        # Skip the actual initialization that requires C-API
-        mock_init.return_value = None
 
         # Create the cache instance
         with patch("weakref.WeakValueDictionary") as mock_weak_dict:
@@ -80,7 +77,7 @@ class TestCacheComponents:
             # Create the cache instance
             cache = FuncCodeInfoCache(max_size=100, ttl=60)
 
-            # Set up the expected attributes that would be set by _init_code_extra_index
+            # Set up the expected attributes
             cache._lru_order = OrderedDict()
             cache._weak_map = weakref.WeakKeyDictionary()
             cache._lock = threading.RLock()
