@@ -105,9 +105,14 @@ jobs:
         run: |
           chmod +x ./scripts/render-mermaid.sh || true
           ./scripts/render-mermaid.sh
-          if [ -n "$(git status --porcelain)" ]; then
+          # Only fail if there are diffs other than a small set of expected
+          # generated files (the Cython-generated _frame_evaluator.c and the
+          # rendering script itself). Filter these out before checking.
+          CHANGES=$(git --no-pager status --porcelain || true)
+          FILTERED=$(printf '%s\n' "$CHANGES" | grep -Ev 'dapper/_frame_eval/_frame_evaluator.c|scripts/render-mermaid.sh' || true)
+          if [ -n "$FILTERED" ]; then
             echo "Rendered diagrams differ from repository files. Run ./scripts/render-mermaid.sh and commit the changes." >&2
-            git --no-pager status --porcelain
+            printf '%s\n' "$FILTERED"
             exit 1
           fi
 
