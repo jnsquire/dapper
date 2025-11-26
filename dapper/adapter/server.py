@@ -159,9 +159,9 @@ class PyDebuggerThread:
     def __init__(self, thread_id: int, name: str):
         self.id = thread_id
         self.name = name
-        self.frames = []
-        self.is_stopped = False
-        self.stop_reason = ""
+        self.frames: list[dict[str, Any]] = []
+        self.is_stopped: bool = False
+        self.stop_reason: str = ""
 
 
 @register_payloads
@@ -311,8 +311,11 @@ class PyDebugger:
         self.program_path: str | None = None
         self.thread_exit_events: dict[int, object] = {}
         self.lock: threading.RLock = threading.RLock()
-        self.stopped_event: asyncio.Event = asyncio.Event()
-        self.configuration_done: asyncio.Event = asyncio.Event()
+        # Use thread-safe Event objects for synchronization. Tests and
+        # asyncio code may await these — the helper `_await_event` will
+        # bridge the synchronous wait to an awaitable when needed.
+        self.stopped_event = threading.Event()
+        self.configuration_done = threading.Event()
 
         # Keep references to background tasks so they don't get GC'd
         self._bg_tasks: set[asyncio.Task] = set()
@@ -335,62 +338,67 @@ class PyDebugger:
         self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
         self._frame_watches: dict[int, list[str]] = {}  # frameId -> list of dataIds
 
-    # ------------------------------------------------------------------
-    # Task spawning helpers (new API replacing _schedule_coroutine)
-    # ------------------------------------------------------------------
-    def _schedule_factory(
-        self, factory: Callable[[], Awaitable[Any]], loop: asyncio.AbstractEventLoop
-    ) -> None:
-        """Internal: invoke factory and create a tracked task on given loop.
+    def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
+        """Schedule a (possibly coroutine-producing) callback on the debugger loop.
 
-        Any exception or non-coroutine return is logged at debug level and ignored.
+        The callback is always executed on the event loop thread. If it returns
+        an awaitable, we wrap it in a Task and track it for shutdown. This
+        avoids creating coroutines on worker threads which can cause 'never
+        awaited' warnings.
         """
-        try:
-            aw = factory()
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("factory invocation failed", exc_info=True)
-            return
-        if not inspect.iscoroutine(aw):  # pragma: no cover - defensive
-            logger.debug("factory did not return coroutine: %r", aw)
-            return
-        try:
-            task = loop.create_task(aw)
-            self._bg_tasks.add(task)
-            task.add_done_callback(self._bg_tasks.discard)
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("failed to create task", exc_info=True)
 
-    def spawn_threadsafe(self, factory: Callable[[], Awaitable[Any]]) -> None:
-        """Thread-safe scheduling of a factory without off-loop coroutine creation.
-
-        Behavior:
-          * If debugger loop running: enqueue submission via call_soon_threadsafe.
-          * If debugger loop not running but another loop is (typical in tests):
-            run immediately on that loop for synchronous visibility.
-          * Otherwise: attempt thread-safe scheduling (may no-op if loop closed).
-        """
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            current_loop = None
-
-        # Immediate path for test environment (debugger loop not yet running).
-        if current_loop and not self.loop.is_running() and current_loop is not self.loop:
-            self._schedule_factory(factory, current_loop)
-            return
-
-        # Normal path: submit to debugger loop (even if not running yet; call_soon_threadsafe queues).
-        def _submit() -> None:
-            self._schedule_factory(factory, self.loop)
+        def _run_on_loop() -> None:
+            try:
+                result = callback()
+            except Exception:
+                logger.exception("Error in spawn_threadsafe callback")
+                return
+            if inspect.isawaitable(result):
+                try:
+                    task = asyncio.ensure_future(result)
+                except Exception:
+                    logger.exception("error creating task for awaitable")
+                else:
+                    self._bg_tasks.add(task)
+                    task.add_done_callback(lambda t: self._bg_tasks.discard(t))
 
         try:
-            self.loop.call_soon_threadsafe(_submit)
+            self.loop.call_soon_threadsafe(_run_on_loop)
         except Exception:  # pragma: no cover - defensive
             logger.debug("spawn_threadsafe drop (loop closed)")
+            return
 
-    # ------------------------------------------------------------------
-    # Data Breakpoint (Watchpoint) Support (Phase 1: bookkeeping only)
-    # ------------------------------------------------------------------
+    async def _await_event(self, ev: object) -> None:
+        """Await a blocking or patched event.wait() in an asyncio-friendly way.
+
+        This helper inspects the event.wait attribute and either runs the
+        blocking wait in an executor (threading.Event) or directly awaits a
+        patched awaitable-returning stub.
+        """
+        wait = getattr(ev, "wait", None)
+        if wait is None:
+            return
+
+        try:
+            bound_self = getattr(wait, "__self__", None)
+            if isinstance(bound_self, threading.Event):
+                await self.loop.run_in_executor(None, wait)
+                return
+        except Exception:
+            pass
+
+        try:
+            res = wait()
+        except Exception:
+            await self.loop.run_in_executor(None, wait)
+            return
+
+        if inspect.isawaitable(res):
+            await res
+            return
+
+        return
+
     def data_breakpoint_info(self, *, name: str, frame_id: int) -> dict[str, Any]:
         """Return minimal data breakpoint info for a variable in a frame."""
         data_id = f"frame:{frame_id}:var:{name}"
@@ -465,7 +473,44 @@ class PyDebugger:
 
     def _forward_event(self, event_name: str, payload: dict[str, Any]) -> None:
         """Forward an event (defer creation unless immediate path in spawn_threadsafe)."""
-        self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
+        # Attempt to call server.send_event immediately so synchronous test
+        # helpers can observe calls without requiring an extra loop tick.
+        try:
+            res = self.server.send_event(event_name, payload)
+        except Exception:
+            logger.exception("error calling server.send_event")
+            return
+
+        # If the handler returned an awaitable, ensure it's scheduled on the
+        # debugger loop for execution (safe whether or not the loop is running).
+        try:
+            if inspect.isawaitable(res):
+                try:
+                    # If already on the debugger loop, create the task directly
+                    if asyncio.get_running_loop() is self.loop:
+                        t = asyncio.ensure_future(res)
+                        # Track background task so it can be cancelled during shutdown
+                        self._bg_tasks.add(t)
+                        t.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
+                    else:
+                        # Otherwise schedule creation on the debugger loop
+                        def _spawn():
+                            t2 = asyncio.ensure_future(res)
+                            self._bg_tasks.add(t2)
+                            t2.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
+
+                        self.loop.call_soon_threadsafe(_spawn)
+                except RuntimeError:
+                    # No running loop in this thread; schedule thread-safely
+                    def _spawn2():
+                        t3 = asyncio.ensure_future(res)
+                        self._bg_tasks.add(t3)
+                        t3.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
+
+                    self.loop.call_soon_threadsafe(_spawn2)
+        except Exception:
+            # Be defensive: do not let event forwarding raise during debug message handling
+            logger.debug("error scheduling awaitable returned by server.send_event", exc_info=True)
 
     async def launch(
         self,
@@ -554,17 +599,17 @@ class PyDebugger:
 
         # If we need to stop on entry, we should wait for the stopped event
         if stop_on_entry and not no_debug:
-            await self.stopped_event.wait()
+            await self._await_event(self.stopped_event)
 
     async def _launch_in_process(self) -> None:
         """Initialize in-process debugging bridge and emit process event."""
         # Create the in-process bridge and attach event listeners
         self.in_process = True
         self._inproc = InProcessDebugger()
-        self._inproc.on_stopped.add_listener(self._inproc_on_stopped)  # type: ignore[attr-defined]
-        self._inproc.on_thread.add_listener(self._inproc_on_thread)  # type: ignore[attr-defined]
-        self._inproc.on_exited.add_listener(self._inproc_on_exited)  # type: ignore[attr-defined]
-        self._inproc.on_output.add_listener(self._inproc_on_output)  # type: ignore[attr-defined]
+        self._inproc.on_stopped.add_listener(self._inproc_on_stopped)
+        self._inproc.on_thread.add_listener(self._inproc_on_thread)
+        self._inproc.on_exited.add_listener(self._inproc_on_exited)
+        self._inproc.on_output.add_listener(self._inproc_on_output)
 
         # Mark running and emit process event for current interpreter
         self.program_running = True
@@ -981,7 +1026,7 @@ class PyDebugger:
                 with contextlib.suppress(Exception):
                     self.stopped_event.set()
 
-        self.spawn_threadsafe(lambda: self.server.send_event("stopped", stop_event))
+        self._forward_event("stopped", stop_event)
 
     def _handle_event_thread(self, data: dict[str, Any]) -> None:
         """Handle thread started/exited events and forward to client."""
