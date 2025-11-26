@@ -576,6 +576,49 @@ class FuncCodeInfoCache:
                 logger.debug("ctypes _PyCode_GetExtra fallback failed: %s", exc)
         return None
 
+    def _clear_code_extra(self, code_obj: Any) -> bool:
+        """Clear code-object extra if present and return whether an entry was removed.
+
+        This centralizes the logic for checking whether a code-object has an
+        extra stored and then clearing it. It handles both the Cython wrapper
+        and ctypes fallback, and ensures temporary references are DECREF'd so
+        refcounts remain stable.
+        """
+        if not (self._code_extra_index >= 0 and isinstance(code_obj, types.CodeType)):
+            return False
+
+        extra = None
+        try:
+            # Try cython getter first (may return an owned ref)
+            if CYTHON_AVAILABLE and _cython_get_extra is not None:
+                try:
+                    extra = _cython_get_extra(code_obj, self._code_extra_index)
+                except Exception:
+                    extra = None
+            elif _code_extra_api.is_available():
+                try:
+                    extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
+                except Exception:
+                    extra = None
+
+            if extra is None:
+                return False
+
+            # Clear the stored extra on the code object (this should DECREF the stored object)
+            if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
+                _PyCode_SetExtra(code_obj, self._code_extra_index, None)
+            else:
+                _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
+
+            return True
+        finally:
+            # If the getter returned a temporary owned reference, DECREF it.
+            if extra is not None:
+                try:
+                    ctypes.pythonapi.Py_DecRef(ctypes.py_object(extra))
+                except Exception:
+                    pass
+
     def _get_from_weak_map(self, code_obj: Any) -> Any | None:
         """Retrieve info from weak-key LRU fallback storage.
 
@@ -617,72 +660,29 @@ class FuncCodeInfoCache:
         Returns True if an entry was removed, False otherwise.
         """
 
-        cache_key = code_obj
         removed = False
 
-        # Remove from code object extra data (only for real code objects)
-        if self._code_extra_index >= 0 and isinstance(code_obj, types.CodeType):
-            try:
-                # Try Cython first; helper handles its own errors
-                    # Only remove if something is actually stored so we can
-                    # return False when nothing existed.
-                    extra_exists = False
-                    extra = None
-                    if CYTHON_AVAILABLE and _cython_get_extra is not None:
-                        try:
-                            extra = _cython_get_extra(code_obj, self._code_extra_index)
-                            extra_exists = extra is not None
-                        except Exception:
-                            extra_exists = False
-                    elif _code_extra_api.is_available():
-                        try:
-                            extra = _code_extra_api.get_extra(code_obj, self._code_extra_index)
-                            extra_exists = extra is not None
-                        except Exception:
-                            extra_exists = False
+        # Try clearing the per-code "extra" storage first; helper returns
+        # whether something was removed.
+        try:
+            if self._clear_code_extra(code_obj):
+                removed = True
+        except Exception:
+            # Best-effort: don't let failures here block the rest of removal
+            logger.debug("_clear_code_extra failed during remove for %r", code_obj)
 
-                    if extra_exists:
-                        # Try to clear the stored extra value. The C API will
-                        # run the cleanup function which should DECREF the stored
-                        # object. We must also DECREF the temporary object we
-                        # received from the getter so we don't leak.
-                        try:
-                            if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
-                                _PyCode_SetExtra(code_obj, self._code_extra_index, None)
-                                removed = True
-                            else:
-                                result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
-                                if result == 0:
-                                    removed = True
-                        finally:
-                            # DECREF temporary local reference returned by getter
-                            try:
-                                if extra is not None:
-                                    ctypes.pythonapi.Py_DecRef(ctypes.py_object(extra))
-                            except Exception:
-                                pass
-            except (ImportError, AttributeError, Exception) as exc:
-                logger.debug("_PyCode_SetExtra failed during remove: %s", exc)
-
-        # Remove from weak-map and LRU order
-        if code_obj in self._weak_map:
-            rec = self._weak_map.get(code_obj)
-            if rec:
-                wr = rec.get("wr")
-                if wr in self._lru_order:
-                    try:
-                        del self._lru_order[wr]
-                    except Exception:
-                        pass
-            try:
-                del self._weak_map[cache_key]
-            except Exception:
-                pass
-            if cache_key in self._timestamps:
+        # Remove any LRU/weak entries (if present). This is a simple pop
+        # operation so we avoid lots of nested try/except blocks.
+        rec = self._weak_map.pop(code_obj, None)
+        if rec is not None:
+            wr = rec.get("wr")
+            if wr in self._lru_order:
                 try:
-                    del self._timestamps[cache_key]
+                    del self._lru_order[wr]
                 except Exception:
                     pass
+            # Timestamps may or may not be present; remove quietly.
+            self._timestamps.pop(code_obj, None)
             removed = True
 
         # Update statistics
@@ -696,15 +696,12 @@ class FuncCodeInfoCache:
         with self._lock:
             # Attempt to clear code-object extras for entries we know about
             if self._code_extra_index >= 0:
+                # Use the helper which handles getters/refcounts and clears the
+                # extra if present. We swallow errors as this is best-effort.
                 for code_obj in list(self._weak_map.keys()):
                     try:
-                        if isinstance(code_obj, types.CodeType):
-                            if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
-                                _PyCode_SetExtra(code_obj, self._code_extra_index, None)
-                            elif _code_extra_api.is_available():
-                                _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
-                    except Exception:
-                        # Best-effort only; ignore failures
+                        self._clear_code_extra(code_obj)
+                    except Exception:  # noqa: PERF203
                         pass
 
             self._lru_order.clear()
@@ -732,11 +729,7 @@ class FuncCodeInfoCache:
             for key in expired_keys:
                 # Clear per-code extras for expired entries where applicable
                 try:
-                    if self._code_extra_index >= 0 and isinstance(key, types.CodeType):
-                        if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
-                            _PyCode_SetExtra(key, self._code_extra_index, None)
-                        elif _code_extra_api.is_available():
-                            _code_extra_api.set_extra(key, self._code_extra_index, None)
+                    self._clear_code_extra(key)
                 except Exception:
                     pass
 

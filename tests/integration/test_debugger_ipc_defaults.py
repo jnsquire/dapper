@@ -32,7 +32,7 @@ async def test_unix_is_default_on_non_windows():
     # normal function with a single argument (debug_args). Define the
     # replacement to accept one positional argument so it's compatible with
     # both direct calls and bound/unbound situations.
-    def _capture_start(debug_args: list[str]) -> None:  # noqa: ARG001
+    def _capture_start(debug_args: list[str]) -> None:
         captured_args.append(list(debug_args))
 
     # Build debugger with a stub server and patch the process starter
