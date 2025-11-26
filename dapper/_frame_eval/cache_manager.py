@@ -190,7 +190,12 @@ class _CodeExtraAPI:
         extra_ptr = c_void_p()
         result = self._get(py_object(code_obj), index, ctypes.byref(extra_ptr))
         if result == 0 and extra_ptr.value is not None:
-            return ctypes.cast(extra_ptr.value, py_object).value
+            # Return an owned reference so callers don't receive a borrowed
+            # pointer. Increment the refcount before returning to keep
+            # ownership semantics consistent with the Cython wrapper.
+            obj = ctypes.cast(extra_ptr.value, py_object).value
+            ctypes.pythonapi.Py_IncRef(ctypes.py_object(obj))
+            return obj
         return None
 
 
@@ -622,6 +627,7 @@ class FuncCodeInfoCache:
                     # Only remove if something is actually stored so we can
                     # return False when nothing existed.
                     extra_exists = False
+                    extra = None
                     if CYTHON_AVAILABLE and _cython_get_extra is not None:
                         try:
                             extra = _cython_get_extra(code_obj, self._code_extra_index)
@@ -636,14 +642,25 @@ class FuncCodeInfoCache:
                             extra_exists = False
 
                     if extra_exists:
-                        # Try to use Cython module first; helper handles refcounts
-                        if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
-                            _PyCode_SetExtra(code_obj, self._code_extra_index, None)
-                            removed = True
-                        else:
-                            result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
-                            if result == 0:
+                        # Try to clear the stored extra value. The C API will
+                        # run the cleanup function which should DECREF the stored
+                        # object. We must also DECREF the temporary object we
+                        # received from the getter so we don't leak.
+                        try:
+                            if CYTHON_AVAILABLE and _PyCode_SetExtra is not None:
+                                _PyCode_SetExtra(code_obj, self._code_extra_index, None)
                                 removed = True
+                            else:
+                                result = _code_extra_api.set_extra(code_obj, self._code_extra_index, None)
+                                if result == 0:
+                                    removed = True
+                        finally:
+                            # DECREF temporary local reference returned by getter
+                            try:
+                                if extra is not None:
+                                    ctypes.pythonapi.Py_DecRef(ctypes.py_object(extra))
+                            except Exception:
+                                pass
             except (ImportError, AttributeError, Exception) as exc:
                 logger.debug("_PyCode_SetExtra failed during remove: %s", exc)
 
