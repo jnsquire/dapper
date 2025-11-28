@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 
+from dapper.core.breakpoint_manager import BreakpointManager
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
@@ -52,13 +53,11 @@ class DebuggerBDB(bdb.Bdb):
         # Unified breakpoint resolver for condition/hit/log evaluation
         self._breakpoint_resolver = BreakpointResolver()
 
+        # Centralized breakpoint state management
+        self._bp_manager = BreakpointManager()
+
         self.is_terminated = False
         self.breakpoints = {}
-        self.function_breakpoints = []
-        self.function_breakpoint_meta = {}
-        # Exception handling
-        self._exception_handler = ExceptionHandler()
-        self.custom_breakpoints = {}
         self.current_thread_id = threading.get_ident()
 
         if enable_frame_eval:
@@ -73,6 +72,9 @@ class DebuggerBDB(bdb.Bdb):
         # Consolidated stepping state
         self._stepping_controller = SteppingController()
 
+        # Exception handling
+        self._exception_handler = ExceptionHandler()
+
         # Consolidated thread and frame tracking
         self._thread_tracker = ThreadTracker()
 
@@ -82,7 +84,6 @@ class DebuggerBDB(bdb.Bdb):
         # Optional: adapter/launcher may store configured data breakpoints here
         # for simple bookkeeping. Not required for core BDB operation.
         self.data_breakpoints: list[dict[str, Any]] | None = None
-        self.breakpoint_meta = {}
 
         # Consolidated data breakpoint state
         self._data_bp_state = DataBreakpointState()
@@ -286,6 +287,43 @@ class DebuggerBDB(bdb.Bdb):
             self._data_bp_state.frame_watches = {}
         else:
             self._data_bp_state.frame_watches = value
+
+    # --- Compatibility properties for breakpoint state ---
+    @property
+    def breakpoint_meta(self) -> dict[tuple[str, int], dict[str, Any]]:
+        """Mapping of (path, line) -> breakpoint metadata."""
+        return self._bp_manager.line_meta
+
+    @breakpoint_meta.setter
+    def breakpoint_meta(self, value: dict[tuple[str, int], dict[str, Any]]) -> None:
+        self._bp_manager.line_meta = value
+
+    @property
+    def function_breakpoints(self) -> list[str]:
+        """List of function names to break on."""
+        return self._bp_manager.function_names
+
+    @function_breakpoints.setter
+    def function_breakpoints(self, value: list[str]) -> None:
+        self._bp_manager.function_names = value
+
+    @property
+    def function_breakpoint_meta(self) -> dict[str, dict[str, Any]]:
+        """Mapping of function name -> breakpoint metadata."""
+        return self._bp_manager.function_meta
+
+    @function_breakpoint_meta.setter
+    def function_breakpoint_meta(self, value: dict[str, dict[str, Any]]) -> None:
+        self._bp_manager.function_meta = value
+
+    @property
+    def custom_breakpoints(self) -> dict[str, dict[int, str | None]]:
+        """Mapping of filename -> {line -> condition}."""
+        return self._bp_manager.custom
+
+    @custom_breakpoints.setter
+    def custom_breakpoints(self, value: dict[str, dict[int, str | None]]) -> None:
+        self._bp_manager.custom = value
 
     # ---------------- Data Breakpoint (Watch) Support -----------------
     def register_data_watches(

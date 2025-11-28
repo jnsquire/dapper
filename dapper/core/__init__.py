@@ -4,6 +4,8 @@ dapper.core - Core debugger implementation.
 This module provides the core debugging functionality built on Python's bdb module.
 """
 
+from dapper.core.breakpoint_manager import BreakpointManager
+from dapper.core.breakpoint_manager import LineBreakpointMeta
 from dapper.core.breakpoint_resolver import BreakpointMeta
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
@@ -27,7 +29,9 @@ from dapper.core.variable_manager import VariableManager
 __all__ = [
     # Breakpoint controller
     "BreakpointController",
-    # Breakpoint resolver
+    # Breakpoint manager
+    "BreakpointManager",
+    # Breakpoint resolver/metadata (BreakpointMeta is canonical, LineBreakpointMeta is alias)
     "BreakpointMeta",
     "BreakpointResolver",
     # Data breakpoint state
@@ -40,6 +44,7 @@ __all__ = [
     "ExceptionHandler",
     "FunctionBreakpointSpec",
     "InProcessDebugger",
+    "LineBreakpointMeta",  # Alias for BreakpointMeta
     "LineBreakpointSpec",
     "ResolveAction",
     "ResolveResult",
