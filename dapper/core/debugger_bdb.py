@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
-from typing import cast
 
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
@@ -21,6 +20,7 @@ from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_helpers import frame_may_handle_exception
 from dapper.core.debug_utils import MAX_STACK_DEPTH
 from dapper.core.debug_utils import get_function_candidate_names
+from dapper.core.variable_manager import VariableManager
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import ExceptionInfo
@@ -81,8 +81,10 @@ class DebuggerBDB(bdb.Bdb):
         self.stopped_thread_ids = set()
         self.next_frame_id = 1
         self.frame_id_to_frame = {}
-        self.next_var_ref = 1000
-        self.var_refs = {}
+
+        # Variable reference management
+        self._var_manager = VariableManager()
+
         # Optional: adapter/launcher may store configured data breakpoints here
         # for simple bookkeeping. Not required for core BDB operation.
         self.data_breakpoints: list[dict[str, Any]] | None = None
@@ -93,6 +95,25 @@ class DebuggerBDB(bdb.Bdb):
 
         # Consolidated data breakpoint state
         self._data_bp_state = DataBreakpointState()
+
+    # --- Compatibility properties for var_refs/next_var_ref ---
+    @property
+    def next_var_ref(self) -> int:
+        """Next variable reference ID to allocate."""
+        return self._var_manager.next_var_ref
+
+    @next_var_ref.setter
+    def next_var_ref(self, value: int) -> None:
+        self._var_manager.next_var_ref = value
+
+    @property
+    def var_refs(self) -> dict[int, Any]:
+        """Mapping of variable reference IDs to stored data."""
+        return self._var_manager.var_refs
+
+    @var_refs.setter
+    def var_refs(self, value: dict[int, Any]) -> None:
+        self._var_manager.var_refs = value
 
     # --- Compatibility properties for existing code that accesses the old attributes ---
     @property
@@ -199,85 +220,15 @@ class DebuggerBDB(bdb.Bdb):
     ) -> Variable:
         """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
-        This mirrors the module-level helper previously stored in debug_shared.
-        When used via this method, variablesReference bookkeeping will use this
-        debugger instance's next_var_ref and var_refs.
+        Delegates to the VariableManager for unified variable object creation.
         """
-
-        # Helper implementations copied from debug_shared module-level helpers
-        def _format_value_str(v: Any, max_len: int) -> str:
-            try:
-                s = repr(v)
-            except Exception:
-                return "<Error getting value>"
-            else:
-                if len(s) > max_len:
-                    return s[:max_len] + "..."
-                return s
-
-        def _allocate_var_ref(v: Any) -> int:
-            if not (hasattr(v, "__dict__") or isinstance(v, (dict, list, tuple))):
-                return 0
-            try:
-                ref = self.next_var_ref
-                self.next_var_ref = ref + 1
-                self.var_refs[ref] = ("object", v)
-            except Exception:
-                return 0
-            else:
-                return ref
-
-        def _detect_kind_and_attrs(v: Any) -> tuple[str, list[str]]:
-            attrs: list[str] = []
-            if callable(v):
-                attrs.append("hasSideEffects")
-                return "method", attrs
-            if isinstance(v, type):
-                return "class", attrs
-            if isinstance(v, (list, tuple, dict, set)):
-                return "data", attrs
-            if isinstance(v, (str, bytes)):
-                sval = v.decode() if isinstance(v, bytes) else v
-                if isinstance(sval, str) and ("\n" in sval or len(sval) > max_string_length):
-                    attrs.append("rawString")
-                return "data", attrs
-            return "data", attrs
-
-        def _visibility(n: Any) -> str:
-            try:
-                return "private" if str(n).startswith("_") else "public"
-            except Exception:
-                return "public"
-
-        def _detect_has_data_breakpoint(n: Any, fr: Any | None) -> bool:
-            name_str = str(n)
-            frame_id = id(fr) if fr is not None else None
-            return self._data_bp_state.has_data_breakpoint_for_name(name_str, frame_id)
-
-        val_str = _format_value_str(value, max_string_length)
-        var_ref = _allocate_var_ref(value)
-        type_name = type(value).__name__
-        kind, attrs = _detect_kind_and_attrs(value)
-        if _detect_has_data_breakpoint(name, frame) and "hasDataBreakpoint" not in attrs:
-            attrs.append("hasDataBreakpoint")
-        presentation = {
-            "kind": kind,
-            "attributes": attrs,
-            "visibility": _visibility(name),
-        }
-
-        return cast(
-            "Variable",
-            {
-                "name": str(name),
-                "value": val_str,
-                "type": type_name,
-                "variablesReference": var_ref,
-                "presentationHint": presentation,
-            },
+        return self._var_manager.make_variable(
+            name,
+            value,
+            max_string_length=max_string_length,
+            data_bp_state=self._data_bp_state,
+            frame=frame,
         )
-
-    # Note: create_variable_object alias removed. Use `make_variable_object` on debugger instances.
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
         """Evaluate conditions and hitConditions for a changed variable.
