@@ -34,6 +34,8 @@ from typing_extensions import Protocol
 from dapper.adapter.payload_extractor import DebugDataExtractor
 from dapper.adapter.types import BreakpointDict
 from dapper.adapter.types import BreakpointResponse
+from dapper.adapter.types import DAPRequest
+from dapper.adapter.types import DAPResponse
 from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
@@ -2197,7 +2199,7 @@ class RequestHandler:
     def __init__(self, server: DebugAdapterServer):
         self.server = server
 
-    async def handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
+    async def handle_request(self, request: DAPRequest) -> DAPResponse | None:
         """
         Handle a DAP request and return a response.
         """
@@ -2209,7 +2211,7 @@ class RequestHandler:
             handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
         return await handler_method(request)
 
-    async def _handle_unknown(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
         """Handle an unknown request command."""
         return {
             "type": "response",
@@ -2219,7 +2221,7 @@ class RequestHandler:
             "message": f"Unsupported command: {request['command']}",
         }
 
-    async def _handle_initialize(self, request: dict[str, Any]) -> None:
+    async def _handle_initialize(self, request: DAPRequest) -> None:
         """Handle initialize request."""
         # Directly send the response for initialize
         response = {
@@ -2270,7 +2272,7 @@ class RequestHandler:
         # Send the initialized event
         await self.server.send_event("initialized")
 
-    async def _handle_launch(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_launch(self, request: DAPRequest) -> DAPResponse:
         """Handle launch request."""
         args = request.get("arguments", {})
         program = args.get("program")
@@ -2318,7 +2320,7 @@ class RequestHandler:
             "command": "launch",
         }
 
-    async def _handle_attach(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_attach(self, request: DAPRequest) -> DAPResponse:
         """Handle attach request.
 
         Attach connects to an existing debuggee via IPC endpoint.
@@ -3102,9 +3104,9 @@ class DebugAdapterServer(DebugServer):
         logger.info("Handling request: %s (seq: %s)", command, request.get("seq", "?"))
 
         try:
-            response = await self.request_handler.handle_request(request)
+            response = await self.request_handler.handle_request(cast("DAPRequest", request))
             if response:
-                await self.send_message(response)
+                await self.send_message(cast("dict[str, Any]", response))
         except Exception as e:
             logger.exception("Error handling request %s", command)
             await self.send_error_response(request, str(e))
