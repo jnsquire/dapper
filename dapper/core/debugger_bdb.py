@@ -17,6 +17,7 @@ from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_utils import get_function_candidate_names
 from dapper.core.exception_handler import ExceptionHandler
+from dapper.core.stepping_controller import SteppingController
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 
@@ -68,9 +69,9 @@ class DebuggerBDB(bdb.Bdb):
                 integrate_debugger_bdb(self)
             except ImportError:
                 pass
-        self.current_frame = None
-        self.stepping = False
-        self.stop_on_entry = False
+
+        # Consolidated stepping state
+        self._stepping_controller = SteppingController()
 
         # Consolidated thread and frame tracking
         self._thread_tracker = ThreadTracker()
@@ -85,6 +86,34 @@ class DebuggerBDB(bdb.Bdb):
 
         # Consolidated data breakpoint state
         self._data_bp_state = DataBreakpointState()
+
+    # --- Compatibility properties for stepping state ---
+    @property
+    def stepping(self) -> bool:
+        """Whether the debugger is in stepping mode."""
+        return self._stepping_controller.stepping
+
+    @stepping.setter
+    def stepping(self, value: bool) -> None:
+        self._stepping_controller.stepping = value
+
+    @property
+    def stop_on_entry(self) -> bool:
+        """Whether to stop at program entry."""
+        return self._stepping_controller.stop_on_entry
+
+    @stop_on_entry.setter
+    def stop_on_entry(self, value: bool) -> None:
+        self._stepping_controller.stop_on_entry = value
+
+    @property
+    def current_frame(self) -> Any:
+        """The current frame we're stopped at."""
+        return self._stepping_controller.current_frame
+
+    @current_frame.setter
+    def current_frame(self, value: Any) -> None:
+        self._stepping_controller.current_frame = value
 
     # --- Compatibility properties for exception handling ---
     @property
@@ -412,13 +441,8 @@ class DebuggerBDB(bdb.Bdb):
         # Default stop behavior for stepping, entry, or normal breakpoints
         self._ensure_thread_registered(thread_id)
 
-        reason = "breakpoint"
-        if self.stop_on_entry:
-            reason = "entry"
-            self.stop_on_entry = False
-        elif self.stepping:
-            reason = "step"
-            self.stepping = False
+        # Get and consume the stop reason from stepping controller
+        reason = self._stepping_controller.consume_stop_state().value
 
         self._emit_stopped_event(frame, thread_id, reason)
         self.process_commands()

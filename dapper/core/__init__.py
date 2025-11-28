@@ -18,6 +18,8 @@ from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.exception_handler import ExceptionBreakpointConfig
 from dapper.core.exception_handler import ExceptionHandler
 from dapper.core.inprocess_debugger import InProcessDebugger
+from dapper.core.stepping_controller import SteppingController
+from dapper.core.stepping_controller import StopReason
 from dapper.core.thread_tracker import StackFrame
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
@@ -43,6 +45,9 @@ __all__ = [
     "ResolveResult",
     # Thread/frame tracking
     "StackFrame",
+    # Stepping control
+    "SteppingController",
+    "StopReason",
     "ThreadTracker",
     # Variable management
     "VariableManager",
