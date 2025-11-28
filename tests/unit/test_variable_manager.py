@@ -126,14 +126,16 @@ class TestVariableManagerMakeVariable:
     def test_make_variable_multiline_has_raw_string_attr(self):
         manager = VariableManager()
         var = manager.make_variable("s", "line1\nline2")
-        attrs = var["presentationHint"]["attributes"]
+        hint = var.get("presentationHint", {})
+        attrs = hint.get("attributes", [])  # type: ignore[union-attr]
         assert "rawString" in attrs
 
     def test_make_variable_callable_has_side_effects(self):
         manager = VariableManager()
         var = manager.make_variable("fn", lambda x: x)
-        assert var["presentationHint"]["kind"] == "method"
-        assert "hasSideEffects" in var["presentationHint"]["attributes"]
+        hint = var.get("presentationHint", {})
+        assert hint.get("kind") == "method"  # type: ignore[union-attr]
+        assert "hasSideEffects" in hint.get("attributes", [])  # type: ignore[union-attr]
 
     def test_make_variable_class_type(self):
         manager = VariableManager()
@@ -142,17 +144,20 @@ class TestVariableManagerMakeVariable:
             pass
 
         var = manager.make_variable("cls", MyClass)
-        assert var["presentationHint"]["kind"] == "class"
+        hint = var.get("presentationHint", {})
+        assert hint.get("kind") == "class"  # type: ignore[union-attr]
 
     def test_make_variable_private_visibility(self):
         manager = VariableManager()
         var = manager.make_variable("_private", 1)
-        assert var["presentationHint"]["visibility"] == "private"
+        hint = var.get("presentationHint", {})
+        assert hint.get("visibility") == "private"  # type: ignore[union-attr]
 
     def test_make_variable_public_visibility(self):
         manager = VariableManager()
         var = manager.make_variable("public", 1)
-        assert var["presentationHint"]["visibility"] == "public"
+        hint = var.get("presentationHint", {})
+        assert hint.get("visibility") == "public"  # type: ignore[union-attr]
 
     def test_make_variable_with_data_breakpoint(self):
         manager = VariableManager()
@@ -160,7 +165,8 @@ class TestVariableManagerMakeVariable:
         data_bp_state.register_watches(["x"])
 
         var = manager.make_variable("x", 42, data_bp_state=data_bp_state)
-        assert "hasDataBreakpoint" in var["presentationHint"]["attributes"]
+        hint = var.get("presentationHint", {})
+        assert "hasDataBreakpoint" in hint.get("attributes", [])  # type: ignore[union-attr]
 
     def test_make_variable_without_data_breakpoint(self):
         manager = VariableManager()
@@ -168,7 +174,8 @@ class TestVariableManagerMakeVariable:
         data_bp_state.register_watches(["y"])  # watching y, not x
 
         var = manager.make_variable("x", 42, data_bp_state=data_bp_state)
-        assert "hasDataBreakpoint" not in var["presentationHint"]["attributes"]
+        hint = var.get("presentationHint", {})
+        assert "hasDataBreakpoint" not in hint.get("attributes", [])  # type: ignore[union-attr]
 
     def test_make_variable_error_repr(self):
         manager = VariableManager()

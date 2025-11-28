@@ -11,7 +11,22 @@ MAX_STACK_DEPTH = 128
 
 
 def evaluate_hit_condition(expr: str, hit_count: int) -> bool:
-    # TODO Document the supported syntax
+    """Evaluate a hit condition expression against the current hit count.
+
+    Supported syntax:
+        - ``%n``: Match when hit count is divisible by n (e.g., ``%3`` matches hits 3, 6, 9...)
+        - ``==n``: Match when hit count equals n exactly
+        - ``>=n``: Match when hit count is greater than or equal to n
+        - ``n``: Plain number, equivalent to ``==n``
+
+    Args:
+        expr: The hit condition expression string.
+        hit_count: The current breakpoint hit count.
+
+    Returns:
+        True if the condition is satisfied (breakpoint should trigger),
+        False otherwise. Returns True on parse errors (fail-open).
+    """
     try:
         s = expr.strip()
         m = re.match(r"^%\s*(\d+)$", s)

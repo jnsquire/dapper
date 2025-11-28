@@ -255,16 +255,6 @@ class DebuggerBDB(bdb.Bdb):
             self._data_bp_state.watch_meta = value
 
     @property
-    def _last_locals_by_frame(self) -> dict[int, dict[str, object]]:
-        """Per-frame snapshot of watched variable values."""
-        return self._data_bp_state.last_values_by_frame
-
-    @property
-    def _last_global_watch_values(self) -> dict[str, object]:
-        """Global fallback snapshot of watched variable values."""
-        return self._data_bp_state.global_values
-
-    @property
     def _data_watches(self) -> dict[str, Any]:
         """Server-style mapping of dataId -> watch metadata."""
         return self._data_bp_state.data_watches

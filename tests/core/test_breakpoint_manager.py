@@ -73,6 +73,7 @@ class TestLineBreakpoints:
         mgr.record_line_breakpoint("/test.py", 15, condition="x > 5")
 
         meta = mgr.get_line_meta("/test.py", 15)
+        assert meta is not None
         assert meta["condition"] == "x > 5"
 
     def test_record_line_breakpoint_with_hit_condition(self):
@@ -81,6 +82,7 @@ class TestLineBreakpoints:
         mgr.record_line_breakpoint("/test.py", 20, hit_condition=">= 3")
 
         meta = mgr.get_line_meta("/test.py", 20)
+        assert meta is not None
         assert meta["hitCondition"] == ">= 3"
 
     def test_record_line_breakpoint_with_log_message(self):
@@ -89,6 +91,7 @@ class TestLineBreakpoints:
         mgr.record_line_breakpoint("/test.py", 25, log_message="Value is {x}")
 
         meta = mgr.get_line_meta("/test.py", 25)
+        assert meta is not None
         assert meta["logMessage"] == "Value is {x}"
 
     def test_record_line_breakpoint_all_options(self):
@@ -103,6 +106,7 @@ class TestLineBreakpoints:
         )
 
         meta = mgr.get_line_meta("/test.py", 30)
+        assert meta is not None
         assert meta["condition"] == "y != 0"
         assert meta["hitCondition"] == "== 10"
         assert meta["logMessage"] == "Count: {count}"
@@ -125,6 +129,7 @@ class TestLineBreakpoints:
         mgr.record_line_breakpoint("/test.py", 10, condition="b")
 
         meta = mgr.get_line_meta("/test.py", 10)
+        assert meta is not None
         assert meta["hit"] == 5
         assert meta["condition"] == "b"
 

@@ -3,10 +3,10 @@ DataBreakpointState: Consolidated state management for data breakpoints (watchpo
 
 This module provides a single coherent data structure for managing data breakpoint
 state, replacing the scattered attributes previously spread across DebuggerBDB:
-- data_watch_names
-- data_watch_meta
-- _last_locals_by_frame
-- _last_global_watch_values
+- data_watch_names -> watch_names
+- data_watch_meta -> watch_meta
+- last_values_by_frame (for change detection)
+- global_values (for change detection)
 - _data_watches (server-style)
 - _frame_watches (server-style)
 """
