@@ -105,6 +105,8 @@ class SessionState:
         self.ipc_wfile: io.TextIOBase | None = None
         # Optional direct pipe connection object for binary send/recv on Windows
         self.ipc_pipe_conn: Any | None = None
+        # Thread running receive_debug_commands (managed by start_command_receiver)
+        self.command_thread: threading.Thread | None = None
 
         # Event emitter for outgoing debug messages. Consumers can subscribe
         # instead of monkeypatching the send_debug_message function.
@@ -203,19 +205,19 @@ class SessionState:
         """
         try:
             # Defer import to avoid circular import at module import time
-            from dapper.adapter import debug_adapter_comm  # noqa: PLC0415
+            from dapper.ipc import ipc_receiver  # noqa: PLC0415
 
             # Avoid starting more than once
-            if debug_adapter_comm.command_thread is not None:
+            if self.command_thread is not None:
                 logger.debug("command receiver already started")
                 return
 
-            debug_adapter_comm.command_thread = threading.Thread(
-                target=debug_adapter_comm.receive_debug_commands,
+            self.command_thread = threading.Thread(
+                target=ipc_receiver.receive_debug_commands,
                 daemon=True,
                 name="dapper-recv-cmd",
             )
-            debug_adapter_comm.command_thread.start()
+            self.command_thread.start()
             logger.debug("Started receive_debug_commands thread")
         except Exception as exc:  # pragma: no cover - best-effort startup
             # Log at warning level so failures are visible during normal runs

@@ -23,18 +23,19 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Awaitable
-from collections.abc import Sequence
 from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import TypedDict
 from typing import cast
 
-from typing_extensions import NotRequired
 from typing_extensions import Protocol
 
+from dapper.adapter.payload_extractor import DebugDataExtractor
+from dapper.adapter.types import BreakpointDict
+from dapper.adapter.types import BreakpointResponse
+from dapper.adapter.types import PyDebuggerThread
+from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_context import IPCContext
@@ -50,18 +51,6 @@ except Exception:  # pragma: no cover - optional feature
     integrate_py_debugger = None
 
 
-# Local type for breakpoint responses
-class BreakpointResponse(TypedDict, total=False):
-    """Type definition for a breakpoint response."""
-
-    verified: bool
-    message: NotRequired[str]
-    line: NotRequired[int]
-    condition: NotRequired[str | None]
-    hitCondition: NotRequired[str | None]
-    logMessage: NotRequired[str | None]
-
-
 if TYPE_CHECKING:
     from collections.abc import Awaitable
     from collections.abc import Callable
@@ -74,55 +63,9 @@ if TYPE_CHECKING:
     from dapper.protocol.protocol_types import ExceptionInfoRequest
     from dapper.protocol.protocol_types import FunctionBreakpoint
     from dapper.protocol.protocol_types import GenericRequest
-    from dapper.protocol.protocol_types import Source
 
-
-# Type definitions for breakpoint handling
-class BreakpointDict(TypedDict, total=False):
-    """Type definition for a breakpoint response."""
-
-    verified: bool
-    message: str | None
-    line: int | None
-    condition: str | None
-    hitCondition: str | None
-    logMessage: str | None
-
-
-# Type aliases
-SourceDict = dict[str, Any]  # Dictionary representing source file information
 
 logger = logging.getLogger(__name__)
-
-
-# Module-level registry mapping event name -> function object
-_payload_registry: dict[str, Callable[..., dict[str, Any]]] = {}
-
-
-# Decorator used to mark payload-producing methods with an event name.
-def payload(event_name: str):
-    def _decorator(func: Callable[..., dict[str, Any]]):
-        # Register in module-level registry keyed by event name
-        _payload_registry[event_name] = func
-        return func
-
-    return _decorator
-
-
-# Class decorator that collects all methods marked with @payload and builds
-# a class-level mapping event_name -> method_name for fast dispatch.
-def register_payloads(cls: type):
-    mapping: dict[str, str] = {}
-    for name, member in cls.__dict__.items():
-        if not callable(member):
-            continue
-        # Find the event name whose registered function matches this member
-        for evt, func in _payload_registry.items():
-            if func is member:
-                mapping[evt] = name
-                break
-    cls.payload_dispatch = mapping
-    return cls
 
 
 # ---------------------------------------------------------------------------
@@ -151,78 +94,6 @@ def _acquire_event_loop(
         return running, False
     new_loop = asyncio.new_event_loop()
     return new_loop, True
-
-
-class PyDebuggerThread:
-    """Lightweight thread model tracked by the debugger."""
-
-    def __init__(self, thread_id: int, name: str):
-        self.id = thread_id
-        self.name = name
-        self.frames: list[dict[str, Any]] = []
-        self.is_stopped: bool = False
-        self.stop_reason: str = ""
-
-
-@register_payloads
-class DebugDataExtractor(dict):
-    """Helper to extract and format event payloads from generic dicts."""
-
-    @payload("output")
-    def output_payload(self) -> dict[str, Any]:
-        return {
-            "category": self.get("category", "console"),
-            "output": self.get("output", ""),
-            "source": self.get("source"),
-            "line": self.get("line"),
-            "column": self.get("column"),
-        }
-
-    @payload("continued")
-    def continued_payload(self) -> dict[str, Any]:
-        return {
-            "threadId": self.get("threadId", 1),
-            "allThreadsContinued": self.get("allThreadsContinued", True),
-        }
-
-    @payload("exception")
-    def exception_payload(self) -> dict[str, Any]:
-        return {
-            "exceptionId": self.get("exceptionId", "Exception"),
-            "description": self.get("description", ""),
-            "breakMode": self.get("breakMode", "always"),
-            "threadId": self.get("threadId", 1),
-        }
-
-    @payload("breakpoint")
-    def breakpoint_payload(self) -> dict[str, Any]:
-        return {
-            "reason": self.get("reason", "changed"),
-            "breakpoint": self.get("breakpoint", {}),
-        }
-
-    @payload("module")
-    def module_payload(self) -> dict[str, Any]:
-        return {
-            "reason": self.get("reason", "new"),
-            "module": self.get("module", {}),
-        }
-
-    @payload("process")
-    def process_payload(self) -> dict[str, Any]:
-        return {
-            "name": self.get("name", ""),
-            "systemProcessId": self.get("systemProcessId"),
-            "isLocalProcess": self.get("isLocalProcess", True),
-            "startMethod": self.get("startMethod", "launch"),
-        }
-
-    @payload("loadedSource")
-    def loaded_source_payload(self) -> dict[str, Any]:
-        return {
-            "reason": self.get("reason", "new"),
-            "source": self.get("source", {}),
-        }
 
 
 class DebugServer(Protocol):

@@ -38,16 +38,16 @@ if TYPE_CHECKING:
     from dapper.protocol.protocol_types import ModulesArguments
     from dapper.protocol.protocol_types import NextArguments
     from dapper.protocol.protocol_types import PauseArguments
-    from dapper.protocol_types import SetBreakpointsArguments
-    from dapper.protocol_types import SetExceptionBreakpointsArguments
-    from dapper.protocol_types import SetFunctionBreakpointsArguments
-    from dapper.protocol_types import SetVariableArguments
-    from dapper.protocol_types import SourceArguments
-    from dapper.protocol_types import StackTraceArguments
-    from dapper.protocol_types import StepInArguments
-    from dapper.protocol_types import StepOutArguments
-    from dapper.protocol_types import TerminateArguments
-    from dapper.protocol_types import VariablesArguments
+    from dapper.protocol.protocol_types import SetBreakpointsArguments
+    from dapper.protocol.protocol_types import SetExceptionBreakpointsArguments
+    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.protocol_types import SetVariableArguments
+    from dapper.protocol.protocol_types import SourceArguments
+    from dapper.protocol.protocol_types import StackTraceArguments
+    from dapper.protocol.protocol_types import StepInArguments
+    from dapper.protocol.protocol_types import StepOutArguments
+    from dapper.protocol.protocol_types import TerminateArguments
+    from dapper.protocol.protocol_types import VariablesArguments
 
 
 # Command mapping table - will be populated by the @command_handler decorator

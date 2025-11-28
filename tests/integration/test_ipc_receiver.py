@@ -4,7 +4,7 @@ from queue import Queue
 
 import pytest
 
-from dapper.adapter import debug_adapter_comm as dac
+from dapper.ipc import ipc_receiver
 
 
 class DummyLock:
@@ -21,7 +21,7 @@ def test_dap_mapping_provider_handle_variants():
         return {"success": True, "body": {}}
 
     mapping = {"ok": ok_handler}
-    p = dac.DapMappingProvider(mapping)
+    p = ipc_receiver.DapMappingProvider(mapping)
     assert p.supported_commands() == {"ok"}
     assert p.can_handle("ok")
     res = p.handle("ok", {})
@@ -33,12 +33,12 @@ def test_dap_mapping_provider_handle_variants():
         return None
 
     mapping = {"noreply": noreply_handler}
-    p = dac.DapMappingProvider(mapping)
+    p = ipc_receiver.DapMappingProvider(mapping)
     assert p.handle("noreply", {}) is None
 
     # non-callable mapping entry
     mapping = {"bad": 123}
-    p = dac.DapMappingProvider(mapping)
+    p = ipc_receiver.DapMappingProvider(mapping)
     out = p.handle("bad", {})
     assert isinstance(out, dict)
     assert out.get("success") is False
@@ -46,7 +46,7 @@ def test_dap_mapping_provider_handle_variants():
 
 def test_receive_debug_commands_ipc(monkeypatch):
     # prepare fake state
-    s = dac.state
+    s = ipc_receiver.state
     s.is_terminated = False
     s.ipc_enabled = True
     s.command_queue = Queue()
@@ -75,7 +75,7 @@ def test_receive_debug_commands_ipc(monkeypatch):
     monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
 
     # run receiver (should process one command and return)
-    dac.receive_debug_commands()
+    ipc_receiver.receive_debug_commands()
     assert called
     assert called[0]["command"] == "dummy"
     # queue should have at least one item
@@ -85,7 +85,7 @@ def test_receive_debug_commands_ipc(monkeypatch):
 
 
 def test_process_queued_commands(monkeypatch):
-    s = dac.state
+    s = ipc_receiver.state
     s.command_queue = Queue()
     s.command_queue.put({"command": "a"})
     s.command_queue.put({"command": "b"})
@@ -97,14 +97,14 @@ def test_process_queued_commands(monkeypatch):
 
     monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
 
-    dac.process_queued_commands()
+    ipc_receiver.process_queued_commands()
     assert len(called) == 2
     assert s.command_queue.empty()
 
 
 def test_receive_debug_commands_requires_ipc():
     """Test that receive_debug_commands raises RuntimeError when IPC is not enabled."""
-    s = dac.state
+    s = ipc_receiver.state
     # Save original state
     orig_is_terminated = s.is_terminated
     orig_ipc_enabled = s.ipc_enabled
@@ -117,7 +117,7 @@ def test_receive_debug_commands_requires_ipc():
 
         # Should raise RuntimeError since IPC is mandatory
         with pytest.raises(RuntimeError, match="IPC is required"):
-            dac.receive_debug_commands()
+            ipc_receiver.receive_debug_commands()
     finally:
         # Restore original state
         s.is_terminated = orig_is_terminated
@@ -126,7 +126,7 @@ def test_receive_debug_commands_requires_ipc():
 
 
 def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
-    s = dac.state
+    s = ipc_receiver.state
     s.is_terminated = False
     s.ipc_enabled = True
     s.command_queue = Queue()
@@ -143,9 +143,9 @@ def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
         s.is_terminated = True
 
     # patch the module-level send_debug_message used in receive_debug_commands
-    monkeypatch.setattr(dac, "send_debug_message", fake_send)
+    monkeypatch.setattr(ipc_receiver, "send_debug_message", fake_send)
 
-    dac.receive_debug_commands()
+    ipc_receiver.receive_debug_commands()
 
     assert called, "send_debug_message was not called for malformed JSON"
     ev, kw = called[0]
@@ -160,12 +160,12 @@ def test_dap_mapping_provider_supported_commands_errors_and_missing():
             msg = "no keys"
             raise RuntimeError(msg)
 
-    p = dac.DapMappingProvider(BadMapping())
+    p = ipc_receiver.DapMappingProvider(BadMapping())
     assert p.supported_commands() == set()
 
     # missing key (mapping.get returns None) should be treated as unknown
     mapping = {}
-    p2 = dac.DapMappingProvider(mapping)
+    p2 = ipc_receiver.DapMappingProvider(mapping)
     out = p2.handle("not-there", {})
     assert isinstance(out, dict)
     assert out.get("success") is False
@@ -178,6 +178,6 @@ def test_dap_mapping_provider_handle_raises():
         raise ValueError(msg)
 
     mapping = {"boom": boom}
-    p = dac.DapMappingProvider(mapping)
+    p = ipc_receiver.DapMappingProvider(mapping)
     with pytest.raises(ValueError, match="boom"):
         p.handle("boom", {})

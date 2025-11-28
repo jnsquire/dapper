@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.adapter.debug_adapter_comm import process_queued_commands
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.ipc.ipc_receiver import process_queued_commands
 from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:

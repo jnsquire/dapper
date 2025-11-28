@@ -1,5 +1,9 @@
 """
-Debug adapter communication and command queue logic.
+IPC receiver for debug adapter commands.
+
+This module handles receiving and dispatching debug commands from the
+IPC channel (socket or pipe) established between the debug adapter and
+the debuggee process.
 """
 
 from __future__ import annotations
@@ -8,7 +12,6 @@ import json
 import logging
 import traceback
 from queue import Empty
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -16,13 +19,7 @@ from dapper.adapter.dap_command_handlers import COMMAND_HANDLERS
 from dapper.shared.debug_shared import send_debug_message
 from dapper.shared.debug_shared import state
 
-if TYPE_CHECKING:
-    import threading
-
 logger = logging.getLogger(__name__)
-
-# Global reference to the command receiver thread
-command_thread: threading.Thread | None = None
 
 
 class DapMappingProvider:
