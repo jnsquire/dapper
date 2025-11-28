@@ -15,10 +15,10 @@ from typing import Any
 from typing import Callable
 from typing import cast
 
+from dapper.core.breakpoint_resolver import BreakpointResolver
+from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.debug_helpers import frame_may_handle_exception
 from dapper.core.debug_utils import MAX_STACK_DEPTH
-from dapper.core.debug_utils import evaluate_hit_condition
-from dapper.core.debug_utils import format_log_message
 from dapper.core.debug_utils import get_function_candidate_names
 
 if TYPE_CHECKING:
@@ -48,6 +48,9 @@ class DebuggerBDB(bdb.Bdb):
         # Use injected callbacks or fall back to no-ops
         self.send_message = send_message
         self.process_commands = process_commands
+
+        # Unified breakpoint resolver for condition/hit/log evaluation
+        self._breakpoint_resolver = BreakpointResolver()
 
         self.is_terminated = False
         self.breakpoints = {}
@@ -278,31 +281,23 @@ class DebuggerBDB(bdb.Bdb):
     # Note: create_variable_object alias removed. Use `make_variable_object` on debugger instances.
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
-        """Evaluate conditions and hitConditions for a changed variable."""
+        """Evaluate conditions and hitConditions for a changed variable.
+        """
         metas = (self.data_watch_meta or {}).get(changed_name, [])
 
-        for m in metas:
-            # Increment hit counter per meta (change-based hit)
-            m["hit"] = int(m.get("hit", 0)) + 1
-
-            # Check hitCondition
-            hc_expr = m.get("hitCondition")
-            if hc_expr and not evaluate_hit_condition(str(hc_expr), m["hit"]):
-                continue
-
-            # Check condition
-            cond_expr = m.get("condition")
-            if cond_expr:
-                try:
-                    cond_ok = bool(eval(str(cond_expr), frame.f_globals, frame.f_locals))
-                except Exception:  # pragma: no cover - defensive
-                    cond_ok = False
-                if not cond_ok:
-                    continue
+        # No metadata means default stop semantics
+        if not metas:
             return True
 
-        # No metadata means default stop semantics
-        return not metas
+        # Check each meta entry - stop if any passes all conditions
+        for m in metas:
+            result = self._breakpoint_resolver.resolve(m, frame)
+            if result.action == ResolveAction.STOP:
+                return True
+            # For logpoints on data breakpoints, we still stop (data changed)
+            # but the log message was already emitted by the resolver if emit_output was provided
+
+        return False
 
     def _ensure_thread_registered(self, thread_id):
         """Ensure the current thread is registered and send thread started event if needed."""
@@ -317,7 +312,10 @@ class DebuggerBDB(bdb.Bdb):
             )
 
     def _handle_regular_breakpoint(self, filename, line, frame):
-        """Handle regular line breakpoints with hit conditions and log messages."""
+        """Handle regular line breakpoints with hit conditions and log messages.
+        Returns True if the breakpoint was handled (either hit or skipped due to conditions),
+        False if no breakpoint exists at this location.
+        """
         if not (
             self.get_break(filename, line)
             or (filename in self.custom_breakpoints and line in self.custom_breakpoints[filename])
@@ -325,22 +323,19 @@ class DebuggerBDB(bdb.Bdb):
             return False
 
         meta = self.breakpoint_meta.get((filename, int(line)))
-        if meta is not None:
-            meta["hit"] = int(meta.get("hit", 0)) + 1
-            hc_expr = meta.get("hitCondition")
-            if hc_expr and not evaluate_hit_condition(str(hc_expr), meta["hit"]):
-                self.set_continue()
-                return True
 
-            log_msg = meta.get("logMessage")
-            if log_msg:
-                try:
-                    rendered = format_log_message(str(log_msg), frame)
-                except Exception:
-                    rendered = str(log_msg)
-                self.send_message("output", category="console", output=str(rendered))
-                self.set_continue()
-                return True
+        # Create an output emitter that sends to the debug client
+        def emit_output(category: str, output: str) -> None:
+            self.send_message("output", category=category, output=output)
+
+        result = self._breakpoint_resolver.resolve(meta, frame, emit_output=emit_output)
+
+        if result.action == ResolveAction.CONTINUE:
+            # Condition not met or logpoint emitted - continue execution
+            self.set_continue()
+            return True
+
+        # STOP action means conditions passed - let caller handle the stop
         return False
 
     def _emit_stopped_event(self, frame, thread_id, reason, description=None):
@@ -544,6 +539,11 @@ class DebuggerBDB(bdb.Bdb):
             pass
 
     def user_call(self, frame, argument_list):
+        """Handle function breakpoints.
+
+        Checks if the current function call matches any registered function
+        breakpoints and evaluates conditions/hit counts/log messages.
+        """
         # Reference argument_list to avoid static analyzers reporting it as unused
         _ = argument_list
 
@@ -558,45 +558,22 @@ class DebuggerBDB(bdb.Bdb):
                 break
         if match_name is None:
             return
+
         meta = self.function_breakpoint_meta.get(match_name, {})
-        meta["hit"] = int(meta.get("hit", 0)) + 1
-        hc_expr = meta.get("hitCondition")
-        if hc_expr and not evaluate_hit_condition(str(hc_expr), meta["hit"]):
+
+        # Create an output emitter for logpoints
+        def emit_output(category: str, output: str) -> None:
+            self.send_message("output", category=category, output=output)
+
+        result = self._breakpoint_resolver.resolve(meta, frame, emit_output=emit_output)
+
+        if result.action != ResolveAction.STOP:
+            # Condition not met or logpoint emitted - continue without stopping
             return
-        cond = meta.get("condition")
-        if cond:
-            try:
-                if not eval(cond, frame.f_globals, frame.f_locals):
-                    return
-            except Exception:
-                return
-        log_msg = meta.get("logMessage")
-        if log_msg:
-            try:
-                rendered = format_log_message(str(log_msg), frame)
-            except Exception:
-                rendered = str(log_msg)
-            self.send_message("output", category="console", output=str(rendered))
-            return
+
+        # Stop at the function breakpoint
         thread_id = threading.get_ident()
-        if thread_id not in self.threads:
-            thread_name = threading.current_thread().name
-            self.threads[thread_id] = thread_name
-            self.send_message(
-                "thread",
-                threadId=thread_id,
-                reason="started",
-                name=thread_name,
-            )
-        self.current_frame = frame
-        self.stopped_thread_ids.add(thread_id)
-        stack_frames = self._get_stack_frames(frame)
-        self.frames_by_thread[thread_id] = stack_frames
-        self.send_message(
-            "stopped",
-            threadId=thread_id,
-            reason="function breakpoint",
-            allThreadsStopped=True,
-        )
+        self._ensure_thread_registered(thread_id)
+        self._emit_stopped_event(frame, thread_id, "function breakpoint")
         self.process_commands()
         self.set_continue()
