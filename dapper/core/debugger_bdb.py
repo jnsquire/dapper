@@ -8,7 +8,6 @@ from __future__ import annotations
 import bdb
 import contextlib
 import threading
-import traceback
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -16,8 +15,8 @@ from typing import Callable
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
-from dapper.core.debug_helpers import frame_may_handle_exception
 from dapper.core.debug_utils import get_function_candidate_names
+from dapper.core.exception_handler import ExceptionHandler
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 
@@ -56,9 +55,8 @@ class DebuggerBDB(bdb.Bdb):
         self.breakpoints = {}
         self.function_breakpoints = []
         self.function_breakpoint_meta = {}
-        # Exception breakpoint flags (separate booleans for clarity)
-        self.exception_breakpoints_uncaught = False
-        self.exception_breakpoints_raised = False
+        # Exception handling
+        self._exception_handler = ExceptionHandler()
         self.custom_breakpoints = {}
         self.current_thread_id = threading.get_ident()
 
@@ -83,13 +81,38 @@ class DebuggerBDB(bdb.Bdb):
         # Optional: adapter/launcher may store configured data breakpoints here
         # for simple bookkeeping. Not required for core BDB operation.
         self.data_breakpoints: list[dict[str, Any]] | None = None
-        # Mapping thread id -> structured exception info captured when we break on
-        # exceptions.
-        self.current_exception_info: dict[int, ExceptionInfo] = {}
         self.breakpoint_meta = {}
 
         # Consolidated data breakpoint state
         self._data_bp_state = DataBreakpointState()
+
+    # --- Compatibility properties for exception handling ---
+    @property
+    def exception_breakpoints_raised(self) -> bool:
+        """Whether to break on any raised exception."""
+        return self._exception_handler.config.break_on_raised
+
+    @exception_breakpoints_raised.setter
+    def exception_breakpoints_raised(self, value: bool) -> None:
+        self._exception_handler.config.break_on_raised = value
+
+    @property
+    def exception_breakpoints_uncaught(self) -> bool:
+        """Whether to break on uncaught exceptions."""
+        return self._exception_handler.config.break_on_uncaught
+
+    @exception_breakpoints_uncaught.setter
+    def exception_breakpoints_uncaught(self, value: bool) -> None:
+        self._exception_handler.config.break_on_uncaught = value
+
+    @property
+    def current_exception_info(self) -> dict[int, ExceptionInfo]:
+        """Per-thread exception info storage."""
+        return self._exception_handler.exception_info_by_thread
+
+    @current_exception_info.setter
+    def current_exception_info(self, value: dict[int, ExceptionInfo]) -> None:
+        self._exception_handler.exception_info_by_thread = value
 
     # --- Compatibility properties for var_refs/next_var_ref ---
     @property
@@ -402,63 +425,34 @@ class DebuggerBDB(bdb.Bdb):
         self.set_continue()
 
     def user_exception(self, frame, exc_info):
-        if not self.exception_breakpoints_raised and not self.exception_breakpoints_uncaught:
+        """Handle exception breakpoints using the exception handler."""
+        if not self._exception_handler.should_break(frame):
             return
-        exc_type, exc_value, exc_traceback = exc_info
-        is_uncaught = True
-        # Ask the helper whether the current frame will handle this exception. If it reports
-        # True (or "unknown" via None) we treat the exception as handled and skip uncaught logic.
-        res = frame_may_handle_exception(frame)
-        if res is True or res is None:
-            is_uncaught = False
-        thread_id = threading.get_ident()
-        break_mode = "always" if self.exception_breakpoints_raised else "unhandled"
-        # Decide whether we should interrupt execution. A configured "uncaught" breakpoint only
-        # triggers when the exception bubbles out of the current frame, while the "raised" mode
-        # triggers immediately.
-        if (
-            is_uncaught and self.exception_breakpoints_uncaught
-        ) or self.exception_breakpoints_raised:
-            break_on_exception = True
-        else:
-            break_on_exception = False
 
-        if break_on_exception:
-            # Cache the exception details so the adapter can surface comprehensive information
-            # (including formatted stack trace) in subsequent protocol requests.
-            stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            self.current_exception_info[thread_id] = {
-                "exceptionId": exc_type.__name__,
-                "description": str(exc_value),
-                "breakMode": break_mode,
-                "details": {
-                    "message": str(exc_value),
-                    "typeName": exc_type.__name__,
-                    "fullTypeName": (exc_type.__module__ + "." + exc_type.__name__),
-                    "source": frame.f_code.co_filename,
-                    "stackTrace": stack_trace,
-                },
-            }
-        if break_on_exception:
-            self.current_frame = frame
-            self.stopped_thread_ids.add(thread_id)
-            stack_frames = self._get_stack_frames(frame)
-            self.frames_by_thread[thread_id] = stack_frames
-            # Notify the client that execution has paused. The adapter inspects the text/frames
-            # payload to populate the exception UI.
-            self.send_message(
-                "stopped",
-                threadId=thread_id,
-                reason="exception",
-                text=f"{exc_type.__name__}: {exc_value!s}",
-                allThreadsStopped=True,
-            )
-            self.process_commands()
-            try:
-                # Resume the interpreter once the client responds (mirrors line breakpoint flow).
-                self.set_continue()
-            except Exception:
-                pass
+        thread_id = threading.get_ident()
+
+        # Build and store exception info for the adapter
+        exception_info = self._exception_handler.build_exception_info(exc_info, frame)
+        self._exception_handler.store_exception_info(thread_id, exception_info)
+
+        # Emit stopped event
+        self.current_frame = frame
+        self.stopped_thread_ids.add(thread_id)
+        stack_frames = self._get_stack_frames(frame)
+        self.frames_by_thread[thread_id] = stack_frames
+
+        self.send_message(
+            "stopped",
+            threadId=thread_id,
+            reason="exception",
+            text=self._exception_handler.get_exception_text(exc_info),
+            allThreadsStopped=True,
+        )
+        self.process_commands()
+        try:
+            self.set_continue()
+        except Exception:
+            pass
 
     def _get_stack_frames(self, frame):
         """Build stack frames for the given frame using the thread tracker."""

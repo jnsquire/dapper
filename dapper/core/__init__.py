@@ -15,6 +15,8 @@ from dapper.core.breakpoints_controller import FunctionBreakpointSpec
 from dapper.core.breakpoints_controller import LineBreakpointSpec
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.core.exception_handler import ExceptionBreakpointConfig
+from dapper.core.exception_handler import ExceptionHandler
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.core.thread_tracker import StackFrame
 from dapper.core.thread_tracker import ThreadTracker
@@ -31,6 +33,9 @@ __all__ = [
     "DataBreakpointState",
     # Debugger implementations
     "DebuggerBDB",
+    # Exception handling
+    "ExceptionBreakpointConfig",
+    "ExceptionHandler",
     "FunctionBreakpointSpec",
     "InProcessDebugger",
     "LineBreakpointSpec",
