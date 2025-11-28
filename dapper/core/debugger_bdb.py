@@ -17,6 +17,7 @@ from typing import cast
 
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
+from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_helpers import frame_may_handle_exception
 from dapper.core.debug_utils import MAX_STACK_DEPTH
 from dapper.core.debug_utils import get_function_candidate_names
@@ -89,16 +90,70 @@ class DebuggerBDB(bdb.Bdb):
         # exceptions.
         self.current_exception_info: dict[int, ExceptionInfo] = {}
         self.breakpoint_meta = {}
-        # Data breakpoint Phase 2 (lightweight): watch names & last values per frame
-        # Use types compatible with DebuggerLike: allow None or concrete types
-        self.data_watch_names: set[str] | list[str] | None = set()
-        self._last_locals_by_frame: dict[int, dict[str, object]] = {}
-        self.data_watch_meta: dict[str, Any] | None = {}
-        # PyDebugger/server style mappings
-        self._data_watches: dict[str, Any] | None = None
-        self._frame_watches: dict[int, list[str]] | None = None
-        # Global fallback for tests / cases where new frame objects appear per line
-        self._last_global_watch_values: dict[str, object] = {}
+
+        # Consolidated data breakpoint state
+        self._data_bp_state = DataBreakpointState()
+
+    # --- Compatibility properties for existing code that accesses the old attributes ---
+    @property
+    def data_watch_names(self) -> set[str]:
+        """Set of variable names being watched for changes."""
+        return self._data_bp_state.watch_names
+
+    @data_watch_names.setter
+    def data_watch_names(self, value: set[str] | list[str] | None) -> None:
+        if value is None:
+            self._data_bp_state.watch_names = set()
+        elif isinstance(value, set):
+            self._data_bp_state.watch_names = value
+        else:
+            self._data_bp_state.watch_names = set(value)
+
+    @property
+    def data_watch_meta(self) -> dict[str, Any]:
+        """Metadata mapping for watched variable names."""
+        return self._data_bp_state.watch_meta
+
+    @data_watch_meta.setter
+    def data_watch_meta(self, value: dict[str, Any] | None) -> None:
+        if value is None:
+            self._data_bp_state.watch_meta = {}
+        else:
+            self._data_bp_state.watch_meta = value
+
+    @property
+    def _last_locals_by_frame(self) -> dict[int, dict[str, object]]:
+        """Per-frame snapshot of watched variable values."""
+        return self._data_bp_state.last_values_by_frame
+
+    @property
+    def _last_global_watch_values(self) -> dict[str, object]:
+        """Global fallback snapshot of watched variable values."""
+        return self._data_bp_state.global_values
+
+    @property
+    def _data_watches(self) -> dict[str, Any]:
+        """Server-style mapping of dataId -> watch metadata."""
+        return self._data_bp_state.data_watches
+
+    @_data_watches.setter
+    def _data_watches(self, value: dict[str, Any] | None) -> None:
+        if value is None:
+            self._data_bp_state.data_watches = {}
+        else:
+            self._data_bp_state.data_watches = value
+
+    @property
+    def _frame_watches(self) -> dict[int, list[str]]:
+        """Server-style mapping of frameId -> list of dataIds."""
+        return self._data_bp_state.frame_watches
+
+    @_frame_watches.setter
+    def _frame_watches(self, value: dict[int, list[str]] | None) -> None:
+        if value is None:
+            self._data_bp_state.frame_watches = {}
+        else:
+            self._data_bp_state.frame_watches = value
 
     # ---------------- Data Breakpoint (Watch) Support -----------------
     def register_data_watches(
@@ -110,12 +165,7 @@ class DebuggerBDB(bdb.Bdb):
         data breakpoint records containing 'condition' and 'hitCondition'.
         Multiple meta entries per variable name are stored in a list.
         """
-        self.data_watch_names = {n for n in names if isinstance(n, str) and n}
-        self.data_watch_meta = {n: [] for n in self.data_watch_names}
-        if metas:
-            for name, meta in metas:
-                if name in self.data_watch_meta:
-                    self.data_watch_meta[name].append(meta)
+        self._data_bp_state.register_watches(names, metas)
 
     def record_breakpoint(self, path, line, *, condition, hit_condition, log_message):
         key = (path, int(line))
@@ -133,52 +183,15 @@ class DebuggerBDB(bdb.Bdb):
 
     def _check_data_watch_changes(self, frame):
         """Check for changes in watched variables and return changed variable name if any."""
-        if not self.data_watch_names or not isinstance(frame.f_locals, dict):
+        if not isinstance(frame.f_locals, dict):
             return None
-
-        frame_key = id(frame)
-        current_locals = frame.f_locals
-        prior = self._last_locals_by_frame.get(frame_key)
-
-        for name in self.data_watch_names:
-            if name not in current_locals:
-                continue
-            new_val = current_locals[name]
-            old_val = None
-            have_old = False
-
-            if prior is not None and name in prior:
-                old_val = prior.get(name, object())
-                have_old = True
-            elif name in self._last_global_watch_values:
-                old_val = self._last_global_watch_values[name]
-                have_old = True
-
-            if have_old:
-                try:
-                    equal = new_val == old_val
-                except Exception:  # pragma: no cover - defensive
-                    equal = False
-                if old_val is not new_val and not equal:
-                    return name
-        return None
+        return self._data_bp_state.check_for_changes(id(frame), frame.f_locals)
 
     def _update_watch_snapshots(self, frame):
         """Update snapshots of watched variable values."""
-        if not self.data_watch_names or not isinstance(frame.f_locals, dict):
+        if not isinstance(frame.f_locals, dict):
             return
-
-        frame_key = id(frame)
-        current_locals = frame.f_locals
-
-        # Snapshot current watched values per frame
-        self._last_locals_by_frame[frame_key] = {
-            n: current_locals.get(n) for n in self.data_watch_names
-        }
-        # Update global snapshot
-        for n in self.data_watch_names:
-            if n in current_locals:
-                self._last_global_watch_values[n] = current_locals[n]
+        self._data_bp_state.update_snapshots(id(frame), frame.f_locals)
 
     # ---------------- Variable object helper -----------------
     def make_variable_object(
@@ -238,22 +251,8 @@ class DebuggerBDB(bdb.Bdb):
 
         def _detect_has_data_breakpoint(n: Any, fr: Any | None) -> bool:
             name_str = str(n)
-            # Direct attributes now assumed to exist
-            dw_names = self.data_watch_names
-            if isinstance(dw_names, (set, list)) and name_str in dw_names:
-                return True
-            dw_meta = self.data_watch_meta
-            if isinstance(dw_meta, dict) and name_str in dw_meta:
-                return True
-            frame_watches = self._frame_watches
-            if fr is not None and isinstance(frame_watches, dict):
-                for data_ids in frame_watches.values():
-                    if not isinstance(data_ids, list):
-                        continue
-                    for did in data_ids:
-                        if isinstance(did, str) and (f":var:{name_str}" in did or name_str in did):
-                            return True
-            return False
+            frame_id = id(fr) if fr is not None else None
+            return self._data_bp_state.has_data_breakpoint_for_name(name_str, frame_id)
 
         val_str = _format_value_str(value, max_string_length)
         var_ref = _allocate_var_ref(value)

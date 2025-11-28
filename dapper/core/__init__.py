@@ -13,6 +13,7 @@ from dapper.core.breakpoints_controller import BreakpointController
 from dapper.core.breakpoints_controller import DataBreakpointSpec
 from dapper.core.breakpoints_controller import FunctionBreakpointSpec
 from dapper.core.breakpoints_controller import LineBreakpointSpec
+from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.inprocess_debugger import InProcessDebugger
 
@@ -22,7 +23,9 @@ __all__ = [
     # Breakpoint resolver
     "BreakpointMeta",
     "BreakpointResolver",
+    # Data breakpoint state
     "DataBreakpointSpec",
+    "DataBreakpointState",
     # Debugger implementations
     "DebuggerBDB",
     "FunctionBreakpointSpec",
