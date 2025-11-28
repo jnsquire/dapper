@@ -11,6 +11,7 @@ from typing import cast
 
 from dapper.adapter import dap_command_handlers as dch
 from dapper.shared import debug_shared
+from dapper.shared import launcher_handlers
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
@@ -160,6 +161,7 @@ def test_variables_and_set_variable(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder)
+    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder)
 
     dch.handle_variables({"variablesReference": 7})
     assert calls
@@ -219,6 +221,7 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder3)
+    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder3)
 
     # successful eval
     dch.handle_evaluate({"expression": "y + 3", "frameId": 1})
@@ -238,6 +241,7 @@ def test_handle_exception_info_variants(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder4)
+    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder4)
 
     # missing threadId
     dch.handle_exception_info(cast("ExceptionInfoArguments", {}))

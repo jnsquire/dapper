@@ -4,7 +4,9 @@ import sys
 import types
 
 from dapper.adapter import dap_command_handlers as handlers
+from dapper.launcher import comm as launcher_comm
 from dapper.shared import debug_shared
+from dapper.shared import launcher_handlers
 from tests.dummy_debugger import DummyDebugger
 
 
@@ -16,6 +18,10 @@ def capture_send(monkeypatch):
 
     monkeypatch.setattr(debug_shared, "send_debug_message", _send)
     monkeypatch.setattr(handlers, "send_debug_message", _send)
+    # Patch where the function is imported into launcher_handlers
+    monkeypatch.setattr(launcher_handlers, "send_debug_message", _send)
+    # Also patch the launcher comm module as fallback
+    monkeypatch.setattr(launcher_comm, "send_debug_message", _send)
     return messages
 
 

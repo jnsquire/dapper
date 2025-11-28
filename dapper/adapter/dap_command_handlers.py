@@ -1,5 +1,12 @@
 """
 DAP command handler functions for debug launcher.
+
+This module provides a decorator-based command registration system that
+delegates to the canonical handler implementations in `launcher_handlers.py`.
+
+Handlers that are unique to this module (loadedSources, source with enhanced
+sourceReference support, modules) are kept here. All other handlers delegate
+to `launcher_handlers.py` to avoid code duplication.
 """
 
 from __future__ import annotations
@@ -7,33 +14,23 @@ from __future__ import annotations
 import linecache
 import mimetypes
 import sys
-import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 
 from dapper.protocol.protocol_types import LegacySourceArguments
 from dapper.protocol.protocol_types import LoadedSourcesArguments
 from dapper.protocol.protocol_types import Source
 from dapper.shared import debug_shared as _ds
-from dapper.shared.debug_shared import VAR_REF_TUPLE_SIZE
+from dapper.shared import launcher_handlers as _lh
 from dapper.shared.debug_shared import send_debug_message
 from dapper.shared.debug_shared import state
-from dapper.shared.launcher_handlers import _convert_value_with_context
-
-# small constant to make argcount checks clearer / lint-friendly
-_SIMPLE_MAKE_VAR_ARGCOUNT = 2
-
 
 if TYPE_CHECKING:
-    from dapper.protocol.debugger_protocol import ExceptionInfo
-    from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.protocol_types import ConfigurationDoneArguments
     from dapper.protocol.protocol_types import ContinueArguments
     from dapper.protocol.protocol_types import EvaluateArguments
     from dapper.protocol.protocol_types import ExceptionInfoArguments
-    from dapper.protocol.protocol_types import LegacySourceArguments
     from dapper.protocol.protocol_types import Module
     from dapper.protocol.protocol_types import ModulesArguments
     from dapper.protocol.protocol_types import NextArguments
@@ -51,13 +48,18 @@ if TYPE_CHECKING:
 
 
 # Command mapping table - will be populated by the @command_handler decorator
-COMMAND_HANDLERS = {}
+COMMAND_HANDLERS: dict[str, Any] = {}
 
 # Back-compat: expose make_variable_object at module level for tests and older callsites
 make_variable_object = _ds.make_variable_object
 
+# Re-export helpers used by tests for backward compatibility
+_convert_value_with_context = _lh._convert_value_with_context  # noqa: SLF001
+_set_scope_variable = _lh._set_scope_variable  # noqa: SLF001
+_set_object_member = _lh._set_object_member  # noqa: SLF001
 
-def command_handler(command_name):
+
+def command_handler(command_name: str):
     """Decorator to register DAP command handlers."""
 
     def decorator(func):
@@ -85,409 +87,205 @@ def handle_debug_command(command: dict[str, Any]) -> None:
         )
 
 
+# =============================================================================
+# Delegating handlers - these call the canonical implementations in
+# launcher_handlers.py to avoid code duplication
+# =============================================================================
+
+
 @command_handler("setBreakpoints")
 def handle_set_breakpoints(arguments: SetBreakpointsArguments) -> None:
-    source = arguments.get("source", {})
-    # 'breakpoints' is expected to be a list of dict-like entries with
-    # optional fields such as line, condition, hitCondition and logMessage.
-    bps = arguments.get("breakpoints", [])
-    path = source.get("path")
-    if path and state.debugger:
-        # Clear all breakpoints for this file and its metadata
-        try:
-            state.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
-        except Exception:
-            # Fallbacks for older implementations
-            # 1) Older debuggers may expose clear_break(path) without lineno
-            try:
-                state.debugger.clear_break(path)  # type: ignore[misc]
-            except Exception:
-                # 2) As a last resort, clear only stored metadata
-                try:
-                    state.debugger.clear_break_meta_for_file(path)
-                except Exception:
-                    pass
-
-        for bp in bps:
-            line = bp.get("line")
-            condition = bp.get("condition")
-            hit_condition = bp.get("hitCondition")
-            log_message = bp.get("logMessage")
-            if line is not None:
-                state.debugger.set_break(path, line, cond=condition)
-                state.debugger.record_breakpoint(
-                    path,
-                    int(line),
-                    condition=condition,
-                    hit_condition=hit_condition,
-                    log_message=log_message,
-                )
-        verified_bps = [{"verified": True, "line": bp.get("line")} for bp in bps]
-        send_debug_message(
-            "breakpoints",
-            source=source,
-            breakpoints=verified_bps,
-        )
+    """Delegate to launcher_handlers.handle_set_breakpoints."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_set_breakpoints(dbg, arguments)
 
 
 @command_handler("setFunctionBreakpoints")
 def handle_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) -> None:
-    bps = arguments.get("breakpoints", [])
-    if state.debugger:
-        state.debugger.clear_all_function_breakpoints()
-
-        for bp in bps:
-            name = bp.get("name")
-            if not name:
-                continue
-            condition = bp.get("condition")
-            hit_condition = bp.get("hitCondition")
-            log_message = bp.get("logMessage")
-            state.debugger.function_breakpoints.append(name)
-            try:
-                fbm = state.debugger.function_breakpoint_meta
-            except Exception:
-                fbm = None
-            if isinstance(fbm, dict):
-                mb = fbm.get(name, {})
-                mb.setdefault("hit", 0)
-                mb["condition"] = condition
-                mb["hitCondition"] = hit_condition
-                mb["logMessage"] = log_message
-                fbm[name] = mb
+    """Delegate to launcher_handlers.handle_set_function_breakpoints."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_set_function_breakpoints(dbg, arguments)
 
 
 @command_handler("setExceptionBreakpoints")
 def handle_set_exception_breakpoints(arguments: SetExceptionBreakpointsArguments) -> None:
-    filters = arguments.get("filters", [])
-    if state.debugger:
-        state.debugger.exception_breakpoints_raised = "raised" in filters
-        state.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+    """Delegate to launcher_handlers.handle_set_exception_breakpoints."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_set_exception_breakpoints(dbg, arguments)
 
 
 @command_handler("continue")
 def handle_continue(arguments: ContinueArguments) -> None:
-    thread_id = arguments.get("threadId")
+    """Delegate to launcher_handlers.handle_continue."""
     dbg = state.debugger
-    if dbg and thread_id in dbg.stopped_thread_ids:
-        dbg.stopped_thread_ids.remove(thread_id)
-        if not dbg.stopped_thread_ids:
-            dbg.set_continue()
+    if dbg:
+        _lh.handle_continue(dbg, arguments)
 
 
 @command_handler("next")
 def handle_next(arguments: NextArguments) -> None:
-    thread_id = arguments.get("threadId")
+    """Delegate to launcher_handlers.handle_next."""
     dbg = state.debugger
-    if dbg and thread_id == threading.get_ident():
-        dbg.stepping = True
-        if dbg.current_frame is not None:
-            dbg.set_next(dbg.current_frame)
+    if dbg:
+        _lh.handle_next(dbg, arguments)
 
 
 @command_handler("stepIn")
 def handle_step_in(arguments: StepInArguments) -> None:
-    thread_id = arguments.get("threadId")
+    """Delegate to launcher_handlers.handle_step_in."""
     dbg = state.debugger
-    if dbg and thread_id == threading.get_ident():
-        dbg.stepping = True
-        dbg.set_step()
+    if dbg:
+        _lh.handle_step_in(dbg, arguments)
 
 
 @command_handler("stepOut")
 def handle_step_out(arguments: StepOutArguments) -> None:
-    thread_id = arguments.get("threadId")
+    """Delegate to launcher_handlers.handle_step_out."""
     dbg = state.debugger
-    if dbg and thread_id == threading.get_ident():
-        dbg.stepping = True
-        if dbg.current_frame is not None:
-            dbg.set_return(dbg.current_frame)
+    if dbg:
+        _lh.handle_step_out(dbg, arguments)
 
 
 @command_handler("pause")
 def handle_pause(arguments: PauseArguments) -> None:
-    arguments.get("threadId")
-    # Not implemented
+    """Delegate to launcher_handlers.handle_pause."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_pause(dbg, arguments)
 
 
 @command_handler("stackTrace")
 def handle_stack_trace(arguments: StackTraceArguments) -> None:
-    thread_id = arguments.get("threadId")
-    start_frame = arguments.get("startFrame", 0)
-    levels = arguments.get("levels", 0)
+    """Delegate to launcher_handlers.handle_stack_trace."""
     dbg = state.debugger
-    if dbg and thread_id in dbg.frames_by_thread:
-        frames = dbg.frames_by_thread[thread_id]
-        total_frames = len(frames)
-        if levels > 0:
-            end_frame = min(start_frame + levels, total_frames)
-            frames_to_send = frames[start_frame:end_frame]
-        else:
-            frames_to_send = frames[start_frame:]
-        send_debug_message(
-            "stackTrace",
-            threadId=thread_id,
-            stackFrames=frames_to_send,
-            totalFrames=total_frames,
-        )
+    if dbg:
+        _lh.handle_stack_trace(dbg, arguments)
+
+
+@command_handler("threads")
+def handle_threads(arguments: dict[str, Any] | None = None) -> None:
+    """Delegate to launcher_handlers.handle_threads."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_threads(dbg, arguments)
+
+
+@command_handler("scopes")
+def handle_scopes(arguments: dict[str, Any]) -> None:
+    """Delegate to launcher_handlers.handle_scopes."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_scopes(dbg, arguments)
 
 
 @command_handler("variables")
 def handle_variables(arguments: VariablesArguments) -> None:
-    var_ref = arguments.get("variablesReference")
+    """Delegate to launcher_handlers.handle_variables."""
     dbg = state.debugger
-    if dbg and var_ref in dbg.var_refs:
-        frame_info = dbg.var_refs[var_ref]
-        variables = []
-        # frame_info can have multiple shapes; handle scope-backed refs here
-        if (
-            isinstance(frame_info, tuple)
-            and len(frame_info) == VAR_REF_TUPLE_SIZE
-            and isinstance(frame_info[0], int)
-        ):
-            frame_id, scope = cast("tuple", frame_info)
-            frame = dbg.frame_id_to_frame.get(cast("int", frame_id))
-            if frame and scope == "locals":
-                for name, value in frame.f_locals.items():
-                    fn = getattr(dbg, "make_variable_object", None)
-                    if callable(fn):
-                        try:
-                            # accept simple or extended signature
-                            var_obj = (
-                                fn(name, value)
-                                if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
-                                else fn(name, value, frame)
-                            )
-                            if isinstance(var_obj, dict):
-                                variables.append(cast("Variable", var_obj))
-                                continue
-                        except Exception:
-                            pass
-                    # fallback to shared helper
-                    variables.append(_ds.make_variable_object(name, value, dbg, frame))
-            elif frame and scope == "globals":
-                for name, value in frame.f_globals.items():
-                    fn = getattr(dbg, "make_variable_object", None)
-                    if callable(fn):
-                        try:
-                            var_obj = (
-                                fn(name, value)
-                                if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
-                                else fn(name, value, frame)
-                            )
-                            if isinstance(var_obj, dict):
-                                variables.append(cast("Variable", var_obj))
-                                continue
-                        except Exception:
-                            pass
-                    variables.append(_ds.make_variable_object(name, value, dbg, frame))
-            send_debug_message(
-                "variables",
-                variablesReference=var_ref,
-                variables=variables,
-            )
+    if dbg:
+        _lh.handle_variables(dbg, arguments)
 
 
 @command_handler("setVariable")
 def handle_set_variable(arguments: SetVariableArguments) -> None:
-    var_ref = arguments.get("variablesReference")
-    name = arguments.get("name")
-    value = arguments.get("value")
+    """Delegate to launcher_handlers.handle_set_variable."""
     dbg = state.debugger
-    if dbg and var_ref in dbg.var_refs:
-        frame_info = dbg.var_refs[var_ref]
-        if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
-            first, second = frame_info
-            if first == "object":
-                parent_obj = second
-                result = _set_object_member(parent_obj, name, value)
-                send_debug_message("setVariable", **result)
-                return
-            frame_id, scope = first, second
-            frame = dbg.frame_id_to_frame.get(frame_id)
-            if frame:
-                result = _set_scope_variable(frame, scope, name, value)
-                send_debug_message("setVariable", **result)
-                return
-    send_debug_message(
-        "setVariable", success=False, message=f"Invalid variable reference: {var_ref}"
-    )
-
-
-def _set_scope_variable(frame, scope, name, value):
-    try:
-        new_value = _convert_value_with_context(value, frame)
-        if scope == "locals":
-            frame.f_locals[name] = new_value
-        elif scope == "globals":
-            frame.f_globals[name] = new_value
-        else:
-            return {"success": False, "message": f"Unknown scope: {scope}"}
-        fn = getattr(state.debugger, "make_variable_object", None)
-        if callable(fn):
-            try:
-                var_obj = (
-                    fn(name, new_value)
-                    if fn.__code__.co_argcount <= _SIMPLE_MAKE_VAR_ARGCOUNT
-                    else fn(name, new_value, frame)
-                )
-            except Exception:
-                var_obj = None
-        else:
-            var_obj = None
-        if not var_obj:
-            var_obj = _ds.make_variable_object(name, new_value, state.debugger, frame)
-        # var_obj can be various types; ensure mapping access is safe for the body
-        vobj = cast("dict[str, Any]", var_obj)
-        return {
-            "success": True,
-            "body": {
-                "value": vobj["value"],
-                "type": vobj["type"],
-                "variablesReference": vobj["variablesReference"],
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to set variable '{name}': {e!s}",
-        }
-
-
-def _set_object_member(parent_obj, name, value):
-    try:
-        new_value = _convert_value_with_context(value, None, parent_obj)
-
-        if isinstance(parent_obj, dict):
-            parent_obj[name] = new_value
-
-        elif isinstance(parent_obj, list):
-            try:
-                index = int(name)
-                parent_obj[index] = new_value
-            except (ValueError, IndexError):
-                return {
-                    "success": False,
-                    "message": f"Invalid or out-of-range list index: {name}",
-                }
-
-        elif isinstance(parent_obj, tuple):
-            return {
-                "success": False,
-                "message": "Cannot modify tuple - tuples are immutable",
-            }
-
-        else:
-            # Try to set attribute on arbitrary objects; handle failures uniformly.
-            try:
-                setattr(parent_obj, name, new_value)
-            except (AttributeError, TypeError):
-                return {
-                    "success": False,
-                    "message": f"Cannot set attribute '{name}' on {type(parent_obj).__name__}",
-                }
-
-        dbg = state.debugger
-        fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
-        try:
-            if callable(fn):
-                var_obj = fn(name, new_value)
-            else:
-                var_obj = _ds.make_variable_object(name, new_value, dbg)
-        except Exception:
-            # Fall back to shared helper on any error from custom make_variable_object
-            var_obj = _ds.make_variable_object(name, new_value, dbg)
-
-        vobj = cast("dict[str, Any]", var_obj)
-        return {
-            "success": True,
-            "body": {
-                "value": vobj["value"],
-                "type": vobj["type"],
-                "variablesReference": vobj["variablesReference"],
-            },
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to set object member '{name}': {e!s}",
-        }
-
-
-# The canonical helper for creating Variable-shaped dicts is provided in
-# dapper.debug_shared.make_variable_object. Callers should prefer using the
-# debugger instance's `make_variable_object` when available (it may accept an
-# optional frame argument); otherwise import and call the shared helper.
+    if dbg:
+        result = _lh.handle_set_variable(dbg, arguments)
+        if result:
+            send_debug_message("setVariable", **result)
 
 
 @command_handler("evaluate")
 def handle_evaluate(arguments: EvaluateArguments) -> None:
-    expression = arguments.get("expression")
-    frame_id = arguments.get("frameId")
-    arguments.get("context", "")
-    result = "<evaluation not implemented>"
-    var_ref = 0
+    """Delegate to launcher_handlers.handle_evaluate."""
     dbg = state.debugger
-    if frame_id and dbg and frame_id in dbg.frame_id_to_frame:
-        frame = dbg.frame_id_to_frame[frame_id]
-        try:
-            value = eval(expression, frame.f_globals, frame.f_locals)
-            result = repr(value)
-            if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
-                var_ref = dbg.next_var_ref
-                dbg.next_var_ref += 1
-                dbg.var_refs[var_ref] = ("object", value)
-        except Exception as e:
-            result = f"<Error: {e!s}>"
-    send_debug_message(
-        "evaluate",
-        expression=expression,
-        result=result,
-        variablesReference=var_ref,
-    )
+    if dbg:
+        _lh.handle_evaluate(dbg, arguments)
+
+
+@command_handler("setDataBreakpoints")
+def handle_set_data_breakpoints(arguments: dict[str, Any]) -> None:
+    """Delegate to launcher_handlers.handle_set_data_breakpoints."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_set_data_breakpoints(dbg, arguments)
+
+
+@command_handler("dataBreakpointInfo")
+def handle_data_breakpoint_info(arguments: dict[str, Any]) -> None:
+    """Delegate to launcher_handlers.handle_data_breakpoint_info."""
+    dbg = state.debugger
+    if dbg:
+        _lh.handle_data_breakpoint_info(dbg, arguments)
 
 
 @command_handler("exceptionInfo")
 def handle_exception_info(arguments: ExceptionInfoArguments) -> None:
+    """Handle exceptionInfo request with local error handling before delegation.
+    
+    This handler requires custom logic because the original implementation sends
+    messages directly, while launcher_handlers returns a result dict.
+    """
     thread_id = arguments.get("threadId")
     if thread_id is None:
-        send_debug_message(
-            "error",
-            message="Missing required argument 'threadId'",
-        )
+        send_debug_message("error", message="Missing required argument 'threadId'")
         return
     dbg = state.debugger
     if not dbg:
         send_debug_message("error", message="Debugger not initialized")
         return
-    if thread_id in dbg.current_exception_info:
-        exception_info: ExceptionInfo = dbg.current_exception_info[thread_id]
-        send_debug_message(
-            "exceptionInfo",
-            exceptionId=exception_info["exceptionId"],
-            description=exception_info["description"],
-            breakMode=exception_info["breakMode"],
-            details=exception_info["details"],
-        )
-    else:
-        send_debug_message(
-            "error",
-            message=f"No exception info available for thread {thread_id}",
-        )
+    if thread_id not in dbg.current_exception_info:
+        send_debug_message("error", message=f"No exception info available for thread {thread_id}")
+        return
+    # Get exception info from debugger and send it
+    exception_info = dbg.current_exception_info[thread_id]
+    send_debug_message(
+        "exceptionInfo",
+        exceptionId=exception_info["exceptionId"],
+        description=exception_info["description"],
+        breakMode=exception_info["breakMode"],
+        details=exception_info["details"],
+    )
 
 
 @command_handler("configurationDone")
 def handle_configuration_done(_arguments: ConfigurationDoneArguments | None = None) -> None:
-    """Handle configurationDone command."""
-    # Currently no specific action needed for configuration done
-    # The debugger is ready to receive other commands
+    """Delegate to launcher_handlers.handle_configuration_done."""
+    dbg = state.debugger
+    _lh.handle_configuration_done(dbg, _arguments)
 
 
 @command_handler("terminate")
 def handle_terminate(_arguments: TerminateArguments | None = None) -> None:
-    """Handle terminate command."""
-    state.is_terminated = True
-    send_debug_message("exited", exitCode=0)
+    """Delegate to launcher_handlers.handle_terminate."""
+    dbg = state.debugger
+    _lh.handle_terminate(dbg, _arguments)
+
+
+@command_handler("initialize")
+def handle_initialize(_arguments: dict[str, Any] | None = None) -> None:
+    """Delegate to launcher_handlers.handle_initialize."""
+    dbg = state.debugger
+    result = _lh.handle_initialize(dbg, _arguments)
+    if result:
+        send_debug_message("response", **result)
+
+
+@command_handler("restart")
+def handle_restart(_arguments: dict[str, Any] | None = None) -> None:
+    """Delegate to launcher_handlers.handle_restart."""
+    dbg = state.debugger
+    _lh.handle_restart(dbg, _arguments)
+
+
+# =============================================================================
+# Unique handlers - these provide enhanced functionality specific to
+# dap_command_handlers that is not available in launcher_handlers
+# =============================================================================
 
 
 def _collect_module_sources(seen_paths: set[str]) -> list[Source]:

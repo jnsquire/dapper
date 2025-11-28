@@ -122,17 +122,13 @@ class RequestHandler:
 
     async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
         """Handle an unknown request command."""
-        return cast(
-            "DAPResponse",
-            {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": request["command"],
-                "message": f"Unsupported command: {request['command']}",
-            },
-        )
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": False,
+            "command": request["command"],
+            "message": f"Unsupported command: {request['command']}",
+        }
 
     async def _handle_initialize(self, request: InitializeRequest) -> None:
         """Handle initialize request."""
