@@ -9,7 +9,6 @@ import bdb
 import contextlib
 import threading
 import traceback
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -18,8 +17,8 @@ from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_helpers import frame_may_handle_exception
-from dapper.core.debug_utils import MAX_STACK_DEPTH
 from dapper.core.debug_utils import get_function_candidate_names
+from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 
 if TYPE_CHECKING:
@@ -74,13 +73,9 @@ class DebuggerBDB(bdb.Bdb):
         self.current_frame = None
         self.stepping = False
         self.stop_on_entry = False
-        self.frames_by_thread = {}
-        self.threads = {}
-        self.thread_ids = {}
-        self.thread_count = 1
-        self.stopped_thread_ids = set()
-        self.next_frame_id = 1
-        self.frame_id_to_frame = {}
+
+        # Consolidated thread and frame tracking
+        self._thread_tracker = ThreadTracker()
 
         # Variable reference management
         self._var_manager = VariableManager()
@@ -114,6 +109,70 @@ class DebuggerBDB(bdb.Bdb):
     @var_refs.setter
     def var_refs(self, value: dict[int, Any]) -> None:
         self._var_manager.var_refs = value
+
+    # --- Compatibility properties for thread/frame tracking ---
+    @property
+    def threads(self) -> dict[int, str]:
+        """Mapping of thread ID to thread name."""
+        return self._thread_tracker.threads
+
+    @threads.setter
+    def threads(self, value: dict[int, str]) -> None:
+        self._thread_tracker.threads = value
+
+    @property
+    def thread_ids(self) -> dict[int, int]:
+        """Legacy thread ID mapping."""
+        return self._thread_tracker.thread_ids
+
+    @thread_ids.setter
+    def thread_ids(self, value: dict[int, int]) -> None:
+        self._thread_tracker.thread_ids = value
+
+    @property
+    def thread_count(self) -> int:
+        """Thread counter."""
+        return self._thread_tracker.thread_count
+
+    @thread_count.setter
+    def thread_count(self, value: int) -> None:
+        self._thread_tracker.thread_count = value
+
+    @property
+    def stopped_thread_ids(self) -> set[int]:
+        """Set of thread IDs that are currently stopped."""
+        return self._thread_tracker.stopped_thread_ids
+
+    @stopped_thread_ids.setter
+    def stopped_thread_ids(self, value: set[int]) -> None:
+        self._thread_tracker.stopped_thread_ids = value
+
+    @property
+    def frames_by_thread(self) -> dict[int, list[dict[str, Any]]]:
+        """Mapping of thread ID to stack frames."""
+        return self._thread_tracker.frames_by_thread
+
+    @frames_by_thread.setter
+    def frames_by_thread(self, value: dict[int, list[dict[str, Any]]]) -> None:
+        self._thread_tracker.frames_by_thread = value
+
+    @property
+    def next_frame_id(self) -> int:
+        """Next frame ID to allocate."""
+        return self._thread_tracker.next_frame_id
+
+    @next_frame_id.setter
+    def next_frame_id(self, value: int) -> None:
+        self._thread_tracker.next_frame_id = value
+
+    @property
+    def frame_id_to_frame(self) -> dict[int, Any]:
+        """Mapping of frame ID to Python frame object."""
+        return self._thread_tracker.frame_id_to_frame
+
+    @frame_id_to_frame.setter
+    def frame_id_to_frame(self, value: dict[int, Any]) -> None:
+        self._thread_tracker.frame_id_to_frame = value
 
     # --- Compatibility properties for existing code that accesses the old attributes ---
     @property
@@ -402,44 +461,8 @@ class DebuggerBDB(bdb.Bdb):
                 pass
 
     def _get_stack_frames(self, frame):
-        stack_frames = []
-        f = frame
-        visited = set()
-        depth = 0
-        while f is not None and depth < MAX_STACK_DEPTH:
-            # Break if cycle detected
-            fid = id(f)
-            if fid in visited:
-                break
-            visited.add(fid)
-            depth += 1
-            try:
-                code = f.f_code
-                filename = getattr(code, "co_filename", "<unknown>")
-                lineno = getattr(f, "f_lineno", 0)
-                name = getattr(code, "co_name", "<unknown>") or "<unknown>"
-            except Exception:
-                break
-            frame_id = self.next_frame_id
-            self.next_frame_id += 1
-            self.frame_id_to_frame[frame_id] = f
-            stack_frame = {
-                "id": frame_id,
-                "name": name,
-                "line": lineno,
-                "column": 0,
-                "source": {
-                    "name": Path(filename).name if isinstance(filename, str) else str(filename),
-                    "path": filename,
-                },
-            }
-            stack_frames.append(stack_frame)
-            # Next frame with defensive getattr
-            try:
-                f = getattr(f, "f_back", None)
-            except Exception:
-                break
-        return stack_frames
+        """Build stack frames for the given frame using the thread tracker."""
+        return self._thread_tracker.build_stack_frames(frame)
 
     def set_custom_breakpoint(self, filename, line, condition=None):
         if filename not in self.custom_breakpoints:

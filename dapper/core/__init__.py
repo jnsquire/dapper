@@ -16,6 +16,8 @@ from dapper.core.breakpoints_controller import LineBreakpointSpec
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.inprocess_debugger import InProcessDebugger
+from dapper.core.thread_tracker import StackFrame
+from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 
 __all__ = [
@@ -34,6 +36,9 @@ __all__ = [
     "LineBreakpointSpec",
     "ResolveAction",
     "ResolveResult",
+    # Thread/frame tracking
+    "StackFrame",
+    "ThreadTracker",
     # Variable management
     "VariableManager",
     "get_resolver",
