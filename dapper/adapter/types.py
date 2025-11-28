@@ -8,6 +8,18 @@ from typing import TypedDict
 
 from typing_extensions import NotRequired  # noqa: TC002
 
+__all__ = [
+    "BreakpointDict",
+    "BreakpointResponse",
+    "CompletionsResponseBody",
+    "DAPErrorResponse",
+    "DAPRequest",
+    "DAPResponse",
+    "DAPResponseBase",
+    "HandlerResult",
+    "PyDebuggerThread",
+    "SourceDict",
+]
 
 # ---------------------------------------------------------------------------
 # DAP Response Types
@@ -55,81 +67,14 @@ class DAPRequest(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Response Body Types
+# Response Body Types (local definitions for types not in protocol_types)
 # ---------------------------------------------------------------------------
-
-
-class ContinueResponseBody(TypedDict):
-    """Body for continue response."""
-
-    allThreadsContinued: bool
-
-
-class ThreadsResponseBody(TypedDict):
-    """Body for threads response."""
-
-    threads: list[dict[str, Any]]
-
-
-class StackTraceResponseBody(TypedDict):
-    """Body for stackTrace response."""
-
-    stackFrames: list[dict[str, Any]]
-    totalFrames: NotRequired[int]
-
-
-class ScopesResponseBody(TypedDict):
-    """Body for scopes response."""
-
-    scopes: list[dict[str, Any]]
-
-
-class VariablesResponseBody(TypedDict):
-    """Body for variables response."""
-
-    variables: list[dict[str, Any]]
-
-
-class SetBreakpointsResponseBody(TypedDict):
-    """Body for setBreakpoints response."""
-
-    breakpoints: list[BreakpointResponse]
-
-
-class EvaluateResponseBody(TypedDict, total=False):
-    """Body for evaluate response."""
-
-    result: str
-    type: str
-    variablesReference: int
-    namedVariables: int
-    indexedVariables: int
 
 
 class CompletionsResponseBody(TypedDict):
     """Body for completions response."""
 
     targets: list[dict[str, Any]]
-
-
-class SourceResponseBody(TypedDict):
-    """Body for source response."""
-
-    content: str
-    mimeType: NotRequired[str]
-
-
-class ModulesResponseBody(TypedDict):
-    """Body for modules response."""
-
-    modules: list[dict[str, Any]]
-    totalModules: NotRequired[int]
-
-
-class LoadedSourcesResponseBody(TypedDict):
-    """Body for loadedSources response."""
-
-    sources: list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------

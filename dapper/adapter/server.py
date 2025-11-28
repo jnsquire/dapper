@@ -53,13 +53,24 @@ except Exception:  # pragma: no cover - optional feature
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
-    from concurrent.futures import Future as _CFuture
 
     from dapper.ipc.connections import ConnectionBase
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.protocol_types import Breakpoint
+    from dapper.protocol.protocol_types import ContinueResponseBody
+    from dapper.protocol.protocol_types import DataBreakpointInfoResponseBody
+    from dapper.protocol.protocol_types import EvaluateResponseBody
+    from dapper.protocol.protocol_types import ExceptionDetails
+    from dapper.protocol.protocol_types import ExceptionFilterOptions
+    from dapper.protocol.protocol_types import ExceptionInfoResponseBody
+    from dapper.protocol.protocol_types import ExceptionOptions
     from dapper.protocol.protocol_types import FunctionBreakpoint
     from dapper.protocol.protocol_types import GenericRequest
+    from dapper.protocol.protocol_types import Module
+    from dapper.protocol.protocol_types import Scope
+    from dapper.protocol.protocol_types import SetVariableResponseBody
+    from dapper.protocol.protocol_types import StackTraceResponseBody
+    from dapper.protocol.protocol_types import Thread
 
 
 logger = logging.getLogger(__name__)
@@ -267,7 +278,7 @@ class PyDebugger:
 
         return
 
-    def data_breakpoint_info(self, *, name: str, frame_id: int) -> dict[str, Any]:
+    def data_breakpoint_info(self, *, name: str, frame_id: int) -> DataBreakpointInfoResponseBody:
         """Return minimal data breakpoint info for a variable in a frame."""
         data_id = f"frame:{frame_id}:var:{name}"
         return {
@@ -277,13 +288,13 @@ class PyDebugger:
             "canPersist": False,
         }
 
-    def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Breakpoint]:
         """Register a set of data breakpoints (bookkeeping only)."""
         # Clear existing watches (DAP semantics: full replace)
         self._data_watches.clear()
         self._frame_watches.clear()
 
-        results: list[dict[str, Any]] = []
+        results: list[Breakpoint] = []
         frame_id_parts_expected = 4  # pattern: frame:{id}:var:{name}
         watch_names: set[str] = set()
         watch_meta: list[tuple[str, dict[str, Any]]] = []
@@ -1233,8 +1244,8 @@ class PyDebugger:
     async def set_exception_breakpoints(
         self,
         filters: list[str],
-        filter_options: list[dict[str, Any]] | None = None,
-        exception_options: list[dict[str, Any]] | None = None,
+        filter_options: list[ExceptionFilterOptions] | None = None,
+        exception_options: list[ExceptionOptions] | None = None,
     ) -> list[Breakpoint]:
         """Set exception breakpoints.
 
@@ -1435,7 +1446,7 @@ class PyDebugger:
 
     # (old _schedule_coroutine implementation removed; use spawn/spawn_threadsafe)
 
-    async def continue_execution(self, thread_id: int) -> dict[str, Any]:
+    async def continue_execution(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution of the specified thread"""
         if not self.program_running or self.is_terminated:
             return {"allThreadsContinued": False}
@@ -1449,7 +1460,7 @@ class PyDebugger:
         if self.in_process and self._inproc is not None:
             try:
                 result = self._inproc.continue_(thread_id)
-                return cast("dict[str, Any]", result)
+                return cast("ContinueResponseBody", result)
             except Exception:
                 logger.exception("in-process continue failed")
                 return {"allThreadsContinued": False}
@@ -1526,9 +1537,9 @@ class PyDebugger:
         await self._send_command_to_debuggee(command)
         return True
 
-    async def get_threads(self) -> list[dict[str, Any]]:
+    async def get_threads(self) -> list[Thread]:
         """Get all threads"""
-        threads = []
+        threads: list[Thread] = []
         with self.lock:
             for thread_id, thread in self.threads.items():
                 threads.append({"id": thread_id, "name": thread.name})
@@ -1631,9 +1642,9 @@ class PyDebugger:
         loaded_sources.sort(key=lambda s: s.get("name", ""))
         return loaded_sources
 
-    async def get_modules(self) -> list[dict[str, Any]]:
+    async def get_modules(self) -> list[Module]:
         """Get all loaded Python modules"""
-        all_modules = []
+        all_modules: list[Module] = []
 
         for name, module in sys.modules.items():
             if module is None:
@@ -1656,7 +1667,7 @@ class PyDebugger:
                     and "site-packages" not in path
                 )
 
-            module_obj = {
+            module_obj: Module = {
                 "id": module_id,
                 "name": name,
                 "isUserCode": is_user_code,
@@ -1672,12 +1683,12 @@ class PyDebugger:
 
     async def get_stack_trace(
         self, thread_id: int, start_frame: int = 0, levels: int = 0
-    ) -> dict[str, Any]:
+    ) -> StackTraceResponseBody:
         """Get stack trace for a thread"""
         if self.in_process and self._inproc is not None:
             try:
                 result = self._inproc.stack_trace(thread_id, start_frame, levels)
-                return cast("dict[str, Any]", result)
+                return cast("StackTraceResponseBody", result)
             except Exception:
                 logger.exception("in-process stack_trace failed")
                 return {"stackFrames": [], "totalFrames": 0}
@@ -1714,7 +1725,7 @@ class PyDebugger:
 
         return {"stackFrames": stack_frames, "totalFrames": total_frames}
 
-    async def get_scopes(self, frame_id: int) -> list[dict[str, Any]]:
+    async def get_scopes(self, frame_id: int) -> list[Scope]:
         """Get variable scopes for a stack frame"""
         var_ref = self.next_var_ref
         self.next_var_ref += 1
@@ -1790,7 +1801,7 @@ class PyDebugger:
         var_ref: int,
         name: str,
         value: str,
-    ) -> dict[str, Any]:
+    ) -> SetVariableResponseBody:
         """Set a variable value in the specified scope."""
         with self.lock:
             if var_ref not in self.var_refs:
@@ -1806,7 +1817,7 @@ class PyDebugger:
             if self.in_process and self._inproc is not None:
                 try:
                     result = self._inproc.set_variable(var_ref, name, value)
-                    return cast("dict[str, Any]", result)
+                    return cast("SetVariableResponseBody", result)
                 except Exception:
                     logger.exception("in-process set_variable failed")
                     return {
@@ -1840,12 +1851,12 @@ class PyDebugger:
 
     async def evaluate(
         self, expression: str, frame_id: int | None = None, context: str | None = None
-    ) -> dict[str, Any]:
+    ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context"""
         if self.in_process and self._inproc is not None:
             try:
                 result = self._inproc.evaluate(expression, frame_id, context)
-                return cast("dict[str, Any]", result)
+                return cast("EvaluateResponseBody", result)
             except Exception:
                 logger.exception("in-process evaluate failed")
                 return {
@@ -1874,7 +1885,7 @@ class PyDebugger:
             "variablesReference": 0,
         }
 
-    async def exception_info(self, thread_id: int) -> dict[str, Any]:
+    async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread"""
         command = {
             "command": "exceptionInfo",
@@ -1884,13 +1895,12 @@ class PyDebugger:
         response = await self._send_command_to_debuggee(command, expect_response=True)
 
         if response and "body" in response:
-            return response["body"]
+            return cast("ExceptionInfoResponseBody", response["body"])
 
-        exception_details = {
+        exception_details: ExceptionDetails = {
             "message": "Exception information not available",
             "typeName": "Unknown",
             "fullTypeName": "Unknown",
-            "source": "Unknown",
             "stackTrace": "Exception information not available",
         }
 
@@ -1901,7 +1911,7 @@ class PyDebugger:
             "details": exception_details,
         }
 
-    async def get_exception_info(self, thread_id: int) -> dict[str, Any]:
+    async def get_exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread (convenience method)"""
         return await self.exception_info(thread_id)
 
@@ -1973,7 +1983,7 @@ class PyDebugger:
 
     async def evaluate_expression(
         self, expression: str, frame_id: int, context: str = "hover"
-    ) -> dict[str, Any]:
+    ) -> EvaluateResponseBody:
         """Evaluate an expression (alias for evaluate)"""
         return await self.evaluate(expression, frame_id, context)
 
@@ -2010,172 +2020,58 @@ class PyDebugger:
         except Exception:
             logger.exception("Error sending command to debuggee")
 
-    async def shutdown(self) -> None:  # noqa: PLR0912, PLR0915
+    async def shutdown(self) -> None:
         """Shut down the debugger and clean up resources."""
+        # Cancel background tasks
+        for task in list(self._bg_tasks):
+            task.cancel()
 
-        # Helper methods used by shutdown to resolve pending futures robustly.
-        # Keep these nested to make their intent clear and avoid polluting the class API.
-        # NOTE: They intentionally prefer best-effort failure signaling over strict guarantees.
-
-        # mypy/ruff complain about unknown attributes earlier, so we provide class-level helpers.
-
-        # Set exception directly if the future is bound to the current loop
-        def _shutdown_try_set_on_current_loop(
-            fut: asyncio.Future,
-            fut_loop: asyncio.AbstractEventLoop | None,
-            current_loop: asyncio.AbstractEventLoop,
-            cid: int,
-        ) -> bool:
-            if fut_loop is current_loop:
-                if not fut.done():
-                    try:
-                        fut.set_exception(RuntimeError("Debugger shutdown"))
-                    except Exception:
-                        logger.debug("set_exception failed for %s on current loop", cid)
-                return True
-            return False
-
-        # Fallback: attempt to use run_coroutine_threadsafe to signal failure
-        def _shutdown_try_run_coroutine_threadsafe_on_loop(
-            fut: asyncio.Future,
-            fut_loop: asyncio.AbstractEventLoop | None,
-            to_wait_cf: list[_CFuture],
-            cid: int,
-        ) -> bool:
-            if fut_loop is not None and fut_loop.is_running():
-
-                async def _mark_failed() -> None:
-                    if not fut.done():
-                        fut.set_exception(RuntimeError("Debugger shutdown"))
-
-                try:
-                    cfut = asyncio.run_coroutine_threadsafe(_mark_failed(), fut_loop)
-                    to_wait_cf.append(cfut)
-                except Exception:
-                    logger.debug("run_coroutine_threadsafe failed for %s", cid)
-                else:
-                    return True
-            return False
-
-        # Last resort: schedule on debugger's own loop
-        def _shutdown_schedule_on_debugger_loop(fut: asyncio.Future, cid: int) -> None:
-            try:
-                self.loop.call_soon_threadsafe(
-                    lambda: (not fut.done())
-                    and fut.set_exception(RuntimeError("Debugger shutdown"))
-                )
-            except Exception:
-                logger.debug("failed scheduling on debugger loop for %s", cid)
-
-        if self.loop:
-            try:
-                await self.loop.shutdown_asyncgens()
-            except Exception:
-                logger.debug("error during shutdown_asyncgens", exc_info=True)
-
-            if getattr(self, "_owns_loop", False):
-                try:
-                    if self.loop.is_running():
-                        self.loop.stop()
-                except Exception:
-                    logger.debug("error stopping owned loop", exc_info=True)
-                try:
-                    if not self.loop.is_closed():
-                        self.loop.close()
-                except Exception:
-                    logger.debug("error closing owned loop", exc_info=True)
-
-        try:
-            tasks = list(self._bg_tasks)
-            for t in tasks:
-                t.cancel()
-        except Exception:
-            logger.debug("error cancelling background tasks")
-
+        # Fail all pending command futures
         with self.lock:
             pending = dict(self._pending_commands)
             self._pending_commands.clear()
 
-        # Track cross-loop completions using thread-safe concurrent futures
-        to_wait_cf: list[_CFuture] = []
-
-        current_loop = asyncio.get_running_loop()
-
+        shutdown_error = RuntimeError("Debugger shutdown")
         for cid, fut in pending.items():
-            fut_loop = None
+            if fut.done():
+                continue
             try:
-                fut_loop = fut.get_loop()
+                fut.set_exception(shutdown_error)
             except Exception:
-                fut_loop = None
-
-            logger.debug(
-                "shutdown: failing future %s (loop=%r done=%s)",
-                cid,
-                fut_loop,
-                fut.done(),
-            )
-
-            if _shutdown_try_set_on_current_loop(fut, fut_loop, current_loop, cid):
-                continue
-
-            if _shutdown_try_run_coroutine_threadsafe_on_loop(fut, fut_loop, to_wait_cf, cid):
-                continue
-
-            if not fut.done():
+                # Future may be on a different loop; try thread-safe scheduling
                 try:
-                    fut.set_exception(RuntimeError("Debugger shutdown"))
-                except Exception:
-                    logger.debug(
-                        "direct set_exception failed for pending %s",
-                        cid,
+                    self.loop.call_soon_threadsafe(
+                        lambda f=fut: f.done() or f.set_exception(shutdown_error)
                     )
-                else:
-                    continue
-
-            _shutdown_schedule_on_debugger_loop(fut, cid)
-
-        if to_wait_cf:
-            deadline = time.monotonic() + 0.25
-            while time.monotonic() < deadline:
-                if all(f.done() for f in to_wait_cf):
-                    break
-                try:
-                    await asyncio.sleep(0.01)
                 except Exception:
-                    pass
+                    logger.debug("failed to fail pending future %s", cid)
 
+        # Clean up event loop if we own it
+        if self.loop:
+            with contextlib.suppress(Exception):
+                await self.loop.shutdown_asyncgens()
+
+            if getattr(self, "_owns_loop", False):
+                with contextlib.suppress(Exception):
+                    if self.loop.is_running():
+                        self.loop.stop()
+                with contextlib.suppress(Exception):
+                    if not self.loop.is_closed():
+                        self.loop.close()
+
+        # Close process stdio streams
         proc = self.process
         if proc is not None:
-            try:
+            for stream_name in ("stdin", "stdout", "stderr"):
                 with contextlib.suppress(Exception):
-                    stdin = getattr(proc, "stdin", None)
-                    if stdin is not None:
-                        try:
-                            stdin.close()
-                        except Exception:
-                            pass
+                    stream = getattr(proc, stream_name, None)
+                    if stream is not None:
+                        stream.close()
 
-                    stdout = getattr(proc, "stdout", None)
-                    if stdout is not None:
-                        try:
-                            stdout.close()
-                        except Exception:
-                            pass
-
-                    stderr = getattr(proc, "stderr", None)
-                    if stderr is not None:
-                        try:
-                            stderr.close()
-                        except Exception:
-                            pass
-            except Exception:
-                logger.debug("error closing process stdio")
-
-            try:
+            with contextlib.suppress(Exception):
                 self.ipc.cleanup()
-            except Exception:
-                logger.debug("error cleaning up IPC resources during shutdown")
 
+        # Clear state
         self.var_refs.clear()
         self.threads.clear()
         self.breakpoints.clear()

@@ -1021,18 +1021,22 @@ def test_send_debug_message_ipc_binary():
     s = debug_shared.state
     s.ipc_enabled = True
 
-    # Need a bytes-capable mock file
-    class MockBytesFile:
+    # Need a bytes-capable mock file that satisfies TextIOBase
+    class MockBytesFile(io.TextIOBase):
         def __init__(self):
-            self.written = []
+            super().__init__()
+            self.written: list[bytes] = []
             self.flushed = False
 
         def write(self, data):
             self.written.append(data)
             return len(data)
 
-        def flush(self):
+        def flush(self) -> None:
             self.flushed = True
+
+        def writable(self) -> bool:
+            return True
 
     mock_wfile = MockBytesFile()
     s.ipc_wfile = mock_wfile
