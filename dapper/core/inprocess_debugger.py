@@ -295,10 +295,10 @@ class InProcessDebugger:
         return {"success": False, "message": "Invalid reference"}
 
     def evaluate(
-        self, expression: str, frame_id: int, _context: str = "hover"
+        self, expression: str, frame_id: int | None = None, _context: str | None = None
     ) -> EvaluateResponseBody:
         dbg = self.debugger
-        frame = dbg.frame_id_to_frame.get(frame_id)
+        frame = dbg.frame_id_to_frame.get(frame_id) if frame_id is not None else None
         if not frame:
             return {
                 "result": f"<evaluation of '{expression}' not available>",

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
+from typing import ClassVar
 
 from dapper.shared import debug_shared
 
@@ -109,6 +111,12 @@ class DummyDebugger:
         # some tests expect a program_path attribute
         self.program_path: Any | None = None
 
+        # Frame evaluation attributes (DebuggerLike protocol)
+        self.breakpoints: dict[str, list[Any]] = {}
+        self._frame_eval_enabled: bool = False
+        self._mock_user_line: Any = None
+        self._trace_func: Callable[[Any, str | None, Any], Any] | None = None
+
         # compatibility flags used by some tests
         self._continued: bool = False
         self._next: Any | None = None
@@ -203,3 +211,32 @@ class DummyDebugger:
     ) -> Variable:
         # Backwards-compatible alias used by some callers/tests
         return self.make_variable_object(name, value, frame, max_string_length=max_string_length)
+
+    # DebuggerLike protocol: frame evaluation methods
+    custom_breakpoints: ClassVar[dict[str, Any]] = {}
+
+    def set_breakpoints(
+        self, source: str, breakpoints: list[dict[str, Any]], **kwargs: Any
+    ) -> None:
+        """Set breakpoints for the given source file."""
+        _ = kwargs
+        self.breakpoints[source] = breakpoints
+
+    def user_line(self, frame: Any) -> Any | None:
+        """Called when execution stops at a line."""
+        _ = frame
+        return None
+
+    def set_trace(self, frame: Any = None) -> None:
+        """Start tracing from the given frame."""
+        _ = frame
+
+    def get_trace_function(self) -> Callable[[Any | None, str | None, Any | None], Any | None]:
+        """Get the current trace function."""
+        return self._trace_func  # type: ignore[return-value]
+
+    def set_trace_function(
+        self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None
+    ) -> None:
+        """Set a new trace function."""
+        self._trace_func = trace_func

@@ -15,15 +15,15 @@ class HelloProvider:
     """A simple provider that handles two commands: "hello" and "sum".
 
     Contract:
-    - supported_commands(): iterable of command strings it can handle
+    - can_handle(command: str) -> bool: whether this provider handles the command
     - handle(session, command, arguments, full_command) -> dict | None
       Return a dict with a "success" key to have the session synthesize a
       response using the incoming command id (if present). Return None if
       you already sent messages yourself.
     """
 
-    def supported_commands(self):
-        return {"hello", "sum"}
+    def can_handle(self, command: str) -> bool:
+        return command in {"hello", "sum"}
 
     def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
         if command == "hello":

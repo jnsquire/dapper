@@ -1839,7 +1839,7 @@ class PyDebugger:
         raise ValueError(msg)
 
     async def evaluate(
-        self, expression: str, frame_id: int, context: str = "hover"
+        self, expression: str, frame_id: int | None = None, context: str | None = None
     ) -> dict[str, Any]:
         """Evaluate an expression in a specific context"""
         if self.in_process and self._inproc is not None:
@@ -1859,7 +1859,7 @@ class PyDebugger:
             "arguments": {
                 "expression": expression,
                 "frameId": frame_id,
-                "context": context,
+                "context": context or "hover",
             },
         }
 

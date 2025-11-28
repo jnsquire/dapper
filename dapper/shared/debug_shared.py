@@ -230,7 +230,7 @@ class SessionState:
     # ------------------------------------------------------------------
     # Command provider registration and dispatch
     # ------------------------------------------------------------------
-    def register_command_provider(self, provider: Any, *, priority: int = 0) -> None:
+    def register_command_provider(self, provider: CommandProvider, *, priority: int = 0) -> None:
         """Register a provider that can handle debug commands.
 
         Providers are consulted in descending priority order. The provider
@@ -252,15 +252,13 @@ class SessionState:
 
     def dispatch_debug_command(self, command: dict[str, Any]) -> None:
         """Dispatch a debug command to the first capable registered provider.
-
-        This is the new session-aware entrypoint. It's also assigned to
-        handle_debug_command for back-compat.
         """
         name = str(command.get("command", "")) if isinstance(command, dict) else ""
         arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
         arguments = arguments or {}
 
-        providers = self._providers_snapshot()
+        with self._providers_lock:
+            providers = [p for _, p in list(self._providers)]
         for provider in providers:
             if not provider.can_handle(name):
                 continue
@@ -274,11 +272,6 @@ class SessionState:
             return
 
         self._send_unknown_command(command, name)
-
-    # ---- helpers to reduce complexity
-    def _providers_snapshot(self) -> list[CommandProvider]:
-        with self._providers_lock:
-            return [p for _, p in list(self._providers)]
 
     @staticmethod
     def _send_response_for_result(command: dict[str, Any], result: Any) -> None:
@@ -530,7 +523,3 @@ def make_variable_object(
             return cast("Variable", res)
 
     return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)
-
-
-# keep a short alias name for older code that imports make_variable_object
-# (the implementation lives above)
