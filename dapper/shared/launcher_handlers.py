@@ -173,12 +173,11 @@ def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: An
         except Exception:
             pass
 
-    legacy = globals().get("_convert_string_to_value")
-    if legacy is not None:
-        try:
-            return _call_convert_callable(legacy, value_str, frame, parent_obj)
-        except Exception:
-            pass
+    # Use local _convert_value_with_context which handles frame/parent context
+    try:
+        return _convert_value_with_context(value_str, frame, parent_obj)
+    except Exception:
+        pass
 
     return _CONVERSION_FAILED
 

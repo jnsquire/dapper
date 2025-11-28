@@ -246,39 +246,34 @@ class TestVariableHandling:
 
         dbg.make_variable_object = mock_make_var
 
-        # Import the debug_shared module to patch it
-        with patch("dapper.launcher.handlers._d_shared") as mock_shared:
-            # Mock the make_variable_object from debug_shared
-            mock_shared.make_variable_object.side_effect = mock_make_var
+        # Test arguments
+        args = {
+            "variablesReference": 1,  # Locals scope
+            "filter": "named",
+        }
 
-            # Test arguments
-            args = {
-                "variablesReference": 1,  # Locals scope
-                "filter": "named",
-            }
+        # Execute
+        handlers.handle_variables(dbg, args)
 
-            # Execute
-            handlers.handle_variables(dbg, args)
+        # Verify send_debug_message was called with the expected arguments
+        assert mock_send.called, "send_debug_message was not called"
 
-            # Verify send_debug_message was called with the expected arguments
-            assert mock_send.called, "send_debug_message was not called"
+        # Get the arguments passed to send_debug_message
+        call_args = mock_send.call_args
+        assert call_args is not None, "send_debug_message was called without arguments"
 
-            # Get the arguments passed to send_debug_message
-            call_args = mock_send.call_args
-            assert call_args is not None, "send_debug_message was called without arguments"
+        # Check that the response includes the expected variables
+        assert call_args[0][0] == "variables", "Expected a variables event"
+        assert "variables" in call_args[1], "Response does not include variables"
 
-            # Check that the response includes the expected variables
-            assert call_args[0][0] == "variables", "Expected a variables event"
-            assert "variables" in call_args[1], "Response does not include variables"
+        variables = call_args[1]["variables"]
+        assert isinstance(variables, list), "Variables should be a list"
+        assert len(variables) == 2, "Expected 2 variables"
 
-            variables = call_args[1]["variables"]
-            assert isinstance(variables, list), "Variables should be a list"
-            assert len(variables) == 2, "Expected 2 variables"
-
-            # Verify variable names and values
-            var_names = {v["name"] for v in variables}
-            assert "x" in var_names
-            assert "y" in var_names
+        # Verify variable names and values
+        var_names = {v["name"] for v in variables}
+        assert "x" in var_names
+        assert "y" in var_names
 
 
 class TestExpressionEvaluation:
@@ -416,7 +411,9 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        assert response["body"]["breakpoints"] == []
+        body = response.get("body")
+        assert body is not None
+        assert body.get("breakpoints") == []
 
         # Verify debugger attributes were set to False for empty filters
         assert mock_dbg.exception_breakpoints_raised is False
@@ -429,8 +426,12 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        assert len(response["body"]["breakpoints"]) == 1
-        assert response["body"]["breakpoints"][0]["verified"] is True
+        body = response.get("body")
+        assert body is not None
+        breakpoints = body.get("breakpoints")
+        assert breakpoints is not None
+        assert len(breakpoints) == 1
+        assert breakpoints[0]["verified"] is True
 
         # Verify debugger attributes were set correctly
         assert mock_dbg.exception_breakpoints_raised is True
@@ -443,8 +444,12 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        assert len(response["body"]["breakpoints"]) == 1
-        assert response["body"]["breakpoints"][0]["verified"] is True
+        body = response.get("body")
+        assert body is not None
+        breakpoints = body.get("breakpoints")
+        assert breakpoints is not None
+        assert len(breakpoints) == 1
+        assert breakpoints[0]["verified"] is True
 
         # Verify debugger attributes were set correctly
         assert mock_dbg.exception_breakpoints_raised is False
@@ -459,8 +464,12 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        assert len(response["body"]["breakpoints"]) == 2
-        assert all(bp["verified"] for bp in response["body"]["breakpoints"])
+        body = response.get("body")
+        assert body is not None
+        breakpoints = body.get("breakpoints")
+        assert breakpoints is not None
+        assert len(breakpoints) == 2
+        assert all(bp["verified"] for bp in breakpoints)
 
         # Verify debugger attributes were set correctly
         assert mock_dbg.exception_breakpoints_raised is True
@@ -473,13 +482,19 @@ class TestExceptionBreakpoints:
         # Test with non-list filters
         response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": "invalid"})
         assert response is not None
-        assert response["body"]["breakpoints"] == []
+        body = response.get("body")
+        assert body is not None
+        assert body.get("breakpoints") == []
 
         # Test with non-string elements
         response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": [123, None]})
         assert response is not None
-        assert len(response["body"]["breakpoints"]) == 2
-        assert all(bp["verified"] for bp in response["body"]["breakpoints"])
+        body = response.get("body")
+        assert body is not None
+        breakpoints = body.get("breakpoints")
+        assert breakpoints is not None
+        assert len(breakpoints) == 2
+        assert all(bp["verified"] for bp in breakpoints)
 
     def test_handle_set_exception_breakpoints_debugger_error(self):
         """Test handling of debugger attribute errors."""
@@ -499,7 +514,11 @@ class TestExceptionBreakpoints:
         # The response should still be successful
         assert response["success"] is True
         # But the breakpoint should be marked as not verified
-        assert len(response["body"]["breakpoints"]) == 1
+        body = response.get("body")
+        assert body is not None
+        breakpoints = body.get("breakpoints")
+        assert breakpoints is not None
+        assert len(breakpoints) == 1
 
 
 class TestUtilityFunctions:
