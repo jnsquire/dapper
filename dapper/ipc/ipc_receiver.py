@@ -74,8 +74,9 @@ def receive_debug_commands() -> None:
         line = reader.readline()
         if not line:
             state.exit_func(0)
-        if line.startswith("DBGCMD:"):
-            command_json = line[7:].strip()
+        # Each line is a JSON command
+        command_json = line.strip()
+        if command_json:
             try:
                 command = json.loads(command_json)
                 state.command_queue.put(command)

@@ -25,10 +25,10 @@ def test_write_command_to_channel_ipc_pipe_text():
     p.enable_ipc_pipe_connection(PipeConn(), binary=False)
 
     p._write_command_to_channel("abc")
-    # Break down assertion (PT018): verify list populated, action name, and payload marker
+    # Break down assertion (PT018): verify list populated, action name, and payload
     assert calls, "Expected at least one call to pipe send"
     assert calls[0][0] == "send", f"Unexpected method {calls[0][0]!r}"
-    assert "DBGCMD:abc" in calls[0][1], f"Missing DBGCMD marker in {calls[0][1]!r}"
+    assert calls[0][1] == "abc", f"Unexpected payload {calls[0][1]!r}"
 
 
 def test_write_command_to_channel_ipc_pipe_binary():
@@ -62,7 +62,7 @@ def test_write_command_to_channel_ipc_socket_text():
     p.enable_ipc_wfile(WFile(), binary=False)
 
     p._write_command_to_channel("bbb")
-    assert any("DBGCMD:bbb" in c[1] for c in calls if c[0] == "write")
+    assert any("bbb" in c[1] for c in calls if c[0] == "write")
 
 
 def test_write_command_to_channel_requires_ipc():

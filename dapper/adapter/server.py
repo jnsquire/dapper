@@ -1418,7 +1418,7 @@ class PyDebugger:
                 if self.ipc.binary:
                     self.ipc.pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
                 else:
-                    self.ipc.pipe_conn.send(f"DBGCMD:{cmd_str}")
+                    self.ipc.pipe_conn.send(cmd_str)
             return
         if self.ipc.enabled and self.ipc.wfile is not None:
             with contextlib.suppress(Exception):
@@ -1426,7 +1426,7 @@ class PyDebugger:
                     self.ipc.wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
                     self.ipc.wfile.flush()  # type: ignore[call-arg]
                 else:
-                    self.ipc.wfile.write(f"DBGCMD:{cmd_str}\n")  # type: ignore[arg-type]
+                    self.ipc.wfile.write(f"{cmd_str}\n")  # type: ignore[arg-type]
                     self.ipc.wfile.flush()
             return
 
@@ -2003,7 +2003,7 @@ class PyDebugger:
 
         try:
             await asyncio.to_thread(
-                lambda: self.process.stdin.write(f"DBGCMD:{command}\n")
+                lambda: self.process.stdin.write(f"{command}\n")
                 if self.process and self.process.stdin
                 else None,
             )
