@@ -1,0 +1,812 @@
+"""
+DAP request handlers.
+
+This module contains the RequestHandler class that processes incoming
+Debug Adapter Protocol requests and routes them to appropriate handlers.
+"""
+
+from __future__ import annotations
+
+import inspect
+import logging
+import mimetypes
+import re
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import cast
+
+from dapper.adapter.types import DAPRequest
+from dapper.adapter.types import DAPResponse
+from dapper.shared import debug_shared
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+    from collections.abc import Callable
+
+    from dapper.adapter.server import DebugAdapterServer
+    from dapper.protocol.protocol_types import ExceptionInfoRequest
+
+# Re-export for type checking - these are used in method signatures/bodies
+__all__ = ["RequestHandler"]
+
+
+logger = logging.getLogger(__name__)
+
+
+class RequestHandler:
+    """
+    Handles incoming requests from the DAP client and routes them to the
+    appropriate handler methods.
+    """
+
+    def __init__(self, server: DebugAdapterServer):
+        self.server = server
+
+    async def handle_request(self, request: DAPRequest) -> DAPResponse | None:
+        """
+        Handle a DAP request and return a response.
+        """
+        command = request["command"]
+        handler_method = getattr(self, f"_handle_{command}", None)
+        if handler_method is None:
+            # Attempt snake_case fallback for camelCase DAP commands (e.g. setBreakpoints -> set_breakpoints)
+            snake = re.sub(r"(?<!^)([A-Z])", r"_\1", command).lower()
+            handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
+        return await handler_method(request)
+
+    async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
+        """Handle an unknown request command."""
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": False,
+            "command": request["command"],
+            "message": f"Unsupported command: {request['command']}",
+        }
+
+    async def _handle_initialize(self, request: DAPRequest) -> None:
+        """Handle initialize request."""
+        # Directly send the response for initialize
+        response = {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "initialize",
+            "body": {
+                "supportsConfigurationDoneRequest": True,
+                "supportsFunctionBreakpoints": True,
+                "supportsConditionalBreakpoints": True,
+                "supportsHitConditionalBreakpoints": True,
+                "supportsEvaluateForHovers": True,
+                "exceptionBreakpointFilters": [
+                    {
+                        "filter": "raised",
+                        "label": "Raised Exceptions",
+                        "default": False,
+                    },
+                    {
+                        "filter": "uncaught",
+                        "label": "Uncaught Exceptions",
+                        "default": True,
+                    },
+                ],
+                "supportsStepInTargetsRequest": True,
+                "supportsGotoTargetsRequest": True,
+                "supportsCompletionsRequest": True,
+                "supportsModulesRequest": True,
+                "supportsLoadedSourcesRequest": True,
+                "supportsRestartRequest": True,
+                "supportsExceptionOptions": True,
+                "supportsValueFormattingOptions": True,
+                "supportsExceptionInfoRequest": True,
+                "supportTerminateDebuggee": True,
+                "supportsDelayedStackTraceLoading": True,
+                "supportsLogPoints": True,
+                "supportsSetVariable": True,
+                "supportsSetExpression": True,
+                "supportsDisassembleRequest": True,
+                "supportsSteppingGranularity": True,
+                "supportsInstructionBreakpoints": True,
+                "supportsDataBreakpoints": True,
+                "supportsDataBreakpointInfo": True,
+            },
+        }
+        await self.server.send_message(response)
+        # Send the initialized event
+        await self.server.send_event("initialized")
+
+    async def _handle_launch(self, request: DAPRequest) -> DAPResponse:
+        """Handle launch request."""
+        args = request.get("arguments", {})
+        program = args.get("program")
+        if not program:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "launch",
+                "message": "Missing required argument 'program'.",
+            }
+
+        program_args = args.get("args", [])
+        stop_on_entry = args.get("stopOnEntry", False)
+        no_debug = args.get("noDebug", False)
+        in_process = args.get("inProcess", False)
+        # useBinaryIpc defaults to True; IPC is always enabled
+        use_binary_ipc = args.get("useBinaryIpc", True)
+        # Optional IPC transport details
+        ipc_transport = args.get("ipcTransport")
+        ipc_pipe_name = args.get("ipcPipeName")
+
+        # Build launch kwargs - IPC is always enabled
+        launch_kwargs: dict[str, Any] = {}
+        if in_process:
+            launch_kwargs["in_process"] = True
+        if ipc_transport is not None:
+            launch_kwargs["ipc_transport"] = ipc_transport
+        if ipc_pipe_name is not None:
+            launch_kwargs["ipc_pipe_name"] = ipc_pipe_name
+        launch_kwargs["use_binary_ipc"] = use_binary_ipc
+
+        await self.server.debugger.launch(
+            program,
+            program_args,
+            stop_on_entry,
+            no_debug,
+            **launch_kwargs,
+        )
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "launch",
+        }
+
+    async def _handle_attach(self, request: DAPRequest) -> DAPResponse:
+        """Handle attach request.
+
+        Attach connects to an existing debuggee via IPC endpoint.
+        The client should specify the endpoint coordinates
+        (transport + host/port or path or pipe name).
+        IPC is always required for attach.
+        """
+        args = request.get("arguments", {})
+
+        ipc_transport = args.get("ipcTransport")
+        ipc_host = args.get("ipcHost")
+        ipc_port = args.get("ipcPort")
+        ipc_path = args.get("ipcPath")
+        ipc_pipe_name = args.get("ipcPipeName")
+
+        try:
+            await self.server.debugger.attach(
+                use_ipc=True,  # IPC is always required
+                ipc_transport=ipc_transport,
+                ipc_host=ipc_host,
+                ipc_port=ipc_port,
+                ipc_path=ipc_path,
+                ipc_pipe_name=ipc_pipe_name,
+            )
+        except Exception as e:  # pragma: no cover - exercised by error tests
+            logger.exception("attach failed")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "attach",
+                "message": f"Attach failed: {e!s}",
+            }
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "attach",
+        }
+
+    async def _handle_set_breakpoints(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle setBreakpoints request."""
+        args = request.get("arguments", {})
+        source = args.get("source", {})
+        path = source.get("path")
+        breakpoints = args.get("breakpoints", [])
+
+        verified_breakpoints = await self.server.debugger.set_breakpoints(path, breakpoints)
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "setBreakpoints",
+            "body": {"breakpoints": verified_breakpoints},
+        }
+
+    async def _handle_set_function_breakpoints(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle setFunctionBreakpoints request.
+
+        This replaces all existing function breakpoints with the provided set,
+        mirroring DAP semantics. Returns verification info per breakpoint.
+        """
+        args = request.get("arguments", {})
+        breakpoints = args.get("breakpoints", [])
+
+        verified = await self.server.debugger.set_function_breakpoints(breakpoints)
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "setFunctionBreakpoints",
+            "body": {"breakpoints": verified},
+        }
+
+    async def _handle_continue(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle continue request."""
+        thread_id = request["arguments"]["threadId"]
+        continued = await self.server.debugger.continue_execution(thread_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "continue",
+            "body": {"allThreadsContinued": continued},
+        }
+
+    async def _handle_next(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle next request."""
+        thread_id = request["arguments"]["threadId"]
+        # Map DAP 'next' to debugger.step_over when available for tests,
+        # otherwise fall back to debugger.next.
+        step_over = getattr(self.server.debugger, "step_over", None)
+        if callable(step_over):
+            await cast("Callable[[int], Awaitable[Any]]", step_over)(thread_id)
+        else:
+            await self.server.debugger.next(thread_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "next",
+        }
+
+    async def _handle_step_in(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle stepIn request."""
+        args = request["arguments"]
+        thread_id = args["threadId"]
+        target_id = args.get("targetId")
+        # Pass targetId if provided for compatibility with tests
+        step_in = self.server.debugger.step_in
+        if target_id is not None:
+            await cast("Callable[..., Awaitable[Any]]", step_in)(thread_id, target_id)
+        else:
+            await cast("Callable[..., Awaitable[Any]]", step_in)(thread_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "stepIn",
+        }
+
+    async def _handle_step_out(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle stepOut request."""
+        thread_id = request["arguments"]["threadId"]
+        await self.server.debugger.step_out(thread_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "stepOut",
+        }
+
+    async def _handle_pause(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle pause request by delegating to the debugger.pause method.
+
+        Accepts an optional `threadId` argument per the DAP spec.
+        """
+        args = request.get("arguments", {}) or {}
+        thread_id: int = args["threadId"]
+
+        try:
+            # Support sync or async implementations of pause()
+            success = await self.server.debugger.pause(thread_id)
+
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": success,
+                "command": "pause",
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            logger.exception("Error handling pause request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "pause",
+                "message": f"Pause failed: {e!s}",
+            }
+
+    async def _handle_disconnect(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle disconnect request."""
+        await self.server.debugger.shutdown()
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "disconnect",
+        }
+
+    async def _handle_terminate(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle terminate request - force terminate the debugged program."""
+        try:
+            await self.server.debugger.terminate()
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "terminate",
+            }
+        except Exception as e:
+            logger.exception("Error handling terminate request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "terminate",
+                "message": f"Terminate failed: {e!s}",
+            }
+
+    async def _handle_restart(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle restart request.
+
+        Semantics: terminate current debuggee and emit a terminated event with
+        restart=true so the client restarts the session. Resources are cleaned
+        up via the debugger's shutdown.
+        """
+        try:
+            # Delegate to debugger which will send the terminated(restart=true)
+            await self.server.debugger.restart()
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "restart",
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            logger.exception("Error handling restart request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "restart",
+                "message": f"Restart failed: {e!s}",
+            }
+
+    async def _handle_configurationDone(  # noqa: N802
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handle configurationDone request."""
+        try:
+            result = self.server.debugger.configuration_done_request()
+            # Only await if it's an awaitable (tests may provide a plain Mock)
+            if inspect.isawaitable(result):
+                await result
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "configurationDone",
+            }
+        except Exception as e:
+            logger.exception("Error handling configurationDone request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "configurationDone",
+                "message": f"Configuration done failed: {e!s}",
+            }
+
+    async def _handle_threads(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle threads request."""
+        threads = await self.server.debugger.get_threads()
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "threads",
+            "body": {"threads": threads},
+        }
+
+    async def _handle_loaded_sources(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle loadedSources request."""
+        loaded_sources = await self.server.debugger.get_loaded_sources()
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "loadedSources",
+            "body": {"sources": loaded_sources},
+        }
+
+    async def _resolve_by_ref(self, source_reference: int) -> tuple[str | None, str | None]:
+        """Resolve source content and optional path by sourceReference.
+
+        Returns (content, path) where either may be None on failure.
+        """
+        dbg = self.server.debugger
+        content: str | None = None
+        path: str | None = None
+
+        # Try debugger-provided getter first (sync or async)
+        getter = getattr(dbg, "get_source_content_by_ref", None)
+        if callable(getter):
+            try:
+                res = getter(source_reference)
+                res_val = await res if inspect.isawaitable(res) else res
+                # Only accept string content; otherwise fall back
+                content = res_val if isinstance(res_val, str) else None
+            except Exception:
+                content = None
+
+        # Fallback to shared state
+        if content is None:
+            try:
+                content = debug_shared.state.get_source_content_by_ref(source_reference)
+            except Exception:
+                content = None
+
+        # Try to recover path from meta
+        getter_meta = getattr(dbg, "get_source_meta", None)
+        try:
+            if callable(getter_meta):
+                meta = getter_meta(source_reference)
+            else:
+                meta = debug_shared.state.get_source_meta(source_reference)
+            if inspect.isawaitable(meta):
+                meta = await meta
+            if isinstance(meta, dict):
+                path = meta.get("path") or path
+        except Exception:
+            # ignore meta errors
+            pass
+
+        return content, path
+
+    async def _resolve_by_path(self, path: str) -> str | None:
+        """Resolve source content by path, prefer debugger helper then shared state."""
+        dbg = self.server.debugger
+        content: str | None = None
+
+        getter = getattr(dbg, "get_source_content_by_path", None)
+        if callable(getter):
+            try:
+                res = getter(path)
+                res_val = await res if inspect.isawaitable(res) else res
+                # Only accept string content; otherwise fall back
+                content = res_val if isinstance(res_val, str) else None
+            except Exception:
+                content = None
+
+        if content is None:
+            try:
+                content = debug_shared.state.get_source_content_by_path(path)
+            except Exception:
+                content = None
+
+        return content
+
+    def _guess_mime_type(self, path: str | None, content: str) -> str | None:
+        """Return a conservative mimeType for textual content when possible."""
+        if not path:
+            return None
+        if "\x00" in content:
+            return None
+
+        guessed, _ = mimetypes.guess_type(path)
+        if guessed:
+            return guessed
+        if path.endswith((".py", ".pyw", ".txt", ".md")):
+            return "text/plain; charset=utf-8"
+        return None
+
+    async def _handle_source(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle source request: return source content by path or sourceReference.
+
+        This mirrors the behavior of the module-level handler in
+        `dapper.dap_command_handlers` but runs in the async server context.
+        """
+        args = request.get("arguments", {}) or {}
+        source = args.get("source") or {}
+        source_reference = source.get("sourceReference") or args.get("sourceReference")
+        path = source.get("path") or args.get("path")
+
+        content: str | None = None
+
+        if source_reference and isinstance(source_reference, int) and source_reference > 0:
+            content, recovered_path = await self._resolve_by_ref(source_reference)
+            if recovered_path and not path:
+                path = recovered_path
+        elif path:
+            content = await self._resolve_by_path(path)
+
+        if content is None:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "source",
+                "message": "Could not load source content",
+            }
+
+        mime_type = self._guess_mime_type(path, content)
+
+        body: dict[str, Any] = {"content": content}
+        if mime_type:
+            body["mimeType"] = mime_type
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "source",
+            "body": body,
+        }
+
+    async def _handle_module_source(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle moduleSource request: return source content for a given module id.
+
+        The server's `modules` response uses stringified id(module) as the
+        module id. This handler accepts either that id or a module name and
+        returns file contents for the module if available.
+        """
+        args = request.get("arguments", {}) or {}
+        module_id = args.get("moduleId") or args.get("module")
+        if not module_id:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Missing moduleId",
+            }
+
+        found = None
+        for name, mod in list(sys.modules.items()):
+            if mod is None:
+                continue
+            try:
+                if str(id(mod)) == str(module_id) or name == module_id:
+                    found = mod
+                    break
+            except Exception:
+                continue
+
+        if found is None:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Module not found",
+            }
+
+        path = getattr(found, "__file__", None)
+        if not path:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": "Module has no file path",
+            }
+
+        try:
+            with Path(path).open("rb") as f:
+                data = f.read()
+            # Try to decode as utf-8; if it fails preserve bytes as latin-1 to
+            # keep a 1:1 mapping so NUL bytes survive for downstream checks.
+            try:
+                content = data.decode("utf-8")
+            except Exception:
+                content = data.decode("latin-1")
+        except Exception as e:
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "moduleSource",
+                "message": f"Failed to read module source: {e!s}",
+            }
+
+        body: dict[str, Any] = {"content": content}
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "moduleSource",
+            "body": body,
+        }
+
+    async def _handle_modules(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle modules request."""
+        args = request.get("arguments", {})
+        start_module = args.get("startModule", 0)
+        module_count = args.get("moduleCount")
+
+        # Get all loaded modules from the debugger
+        all_modules = await self.server.debugger.get_modules()
+
+        # Apply paging
+        if module_count is not None:
+            end_module = start_module + module_count
+            modules = all_modules[start_module:end_module]
+        else:
+            modules = all_modules[start_module:]
+
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "modules",
+            "body": {"modules": modules, "totalModules": len(all_modules)},
+        }
+
+    async def _handle_stack_trace(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle stackTrace request."""
+        args = request["arguments"]
+        thread_id = args["threadId"]
+        start_frame = args.get("startFrame", 0)
+        levels = args.get("levels", 20)
+        stack_frames = await self.server.debugger.get_stack_trace(thread_id, start_frame, levels)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "stackTrace",
+            "body": {
+                "stackFrames": stack_frames,
+                "totalFrames": len(stack_frames),
+            },
+        }
+
+    async def _handle_scopes(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle scopes request."""
+        frame_id = request["arguments"]["frameId"]
+        scopes = await self.server.debugger.get_scopes(frame_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "scopes",
+            "body": {"scopes": scopes},
+        }
+
+    async def _handle_variables(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle variables request."""
+        args = request["arguments"]
+        variables_reference = args["variablesReference"]
+        filter_ = args.get("filter")
+        start = args.get("start")
+        count = args.get("count")
+        variables = await self.server.debugger.get_variables(
+            variables_reference, filter_, start, count
+        )
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "variables",
+            "body": {"variables": variables},
+        }
+
+    async def _handle_setVariable(  # noqa: N802
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Handle setVariable request."""
+        try:
+            args = request["arguments"]
+            variables_reference = args["variablesReference"]
+            name = args["name"]
+            value = args["value"]
+
+            result = await self.server.debugger.set_variable(variables_reference, name, value)
+
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "setVariable",
+                "body": result,
+            }
+        except Exception as e:
+            logger.exception("Error handling setVariable request")
+            return {
+                "type": "response",
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "setVariable",
+                "message": f"Set variable failed: {e!s}",
+            }
+
+    async def _handle_evaluate(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Handle evaluate request."""
+        args = request["arguments"]
+        expression = args["expression"]
+        frame_id = args.get("frameId")
+        context = args.get("context")
+        result = await self.server.debugger.evaluate(expression, frame_id, context)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "evaluate",
+            "body": result,
+        }
+
+    async def _handle_dataBreakpointInfo(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+        """Handle dataBreakpointInfo request (subset: variable name + frameId)."""
+        args = request.get("arguments", {})
+        name = args.get("name")
+        frame_id = args.get("frameId")
+        if name is None or frame_id is None:
+            body = {
+                "dataId": None,
+                "description": "Data breakpoint unsupported for missing name/frameId",
+                "accessTypes": ["write"],
+                "canPersist": False,
+            }
+        else:
+            body = self.server.debugger.data_breakpoint_info(name=name, frame_id=frame_id)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "dataBreakpointInfo",
+            "body": body,
+        }
+
+    async def _handle_setDataBreakpoints(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+        """Handle setDataBreakpoints request (full replace)."""
+        args = request.get("arguments", {})
+        bps = args.get("breakpoints", [])
+        results = self.server.debugger.set_data_breakpoints(bps)
+        return {
+            "type": "response",
+            "request_seq": request["seq"],
+            "success": True,
+            "command": "setDataBreakpoints",
+            "body": {"breakpoints": results},
+        }
+
+    async def _handle_exceptionInfo(  # noqa: N802
+        self, request: ExceptionInfoRequest
+    ) -> dict[str, Any]:
+        """Handle exceptionInfo request."""
+        try:
+            args = request["arguments"]
+            thread_id = args["threadId"]
+
+            body = await self.server.debugger.get_exception_info(thread_id)
+
+            return {
+                "type": "response",
+                "seq": 0,  # Will be set by protocol handler
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "exceptionInfo",
+                "body": body,
+            }
+        except Exception as e:
+            logger.exception("Error handling exceptionInfo request")
+            return {
+                "type": "response",
+                "seq": 0,  # Will be set by protocol handler
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "exceptionInfo",
+                "message": f"exceptionInfo failed: {e!s}",
+            }
