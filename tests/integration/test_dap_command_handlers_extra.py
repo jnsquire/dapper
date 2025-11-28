@@ -3,10 +3,10 @@ from __future__ import annotations
 import sys
 import types
 
-from dapper.adapter import dap_command_handlers as handlers
 from dapper.launcher import comm as launcher_comm
+from dapper.shared import command_handlers
+from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
-from dapper.shared import launcher_handlers
 from tests.dummy_debugger import DummyDebugger
 
 
@@ -18,8 +18,8 @@ def capture_send(monkeypatch):
 
     monkeypatch.setattr(debug_shared, "send_debug_message", _send)
     monkeypatch.setattr(handlers, "send_debug_message", _send)
-    # Patch where the function is imported into launcher_handlers
-    monkeypatch.setattr(launcher_handlers, "send_debug_message", _send)
+    # Patch where the function is imported into command_handlers
+    monkeypatch.setattr(command_handlers, "send_debug_message", _send)
     # Also patch the launcher comm module as fallback
     monkeypatch.setattr(launcher_comm, "send_debug_message", _send)
     return messages
@@ -30,7 +30,7 @@ def test_set_breakpoints_and_state(monkeypatch):
     debug_shared.state.debugger = dbg
     messages = capture_send(monkeypatch)
 
-    handlers.handle_set_breakpoints(
+    handlers._cmd_set_breakpoints(
         {
             "source": {"path": "./somefile.py"},
             "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
@@ -57,7 +57,7 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg.frame_id_to_frame[42] = frame
     dbg.var_refs[1] = (42, "locals")
 
-    handlers.handle_set_variable({"variablesReference": 1, "name": "a", "value": "2"})
+    handlers._cmd_set_variable({"variablesReference": 1, "name": "a", "value": "2"})
     assert frame.f_locals["a"] == 2
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
@@ -69,7 +69,7 @@ def test_set_variable_on_object(monkeypatch):
 
     obj = {"x": 1}
     dbg.var_refs[2] = ("object", obj)
-    handlers.handle_set_variable({"variablesReference": 2, "name": "x", "value": "3"})
+    handlers._cmd_set_variable({"variablesReference": 2, "name": "x", "value": "3"})
     assert obj["x"] == 3
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
@@ -96,7 +96,7 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     messages = capture_send(monkeypatch)
 
-    handlers.handle_loaded_sources()
+    handlers._cmd_loaded_sources({})
 
     resp = [m for m in messages if m[0] == "response"]
     assert resp

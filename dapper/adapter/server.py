@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
 
-    from dapper.ipc.connections import ConnectionBase
+    from dapper.ipc.connections.base import ConnectionBase
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.protocol_types import Breakpoint
     from dapper.protocol.protocol_types import ContinueResponseBody

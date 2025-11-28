@@ -1,12 +1,23 @@
 """
-Launcher debug command handlers relocated to the shared package.
+Canonical DAP command handler implementations for the debuggee process.
 
-This module contains the same command handling functions used by the
-launcher process but lives under `dapper.shared` so it can be imported
-statically without relying on string-based dynamic imports.
+This module provides the authoritative implementations of Debug Adapter Protocol
+command handlers that execute within the debuggee process. The `handle_debug_command`
+function dispatches commands through `state.dispatch_debug_command()`, which uses
+the registered `DapMappingProvider` to look up handlers in the `COMMAND_HANDLERS`
+registry. This ensures consistent behavior across both IPC pathways:
 
-Note: This module depends only on `dapper.launcher.comm` for message
-output and `dapper.shared.debug_shared.state` for session state.
+1. Pipe-based IPC: `dapper.launcher.debug_launcher` calls `handle_debug_command()`
+2. Socket-based IPC: `dapper.ipc.ipc_receiver` calls `state.dispatch_debug_command()`
+
+Both paths dispatch through the same `DapMappingProvider` wrapping `COMMAND_HANDLERS`.
+
+The handler functions in this module delegate to `command_handlers.py` which contains
+the canonical implementations.
+
+Dependencies:
+- `dapper.launcher.comm.send_debug_message` for IPC message output
+- `dapper.shared.debug_shared.state` for debugger session state
 """
 
 from __future__ import annotations
@@ -14,7 +25,6 @@ from __future__ import annotations
 import ast
 import sys
 import threading
-import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
@@ -35,74 +45,46 @@ SIMPLE_FN_ARGCOUNT = 2
 _CONVERSION_FAILED = object()
 _convert_value_with_context_override: Any | None = None
 
+# Flag to track if provider has been registered
+_provider_registered = False
+
+
+def _ensure_provider_registered() -> None:
+    """Ensure the DapMappingProvider is registered with the state.
+    
+    This is called lazily to avoid circular imports at module load time.
+    The provider wraps COMMAND_HANDLERS from command_handlers.py.
+    """
+    global _provider_registered  # noqa: PLW0603
+    if _provider_registered:
+        return
+    
+    # Import here to avoid circular imports
+    from dapper.ipc.ipc_receiver import DapMappingProvider  # noqa: PLC0415
+    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
+    
+    # Register the provider (ipc_receiver also does this at import time,
+    # but we may be called before ipc_receiver is imported)
+    state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
+    _provider_registered = True
+
 
 def handle_debug_command(command: dict[str, Any]) -> None:
-    """Handle a debug command from the debug adapter"""
+    """Handle a debug command using the provider-based dispatch system.
+    
+    This dispatches through `state.dispatch_debug_command()`, which uses the
+    registered `DapMappingProvider` to look up handlers. This ensures the same
+    dispatch path is used for both pipe-based and socket-based IPC.
+    """
     if state.debugger is None:
         # Queue commands until debugger is initialized
         return
 
-    dbg = state.debugger
-
-    command_type = command.get("command", "")
-    arguments = command.get("arguments", {})
-
-    handlers: dict[str, Any] = {
-        "setBreakpoints": handle_set_breakpoints,
-        "initialize": handle_initialize,
-        "setFunctionBreakpoints": handle_set_function_breakpoints,
-        "setExceptionBreakpoints": handle_set_exception_breakpoints,
-        "continue": handle_continue,
-        "next": handle_next,
-        "stepIn": handle_step_in,
-        "stepOut": handle_step_out,
-        "pause": handle_pause,
-        "threads": handle_threads,
-        "stackTrace": handle_stack_trace,
-        "scopes": handle_scopes,
-        "source": handle_source,
-        "variables": handle_variables,
-        "setVariable": handle_set_variable,
-        "evaluate": handle_evaluate,
-        "setDataBreakpoints": handle_set_data_breakpoints,
-        "dataBreakpointInfo": handle_data_breakpoint_info,
-        "exceptionInfo": handle_exception_info,
-        "configurationDone": handle_configuration_done,
-        "terminate": handle_terminate,
-        "disconnect": handle_terminate,
-        "restart": handle_restart,
-    }
-
-    handler = handlers.get(command_type)
-    if handler is None:
-        msg = f"Unsupported command: {command_type}"
-        send_debug_message("error", message=msg)
-        return
-
-    try:
-        result = handler(dbg, arguments)
-
-        if isinstance(result, dict) and "success" in result:
-            command_id = command.get("id")
-            if command_id is not None:
-                response = {"id": command_id}
-                response.update(result)
-                send_debug_message("response", **response)
-
-    except Exception as exc:  # pragma: no cover - defensive logging
-        command_id = command.get("id")
-        if command_id is not None:
-            msg = f"Error handling command {command_type}: {exc!s}"
-            send_debug_message(
-                "response",
-                id=command_id,
-                success=False,
-                message=msg,
-            )
-        else:
-            msg = f"Error handling command {command_type}: {exc!s}"
-            send_debug_message("error", message=msg)
-        traceback.print_exc()
+    # Ensure the provider is registered (lazy initialization)
+    _ensure_provider_registered()
+    
+    # Dispatch through the provider system
+    state.dispatch_debug_command(command)
 
 
 def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any | None) -> Variable:

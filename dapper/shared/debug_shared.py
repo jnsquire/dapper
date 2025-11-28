@@ -179,7 +179,7 @@ class SessionState:
             cmd = self.command_queue.get_nowait()
             try:
                 # Deferred import to avoid circular imports at module import time
-                from dapper.shared.launcher_handlers import handle_debug_command  # noqa: PLC0415
+                from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
 
                 handle_debug_command(cmd)
             except Exception:

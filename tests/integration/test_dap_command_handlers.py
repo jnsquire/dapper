@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.adapter import dap_command_handlers as dch
+from dapper.shared import command_handlers
+from dapper.shared import command_handlers as dch
 from dapper.shared import debug_shared
-from dapper.shared import launcher_handlers
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
@@ -96,18 +96,18 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
 
     # setBreakpoints
     args = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
-    dch.handle_set_breakpoints(cast("SetBreakpointsArguments", args))
+    dch._cmd_set_breakpoints(cast("SetBreakpointsArguments", args))
     assert ("file.py", 10, None) in dbg.breaks
 
     # setFunctionBreakpoints
     args = {"breakpoints": [{"name": "foo", "condition": "c", "hitCondition": 1}]}
-    dch.handle_set_function_breakpoints(cast("SetFunctionBreakpointsArguments", args))
+    dch._cmd_set_function_breakpoints(cast("SetFunctionBreakpointsArguments", args))
     assert "foo" in dbg.function_breakpoints
     assert dbg.function_breakpoint_meta.get("foo", {}).get("condition") == "c"
 
     # setExceptionBreakpoints
     args = {"filters": ["raised", "uncaught"]}
-    dch.handle_set_exception_breakpoints(cast("SetExceptionBreakpointsArguments", args))
+    dch._cmd_set_exception_breakpoints(cast("SetExceptionBreakpointsArguments", args))
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is True
 
@@ -125,17 +125,17 @@ def test_continue_next_step_out(monkeypatch):
 
     monkeypatch.setattr(dch, "send_debug_message", _no_op)
 
-    dch.handle_continue({"threadId": tid})
+    dch._cmd_continue({"threadId": tid})
     assert tid not in dbg.stopped_thread_ids
     assert dbg._continued is True
 
-    dch.handle_next({"threadId": tid})
+    dch._cmd_next({"threadId": tid})
     assert dbg.stepping is True
 
-    dch.handle_step_in({"threadId": tid})
+    dch._cmd_step_in({"threadId": tid})
     assert getattr(dbg, "_step", True) is True
 
-    dch.handle_step_out({"threadId": tid})
+    dch._cmd_step_out({"threadId": tid})
     assert getattr(dbg, "_return", None) is not None
 
 
@@ -161,15 +161,15 @@ def test_variables_and_set_variable(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch.handle_variables({"variablesReference": 7})
+    dch._cmd_variables({"variablesReference": 7})
     assert calls
     assert calls[-1][0] == "variables"
 
     # setVariable invalid ref
     calls.clear()
-    dch.handle_set_variable({"variablesReference": 999, "name": "x", "value": "1"})
+    dch._cmd_set_variable({"variablesReference": 999, "name": "x", "value": "1"})
     assert calls
     assert calls[-1][0] == "setVariable"
 
@@ -204,7 +204,8 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder2)
-    dch.handle_source({"path": str(p)})
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder2)
+    dch._cmd_source({"path": str(p)})
     assert calls
     assert calls[-1][0] == "response"
 
@@ -221,15 +222,15 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder3)
-    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder3)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder3)
 
     # successful eval
-    dch.handle_evaluate({"expression": "y + 3", "frameId": 1})
+    dch._cmd_evaluate({"expression": "y + 3", "frameId": 1})
     assert calls
     assert calls[-1][0] == "evaluate"
 
     # eval error
-    dch.handle_evaluate({"expression": "unknown_var", "frameId": 1})
+    dch._cmd_evaluate({"expression": "unknown_var", "frameId": 1})
     assert calls
     assert calls[-1][0] == "evaluate"
 
@@ -241,17 +242,17 @@ def test_handle_exception_info_variants(monkeypatch):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder4)
-    monkeypatch.setattr(launcher_handlers, "send_debug_message", recorder4)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder4)
 
     # missing threadId
-    dch.handle_exception_info(cast("ExceptionInfoArguments", {}))
+    dch._cmd_exception_info(cast("ExceptionInfoArguments", {}))
     assert calls
     assert calls[-1][0] == "error"
 
     # debugger not initialized
     monkeypatch.setattr(dch.state, "debugger", None)
     calls.clear()
-    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 1}))
+    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 1}))
     assert calls
     assert calls[-1][0] == "error"
 
@@ -259,7 +260,7 @@ def test_handle_exception_info_variants(monkeypatch):
     dbg = DummyDebugger()
     monkeypatch.setattr(dch.state, "debugger", dbg)
     calls.clear()
-    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 2}))
+    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 2}))
     assert calls
     assert calls[-1][0] == "error"
 
@@ -271,7 +272,7 @@ def test_handle_exception_info_variants(monkeypatch):
         "details": {},
     }
     calls.clear()
-    dch.handle_exception_info(cast("ExceptionInfoArguments", {"threadId": 3}))
+    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 3}))
     assert calls
     assert calls[-1][0] == "exceptionInfo"
 
@@ -351,13 +352,14 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder5)
-    dch.handle_loaded_sources()
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder5)
+    dch._cmd_loaded_sources({})
     assert calls
     assert calls[-1][0] == "response"
 
     # modules with paging
     calls.clear()
-    dch.handle_modules({"startModule": 0, "moduleCount": 1})
+    dch._cmd_modules({"startModule": 0, "moduleCount": 1})
     assert calls
     assert calls[-1][0] == "response"
 
@@ -377,7 +379,8 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
         calls.append((kind, kwargs))
 
     monkeypatch.setattr(dch, "send_debug_message", recorder6)
-    dch.handle_source({"path": str(p)})
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder6)
+    dch._cmd_source({"path": str(p)})
     assert calls
     assert calls[-1][0] == "response"
 
@@ -385,6 +388,6 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
     monkeypatch.setattr(dch.state, "get_source_meta", lambda _ref: {"path": str(p)})
     monkeypatch.setattr(dch.state, "get_source_content_by_ref", lambda _ref: "print(2)")
     calls.clear()
-    dch.handle_source({"source": {"sourceReference": 1}})
+    dch._cmd_source({"source": {"sourceReference": 1}})
     assert calls
     assert calls[-1][0] == "response"

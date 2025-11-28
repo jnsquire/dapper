@@ -2,7 +2,7 @@
 Test for the _convert_string_to_value function in debug_launcher.py
 """
 
-from dapper.shared.launcher_handlers import _convert_string_to_value
+from dapper.shared.command_handlers import _convert_string_to_value
 
 
 def test_convert_string_to_value():

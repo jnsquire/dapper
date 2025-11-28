@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from dapper.adapter.dap_command_handlers import handle_loaded_sources
-from dapper.adapter.dap_command_handlers import handle_source
+from dapper.shared.command_handlers import _cmd_loaded_sources as handle_loaded_sources
+from dapper.shared.command_handlers import _cmd_source as handle_source
 from dapper.shared.debug_shared import state
 
 
@@ -32,7 +32,7 @@ def _setup_ipc_for_tests():
 
 def _call_loaded_sources_and_find_ref() -> tuple[int, str]:
     # Call the handler which will populate state.source_references
-    handle_loaded_sources(None)
+    handle_loaded_sources({})
     # Find any reference that points to a real file
     for ref, meta in state.source_references.items():
         path = meta.get("path")
@@ -66,7 +66,7 @@ def test_source_handler_with_invalid_reference_returns_none():
 
 def test_loaded_sources_to_source_roundtrip_returns_file_contents():
     # Ensure loadedSources has been called and a ref exists
-    handle_loaded_sources(None)
+    handle_loaded_sources({})
     # Pick a Source entry from the state that has a valid path and sourceReference
     chosen = None
     for ref, meta in state.source_references.items():

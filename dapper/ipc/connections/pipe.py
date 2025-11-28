@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from dapper.ipc.connections import ConnectionBase
+from dapper.ipc.connections.base import ConnectionBase
 
 logger = logging.getLogger(__name__)
 traffic_logger = logging.getLogger("dapper.connection.traffic")

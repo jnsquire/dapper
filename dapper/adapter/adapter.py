@@ -8,11 +8,43 @@ import argparse
 import asyncio
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from dapper.adapter.server import DebugAdapterServer
-from dapper.ipc.connections import create_connection
+from dapper.ipc.connections.pipe import NamedPipeServerConnection
+from dapper.ipc.connections.tcp import TCPServerConnection
+
+if TYPE_CHECKING:
+    from dapper.ipc.connections.base import ConnectionBase
 
 logger = logging.getLogger(__name__)
+
+
+async def create_connection(
+    connection_type: str,
+    host: str = "localhost",
+    port: int | None = None,
+    pipe_name: str | None = None,
+) -> ConnectionBase | None:
+    """Factory function to create a connection based on type.
+
+    Args:
+        connection_type: Either "tcp" or "pipe"
+        host: Host to connect to (for TCP connections)
+        port: Port number (for TCP connections)
+        pipe_name: Named pipe name (for pipe connections)
+
+    Returns:
+        A ConnectionBase instance or None if the connection type is unknown.
+    """
+    if connection_type == "tcp":
+        return TCPServerConnection(host=host, port=port or 4711)
+    if connection_type == "pipe":
+        if pipe_name is None:
+            pipe_name = "dapper_debug_pipe"
+        return NamedPipeServerConnection(pipe_name=pipe_name)
+    logger.error("Unknown connection type: %s", connection_type)
+    return None
 
 
 async def start_server(

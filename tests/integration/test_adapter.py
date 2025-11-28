@@ -71,7 +71,7 @@ def mock_debug_server():
 @pytest.mark.asyncio
 async def test_start_server_tcp(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.ipc.connections.tcp.TCPServerConnection") as tcp_cls:
+    with patch("dapper.adapter.adapter.TCPServerConnection") as tcp_cls:
         conn_instance = MagicMock()
         tcp_cls.return_value = conn_instance
 
@@ -94,7 +94,7 @@ async def test_start_server_tcp(mock_debug_server):
 @pytest.mark.asyncio
 async def test_start_server_pipe_custom_name(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.ipc.connections.pipe.NamedPipeServerConnection") as pipe_cls:
+    with patch("dapper.adapter.adapter.NamedPipeServerConnection") as pipe_cls:
         conn_instance = MagicMock()
         pipe_cls.return_value = conn_instance
 
@@ -116,7 +116,7 @@ async def test_start_server_pipe_custom_name(mock_debug_server):
 @pytest.mark.asyncio
 async def test_start_server_pipe_default_name(mock_debug_server):
     server_cls, server_instance = mock_debug_server
-    with patch("dapper.ipc.connections.pipe.NamedPipeServerConnection") as pipe_cls:
+    with patch("dapper.adapter.adapter.NamedPipeServerConnection") as pipe_cls:
         conn_instance = MagicMock()
         pipe_cls.return_value = conn_instance
 
@@ -139,7 +139,7 @@ async def test_start_server_pipe_default_name(mock_debug_server):
 
 @pytest.mark.asyncio
 async def test_start_server_unknown_connection_type():
-    with patch("dapper.ipc.connections.logger") as mock_logger:
+    with patch("dapper.adapter.adapter.logger") as mock_logger:
         await start_server("unknown")
         # adapter uses logger.error with printf-style formatting
         mock_logger.error.assert_called_once_with("Unknown connection type: %s", "unknown")

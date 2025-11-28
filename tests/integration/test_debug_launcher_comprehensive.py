@@ -17,9 +17,9 @@ from typing import cast
 import pytest
 
 from dapper.launcher import debug_launcher
+from dapper.shared import command_handlers as handlers
+from dapper.shared import command_handlers as shared_handlers
 from dapper.shared import debug_shared
-from dapper.shared import launcher_handlers as handlers
-from dapper.shared import launcher_handlers as shared_handlers
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:

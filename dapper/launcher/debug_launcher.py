@@ -23,8 +23,8 @@ from dapper.ipc.ipc_binary import read_exact
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.comm import send_debug_message
 from dapper.launcher.launcher_ipc import connector as default_connector
+from dapper.shared.command_handlers import handle_debug_command
 from dapper.shared.debug_shared import state
-from dapper.shared.launcher_handlers import handle_debug_command
 
 """
 Debug launcher entry point. Delegates to split modules.

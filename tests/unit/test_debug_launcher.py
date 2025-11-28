@@ -15,8 +15,8 @@ import pytest
 # Import the module to test
 from dapper.launcher import debug_launcher as dl
 from dapper.protocol.debugger_protocol import DebuggerLike
+from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
-from dapper.shared import launcher_handlers as handlers
 from dapper.shared.debug_shared import SessionState
 
 
@@ -165,7 +165,7 @@ class TestBreakpointHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.shared.launcher_handlers.send_debug_message")
+    @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
         """Test setting breakpoints."""
         # Setup
@@ -223,7 +223,7 @@ class TestVariableHandling:
         if hasattr(dl.state, "var_refs"):
             dl.state.var_refs.clear()
 
-    @patch("dapper.shared.launcher_handlers.send_debug_message")
+    @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_variables(self, mock_send: MagicMock) -> None:
         """Test variable inspection."""
         # Setup
@@ -279,7 +279,7 @@ class TestVariableHandling:
 class TestExpressionEvaluation:
     """Tests for expression evaluation."""
 
-    @patch("dapper.shared.launcher_handlers.send_debug_message")
+    @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_evaluate(self, mock_send: MagicMock) -> None:
         """Test expression evaluation."""
         # Setup
@@ -341,7 +341,7 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.shared.launcher_handlers.threading") as mock_threading:
+        with patch("dapper.shared.command_handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
@@ -362,7 +362,7 @@ class TestControlFlow:
         mock_dbg = MagicMock(spec=DebuggerLike)
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.shared.launcher_handlers.threading") as mock_threading:
+        with patch("dapper.shared.command_handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
@@ -385,7 +385,7 @@ class TestControlFlow:
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
-        with patch("dapper.shared.launcher_handlers.threading") as mock_threading:
+        with patch("dapper.shared.command_handlers.threading") as mock_threading:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
