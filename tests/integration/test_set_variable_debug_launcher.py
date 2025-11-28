@@ -8,11 +8,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from dapper.launcher.handlers import _convert_string_to_value
-
 # Import the specific functions we want to test
-from dapper.launcher.handlers import handle_set_variable
 from dapper.shared.debug_shared import make_variable_object
+from dapper.shared.launcher_handlers import _convert_string_to_value
+from dapper.shared.launcher_handlers import handle_set_variable
 
 
 class TestSetVariable(unittest.TestCase):

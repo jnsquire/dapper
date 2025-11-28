@@ -17,8 +17,9 @@ from typing import cast
 import pytest
 
 from dapper.launcher import debug_launcher
-from dapper.launcher import handlers
 from dapper.shared import debug_shared
+from dapper.shared import launcher_handlers as handlers
+from dapper.shared import launcher_handlers as shared_handlers
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
@@ -935,46 +936,46 @@ def test_handle_debug_command_exception():
 def test_convert_value_with_context():
     """Test the _convert_value_with_context function."""
     # Test special values
-    assert handlers._convert_value_with_context("None") is None
-    assert handlers._convert_value_with_context("True") is True
-    assert handlers._convert_value_with_context("False") is False
+    assert shared_handlers._convert_value_with_context("None") is None
+    assert shared_handlers._convert_value_with_context("True") is True
+    assert shared_handlers._convert_value_with_context("False") is False
 
     # Test literal evaluation
-    assert handlers._convert_value_with_context("42") == 42
-    assert handlers._convert_value_with_context("3.14") == 3.14
-    assert handlers._convert_value_with_context("'hello'") == "hello"
-    assert handlers._convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
+    assert shared_handlers._convert_value_with_context("42") == 42
+    assert shared_handlers._convert_value_with_context("3.14") == 3.14
+    assert shared_handlers._convert_value_with_context("'hello'") == "hello"
+    assert shared_handlers._convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
 
     # Test with frame context
     frame = MockFrame(_locals={"x": 10}, _globals={"PI": 3.14159})
 
-    result = handlers._convert_value_with_context("x * 2", frame)
+    result = shared_handlers._convert_value_with_context("x * 2", frame)
     assert result == 20
 
-    result = handlers._convert_value_with_context("PI", frame)
+    result = shared_handlers._convert_value_with_context("PI", frame)
     assert result == 3.14159
 
     # Test with parent object for type inference
     parent_list = [1, 2, 3]
-    result = handlers._convert_value_with_context("42", None, parent_list)
+    result = shared_handlers._convert_value_with_context("42", None, parent_list)
     assert result == 42  # Should convert to int to match list element type
 
     parent_dict = {"key": "value"}
-    result = handlers._convert_value_with_context("new", None, parent_dict)
+    result = shared_handlers._convert_value_with_context("new", None, parent_dict)
     assert result == "new"  # Should convert to str to match dict value type
 
     # Test fallback to string
-    result = handlers._convert_value_with_context("invalid python code")
+    result = shared_handlers._convert_value_with_context("invalid python code")
     assert result == "invalid python code"
 
 
 def test_convert_string_to_value():
     """Test the legacy _convert_string_to_value function."""
     # This should delegate to _convert_value_with_context
-    result = handlers._convert_string_to_value("42")
+    result = shared_handlers._convert_string_to_value("42")
     assert result == 42
 
-    result = handlers._convert_string_to_value("hello")
+    result = shared_handlers._convert_string_to_value("hello")
     assert result == "hello"
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from queue import Queue
 from typing import TYPE_CHECKING
 
-from dapper.launcher import handlers
 from dapper.shared import debug_shared
+from dapper.shared import launcher_handlers as handlers
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:

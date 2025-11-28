@@ -131,12 +131,7 @@ def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any |
 
 
 def _get_threading_module() -> Any:
-    """Return the threading module, preferring the launcher shim when available."""
-    mod = sys.modules.get("dapper.launcher.handlers")
-    if mod is not None:
-        thread_mod = getattr(mod, "threading", None)
-        if thread_mod is not None:
-            return thread_mod
+    """Return the threading module used for thread identification."""
     return threading
 
 

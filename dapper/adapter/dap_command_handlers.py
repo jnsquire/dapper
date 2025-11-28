@@ -4,7 +4,6 @@ DAP command handler functions for debug launcher.
 
 from __future__ import annotations
 
-import ast
 import linecache
 import mimetypes
 import sys
@@ -21,6 +20,7 @@ from dapper.shared import debug_shared as _ds
 from dapper.shared.debug_shared import VAR_REF_TUPLE_SIZE
 from dapper.shared.debug_shared import send_debug_message
 from dapper.shared.debug_shared import state
+from dapper.shared.launcher_handlers import _convert_value_with_context
 
 # small constant to make argcount checks clearer / lint-friendly
 _SIMPLE_MAKE_VAR_ARGCOUNT = 2
@@ -412,36 +412,6 @@ def _set_object_member(parent_obj, name, value):
             "success": False,
             "message": f"Failed to set object member '{name}': {e!s}",
         }
-
-
-def _convert_value_with_context(value_str: str, frame=None, parent_obj=None):
-    value_str = value_str.strip()
-    if value_str.lower() == "none":
-        return None
-    if value_str.lower() in ("true", "false"):
-        return value_str.lower() == "true"
-    try:
-        return ast.literal_eval(value_str)
-    except (ValueError, SyntaxError):
-        pass
-    if frame is not None:
-        try:
-            return eval(value_str, frame.f_globals, frame.f_locals)
-        except Exception:
-            pass
-    if parent_obj is not None:
-        try:
-            target_type = None
-            if isinstance(parent_obj, list) and len(parent_obj) > 0:
-                target_type = type(parent_obj[0])
-            elif isinstance(parent_obj, dict) and parent_obj:
-                sample_value = next(iter(parent_obj.values()))
-                target_type = type(sample_value)
-            if target_type in (int, float, bool, str):
-                return target_type(value_str)
-        except (ValueError, TypeError):
-            pass
-    return value_str
 
 
 # The canonical helper for creating Variable-shaped dicts is provided in

@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.adapter.types import DAPRequest
-from dapper.adapter.types import DAPResponse
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
@@ -26,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from dapper.adapter.server import DebugAdapterServer
+    from dapper.adapter.types import DAPRequest
+    from dapper.adapter.types import DAPResponse
     from dapper.protocol.protocol_types import AttachRequest
     from dapper.protocol.protocol_types import ConfigurationDoneRequest
     from dapper.protocol.protocol_types import ContinueRequest
