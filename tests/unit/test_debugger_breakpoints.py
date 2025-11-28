@@ -1,8 +1,14 @@
 import unittest
+from typing import TYPE_CHECKING
+from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from dapper.protocol.protocol_types import FunctionBreakpoint
+    from dapper.protocol.protocol_types import SourceBreakpoint
 
 from .test_debugger_base import BaseDebuggerTest
 
@@ -53,16 +59,19 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
     async def test_set_breakpoints_no_path(self):
         """Test set_breakpoints with source that has no path"""
         source = {"name": "test.py"}  # No path provided
-        breakpoints = [{"line": 10}, {"line": 20}]
+        breakpoints: list[SourceBreakpoint] = [
+            cast("SourceBreakpoint", {"line": 10}),
+            cast("SourceBreakpoint", {"line": 20}),
+        ]
 
         result = await self.debugger.set_breakpoints(source, breakpoints)
 
         # Should return unverified breakpoints with error message
         assert len(result) == 2
-        assert not result[0]["verified"]
-        assert result[0]["message"] == "Source path is required"
-        assert not result[1]["verified"]
-        assert result[1]["message"] == "Source path is required"
+        assert not result[0].get("verified")
+        assert result[0].get("message") == "Source path is required"
+        assert not result[1].get("verified")
+        assert result[1].get("message") == "Source path is required"
 
     async def test_set_breakpoints_with_valid_path(self):
         """Test set_breakpoints with valid path and breakpoint setting"""
@@ -71,7 +80,10 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
         self.debugger.is_terminated = False
 
         source = {"path": "/test/file.py"}
-        breakpoints = [{"line": 10}, {"line": 20}]
+        breakpoints: list[SourceBreakpoint] = [
+            cast("SourceBreakpoint", {"line": 10}),
+            cast("SourceBreakpoint", {"line": 20}),
+        ]
 
         # Mock the command sending
         with patch.object(
@@ -91,19 +103,22 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
 
             # Should return verified breakpoints
             assert len(result) == 2
-            assert result[0]["verified"]
-            assert result[1]["verified"]
+            assert result[0].get("verified")
+            assert result[1].get("verified")
 
     async def test_set_function_breakpoints(self):
         """Test setting function breakpoints"""
-        breakpoints = [{"name": "main"}, {"name": "helper"}]
+        breakpoints: list[FunctionBreakpoint] = [
+            cast("FunctionBreakpoint", {"name": "main"}),
+            cast("FunctionBreakpoint", {"name": "helper"}),
+        ]
 
         result = await self.debugger.set_function_breakpoints(breakpoints)
 
         # Should return breakpoints with verified status
         assert len(result) == 2
-        assert result[0]["verified"]
-        assert result[1]["verified"]
+        assert result[0].get("verified")
+        assert result[1].get("verified")
 
     async def test_set_exception_breakpoints(self):
         """Test setting exception breakpoints"""

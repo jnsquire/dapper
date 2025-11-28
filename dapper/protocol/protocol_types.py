@@ -238,11 +238,32 @@ class DataBreakpointInfoArguments(TypedDict, total=False):  # type: ignore[misc]
     frameId: int
 
 
+class DataBreakpointInfoRequest(TypedDict):
+    """Obtains information on a possible data breakpoint."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["dataBreakpointInfo"]
+    arguments: DataBreakpointInfoArguments
+
+
 class DataBreakpointInfoResponseBody(TypedDict, total=False):  # type: ignore[misc]
     dataId: str | None  # Opaque ID used in setDataBreakpoints
     description: str
     accessTypes: list[str]  # Supported access types (currently only ['write'])
     canPersist: bool
+
+
+class DataBreakpointInfoResponse(TypedDict):
+    """Response to 'dataBreakpointInfo' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["dataBreakpointInfo"]
+    message: NotRequired[str]
+    body: NotRequired[DataBreakpointInfoResponseBody]
 
 
 class SetDataBreakpointsArguments(TypedDict):  # type: ignore[misc]
@@ -255,8 +276,29 @@ class SetDataBreakpointsArguments(TypedDict):  # type: ignore[misc]
     breakpoints: list[dict[str, Any]]
 
 
+class SetDataBreakpointsRequest(TypedDict):
+    """Replaces all existing data breakpoints with new data breakpoints."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["setDataBreakpoints"]
+    arguments: SetDataBreakpointsArguments
+
+
 class SetDataBreakpointsResponseBody(TypedDict):  # type: ignore[misc]
     breakpoints: list[Breakpoint]
+
+
+class SetDataBreakpointsResponse(TypedDict):
+    """Response to 'setDataBreakpoints' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setDataBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[SetDataBreakpointsResponseBody]
 
 
 # Source related types
@@ -1146,11 +1188,58 @@ class SetExceptionBreakpointsResponse(TypedDict):
     body: NotRequired[SetExceptionBreakpointsResponseBody]
 
 
-# Pause Request
+# Pause Request and Response
 class PauseArguments(TypedDict):
     """Arguments for 'pause' request."""
 
     threadId: int  # Pause execution for this thread
+
+
+class PauseRequest(TypedDict):
+    """The request suspends the debuggee."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["pause"]
+    arguments: PauseArguments
+
+
+class PauseResponse(TypedDict):
+    """Response to 'pause' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["pause"]
+    message: NotRequired[str]
+
+
+# Restart Request and Response
+class RestartArguments(TypedDict):
+    """Arguments for 'restart' request."""
+
+    arguments: NotRequired[dict[str, Any]]  # Optional arguments for restarting
+
+
+class RestartRequest(TypedDict):
+    """Restarts a debug session."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["restart"]
+    arguments: NotRequired[RestartArguments]
+
+
+class RestartResponse(TypedDict):
+    """Response to 'restart' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["restart"]
+    message: NotRequired[str]
 
 
 class LoadedSourcesArguments(TypedDict):
@@ -1178,6 +1267,63 @@ class LegacySourceArguments(TypedDict):
 
     sourceReference: int
     path: NotRequired[str]
+
+
+class SourceRequest(TypedDict):
+    """The request retrieves the source code for a given source reference."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["source"]
+    arguments: SourceArguments
+
+
+class SourceResponseBody(TypedDict):
+    """Body of 'source' response."""
+
+    content: str  # Content of the source reference
+    mimeType: NotRequired[str]  # Mime type of the source
+
+
+class SourceResponse(TypedDict):
+    """Response to 'source' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["source"]
+    message: NotRequired[str]
+    body: NotRequired[SourceResponseBody]
+
+
+# ModuleSource Request and Response (non-standard extension)
+class ModuleSourceArguments(TypedDict):
+    """Arguments for 'moduleSource' request."""
+
+    moduleId: NotRequired[str | int]  # The module id to get source for
+    module: NotRequired[str]  # Alternative: module name
+
+
+class ModuleSourceRequest(TypedDict):
+    """The request retrieves source code for a given module."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["moduleSource"]
+    arguments: ModuleSourceArguments
+
+
+class ModuleSourceResponse(TypedDict):
+    """Response to 'moduleSource' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["moduleSource"]
+    message: NotRequired[str]
+    body: NotRequired[SourceResponseBody]
 
 
 class ModulesArguments(TypedDict):
@@ -1210,6 +1356,8 @@ class Module(TypedDict):
 class ModulesRequest(TypedDict):
     """The request retrieves a list of all loaded modules."""
 
+    seq: int
+    type: Literal["request"]
     command: Literal["modules"]
     arguments: NotRequired[ModulesArguments]
 
@@ -1222,7 +1370,13 @@ class ModulesResponseBody(TypedDict):
 class ModulesResponse(TypedDict):
     """Response to 'modules' request."""
 
-    body: ModulesResponseBody
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["modules"]
+    message: NotRequired[str]
+    body: NotRequired[ModulesResponseBody]
 
 
 # Event types

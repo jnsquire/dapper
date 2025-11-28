@@ -26,7 +26,33 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from dapper.adapter.server import DebugAdapterServer
+    from dapper.protocol.protocol_types import AttachRequest
+    from dapper.protocol.protocol_types import ConfigurationDoneRequest
+    from dapper.protocol.protocol_types import ContinueRequest
+    from dapper.protocol.protocol_types import DataBreakpointInfoRequest
+    from dapper.protocol.protocol_types import DisconnectRequest
+    from dapper.protocol.protocol_types import EvaluateRequest
     from dapper.protocol.protocol_types import ExceptionInfoRequest
+    from dapper.protocol.protocol_types import InitializeRequest
+    from dapper.protocol.protocol_types import LaunchRequest
+    from dapper.protocol.protocol_types import LoadedSourcesRequest
+    from dapper.protocol.protocol_types import ModuleSourceRequest
+    from dapper.protocol.protocol_types import ModulesRequest
+    from dapper.protocol.protocol_types import NextRequest
+    from dapper.protocol.protocol_types import PauseRequest
+    from dapper.protocol.protocol_types import RestartRequest
+    from dapper.protocol.protocol_types import ScopesRequest
+    from dapper.protocol.protocol_types import SetBreakpointsRequest
+    from dapper.protocol.protocol_types import SetDataBreakpointsRequest
+    from dapper.protocol.protocol_types import SetFunctionBreakpointsRequest
+    from dapper.protocol.protocol_types import SetVariableRequest
+    from dapper.protocol.protocol_types import SourceRequest
+    from dapper.protocol.protocol_types import StackTraceRequest
+    from dapper.protocol.protocol_types import StepInRequest
+    from dapper.protocol.protocol_types import StepOutRequest
+    from dapper.protocol.protocol_types import TerminateRequest
+    from dapper.protocol.protocol_types import ThreadsRequest
+    from dapper.protocol.protocol_types import VariablesRequest
 
 # Re-export for type checking - these are used in method signatures/bodies
 __all__ = ["RequestHandler"]
@@ -66,7 +92,7 @@ class RequestHandler:
             "message": f"Unsupported command: {request['command']}",
         }
 
-    async def _handle_initialize(self, request: DAPRequest) -> None:
+    async def _handle_initialize(self, request: InitializeRequest) -> None:
         """Handle initialize request."""
         # Directly send the response for initialize
         response = {
@@ -117,7 +143,7 @@ class RequestHandler:
         # Send the initialized event
         await self.server.send_event("initialized")
 
-    async def _handle_launch(self, request: DAPRequest) -> DAPResponse:
+    async def _handle_launch(self, request: LaunchRequest) -> dict[str, Any]:
         """Handle launch request."""
         args = request.get("arguments", {})
         program = args.get("program")
@@ -165,7 +191,7 @@ class RequestHandler:
             "command": "launch",
         }
 
-    async def _handle_attach(self, request: DAPRequest) -> DAPResponse:
+    async def _handle_attach(self, request: AttachRequest) -> dict[str, Any]:
         """Handle attach request.
 
         Attach connects to an existing debuggee via IPC endpoint.
@@ -207,7 +233,7 @@ class RequestHandler:
             "command": "attach",
         }
 
-    async def _handle_set_breakpoints(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_set_breakpoints(self, request: SetBreakpointsRequest) -> dict[str, Any]:
         """Handle setBreakpoints request."""
         args = request.get("arguments", {})
         source = args.get("source", {})
@@ -224,7 +250,9 @@ class RequestHandler:
             "body": {"breakpoints": verified_breakpoints},
         }
 
-    async def _handle_set_function_breakpoints(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_set_function_breakpoints(
+        self, request: SetFunctionBreakpointsRequest
+    ) -> dict[str, Any]:
         """Handle setFunctionBreakpoints request.
 
         This replaces all existing function breakpoints with the provided set,
@@ -243,7 +271,7 @@ class RequestHandler:
             "body": {"breakpoints": verified},
         }
 
-    async def _handle_continue(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_continue(self, request: ContinueRequest) -> dict[str, Any]:
         """Handle continue request."""
         thread_id = request["arguments"]["threadId"]
         continued = await self.server.debugger.continue_execution(thread_id)
@@ -255,7 +283,7 @@ class RequestHandler:
             "body": {"allThreadsContinued": continued},
         }
 
-    async def _handle_next(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_next(self, request: NextRequest) -> dict[str, Any]:
         """Handle next request."""
         thread_id = request["arguments"]["threadId"]
         # Map DAP 'next' to debugger.step_over when available for tests,
@@ -272,7 +300,7 @@ class RequestHandler:
             "command": "next",
         }
 
-    async def _handle_step_in(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_step_in(self, request: StepInRequest) -> dict[str, Any]:
         """Handle stepIn request."""
         args = request["arguments"]
         thread_id = args["threadId"]
@@ -290,7 +318,7 @@ class RequestHandler:
             "command": "stepIn",
         }
 
-    async def _handle_step_out(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_step_out(self, request: StepOutRequest) -> dict[str, Any]:
         """Handle stepOut request."""
         thread_id = request["arguments"]["threadId"]
         await self.server.debugger.step_out(thread_id)
@@ -301,7 +329,7 @@ class RequestHandler:
             "command": "stepOut",
         }
 
-    async def _handle_pause(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_pause(self, request: PauseRequest) -> dict[str, Any]:
         """Handle pause request by delegating to the debugger.pause method.
 
         Accepts an optional `threadId` argument per the DAP spec.
@@ -329,7 +357,7 @@ class RequestHandler:
                 "message": f"Pause failed: {e!s}",
             }
 
-    async def _handle_disconnect(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_disconnect(self, request: DisconnectRequest) -> dict[str, Any]:
         """Handle disconnect request."""
         await self.server.debugger.shutdown()
         return {
@@ -339,7 +367,7 @@ class RequestHandler:
             "command": "disconnect",
         }
 
-    async def _handle_terminate(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_terminate(self, request: TerminateRequest) -> dict[str, Any]:
         """Handle terminate request - force terminate the debugged program."""
         try:
             await self.server.debugger.terminate()
@@ -359,7 +387,7 @@ class RequestHandler:
                 "message": f"Terminate failed: {e!s}",
             }
 
-    async def _handle_restart(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_restart(self, request: RestartRequest) -> dict[str, Any]:
         """Handle restart request.
 
         Semantics: terminate current debuggee and emit a terminated event with
@@ -386,7 +414,7 @@ class RequestHandler:
             }
 
     async def _handle_configurationDone(  # noqa: N802
-        self, request: dict[str, Any]
+        self, request: ConfigurationDoneRequest
     ) -> dict[str, Any]:
         """Handle configurationDone request."""
         try:
@@ -410,7 +438,7 @@ class RequestHandler:
                 "message": f"Configuration done failed: {e!s}",
             }
 
-    async def _handle_threads(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_threads(self, request: ThreadsRequest) -> dict[str, Any]:
         """Handle threads request."""
         threads = await self.server.debugger.get_threads()
         return {
@@ -421,7 +449,7 @@ class RequestHandler:
             "body": {"threads": threads},
         }
 
-    async def _handle_loaded_sources(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_loaded_sources(self, request: LoadedSourcesRequest) -> dict[str, Any]:
         """Handle loadedSources request."""
         loaded_sources = await self.server.debugger.get_loaded_sources()
         return {
@@ -513,7 +541,7 @@ class RequestHandler:
             return "text/plain; charset=utf-8"
         return None
 
-    async def _handle_source(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_source(self, request: SourceRequest) -> dict[str, Any]:
         """Handle source request: return source content by path or sourceReference.
 
         This mirrors the behavior of the module-level handler in
@@ -556,7 +584,7 @@ class RequestHandler:
             "body": body,
         }
 
-    async def _handle_module_source(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_module_source(self, request: ModuleSourceRequest) -> dict[str, Any]:
         """Handle moduleSource request: return source content for a given module id.
 
         The server's `modules` response uses stringified id(module) as the
@@ -631,7 +659,7 @@ class RequestHandler:
             "body": body,
         }
 
-    async def _handle_modules(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_modules(self, request: ModulesRequest) -> dict[str, Any]:
         """Handle modules request."""
         args = request.get("arguments", {})
         start_module = args.get("startModule", 0)
@@ -655,7 +683,7 @@ class RequestHandler:
             "body": {"modules": modules, "totalModules": len(all_modules)},
         }
 
-    async def _handle_stack_trace(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_stack_trace(self, request: StackTraceRequest) -> dict[str, Any]:
         """Handle stackTrace request."""
         args = request["arguments"]
         thread_id = args["threadId"]
@@ -673,7 +701,7 @@ class RequestHandler:
             },
         }
 
-    async def _handle_scopes(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_scopes(self, request: ScopesRequest) -> dict[str, Any]:
         """Handle scopes request."""
         frame_id = request["arguments"]["frameId"]
         scopes = await self.server.debugger.get_scopes(frame_id)
@@ -685,7 +713,7 @@ class RequestHandler:
             "body": {"scopes": scopes},
         }
 
-    async def _handle_variables(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_variables(self, request: VariablesRequest) -> dict[str, Any]:
         """Handle variables request."""
         args = request["arguments"]
         variables_reference = args["variablesReference"]
@@ -704,7 +732,7 @@ class RequestHandler:
         }
 
     async def _handle_setVariable(  # noqa: N802
-        self, request: dict[str, Any]
+        self, request: SetVariableRequest
     ) -> dict[str, Any]:
         """Handle setVariable request."""
         try:
@@ -732,7 +760,7 @@ class RequestHandler:
                 "message": f"Set variable failed: {e!s}",
             }
 
-    async def _handle_evaluate(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def _handle_evaluate(self, request: EvaluateRequest) -> dict[str, Any]:
         """Handle evaluate request."""
         args = request["arguments"]
         expression = args["expression"]
@@ -747,7 +775,9 @@ class RequestHandler:
             "body": result,
         }
 
-    async def _handle_dataBreakpointInfo(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+    async def _handle_dataBreakpointInfo(  # noqa: N802
+        self, request: DataBreakpointInfoRequest
+    ) -> dict[str, Any]:
         """Handle dataBreakpointInfo request (subset: variable name + frameId)."""
         args = request.get("arguments", {})
         name = args.get("name")
@@ -769,7 +799,9 @@ class RequestHandler:
             "body": body,
         }
 
-    async def _handle_setDataBreakpoints(self, request: dict[str, Any]) -> dict[str, Any]:  # noqa: N802
+    async def _handle_setDataBreakpoints(  # noqa: N802
+        self, request: SetDataBreakpointsRequest
+    ) -> dict[str, Any]:
         """Handle setDataBreakpoints request (full replace)."""
         args = request.get("arguments", {})
         bps = args.get("breakpoints", [])

@@ -1186,7 +1186,7 @@ class PyDebugger:
             logger.debug("Failed to forward breakpoint events")
 
     async def set_function_breakpoints(
-        self, breakpoints: list[dict[str, Any]]
+        self, breakpoints: list[FunctionBreakpoint]
     ) -> list[FunctionBreakpoint]:
         """Set breakpoints for functions"""
         spec_funcs: list[FunctionBreakpoint] = []

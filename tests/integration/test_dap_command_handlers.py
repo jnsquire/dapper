@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     from dapper.protocol.protocol_types import ExceptionInfoArguments
 
     # DAP argument shapes used by handlers (only for type-checking)
-    from dapper.protocol_types import SetBreakpointsArguments
-    from dapper.protocol_types import SetExceptionBreakpointsArguments
-    from dapper.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.protocol_types import SetBreakpointsArguments
+    from dapper.protocol.protocol_types import SetExceptionBreakpointsArguments
+    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
 
 
 def test_convert_value_with_context_literal_and_bool_and_none():
