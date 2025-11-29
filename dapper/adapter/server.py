@@ -747,72 +747,33 @@ class PyDebugger:
     # IPC helper methods
     # ------------------------------------------------------------------
     def enable_ipc_pipe_connection(self, conn: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-connected pipe connection.
-
-        This centralizes the common assignments previously performed by
-        callers which mutated the IPCContext directly (pipe_conn, binary,
-        enabled, pipe_listener).
-        """
-        # Preserve any previously-registered listener so disable_ipc/cleanup
-        # can close it. Tests expect the listener.close() to be called during
-        # cleanup even when a connection is active.
-        self.ipc.pipe_conn = conn
-        self.ipc.binary = bool(binary)
-        self.ipc.enabled = True
+        """Enable IPC using an already-connected pipe connection."""
+        self.ipc.enable_pipe_connection(conn, binary=binary)
 
     def enable_ipc_socket_from_connected(self, sock: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-connected socket.
-
-        This will populate rfile/wfile appropriately for text or binary
-        transports and mark the IPC context enabled.
-        """
-        self.ipc.sock = sock
-        if binary:
-            # binary sockets use buffering=0 for raw bytes
-            self.ipc.rfile = sock.makefile("rb", buffering=0)  # type: ignore[arg-type]
-            self.ipc.wfile = sock.makefile("wb", buffering=0)  # type: ignore[arg-type]
-        else:
-            self.ipc.rfile = sock.makefile("r", encoding="utf-8", newline="")
-            self.ipc.wfile = sock.makefile("w", encoding="utf-8", newline="")
-        self.ipc.binary = bool(binary)
-        self.ipc.enabled = True
+        """Enable IPC using an already-connected socket."""
+        self.ipc.enable_socket_from_connected(sock, binary=binary)
 
     def set_ipc_pipe_listener(self, listener: Any) -> None:
         """Register a pipe listener that will accept a single connection later."""
-        self.ipc.pipe_listener = listener
+        self.ipc.set_pipe_listener(listener)
 
     def set_ipc_listen_socket(self, listen_sock: Any, unix_path: Any | None = None) -> None:
         """Register a listening socket that will accept a single connection later."""
-        self.ipc.listen_sock = listen_sock
-        if unix_path is not None:
-            self.ipc.unix_path = unix_path
+        self.ipc.set_listen_socket(listen_sock, unix_path)
 
     def set_ipc_binary(self, binary: bool) -> None:
         """Set the binary flag on the IPC context without enabling or disabling."""
-        self.ipc.binary = bool(binary)
+        self.ipc.set_binary(binary)
 
     def enable_ipc_wfile(self, wfile: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-created writer file-like object.
-
-        This is a small helper used by tests to simulate an outgoing text/binary
-        channel without creating full socket/pipe objects. It centralizes the
-        common assignments so tests don't write into ``.ipc`` directly.
-        """
-        # Clear any listening/connection handles; this represents a connected
-        # writer-only transport for tests.
-        self.ipc.pipe_conn = None
-        self.ipc.pipe_listener = None
-        self.ipc.sock = None
-        self.ipc.rfile = None
-        self.ipc.wfile = wfile
-        self.ipc.binary = bool(binary)
-        self.ipc.enabled = True
+        """Enable IPC using an already-created writer file-like object."""
+        self.ipc.enable_wfile(wfile, binary=binary)
 
     def disable_ipc(self) -> None:
         """Disable IPC and perform cleanup via the IPCContext helper."""
         try:
-            self.ipc.enabled = False
-            self.ipc.cleanup()
+            self.ipc.disable()
         except Exception:
             logger.exception("error disabling ipc")
 
