@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 
     from dapper.protocol.capabilities import Capabilities
 
-    # debugger_protocol types used when structuring certain response bodies
+    from dapper.protocol.capabilities import ExceptionBreakpointsFilter
+    from dapper.protocol.capabilities import ExceptionFilterOptions
+    from dapper.protocol.capabilities import ExceptionOptions
     from dapper.protocol.debugger_protocol import ExceptionDetails
     from dapper.protocol.structures import Breakpoint
     from dapper.protocol.structures import Scope
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
     from dapper.protocol.structures import StackFrame
     from dapper.protocol.structures import Thread
     from dapper.protocol.structures import Variable
+    from dapper.protocol.structures import VariablePresentationHint
 
 
 # Initialize Request and Response
@@ -246,7 +249,7 @@ class SetBreakpointsResponse(TypedDict):
 
 # SetFunctionBreakpoints
 class SetFunctionBreakpointsArguments(TypedDict):
-    breakpoints: list[dict[str, Any]]
+    breakpoints: list[FunctionBreakpoint]
 
 
 class SetFunctionBreakpointsResponseBody(TypedDict):
@@ -257,6 +260,7 @@ class FunctionBreakpoint(TypedDict, total=False):
     name: str
     condition: NotRequired[str]
     hitCondition: NotRequired[str]
+    verified: NotRequired[bool]
 
 
 # Evaluate
@@ -270,7 +274,7 @@ class EvaluateResponseBody(TypedDict, total=False):
     result: str
     type: NotRequired[str]
     variablesReference: NotRequired[int]
-    presentationHint: NotRequired[dict[str, Any]]
+    presentationHint: NotRequired[VariablePresentationHint]
     namedVariables: NotRequired[int]
     indexedVariables: NotRequired[int]
     memoryReference: NotRequired[str]
@@ -488,15 +492,20 @@ class ModulesResponse(TypedDict):
     body: NotRequired[ModulesResponseBody]
 
 
+class ModuleSourceArguments(TypedDict):
+    module_id: str
+
+
 class ModuleSourceRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["moduleSource"]
-    arguments: dict[str, Any]
+    arguments: ModuleSourceArguments
 
 
 class ModuleSourceResponseBody(TypedDict):
-    source: Source
+    content: str
+    mimeType: NotRequired[str]
 
 
 class ModuleSourceResponse(TypedDict):
@@ -526,12 +535,19 @@ class StackTraceResponseBody(TypedDict):
     totalFrames: NotRequired[int]
 
 
+class StackTraceArguments(TypedDict):
+    threadId: int
+    startFrame: NotRequired[int]
+    levels: NotRequired[int]
+    format: NotRequired[str]
+
+
 # StackTrace requests
 class StackTraceRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["stackTrace"]
-    arguments: dict[str, Any]
+    arguments: StackTraceArguments
 
 
 class StackTraceResponse(TypedDict):
@@ -544,12 +560,19 @@ class StackTraceResponse(TypedDict):
     body: NotRequired[StackTraceResponseBody]
 
 
+class VariablesArguments(TypedDict):
+    variablesReference: int
+    filter: NotRequired[str]
+    start: NotRequired[int]
+    count: NotRequired[int]
+
+
 # Variables
 class VariablesRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["variables"]
-    arguments: dict[str, Any]
+    arguments: VariablesArguments
 
 
 class VariablesResponse(TypedDict):
@@ -562,12 +585,16 @@ class VariablesResponse(TypedDict):
     body: NotRequired[VariablesResponseBody]
 
 
+class ScopesArguments(TypedDict):
+    frameId: int
+
+
 # Scopes
 class ScopesRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["scopes"]
-    arguments: dict[str, Any]
+    arguments: ScopesArguments
 
 
 class ScopesResponseBody(TypedDict):
@@ -584,12 +611,19 @@ class ScopesResponse(TypedDict):
     body: NotRequired[ScopesResponseBody]
 
 
+class SetVariableArguments(TypedDict):
+    variablesReference: int
+    name: str
+    value: str
+    format: NotRequired[str]
+
+
 # SetVariable
 class SetVariableRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["setVariable"]
-    arguments: dict[str, Any]
+    arguments: SetVariableArguments
 
 
 class SetVariableResponse(TypedDict):
@@ -602,12 +636,17 @@ class SetVariableResponse(TypedDict):
     body: NotRequired[SetVariableResponseBody]
 
 
+class SourceArguments(TypedDict):
+    source: NotRequired[Source]
+    sourceReference: NotRequired[int]
+
+
 # Source request/response
 class SourceRequest(TypedDict):
     seq: int
     type: Literal["request"]
     command: Literal["source"]
-    arguments: dict[str, Any]
+    arguments: SourceArguments
 
 
 class SourceResponseBody(TypedDict):
@@ -633,14 +672,14 @@ class SetExceptionBreakpointsResponse(TypedDict):
     success: bool
     command: Literal["setExceptionBreakpoints"]
     message: NotRequired[str]
-    body: NotRequired[list[dict[str, Any]]]
+    body: NotRequired[list[ExceptionBreakpointsFilter]]
 
 
 # Arguments for setExceptionBreakpoints
 class SetExceptionBreakpointsArguments(TypedDict):
     filters: list[str]
-    filterOptions: NotRequired[list[dict[str, Any]]]
-    exceptionOptions: NotRequired[list[dict[str, Any]]]
+    filterOptions: NotRequired[list[ExceptionFilterOptions]]
+    exceptionOptions: NotRequired[list[ExceptionOptions]]
 
 
 # Exception info request/response wrappers

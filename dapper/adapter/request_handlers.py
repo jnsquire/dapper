@@ -17,6 +17,10 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.config import DapperConfig
+from dapper.errors import ConfigurationError
+from dapper.errors import IPCError
+from dapper.errors import create_dap_response
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
@@ -54,6 +58,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import Module
     from dapper.protocol.requests import ModuleSourceRequest
     from dapper.protocol.requests import ModuleSourceResponse
+    from dapper.protocol.requests import ModuleSourceResponseBody
     from dapper.protocol.requests import ModulesRequest
     from dapper.protocol.requests import ModulesResponse
     from dapper.protocol.requests import NextRequest
@@ -184,45 +189,16 @@ class RequestHandler:
 
     async def _handle_launch(self, request: LaunchRequest) -> LaunchResponse:
         """Handle launch request."""
-        args = request.get("arguments", {})
-        program = args.get("program")
-        if not program:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "launch",
-                "message": "Missing required argument 'program'.",
-            }
+        try:
+            config = DapperConfig.from_launch_request(request)
+            config.validate()
+        except ConfigurationError as e:
+            return cast("LaunchResponse", create_dap_response(e, request["seq"], "launch"))
 
-        program_args = args.get("args", [])
-        stop_on_entry = args.get("stopOnEntry", False)
-        no_debug = args.get("noDebug", False)
-        in_process = args.get("inProcess", False)
-        # useBinaryIpc defaults to True; IPC is always enabled
-        use_binary_ipc = args.get("useBinaryIpc", True)
-        # Optional IPC transport details
-        ipc_transport = args.get("ipcTransport")
-        ipc_pipe_name = args.get("ipcPipeName")
-
-        # Build launch kwargs - IPC is always enabled
-        launch_kwargs: dict[str, Any] = {}
-        if in_process:
-            launch_kwargs["in_process"] = True
-        if ipc_transport is not None:
-            launch_kwargs["ipc_transport"] = ipc_transport
-        if ipc_pipe_name is not None:
-            launch_kwargs["ipc_pipe_name"] = ipc_pipe_name
-        launch_kwargs["use_binary_ipc"] = use_binary_ipc
-
-        await self.server.debugger.launch(
-            program,
-            program_args,
-            stop_on_entry,
-            no_debug,
-            **launch_kwargs,
-        )
+        try:
+            await self.server.debugger.launch(**config.to_launch_kwargs())
+        except Exception as e:
+            return cast("LaunchResponse", create_dap_response(e, request["seq"], "launch"))
 
         return {
             "seq": 0,
@@ -240,33 +216,26 @@ class RequestHandler:
         (transport + host/port or path or pipe name).
         IPC is always required for attach.
         """
-        args = request.get("arguments", {})
-
-        ipc_transport = args.get("ipcTransport")
-        ipc_host = args.get("ipcHost")
-        ipc_port = args.get("ipcPort")
-        ipc_path = args.get("ipcPath")
-        ipc_pipe_name = args.get("ipcPipeName")
+        try:
+            config = DapperConfig.from_attach_request(request)
+            config.validate()
+        except ConfigurationError as e:
+            return cast("AttachResponse", create_dap_response(e, request["seq"], "attach"))
 
         try:
-            await self.server.debugger.attach(
-                use_ipc=True,  # IPC is always required
-                ipc_transport=ipc_transport,
-                ipc_host=ipc_host,
-                ipc_port=ipc_port,
-                ipc_path=ipc_path,
-                ipc_pipe_name=ipc_pipe_name,
-            )
-        except Exception as e:  # pragma: no cover - exercised by error tests
-            logger.exception("attach failed")
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "attach",
-                "message": f"Attach failed: {e!s}",
-            }
+            await self.server.debugger.attach(**config.to_attach_kwargs())
+        except Exception as e:
+            # Wrap IPC-related errors for better context
+            if "connection" in str(e).lower() or "pipe" in str(e).lower() or "socket" in str(e).lower():
+                ipc_error = IPCError(
+                    f"Failed to connect to debuggee: {e!s}",
+                    transport=config.ipc.transport,
+                    endpoint=f"{config.ipc.host}:{config.ipc.port}" if config.ipc.transport == "tcp" else config.ipc.path or config.ipc.pipe_name,
+                    cause=e,
+                )
+                return cast("AttachResponse", create_dap_response(ipc_error, request["seq"], "attach"))
+            
+            return cast("AttachResponse", create_dap_response(e, request["seq"], "attach"))
 
         return {
             "seq": 0,
@@ -722,13 +691,14 @@ class RequestHandler:
                 "message": f"Failed to read module source: {e!s}",
             }
 
+        body: ModuleSourceResponseBody = {"content": content}
         return {
             "seq": 0,
             "type": "response",
             "request_seq": request["seq"],
             "success": True,
             "command": "moduleSource",
-            "body": {"content": content},
+            "body": body,
         }
 
     async def _handle_modules(self, request: ModulesRequest) -> ModulesResponse:

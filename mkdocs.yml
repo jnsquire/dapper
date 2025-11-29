@@ -11,3 +11,4 @@ nav:
   - Home: README.md
   - Reference:
       - Message Flows: reference/message_flows.md
+      - Debug Adapter Operational Modes: debug_adapter_operational_modes.md

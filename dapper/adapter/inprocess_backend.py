@@ -72,8 +72,8 @@ class InProcessBackend:
     async def set_exception_breakpoints(
         self,
         filters: list[str],
-        _filter_options: list[dict[str, Any]] | None = None,
-        _exception_options: list[dict[str, Any]] | None = None,
+        filter_options: list[dict[str, Any]] | None = None,  # noqa: ARG002
+        exception_options: list[dict[str, Any]] | None = None,  # noqa: ARG002
     ) -> list[Breakpoint]:
         """Set exception breakpoints.
 
@@ -118,7 +118,7 @@ class InProcessBackend:
         except Exception:
             logger.exception("in-process step_out failed")
 
-    async def pause(self, _thread_id: int) -> bool:
+    async def pause(self, thread_id: int) -> bool:
         """Pause execution. In-process debugger does not support pause."""
         return False
 
@@ -190,7 +190,7 @@ class InProcessBackend:
                 "variablesReference": 0,
             }
 
-    async def exception_info(self, _thread_id: int) -> ExceptionInfoResponseBody:
+    async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:  # noqa: ARG002
         """Get exception information for a thread."""
         # In-process debugger doesn't have a dedicated exception_info method
         return {
@@ -201,7 +201,8 @@ class InProcessBackend:
                 "message": "Exception information not available",
                 "typeName": "Unknown",
                 "fullTypeName": "Unknown",
-                "stackTrace": "Exception information not available",
+                "source": "Unknown",
+                "stackTrace": ["Exception information not available"],
             },
         }
 

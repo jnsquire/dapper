@@ -161,7 +161,7 @@ class InProcessDebugger:
                     except Exception:
                         verified = False
                 results.append({"verified": verified})
-            return cast("list[FunctionBreakpoint]", results)
+            return results
 
     def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
         with self.command_lock:
