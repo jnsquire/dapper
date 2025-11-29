@@ -36,8 +36,7 @@ from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc.ipc_context import IPCContext
 from dapper.protocol.protocol import ProtocolHandler
-from dapper.protocol.protocol_types import Source
-from dapper.protocol.protocol_types import SourceBreakpoint
+from dapper.protocol.structures import Source, SourceBreakpoint
 
 try:
     # Optional integration module; may not be present on all platforms.
@@ -52,21 +51,23 @@ if TYPE_CHECKING:
 
     from dapper.ipc.connections.base import ConnectionBase
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.protocol_types import Breakpoint
-    from dapper.protocol.protocol_types import ContinueResponseBody
-    from dapper.protocol.protocol_types import DataBreakpointInfoResponseBody
-    from dapper.protocol.protocol_types import EvaluateResponseBody
-    from dapper.protocol.protocol_types import ExceptionDetails
-    from dapper.protocol.protocol_types import ExceptionFilterOptions
-    from dapper.protocol.protocol_types import ExceptionInfoResponseBody
-    from dapper.protocol.protocol_types import ExceptionOptions
-    from dapper.protocol.protocol_types import FunctionBreakpoint
-    from dapper.protocol.protocol_types import GenericRequest
-    from dapper.protocol.protocol_types import Module
-    from dapper.protocol.protocol_types import Scope
-    from dapper.protocol.protocol_types import SetVariableResponseBody
-    from dapper.protocol.protocol_types import StackTraceResponseBody
-    from dapper.protocol.protocol_types import Thread
+    from dapper.protocol.structures import Breakpoint, Scope, Thread
+    from dapper.protocol.requests import (
+        ContinueResponseBody,
+        EvaluateResponseBody,
+        ExceptionDetails,
+        FunctionBreakpoint,
+        Module,
+        SetVariableResponseBody,
+        StackTraceResponseBody,
+        ExceptionInfoResponseBody,
+    )
+    from dapper.protocol.capabilities import (
+        ExceptionFilterOptions,
+        ExceptionOptions,
+    )
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
+    from dapper.protocol.messages import GenericRequest
 
 
 logger = logging.getLogger(__name__)

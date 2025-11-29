@@ -37,8 +37,8 @@ from dapper.shared.debug_shared import state
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.protocol_types import SetExceptionBreakpointsResponse
-    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.requests import SetExceptionBreakpointsResponse
+    from dapper.protocol.requests import SetFunctionBreakpointsArguments
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2

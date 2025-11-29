@@ -191,7 +191,7 @@ Client <-> Debug Adapter (background thread) <-> InProcessDebugger (direct calls
 ### Supporting Files
 1. `dapper/debug_shared.py` - Shared state management
 2. `dapper/ipc_context.py` - IPC configuration
-3. `dapper/protocol_types.py` - DAP protocol types
+3. `dapper/protocol/` - DAP protocol types and message shapes (migrated into messages.py, requests.py, structures.py, capabilities.py, data_breakpoints.py)
 
 ## Testing Considerations
 

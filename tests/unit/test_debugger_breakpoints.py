@@ -9,8 +9,8 @@ import pytest
 from dapper.adapter.external_backend import ExternalProcessBackend
 
 if TYPE_CHECKING:
-    from dapper.protocol.protocol_types import FunctionBreakpoint
-    from dapper.protocol.protocol_types import SourceBreakpoint
+    from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.structures import SourceBreakpoint
 
 from .test_debugger_base import BaseDebuggerTest
 

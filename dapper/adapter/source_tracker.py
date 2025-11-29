@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
-    from dapper.protocol.protocol_types import Module
-    from dapper.protocol.protocol_types import Source
+    from dapper.protocol.requests import Module
+    from dapper.protocol.structures import Source
 
 
 class LoadedSourceTracker:

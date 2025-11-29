@@ -16,13 +16,11 @@ from typing import cast
 from typing import overload
 
 if TYPE_CHECKING:
-    # Only import the runtime/generic message shapes and ErrorResponse used
-    # for type annotations inside this module.
-    from dapper.protocol.protocol_types import ErrorResponse
-    from dapper.protocol.protocol_types import GenericEvent
-    from dapper.protocol.protocol_types import GenericRequest
-    from dapper.protocol.protocol_types import GenericResponse
-    from dapper.protocol.protocol_types import ProtocolMessage
+    from dapper.protocol.messages import ErrorResponse
+    from dapper.protocol.messages import GenericEvent
+    from dapper.protocol.messages import GenericRequest
+    from dapper.protocol.messages import GenericResponse
+    from dapper.protocol.messages import ProtocolMessage
 
 # Type variables for generic message types
 T = TypeVar("T", bound="ProtocolMessage")

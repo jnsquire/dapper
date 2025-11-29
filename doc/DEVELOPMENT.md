@@ -186,7 +186,7 @@ Extract helper functions for module source collection to eliminate
 2. **Stage changes selectively:**
    ```bash
    # Stage specific files
-   git add dapper/protocol_types.py dapper/dap_command_handlers.py
+   git add dapper/protocol/messages.py dapper/protocol/requests.py dapper/shared/command_handlers.py
    
    # Or stage interactively
    git add -p

@@ -67,7 +67,7 @@ class DAPRequest(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Response Body Types (local definitions for types not in protocol_types)
+# Response Body Types (local definitions for types not in protocol module files)
 # ---------------------------------------------------------------------------
 
 

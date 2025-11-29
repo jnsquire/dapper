@@ -197,7 +197,6 @@ exclude = [
     "tests",
     "testing",
     "examples",
-    "dapper/protocol_types.py",
     "dapper/server.py",
 ]
 sort_by_size = true

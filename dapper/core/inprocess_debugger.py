@@ -24,14 +24,15 @@ if TYPE_CHECKING:
 
     # TypedDict for variable-shaped dicts
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.protocol_types import Breakpoint
-    from dapper.protocol.protocol_types import ContinueResponseBody
-    from dapper.protocol.protocol_types import EvaluateResponseBody
-    from dapper.protocol.protocol_types import FunctionBreakpoint
-    from dapper.protocol.protocol_types import SetVariableResponseBody
-    from dapper.protocol.protocol_types import SourceBreakpoint
-    from dapper.protocol.protocol_types import StackTraceResponseBody
-    from dapper.protocol.protocol_types import VariablesResponseBody
+    from dapper.protocol.structures import Breakpoint, SourceBreakpoint
+    from dapper.protocol.requests import (
+        ContinueResponseBody,
+        EvaluateResponseBody,
+        FunctionBreakpoint,
+        SetVariableResponseBody,
+        StackTraceResponseBody,
+        VariablesResponseBody,
+    )
 
 # Length of (frame_id, scope) tuple used in var_refs
 SCOPE_TUPLE_LEN = 2

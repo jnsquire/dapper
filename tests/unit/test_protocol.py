@@ -12,12 +12,14 @@ import pytest
 
 from dapper.protocol.protocol import ProtocolError
 from dapper.protocol.protocol import ProtocolHandler
-from dapper.protocol.protocol_types import GenericEvent
-from dapper.protocol.protocol_types import GenericRequest
-from dapper.protocol.protocol_types import GenericResponse
-from dapper.protocol.protocol_types import ProtocolMessage
+from dapper.protocol.messages import (
+    GenericEvent,
+    GenericRequest,
+    GenericResponse,
+    ProtocolMessage,
+)
 
-# Use the protocol types directly from dapper.protocol_types
+# Use the protocol message types from dapper.protocol.messages
 RequestMessage = GenericRequest
 ResponseMessage = GenericResponse
 EventMessage = GenericEvent

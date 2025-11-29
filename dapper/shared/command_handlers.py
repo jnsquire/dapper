@@ -34,10 +34,10 @@ from dapper.shared.debug_shared import state
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.protocol_types import Module
-    from dapper.protocol.protocol_types import SetExceptionBreakpointsResponse
-    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
-    from dapper.protocol.protocol_types import Source
+    from dapper.protocol.requests import Module
+    from dapper.protocol.requests import SetExceptionBreakpointsResponse
+    from dapper.protocol.requests import SetFunctionBreakpointsArguments
+    from dapper.protocol.structures import Source
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
@@ -371,7 +371,7 @@ def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _n
 
 def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from sys.modules."""
-    from dapper.protocol.protocol_types import Source  # noqa: PLC0415
+    from dapper.protocol.structures import Source  # noqa: PLC0415
     
     sources: list[Source] = []
 
@@ -406,7 +406,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
 
 def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from linecache."""
-    from dapper.protocol.protocol_types import Source  # noqa: PLC0415
+    from dapper.protocol.structures import Source  # noqa: PLC0415
     
     sources: list[Source] = []
 
@@ -427,7 +427,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
 
 def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
     """Collect the main program source if available."""
-    from dapper.protocol.protocol_types import Source  # noqa: PLC0415
+    from dapper.protocol.structures import Source  # noqa: PLC0415
     
     sources: list[Source] = []
 

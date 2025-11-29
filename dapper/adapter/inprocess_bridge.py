@@ -15,13 +15,14 @@ from typing import Callable
 
 if TYPE_CHECKING:
     from dapper.core.inprocess_debugger import InProcessDebugger
-    from dapper.protocol.protocol_types import Breakpoint
-    from dapper.protocol.protocol_types import ContinueResponseBody
-    from dapper.protocol.protocol_types import EvaluateResponseBody
-    from dapper.protocol.protocol_types import FunctionBreakpoint
-    from dapper.protocol.protocol_types import SetVariableResponseBody
-    from dapper.protocol.protocol_types import SourceBreakpoint
-    from dapper.protocol.protocol_types import StackTraceResponseBody
+    from dapper.protocol.structures import Breakpoint, SourceBreakpoint
+    from dapper.protocol.requests import (
+        ContinueResponseBody,
+        EvaluateResponseBody,
+        FunctionBreakpoint,
+        SetVariableResponseBody,
+        StackTraceResponseBody,
+    )
 
 logger = logging.getLogger(__name__)
 

@@ -23,8 +23,7 @@ from dapper.shared import debug_shared
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    from dapper.protocol.protocol_types import FunctionBreakpoint
-    from dapper.protocol.protocol_types import SetFunctionBreakpointsArguments
+    from dapper.protocol.requests import FunctionBreakpoint, SetFunctionBreakpointsArguments
 
 
 class MockWFile(io.TextIOBase):
