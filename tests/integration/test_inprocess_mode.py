@@ -65,6 +65,8 @@ async def test_inprocess_variables_bridge():
     get_variables should call bridge with _filter/_start/_count and
     return values.
     """
+    from dapper.adapter.inprocess_backend import InProcessBackend
+
     # Prepare a debugger instance directly to test variables path
     conn = MockConnection()
     loop = asyncio.get_event_loop()
@@ -82,6 +84,7 @@ async def test_inprocess_variables_bridge():
 
     fake = FakeBridge()
     debugger._inproc_bridge = fake  # type: ignore[attr-defined]
+    debugger._inproc_backend = InProcessBackend(fake)  # type: ignore[arg-type]
 
     # Clear any previous calls
     if hasattr(FakeBridge, "called"):

@@ -1,10 +1,12 @@
 import unittest
 from typing import TYPE_CHECKING
 from typing import cast
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
-from unittest.mock import patch
 
 import pytest
+
+from dapper.adapter.external_backend import ExternalProcessBackend
 
 if TYPE_CHECKING:
     from dapper.protocol.protocol_types import FunctionBreakpoint
@@ -85,26 +87,23 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
             cast("SourceBreakpoint", {"line": 20}),
         ]
 
-        # Mock the command sending
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            result = await self.debugger.set_breakpoints(source, breakpoints)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.set_breakpoints = AsyncMock(return_value=[
+            {"verified": True, "line": 10},
+            {"verified": True, "line": 20},
+        ])
+        self.debugger._external_backend = mock_backend
 
-            # Should send setBreakpoints command
-            assert len(mock_send.calls) == 1
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "setBreakpoints"
-            assert "source" in call_args["arguments"]
-            assert "breakpoints" in call_args["arguments"]
+        result = await self.debugger.set_breakpoints(source, breakpoints)
 
-            # Should return verified breakpoints
-            assert len(result) == 2
-            assert result[0].get("verified")
-            assert result[1].get("verified")
+        # Should call the backend's set_breakpoints
+        mock_backend.set_breakpoints.assert_called_once()
+
+        # Should return verified breakpoints
+        assert len(result) == 2
+        assert result[0].get("verified")
+        assert result[1].get("verified")
 
     async def test_set_function_breakpoints(self):
         """Test setting function breakpoints"""
@@ -133,55 +132,38 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
 
     async def test_exception_info_basic(self):
         """Test basic exception info functionality"""
-        # Mock the _send_command_to_debuggee method to return exception info
-        expected_response = {
-            "body": {
-                "exceptionId": "ValueError",
-                "description": "Test exception",
-                "breakMode": "always",
-                "details": {
-                    "message": "Test exception",
-                    "typeName": "ValueError",
-                    "fullTypeName": "builtins.ValueError",
-                    "source": "/test/file.py",
-                    "stackTrace": [
-                        "Traceback (most recent call last):",
-                        '  File "/test/file.py", line 1, in <module>',
-                        '    raise ValueError("Test exception")',
-                        "ValueError: Test exception",
-                    ],
-                },
-            }
+        expected_info = {
+            "exceptionId": "ValueError",
+            "description": "Test exception",
+            "breakMode": "always",
+            "details": {
+                "message": "Test exception",
+                "typeName": "ValueError",
+                "fullTypeName": "builtins.ValueError",
+                "source": "/test/file.py",
+                "stackTrace": "Traceback...",
+            },
         }
 
-        # Mock the debuggee command
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(return_value=expected_response),
-        ) as mock_send:
-            result = await self.debugger.exception_info(thread_id=1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.exception_info = AsyncMock(return_value=expected_info)
+        self.debugger._external_backend = mock_backend
 
-            # Verify the command was sent correctly
-            # Verify the mock was called once with expected args
-            assert len(mock_send.calls) == 1
-            assert mock_send.call_args is not None
-            sent_args, sent_kwargs = mock_send.call_args
-            assert sent_args[0] == {
-                "command": "exceptionInfo",
-                "arguments": {"threadId": 1},
-            }
-            assert sent_kwargs.get("expect_response") is True
+        result = await self.debugger.exception_info(thread_id=1)
 
-            # Should contain exception details
-            assert result["exceptionId"] == "ValueError"
-            assert result["description"] == "Test exception"
-            assert result["breakMode"] == "always"
-            assert "details" in result
-            assert result["details"]["typeName"] == "ValueError"
-            assert result["details"]["fullTypeName"] == "builtins.ValueError"
-            assert result["details"]["message"] == "Test exception"
-            assert "stackTrace" in result["details"]
+        # Verify the backend was called
+        mock_backend.exception_info.assert_called_once_with(1)
+
+        # Should contain exception details
+        assert result["exceptionId"] == "ValueError"
+        assert result.get("description") == "Test exception"
+        assert result["breakMode"] == "always"
+        assert "details" in result
+        details = result.get("details", {})
+        assert details.get("typeName") == "ValueError"
+        assert details.get("fullTypeName") == "builtins.ValueError"
+        assert details.get("message") == "Test exception"
 
 
 if __name__ == "__main__":

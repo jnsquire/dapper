@@ -1,7 +1,10 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 
 import pytest
+
+from dapper.adapter.external_backend import ExternalProcessBackend
 
 from .test_debugger_base import BaseDebuggerTest
 
@@ -46,11 +49,11 @@ class TestDebuggerExecution(BaseDebuggerTest):
     async def test_continue_execution_not_running(self):
         """Test continue_execution when program is not running"""
         self.debugger.program_running = False
-
+        self.debugger.is_terminated = False
         result = await self.debugger.continue_execution(1)
 
         # Should return failure
-        assert not result["allThreadsContinued"]
+        assert not result.get("allThreadsContinued")
 
     async def test_continue_execution_terminated(self):
         """Test continue_execution when program is terminated"""
@@ -60,7 +63,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
         result = await self.debugger.continue_execution(1)
 
         # Should return failure
-        assert not result["allThreadsContinued"]
+        assert not result.get("allThreadsContinued")
 
     async def test_continue_execution_clears_stopped_event(self):
         """Test that continue_execution clears the stopped_event"""
@@ -72,13 +75,12 @@ class TestDebuggerExecution(BaseDebuggerTest):
         self.debugger.stopped_event.set()
         assert self.debugger.stopped_event.is_set()
 
-        # Mock the command sending
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ):
-            await self.debugger.continue_execution(1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.continue_ = AsyncMock(return_value={"allThreadsContinued": True})
+        self.debugger._external_backend = mock_backend
+
+        await self.debugger.continue_execution(1)
 
         # After continue, stopped_event should be cleared
         assert not self.debugger.stopped_event.is_set()
@@ -88,76 +90,60 @@ class TestDebuggerExecution(BaseDebuggerTest):
         self.debugger.program_running = True
         self.debugger.is_terminated = False
 
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            await self.debugger.next(1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.next_ = AsyncMock()
+        self.debugger._external_backend = mock_backend
 
-            # Should send next command
-            mock_send.assert_called_once()
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "next"
-            assert call_args["arguments"]["threadId"] == 1
+        await self.debugger.next(1)
+
+        # Should call the backend's next_ method
+        mock_backend.next_.assert_called_once_with(1)
 
     async def test_step_in(self):
         """Test stepping into function"""
         self.debugger.program_running = True
         self.debugger.is_terminated = False
 
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            await self.debugger.step_in(1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.step_in = AsyncMock()
+        self.debugger._external_backend = mock_backend
 
-            # Should send stepIn command
-            mock_send.assert_called_once()
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "stepIn"
-            assert call_args["arguments"]["threadId"] == 1
+        await self.debugger.step_in(1)
+
+        # Should call the backend's step_in method
+        mock_backend.step_in.assert_called_once_with(1)
 
     async def test_step_out(self):
         """Test stepping out of function"""
         self.debugger.program_running = True
         self.debugger.is_terminated = False
 
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            await self.debugger.step_out(1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.step_out = AsyncMock()
+        self.debugger._external_backend = mock_backend
 
-            # Should send stepOut command
-            mock_send.assert_called_once()
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "stepOut"
-            assert call_args["arguments"]["threadId"] == 1
+        await self.debugger.step_out(1)
+
+        # Should call the backend's step_out method
+        mock_backend.step_out.assert_called_once_with(1)
 
     async def test_pause(self):
         """Test pausing execution"""
         self.debugger.program_running = True
         self.debugger.is_terminated = False
 
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            await self.debugger.pause(1)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.pause = AsyncMock(return_value=True)
+        self.debugger._external_backend = mock_backend
 
-            # Should send pause command
-            mock_send.assert_called_once()
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "pause"
-            assert call_args["arguments"]["threadId"] == 1
+        await self.debugger.pause(1)
+
+        # Should call the backend's pause method
+        mock_backend.pause.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

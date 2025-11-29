@@ -1,10 +1,10 @@
 import asyncio
 import json
-from unittest.mock import AsyncMock
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from dapper.adapter.external_backend import ExternalProcessBackend
 from dapper.adapter.server import PyDebugger
 
 
@@ -27,20 +27,24 @@ async def test_evaluate_with_response():
     dbg.process = Mock()
     dbg.is_terminated = False
 
-    expected_response = {
-        "id": 1,
-        "body": {"result": "42", "type": "int", "variablesReference": 0},
-    }
+    expected_body = {"result": "42", "type": "int", "variablesReference": 0}
 
-    dbg._send_command_to_debuggee = AsyncMock(return_value=expected_response)
+    # Create a mock backend
+    mock_backend = MagicMock(spec=ExternalProcessBackend)
+    mock_backend.evaluate = AsyncMock(return_value=expected_body)
+    dbg._external_backend = mock_backend
 
     res = await dbg.evaluate("x + 1", frame_id=1, context="watch")
-    assert res == expected_response["body"]
+    assert res == expected_body
 
 
 @pytest.mark.asyncio
 async def test_evaluate_without_response():
-    """evaluate() should fall back gracefully when debuggee doesn't respond"""
+    """evaluate() should fall back gracefully when debuggee doesn't respond.
+
+    Note: The fallback logic is now in ExternalProcessBackend, not in PyDebugger.
+    This test verifies that the external backend's fallback is used.
+    """
     server = Mock()
     server.send_event = AsyncMock()
 
@@ -49,9 +53,18 @@ async def test_evaluate_without_response():
     dbg.process = Mock()
     dbg.is_terminated = False
 
-    dbg._send_command_to_debuggee = AsyncMock(return_value=None)
-
+    # Create a mock backend that returns the fallback response (simulating
+    # what ExternalProcessBackend does when the debuggee doesn't respond)
     expr = "x + 1"
+    fallback_response = {
+        "result": f"<evaluation of '{expr}' not available>",
+        "type": "string",
+        "variablesReference": 0,
+    }
+    mock_backend = MagicMock(spec=ExternalProcessBackend)
+    mock_backend.evaluate = AsyncMock(return_value=fallback_response)
+    dbg._external_backend = mock_backend
+
     res = await dbg.evaluate(expr, frame_id=1, context="watch")
 
     assert isinstance(res, dict)

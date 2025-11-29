@@ -130,6 +130,20 @@ def debugger(mock_server, event_loop):
     return PyDebugger(mock_server, event_loop)
 
 
+def setup_external_backend(debugger):
+    """Helper to set up the external backend for tests that need it."""
+    from dapper.adapter.external_backend import ExternalProcessBackend
+
+    debugger._external_backend = ExternalProcessBackend(
+        ipc=debugger.ipc,
+        loop=debugger.loop,
+        get_process_state=debugger._get_process_state,
+        pending_commands=debugger._pending_commands,
+        lock=debugger.lock,
+        get_next_command_id=debugger._get_next_command_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Initialization and Shutdown Tests
 # ---------------------------------------------------------------------------
@@ -354,6 +368,9 @@ async def test_pause(debugger):
     debugger.ipc.binary = True
     debugger.ipc.wfile = mock_wfile
 
+    # Set up the external backend
+    setup_external_backend(debugger)
+
     await debugger.pause(thread_id=1)
 
     # Check that a command was written via IPC
@@ -376,6 +393,9 @@ async def test_continue_execution(debugger):
     debugger.ipc.enabled = True
     debugger.ipc.binary = True
     debugger.ipc.wfile = mock_wfile
+
+    # Set up the external backend
+    setup_external_backend(debugger)
 
     await debugger.continue_execution(thread_id=1)
 
@@ -443,6 +463,9 @@ async def test_next_step(debugger):
     debugger.ipc.binary = True
     debugger.ipc.wfile = mock_wfile
 
+    # Set up the external backend
+    setup_external_backend(debugger)
+
     await debugger.next(thread_id=1)
 
     mock_wfile.write.assert_called_once()
@@ -463,6 +486,9 @@ async def test_step_in(debugger):
     debugger.ipc.binary = True
     debugger.ipc.wfile = mock_wfile
 
+    # Set up the external backend
+    setup_external_backend(debugger)
+
     await debugger.step_in(thread_id=1)
 
     mock_wfile.write.assert_called_once()
@@ -482,6 +508,9 @@ async def test_step_out(debugger):
     debugger.ipc.enabled = True
     debugger.ipc.binary = True
     debugger.ipc.wfile = mock_wfile
+
+    # Set up the external backend
+    setup_external_backend(debugger)
 
     await debugger.step_out(thread_id=1)
 

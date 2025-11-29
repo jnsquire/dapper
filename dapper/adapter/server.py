@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.adapter.external_backend import ExternalProcessBackend
+from dapper.adapter.inprocess_backend import InProcessBackend
 from dapper.adapter.inprocess_bridge import InProcessBridge
 from dapper.adapter.payload_extractor import extract_payload
 from dapper.adapter.request_handlers import RequestHandler
@@ -169,6 +171,10 @@ class PyDebugger:
         self.in_process: bool = False
         self._inproc_bridge: InProcessBridge | None = None
 
+        # Backend for debugging operations (set in launch/attach)
+        self._inproc_backend: InProcessBackend | None = None
+        self._external_backend: ExternalProcessBackend | None = None
+
         # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
         self.ipc: IPCContext = IPCContext()
@@ -186,6 +192,23 @@ class PyDebugger:
     def program_path(self, value: str | None) -> None:
         """Set the program path being debugged."""
         self._source_introspection.program_path = value
+
+    @property
+    def _backend(self) -> InProcessBackend | ExternalProcessBackend | None:
+        """Get the active debugger backend."""
+        if self._inproc_backend is not None:
+            return self._inproc_backend
+        return self._external_backend
+
+    def _get_next_command_id(self) -> int:
+        """Get the next command ID and increment the counter."""
+        cmd_id = self._next_command_id
+        self._next_command_id += 1
+        return cmd_id
+
+    def _get_process_state(self) -> tuple[subprocess.Popen | None, bool]:
+        """Get the current process state for the external backend."""
+        return self.process, self.is_terminated
 
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a (possibly coroutine-producing) callback on the debugger loop.
@@ -412,6 +435,16 @@ class PyDebugger:
                 daemon=True,
             ).start()
 
+        # Create the external process backend
+        self._external_backend = ExternalProcessBackend(
+            ipc=self.ipc,
+            loop=self.loop,
+            get_process_state=self._get_process_state,
+            pending_commands=self._pending_commands,
+            lock=self.lock,
+            get_next_command_id=self._get_next_command_id,
+        )
+
         self.program_running = True
 
         # Send event to tell the client the process has started
@@ -438,6 +471,8 @@ class PyDebugger:
             on_exited=self._handle_event_exited,
             on_output=self._handle_inproc_output,
         )
+        # Create the in-process backend
+        self._inproc_backend = InProcessBackend(self._inproc_bridge)
 
         # Mark running and emit process event for current interpreter
         self.program_running = True
@@ -490,6 +525,16 @@ class PyDebugger:
             args=(self._handle_debug_message,),
             daemon=True,
         ).start()
+
+        # Create the external process backend
+        self._external_backend = ExternalProcessBackend(
+            ipc=self.ipc,
+            loop=self.loop,
+            get_process_state=self._get_process_state,
+            pending_commands=self._pending_commands,
+            lock=self.lock,
+            get_next_command_id=self._get_next_command_id,
+        )
 
         # Mark running and send a generic process event
         self.program_running = True
@@ -714,13 +759,41 @@ class PyDebugger:
         spec_list, storage_list = self._process_breakpoints(breakpoints)
         self.breakpoints[path] = storage_list
 
-        # Try in-process debugger first
-        if self.in_process and self._inproc_bridge is not None:
-            return await self._set_breakpoints_in_process(path, spec_list, storage_list)
+        if self._backend is None:
+            return storage_list  # type: ignore[return-value]
 
-        # Fall back to external process debugger
-        if self.process and not self.is_terminated:
-            await self._set_breakpoints_external_process(path, storage_list)
+        # For in-process backend, just use the backend directly
+        if self._inproc_backend is not None:
+            result = await self._inproc_backend.set_breakpoints(path, spec_list)
+            return [
+                {
+                    "verified": bp.get("verified", False),
+                    "line": bp.get("line"),
+                    "condition": bp.get("condition"),
+                    "hitCondition": bp.get("hitCondition"),
+                    "logMessage": bp.get("logMessage"),
+                }
+                for bp in result
+            ]  # type: ignore[return-value]
+
+        # For external process, add progress events around the backend call
+        try:
+            progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
+        except Exception:
+            progress_id = f"setBreakpoints:{path}"
+
+        self.spawn_threadsafe(
+            lambda pid=progress_id: self.server.send_event(
+                "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
+            )
+        )
+
+        await self._backend.set_breakpoints(path, spec_list)
+        self._forward_breakpoint_events(storage_list)
+
+        self.spawn_threadsafe(
+            lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
+        )
 
         return storage_list  # type: ignore[return-value]
 
@@ -755,79 +828,6 @@ class PyDebugger:
             storage_list.append(BreakpointDict(line=line_val, verified=True, **optional_fields))
 
         return spec_list, storage_list
-
-    async def _set_breakpoints_in_process(
-        self, path: str, spec_list: list[SourceBreakpoint], storage_list: list[BreakpointDict]
-    ) -> list[BreakpointResponse]:
-        """Set breakpoints using in-process debugger.
-
-        Args:
-            path: Source file path
-            spec_list: Breakpoint specs for debugger API
-            storage_list: Storage list for fallback
-
-        Returns:
-            List of breakpoint responses
-        """
-        try:
-            if self._inproc_bridge is None:
-                return [{"verified": False} for _ in storage_list]
-            result = self._inproc_bridge.set_breakpoints(path, spec_list)
-            return [
-                {
-                    "verified": bp.get("verified", False),
-                    "line": bp.get("line"),
-                    "condition": bp.get("condition"),
-                    "hitCondition": bp.get("hitCondition"),
-                    "logMessage": bp.get("logMessage"),
-                }
-                for bp in result
-            ]  # type: ignore[return-value]
-        except Exception:
-            logger.exception("in-process set_breakpoints failed")
-            return [{"verified": False} for _ in storage_list]
-
-    async def _set_breakpoints_external_process(
-        self, path: str, storage_list: list[BreakpointDict]
-    ) -> None:
-        """Set breakpoints using external process debugger.
-
-        Args:
-            path: Source file path
-            storage_list: List of breakpoint dictionaries
-        """
-        # Create command for external debugger
-        source_dict = {"path": path}
-        bp_command = {
-            "command": "setBreakpoints",
-            "arguments": {
-                "source": source_dict,
-                "breakpoints": storage_list,
-            },
-        }
-
-        # Generate progress ID
-        try:
-            progress_id = f"setBreakpoints:{path}:{int(time.time() * 1000)}"
-        except Exception:
-            progress_id = f"setBreakpoints:{path}"
-
-        # Send progress events around the command
-        self.spawn_threadsafe(
-            lambda pid=progress_id: self.server.send_event(
-                "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
-            )
-        )
-
-        await self._send_command_to_debuggee(bp_command)
-
-        # Forward breakpoint events
-        self._forward_breakpoint_events(storage_list)
-
-        # End progress
-        self.spawn_threadsafe(
-            lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
-        )
 
     def _forward_breakpoint_events(self, storage_list: list[BreakpointDict]) -> None:
         """Forward breakpoint-changed events to clients."""
@@ -872,20 +872,8 @@ class PyDebugger:
         # Store runtime representation (with verified flag) for IPC and state
         self.function_breakpoints = storage_funcs
 
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                result = self._inproc_bridge.set_function_breakpoints(spec_funcs)
-                return list(result)
-            except Exception:
-                logger.exception("in-process set_function_breakpoints failed")
-                return [{"verified": False} for _ in storage_funcs]
-        if self.process and not self.is_terminated:
-            bp_command = {
-                "command": "setFunctionBreakpoints",
-                "arguments": {"breakpoints": storage_funcs},
-            }
-            await self._send_command_to_debuggee(bp_command)
-
+        if self._backend is not None:
+            return await self._backend.set_function_breakpoints(spec_funcs)
         return [{"verified": bp.get("verified", True)} for bp in storage_funcs]
 
     async def set_exception_breakpoints(
@@ -905,69 +893,13 @@ class PyDebugger:
         self.exception_breakpoints_raised = "raised" in filters
         self.exception_breakpoints_uncaught = "uncaught" in filters
 
-        # In-process path: underlying in-process APIs accept just the
-        # simple filters list for now (backwards compatible).
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                result = self._inproc_bridge.set_exception_breakpoints(filters)
-                return list(result)
-            except Exception:
-                logger.exception("in-process set_exception_breakpoints failed")
-                return [{"verified": False} for _ in filters]
+        if self._backend is not None:
+            return await self._backend.set_exception_breakpoints(
+                filters, filter_options, exception_options  # type: ignore[arg-type]
+            )
 
-        # Remote/process path: forward the full arguments when present.
-        if self.process and not self.is_terminated:
-            args: dict[str, Any] = {"filters": filters}
-            if filter_options is not None:
-                args["filterOptions"] = filter_options
-            if exception_options is not None:
-                args["exceptionOptions"] = exception_options
-
-            bp_command = {"command": "setExceptionBreakpoints", "arguments": args}
-            await self._send_command_to_debuggee(bp_command)
-
-        # Best-effort: assume the breakpoints were set when no response is
-        # available (e.g., no in-process bridge). Callers rely on the
-        # returned list length matching `filters`.
+        # Best-effort: assume the breakpoints were set when no backend available
         return [{"verified": True} for _ in filters]
-
-    async def _send_command_to_debuggee(
-        self, command: dict[str, Any], expect_response: bool = False
-    ) -> dict[str, Any] | None:
-        """Send a command to the debuggee process or in-process bridge."""
-        if self.in_process and self._inproc_bridge is not None:
-            return self._inproc_bridge.dispatch_command(command, expect_response)
-
-        if not self.process or self.is_terminated:
-            return None
-
-        response_future: asyncio.Future[dict[str, Any]] | None = None
-        command_id: int | None = None
-
-        if expect_response:
-            command_id = self._next_command_id
-            self._next_command_id += 1
-            command["id"] = command_id
-            response_future = self.loop.create_future()
-            with self.lock:
-                self._pending_commands[command_id] = response_future
-
-        try:
-            await asyncio.to_thread(self.ipc.write_command, json.dumps(command))
-        except Exception:
-            logger.exception("Error sending command to debuggee")
-            if command_id is not None:
-                self._pending_commands.pop(command_id, None)
-            return None
-
-        if response_future is None:
-            return None
-
-        try:
-            return await asyncio.wait_for(response_future, timeout=5.0)
-        except asyncio.TimeoutError:
-            self._pending_commands.pop(command_id, None)  # type: ignore[arg-type]
-            return None
 
     async def continue_execution(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution of the specified thread"""
@@ -980,17 +912,10 @@ class PyDebugger:
             if thread_id in self.threads:
                 self.threads[thread_id].is_stopped = False
 
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                result = self._inproc_bridge.continue_(thread_id)
-                return cast("ContinueResponseBody", result)
-            except Exception:
-                logger.exception("in-process continue failed")
-                return {"allThreadsContinued": False}
-        command = {"command": "continue", "arguments": {"threadId": thread_id}}
-        await self._send_command_to_debuggee(command)
+        if self._backend is not None:
+            return await self._backend.continue_(thread_id)
 
-        return {"allThreadsContinued": True}
+        return {"allThreadsContinued": False}
 
     async def next(self, thread_id: int) -> None:
         """Step over to the next line"""
@@ -999,15 +924,8 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                self._inproc_bridge.next_(thread_id)
-            except Exception:
-                logger.exception("in-process next failed")
-                return
-        else:
-            command = {"command": "next", "arguments": {"threadId": thread_id}}
-            await self._send_command_to_debuggee(command)
+        if self._backend is not None:
+            await self._backend.next_(thread_id)
 
     async def step_in(self, thread_id: int) -> None:
         """Step into a function"""
@@ -1016,18 +934,8 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                self._inproc_bridge.step_in(thread_id)
-            except Exception:
-                logger.exception("in-process step_in failed")
-                return
-        else:
-            command = {
-                "command": "stepIn",
-                "arguments": {"threadId": thread_id},
-            }
-            await self._send_command_to_debuggee(command)
+        if self._backend is not None:
+            await self._backend.step_in(thread_id)
 
     async def step_out(self, thread_id: int) -> None:
         """Step out of the current function"""
@@ -1036,29 +944,17 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                self._inproc_bridge.step_out(thread_id)
-            except Exception:
-                logger.exception("in-process step_out failed")
-                return
-        else:
-            command = {
-                "command": "stepOut",
-                "arguments": {"threadId": thread_id},
-            }
-            await self._send_command_to_debuggee(command)
+        if self._backend is not None:
+            await self._backend.step_out(thread_id)
 
     async def pause(self, thread_id: int) -> bool:
         """Pause execution of the specified thread"""
         if not self.program_running or self.is_terminated:
             return False
 
-        if self.in_process and self._inproc_bridge is not None:
-            return False
-        command = {"command": "pause", "arguments": {"threadId": thread_id}}
-        await self._send_command_to_debuggee(command)
-        return True
+        if self._backend is not None:
+            return await self._backend.pause(thread_id)
+        return False
 
     async def get_threads(self) -> list[Thread]:
         """Get all threads"""
@@ -1081,28 +977,12 @@ class PyDebugger:
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread"""
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                result = self._inproc_bridge.stack_trace(thread_id, start_frame, levels)
-                return cast("StackTraceResponseBody", result)
-            except Exception:
-                logger.exception("in-process stack_trace failed")
-                return {"stackFrames": [], "totalFrames": 0}
+        if self._backend is not None:
+            result = await self._backend.get_stack_trace(thread_id, start_frame, levels)
+            if result.get("stackFrames"):
+                return result
 
-        command = {
-            "command": "stackTrace",
-            "arguments": {
-                "threadId": thread_id,
-                "startFrame": start_frame,
-                "levels": levels,
-            },
-        }
-
-        response = await self._send_command_to_debuggee(command, expect_response=True)
-
-        if response and "body" in response:
-            return response["body"]
-
+        # Fall back to cached stack frames if backend returned empty
         stack_frames = []
         total_frames = 0
 
@@ -1149,40 +1029,12 @@ class PyDebugger:
         self, variables_reference: int, filter_type: str = "", start: int = 0, count: int = 0
     ) -> list[Variable]:
         """Get variables for the given reference."""
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                # Use the variables method instead of get_variables
-                result = self._inproc_bridge.variables(
-                    variables_reference,
-                    filter_type=filter_type,
-                    start=start,
-                    count=count if count > 0 else None,
-                )
-                # The in-process debugger returns a list of variables directly
-                if isinstance(result, list):
-                    return cast("list[Variable]", result)
-                # Fall back to old behavior for backward compatibility
-                return cast("list[Variable]", result.get("variables", []))
-            except Exception:
-                logger.exception("in-process variables failed")
-                return []
+        if self._backend is not None:
+            result = await self._backend.get_variables(variables_reference, filter_type, start, count)
+            if result:
+                return result
 
-        command = {
-            "command": "variables",
-            "arguments": {"variablesReference": variables_reference},
-        }
-        if filter_type:
-            command["arguments"]["filter"] = filter_type
-        if start > 0:
-            command["arguments"]["start"] = start
-        if count > 0:
-            command["arguments"]["count"] = count
-
-        response = await self._send_command_to_debuggee(command, expect_response=True)
-
-        if response and "body" in response and "variables" in response["body"]:
-            return cast("list[Variable]", response["body"]["variables"])
-
+        # Fall back to cached variables
         variables: list[Variable] = []
         with self.lock:
             if variables_reference in self.var_refs and isinstance(
@@ -1208,39 +1060,9 @@ class PyDebugger:
 
         scope_ref_tuple_len = 2
         if isinstance(ref_info, tuple) and len(ref_info) == scope_ref_tuple_len:
-            frame_id, _scope_type = ref_info
-
-            if self.in_process and self._inproc_bridge is not None:
-                try:
-                    result = self._inproc_bridge.set_variable(var_ref, name, value)
-                    return cast("SetVariableResponseBody", result)
-                except Exception:
-                    logger.exception("in-process set_variable failed")
-                    return {
-                        "value": value,
-                        "type": "string",
-                        "variablesReference": 0,
-                    }
-
-            command = {
-                "command": "setVariable",
-                "arguments": {
-                    "variablesReference": var_ref,
-                    "name": name,
-                    "value": value,
-                },
-            }
-
-            response = await self._send_command_to_debuggee(command, expect_response=True)
-
-            if response and "body" in response:
-                return response["body"]
-
-            return {
-                "value": value,
-                "type": "string",
-                "variablesReference": 0,
-            }
+            if self._backend is not None:
+                return await self._backend.set_variable(var_ref, name, value)
+            return {"value": value, "type": "string", "variablesReference": 0}
 
         msg = f"Cannot set variable in reference type: {type(ref_info)}"
         raise ValueError(msg)
@@ -1249,32 +1071,8 @@ class PyDebugger:
         self, expression: str, frame_id: int | None = None, context: str | None = None
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context"""
-        if self.in_process and self._inproc_bridge is not None:
-            try:
-                result = self._inproc_bridge.evaluate(expression, frame_id, context)
-                return cast("EvaluateResponseBody", result)
-            except Exception:
-                logger.exception("in-process evaluate failed")
-                return {
-                    "result": f"<evaluation of '{expression}' not available>",
-                    "type": "string",
-                    "variablesReference": 0,
-                }
-
-        command = {
-            "command": "evaluate",
-            "arguments": {
-                "expression": expression,
-                "frameId": frame_id,
-                "context": context or "hover",
-            },
-        }
-
-        response = await self._send_command_to_debuggee(command, expect_response=True)
-
-        if response and "body" in response:
-            return response["body"]
-
+        if self._backend is not None:
+            return await self._backend.evaluate(expression, frame_id, context)
         return {
             "result": f"<evaluation of '{expression}' not available>",
             "type": "string",
@@ -1283,15 +1081,8 @@ class PyDebugger:
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread"""
-        command = {
-            "command": "exceptionInfo",
-            "arguments": {"threadId": thread_id},
-        }
-
-        response = await self._send_command_to_debuggee(command, expect_response=True)
-
-        if response and "body" in response:
-            return cast("ExceptionInfoResponseBody", response["body"])
+        if self._backend is not None:
+            return await self._backend.exception_info(thread_id)
 
         exception_details: ExceptionDetails = {
             "message": "Exception information not available",
@@ -1315,9 +1106,8 @@ class PyDebugger:
         """Signal that configuration is done and debugging can start"""
         self.configuration_done.set()
 
-        if not self.in_process:
-            command = {"command": "configurationDone"}
-            await self._send_command_to_debuggee(command)
+        if self._backend is not None:
+            await self._backend.configuration_done()
 
     async def disconnect(self, terminate_debuggee: bool = False) -> None:
         """Disconnect from the debuggee"""
@@ -1337,6 +1127,9 @@ class PyDebugger:
 
     async def terminate(self) -> None:
         """Terminate the debuggee"""
+        if self._backend is not None:
+            await self._backend.terminate()
+
         if self.in_process:
             try:
                 self.is_terminated = True
@@ -1349,12 +1142,10 @@ class PyDebugger:
         if self.program_running and self.process:
             try:
                 self.process.terminate()
-                command = {"command": "terminate"}
-                await self._send_command_to_debuggee(command)
                 self.is_terminated = True
                 self.program_running = False
             except Exception:
-                logger.exception("Error sending terminate command")
+                logger.exception("Error terminating process")
 
     async def restart(self) -> None:
         """Request a session restart by signaling terminated(restart=true)."""

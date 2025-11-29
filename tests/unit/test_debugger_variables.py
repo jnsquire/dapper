@@ -1,8 +1,11 @@
 import unittest
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
-from unittest.mock import patch
 
 import pytest
+
+from dapper.adapter.external_backend import ExternalProcessBackend
+from dapper.adapter.inprocess_backend import InProcessBackend
 
 from .test_debugger_base import BaseDebuggerTest
 
@@ -100,70 +103,63 @@ class TestDebuggerVariables(BaseDebuggerTest):
         """Test expression evaluation"""
         self.debugger.program_running = True
 
-        with patch.object(
-            self.debugger,
-            "_send_command_to_debuggee",
-            new_callable=lambda: AsyncCallRecorder(),
-        ) as mock_send:
-            result = await self.debugger.evaluate("x + 1", frame_id=1, context="watch")
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.evaluate = AsyncMock(
+            return_value={"result": "2", "variablesReference": 0}
+        )
+        self.debugger._external_backend = mock_backend
 
-            # Should send evaluate command
-            assert len(mock_send.calls) == 1
-            assert mock_send.call_args is not None
-            call_args = mock_send.call_args[0][0]
-            assert call_args["command"] == "evaluate"
-            assert call_args["arguments"]["expression"] == "x + 1"
+        result = await self.debugger.evaluate("x + 1", frame_id=1, context="watch")
 
-            # Check the response format (currently returns placeholder)
-            assert "result" in result
-            assert "variablesReference" in result
-            assert result["variablesReference"] == 0
+        # Should call the backend's evaluate method
+        mock_backend.evaluate.assert_called_once_with("x + 1", 1, "watch")
+
+        # Check the response format
+        assert "result" in result
+        assert "variablesReference" in result
 
     async def test_get_variables_sends_command(self):
         """Test that get_variables sends a command to the debuggee when var_ref is not in cache."""
-        mock_response = {
-            "body": {
-                "variables": [
-                    {"name": "a", "value": "1", "type": "int", "variablesReference": 0}
-                ]
-            }
-        }
+        expected_variables = [
+            {"name": "a", "value": "1", "type": "int", "variablesReference": 0}
+        ]
 
-        # Use AsyncCallRecorder to mock the response
-        recorder = AsyncCallRecorder(return_value=mock_response)
+        # Create a mock backend
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        mock_backend.get_variables = AsyncMock(return_value=expected_variables)
+        self.debugger._external_backend = mock_backend
 
-        with patch.object(self.debugger, "_send_command_to_debuggee", new=recorder):
-            result = await self.debugger.get_variables(123, filter_type="named", start=1, count=10)
+        result = await self.debugger.get_variables(
+            123, filter_type="named", start=1, count=10
+        )
 
-            # Verify command was sent
-            recorder.assert_called_once()
-            assert recorder.call_args is not None
-            call_args = recorder.call_args[0][0]
-            assert call_args["command"] == "variables"
-            assert call_args["arguments"]["variablesReference"] == 123
-            assert call_args["arguments"]["filter"] == "named"
-            assert call_args["arguments"]["start"] == 1
-            assert call_args["arguments"]["count"] == 10
+        # Verify backend's get_variables was called
+        mock_backend.get_variables.assert_called_once_with(
+            123, "named", 1, 10
+        )
 
-            # Verify result
-            assert len(result) == 1
-            assert result[0]["name"] == "a"
-            assert result[0]["value"] == "1"
+        # Verify result
+        assert len(result) == 1
+        assert result[0]["name"] == "a"
+        assert result[0]["value"] == "1"
 
     async def test_get_variables_in_process(self):
         """Test that get_variables delegates to in-process debugger when enabled."""
         self.debugger.in_process = True
-        self.debugger._inproc_bridge = MagicMock()
+        mock_bridge = MagicMock()
+        self.debugger._inproc_bridge = mock_bridge
+        self.debugger._inproc_backend = InProcessBackend(mock_bridge)
 
-        expected_variables = [
-            {"name": "ip_a", "value": "99", "variablesReference": 0}
-        ]
-        self.debugger._inproc_bridge.variables.return_value = expected_variables
+        expected_variables = [{"name": "ip_a", "value": "99", "variablesReference": 0}]
+        mock_bridge.variables.return_value = expected_variables
 
-        result = await self.debugger.get_variables(789, filter_type="indexed", start=5, count=20)
+        result = await self.debugger.get_variables(
+            789, filter_type="indexed", start=5, count=20
+        )
 
         # Verify in-process call
-        self.debugger._inproc_bridge.variables.assert_called_once_with(
+        mock_bridge.variables.assert_called_once_with(
             789, filter_type="indexed", start=5, count=20
         )
         assert result == expected_variables
