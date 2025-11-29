@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 import unittest
 from typing import TYPE_CHECKING
+from typing import Any
+from typing import Callable
+from typing import TypeVar
 from typing import cast
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -14,49 +19,60 @@ if TYPE_CHECKING:
 
 from .test_debugger_base import BaseDebuggerTest
 
+T = TypeVar("T")
 
-# Local async recorder
+
 class AsyncCallRecorder:
-    def __init__(self, side_effect=None, return_value=None):
-        self.calls = []
-        self.call_args = None
+    """Helper class for recording and asserting async function calls.
+    
+    This class can be used to record calls to async functions and make assertions
+    about those calls in tests.
+    """
+    
+    def __init__(
+        self,
+        side_effect: Exception | Callable[..., Any] | None = None,
+        return_value: T | None = None
+    ) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        self.call_args: tuple[tuple[Any, ...], dict[str, Any]] | None = None
         self.side_effect = side_effect
-        self.return_value = return_value
+        self.return_value: T | None = return_value
 
-    def __call__(self, *args, **kwargs):
+    async def __call__(self, *args: Any, **kwargs: Any) -> T | None:
+        """Record the call and return the configured response."""
         self.calls.append((args, kwargs))
         self.call_args = (args, kwargs)
 
-        async def _noop():
-            if isinstance(self.side_effect, Exception):
-                raise self.side_effect
-            if callable(self.side_effect):
-                return self.side_effect(*args, **kwargs)
-            return self.return_value
+        if isinstance(self.side_effect, Exception):
+            raise self.side_effect
+        if callable(self.side_effect):
+            result = self.side_effect(*args, **kwargs)
+            return await result if hasattr(result, "__await__") else result
+            
+        return self.return_value
 
-        return _noop()
+    def assert_called_once(self) -> None:
+        """Assert that the recorder was called exactly once."""
+        assert len(self.calls) == 1, f"Expected 1 call, got {len(self.calls)} calls"
 
-    def assert_called_once(self):
-        assert len(self.calls) == 1
-
-    def assert_called_once_with(self, *args, **kwargs):
+    def assert_called_once_with(self, *args: Any, **kwargs: Any) -> None:
+        """Assert that the recorder was called exactly once with the given arguments."""
         self.assert_called_once()
-        actual_args, actual_kwargs = self.calls[0]
-        assert actual_args == args
-        assert actual_kwargs == kwargs
+        assert self.call_args is not None
+        actual_args, actual_kwargs = self.call_args
+        assert actual_args == args, f"Expected args {args}, got {actual_args}"
+        assert actual_kwargs == kwargs, f"Expected kwargs {kwargs}, got {actual_kwargs}"
 
 
 @pytest.mark.asyncio
 class TestDebuggerBreakpoints(BaseDebuggerTest):
+    """Test cases for debugger breakpoint management.
+    
+    This test suite verifies the functionality related to managing breakpoints
+    in the debugger, including setting, verifying, and handling breakpoints
+    in different scenarios.
     """
-
-    from pathlib import Path
-
-    # Add the project root to the Python path
-    project_root = str(Path(__file__).parent.parent.parent)
-    if project_root not in sys.path:
-
-    Test cases for debugger breakpoint management"""
 
     async def test_set_breakpoints_no_path(self):
         """Test set_breakpoints with source that has no path"""
@@ -156,10 +172,9 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
         mock_backend.exception_info.assert_called_once_with(1)
 
         # Should contain exception details
-        assert result["exceptionId"] == "ValueError"
+        assert result.get("exceptionId") == "ValueError"
         assert result.get("description") == "Test exception"
-        assert result["breakMode"] == "always"
-        assert "details" in result
+        assert result.get("breakMode") == "always"
         details = result.get("details", {})
         assert details.get("typeName") == "ValueError"
         assert details.get("fullTypeName") == "builtins.ValueError"

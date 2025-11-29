@@ -10,14 +10,22 @@ from typing import Any
 from typing import Literal
 from typing import TypedDict
 
+from dapper.protocol.debugger_protocol import ExceptionDetails
+
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
 
     from dapper.protocol.capabilities import Capabilities
+
+    # debugger_protocol types used when structuring certain response bodies
+    from dapper.protocol.debugger_protocol import ExceptionDetails
     from dapper.protocol.structures import Breakpoint
+    from dapper.protocol.structures import Scope
     from dapper.protocol.structures import Source
     from dapper.protocol.structures import SourceBreakpoint
+    from dapper.protocol.structures import StackFrame
     from dapper.protocol.structures import Thread
+    from dapper.protocol.structures import Variable
 
 
 # Initialize Request and Response
@@ -245,6 +253,54 @@ class SetFunctionBreakpointsResponseBody(TypedDict):
     breakpoints: list[Breakpoint]
 
 
+class FunctionBreakpoint(TypedDict, total=False):
+    name: str
+    condition: NotRequired[str]
+    hitCondition: NotRequired[str]
+
+
+# Evaluate
+class EvaluateArguments(TypedDict):
+    expression: str
+    frameId: NotRequired[int]
+    context: NotRequired[str]
+
+
+class EvaluateResponseBody(TypedDict, total=False):
+    result: str
+    type: NotRequired[str]
+    variablesReference: NotRequired[int]
+    presentationHint: NotRequired[dict[str, Any]]
+    namedVariables: NotRequired[int]
+    indexedVariables: NotRequired[int]
+    memoryReference: NotRequired[str]
+
+
+class ExceptionInfoResponseBody(TypedDict, total=False):
+    exceptionId: NotRequired[str]
+    description: NotRequired[str]
+    breakMode: NotRequired[str]
+    details: NotRequired[ExceptionDetails]
+
+
+# Evaluate request/response wrappers
+class EvaluateRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["evaluate"]
+    arguments: EvaluateArguments
+
+
+class EvaluateResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["evaluate"]
+    message: NotRequired[str]
+    body: NotRequired[EvaluateResponseBody]
+
+
 class SetFunctionBreakpointsRequest(TypedDict):
     seq: int
     type: Literal["request"]
@@ -381,6 +437,269 @@ class ThreadsResponse(TypedDict):
     command: Literal["threads"]
     message: NotRequired[str]
     body: NotRequired[ThreadsResponseBody]
+
+
+# Module representation used by modules/loadedSources responses
+class Module(TypedDict):
+    id: str
+    name: str
+    isUserCode: bool
+    path: NotRequired[str]
+
+
+# LoadedSources / Modules / ModuleSource
+class LoadedSourcesRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["loadedSources"]
+
+
+class LoadedSourcesResponseBody(TypedDict):
+    sources: list[Source]
+
+
+class LoadedSourcesResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["loadedSources"]
+    message: NotRequired[str]
+    body: NotRequired[LoadedSourcesResponseBody]
+
+
+class ModulesRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["modules"]
+
+
+class ModulesResponseBody(TypedDict):
+    modules: list[Module]
+
+
+class ModulesResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["modules"]
+    message: NotRequired[str]
+    body: NotRequired[ModulesResponseBody]
+
+
+class ModuleSourceRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["moduleSource"]
+    arguments: dict[str, Any]
+
+
+class ModuleSourceResponseBody(TypedDict):
+    source: Source
+
+
+class ModuleSourceResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["moduleSource"]
+    message: NotRequired[str]
+    body: NotRequired[ModuleSourceResponseBody]
+
+
+# Variables/Stack/Evaluate/SetVariable responses
+class VariablesResponseBody(TypedDict):
+    variables: list[Variable]
+    totalVariables: NotRequired[int]
+
+
+class SetVariableResponseBody(TypedDict):
+    value: str
+    type: NotRequired[str]
+    variablesReference: NotRequired[int]
+
+
+class StackTraceResponseBody(TypedDict):
+    stackFrames: list[StackFrame]
+    totalFrames: NotRequired[int]
+
+
+# StackTrace requests
+class StackTraceRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["stackTrace"]
+    arguments: dict[str, Any]
+
+
+class StackTraceResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["stackTrace"]
+    message: NotRequired[str]
+    body: NotRequired[StackTraceResponseBody]
+
+
+# Variables
+class VariablesRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["variables"]
+    arguments: dict[str, Any]
+
+
+class VariablesResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["variables"]
+    message: NotRequired[str]
+    body: NotRequired[VariablesResponseBody]
+
+
+# Scopes
+class ScopesRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["scopes"]
+    arguments: dict[str, Any]
+
+
+class ScopesResponseBody(TypedDict):
+    scopes: list[Scope]
+
+
+class ScopesResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["scopes"]
+    message: NotRequired[str]
+    body: NotRequired[ScopesResponseBody]
+
+
+# SetVariable
+class SetVariableRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setVariable"]
+    arguments: dict[str, Any]
+
+
+class SetVariableResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setVariable"]
+    message: NotRequired[str]
+    body: NotRequired[SetVariableResponseBody]
+
+
+# Source request/response
+class SourceRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["source"]
+    arguments: dict[str, Any]
+
+
+class SourceResponseBody(TypedDict):
+    content: str
+    mimeType: NotRequired[str]
+
+
+class SourceResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["source"]
+    message: NotRequired[str]
+    body: NotRequired[SourceResponseBody]
+
+
+# Exception breakpoints (response wrapper)
+class SetExceptionBreakpointsResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setExceptionBreakpoints"]
+    message: NotRequired[str]
+    body: NotRequired[list[dict[str, Any]]]
+
+
+# Arguments for setExceptionBreakpoints
+class SetExceptionBreakpointsArguments(TypedDict):
+    filters: list[str]
+    filterOptions: NotRequired[list[dict[str, Any]]]
+    exceptionOptions: NotRequired[list[dict[str, Any]]]
+
+
+# Exception info request/response wrappers
+class ExceptionInfoArguments(TypedDict):
+    threadId: int
+
+
+class ExceptionInfoRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["exceptionInfo"]
+    arguments: ExceptionInfoArguments
+
+
+class ExceptionInfoResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["exceptionInfo"]
+    message: NotRequired[str]
+    body: NotRequired[ExceptionInfoResponseBody]
+
+
+# Pause / Restart request/response shapes
+class PauseArguments(TypedDict):
+    threadId: int
+
+
+class PauseRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["pause"]
+    arguments: PauseArguments
+
+
+class PauseResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["pause"]
+    message: NotRequired[str]
+
+
+class RestartRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["restart"]
+
+
+class RestartResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["restart"]
+    message: NotRequired[str]
+
 
 
 # ... (content continues - we already copied this portion)
