@@ -1,9 +1,11 @@
+from __future__ import annotations
+
+from dapper.adapter.external_backend import ExternalProcessBackend
+
 """Pytest-style tests for the PyDebugger class.
 
 Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 """
-
-from __future__ import annotations
 
 import asyncio
 import sys
@@ -132,8 +134,6 @@ def debugger(mock_server, event_loop):
 
 def setup_external_backend(debugger):
     """Helper to set up the external backend for tests that need it."""
-    from dapper.adapter.external_backend import ExternalProcessBackend
-
     debugger._external_backend = ExternalProcessBackend(
         ipc=debugger.ipc,
         loop=debugger.loop,

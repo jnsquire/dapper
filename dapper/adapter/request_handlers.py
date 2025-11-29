@@ -26,77 +26,71 @@ if TYPE_CHECKING:
     from dapper.adapter.server import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.adapter.types import DAPResponse
-    from dapper.protocol.structures import (
-        Breakpoint,
-        StackFrame,
-        Scope,
-        Variable,
-        Thread,
-        SourceBreakpoint,
-        Source,
-    )
-    from dapper.protocol.data_breakpoints import (
-        DataBreakpointInfoRequest,
-        DataBreakpointInfoResponse,
-        DataBreakpointInfoResponseBody,
-        SetDataBreakpointsRequest,
-        SetDataBreakpointsResponse,
-    )
-    from dapper.protocol.requests import (
-        AttachRequest,
-        AttachResponse,
-        ConfigurationDoneRequest,
-        ConfigurationDoneResponse,
-        ContinueRequest,
-        ContinueResponse,
-        ContinueResponseBody,
-        EvaluateRequest,
-        EvaluateResponse,
-        EvaluateResponseBody,
-        ExceptionInfoRequest,
-        ExceptionInfoResponse,
-        ExceptionInfoResponseBody,
-        InitializeRequest,
-        LaunchRequest,
-        LaunchResponse,
-        LoadedSourcesRequest,
-        LoadedSourcesResponse,
-        Module,
-        ModuleSourceRequest,
-        ModuleSourceResponse,
-        ModulesRequest,
-        ModulesResponse,
-        NextRequest,
-        NextResponse,
-        PauseRequest,
-        PauseResponse,
-        RestartRequest,
-        RestartResponse,
-        ScopesRequest,
-        ScopesResponse,
-        SetBreakpointsRequest,
-        SetBreakpointsResponse,
-        SetFunctionBreakpointsRequest,
-        SetFunctionBreakpointsResponse,
-        SetVariableRequest,
-        SetVariableResponse,
-        SetVariableResponseBody,
-        SourceRequest,
-        SourceResponse,
-        SourceResponseBody,
-        StackTraceRequest,
-        StackTraceResponse,
-        StepInRequest,
-        StepInResponse,
-        StepOutRequest,
-        StepOutResponse,
-        TerminateRequest,
-        TerminateResponse,
-        ThreadsRequest,
-        ThreadsResponse,
-        VariablesRequest,
-        VariablesResponse,
-    )
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoRequest
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponse
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
+    from dapper.protocol.data_breakpoints import SetDataBreakpointsRequest
+    from dapper.protocol.data_breakpoints import SetDataBreakpointsResponse
+    from dapper.protocol.requests import AttachRequest
+    from dapper.protocol.requests import AttachResponse
+    from dapper.protocol.requests import ConfigurationDoneRequest
+    from dapper.protocol.requests import ConfigurationDoneResponse
+    from dapper.protocol.requests import ContinueRequest
+    from dapper.protocol.requests import ContinueResponse
+    from dapper.protocol.requests import ContinueResponseBody
+    from dapper.protocol.requests import DisconnectRequest
+    from dapper.protocol.requests import DisconnectResponse
+    from dapper.protocol.requests import EvaluateRequest
+    from dapper.protocol.requests import EvaluateResponse
+    from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import ExceptionInfoRequest
+    from dapper.protocol.requests import ExceptionInfoResponse
+    from dapper.protocol.requests import ExceptionInfoResponseBody
+    from dapper.protocol.requests import InitializeRequest
+    from dapper.protocol.requests import LaunchRequest
+    from dapper.protocol.requests import LaunchResponse
+    from dapper.protocol.requests import LoadedSourcesRequest
+    from dapper.protocol.requests import LoadedSourcesResponse
+    from dapper.protocol.requests import Module
+    from dapper.protocol.requests import ModuleSourceRequest
+    from dapper.protocol.requests import ModuleSourceResponse
+    from dapper.protocol.requests import ModulesRequest
+    from dapper.protocol.requests import ModulesResponse
+    from dapper.protocol.requests import NextRequest
+    from dapper.protocol.requests import NextResponse
+    from dapper.protocol.requests import PauseRequest
+    from dapper.protocol.requests import PauseResponse
+    from dapper.protocol.requests import RestartRequest
+    from dapper.protocol.requests import RestartResponse
+    from dapper.protocol.requests import ScopesRequest
+    from dapper.protocol.requests import ScopesResponse
+    from dapper.protocol.requests import SetBreakpointsRequest
+    from dapper.protocol.requests import SetBreakpointsResponse
+    from dapper.protocol.requests import SetFunctionBreakpointsRequest
+    from dapper.protocol.requests import SetFunctionBreakpointsResponse
+    from dapper.protocol.requests import SetVariableRequest
+    from dapper.protocol.requests import SetVariableResponse
+    from dapper.protocol.requests import SetVariableResponseBody
+    from dapper.protocol.requests import SourceRequest
+    from dapper.protocol.requests import SourceResponse
+    from dapper.protocol.requests import SourceResponseBody
+    from dapper.protocol.requests import StackTraceRequest
+    from dapper.protocol.requests import StackTraceResponse
+    from dapper.protocol.requests import StepInRequest
+    from dapper.protocol.requests import StepInResponse
+    from dapper.protocol.requests import StepOutRequest
+    from dapper.protocol.requests import StepOutResponse
+    from dapper.protocol.requests import TerminateRequest
+    from dapper.protocol.requests import TerminateResponse
+    from dapper.protocol.requests import ThreadsRequest
+    from dapper.protocol.requests import ThreadsResponse
+    from dapper.protocol.requests import VariablesRequest
+    from dapper.protocol.requests import VariablesResponse
+    from dapper.protocol.structures import Breakpoint
+    from dapper.protocol.structures import Scope
+    from dapper.protocol.structures import StackFrame
+    from dapper.protocol.structures import Thread
+    from dapper.protocol.structures import Variable
 
 # Re-export for type checking - these are used in method signatures/bodies
 __all__ = ["RequestHandler"]

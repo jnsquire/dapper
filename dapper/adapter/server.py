@@ -36,7 +36,8 @@ from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc.ipc_context import IPCContext
 from dapper.protocol.protocol import ProtocolHandler
-from dapper.protocol.structures import Source, SourceBreakpoint
+from dapper.protocol.structures import Source
+from dapper.protocol.structures import SourceBreakpoint
 
 try:
     # Optional integration module; may not be present on all platforms.
@@ -50,24 +51,22 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from dapper.ipc.connections.base import ConnectionBase
-    from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.structures import Breakpoint, Scope, Thread
-    from dapper.protocol.requests import (
-        ContinueResponseBody,
-        EvaluateResponseBody,
-        ExceptionDetails,
-        FunctionBreakpoint,
-        Module,
-        SetVariableResponseBody,
-        StackTraceResponseBody,
-        ExceptionInfoResponseBody,
-    )
-    from dapper.protocol.capabilities import (
-        ExceptionFilterOptions,
-        ExceptionOptions,
-    )
+    from dapper.protocol.capabilities import ExceptionFilterOptions
+    from dapper.protocol.capabilities import ExceptionOptions
     from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
+    from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.messages import GenericRequest
+    from dapper.protocol.requests import ContinueResponseBody
+    from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import ExceptionDetails
+    from dapper.protocol.requests import ExceptionInfoResponseBody
+    from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import Module
+    from dapper.protocol.requests import SetVariableResponseBody
+    from dapper.protocol.requests import StackTraceResponseBody
+    from dapper.protocol.structures import Breakpoint
+    from dapper.protocol.structures import Scope
+    from dapper.protocol.structures import Thread
 
 
 logger = logging.getLogger(__name__)

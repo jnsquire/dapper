@@ -14,15 +14,14 @@ from typing import runtime_checkable
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.structures import Breakpoint, SourceBreakpoint
-    from dapper.protocol.requests import (
-        ContinueResponseBody,
-        EvaluateResponseBody,
-        ExceptionInfoResponseBody,
-        FunctionBreakpoint,
-        SetVariableResponseBody,
-        StackTraceResponseBody,
-    )
+    from dapper.protocol.requests import ContinueResponseBody
+    from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import ExceptionInfoResponseBody
+    from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import SetVariableResponseBody
+    from dapper.protocol.requests import StackTraceResponseBody
+    from dapper.protocol.structures import Breakpoint
+    from dapper.protocol.structures import SourceBreakpoint
 
 
 @runtime_checkable

@@ -12,6 +12,7 @@ project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+from dapper.adapter.inprocess_backend import InProcessBackend
 from dapper.adapter.server import DebugAdapterServer
 from tests.mocks import MockConnection
 
@@ -65,8 +66,6 @@ async def test_inprocess_variables_bridge():
     get_variables should call bridge with _filter/_start/_count and
     return values.
     """
-    from dapper.adapter.inprocess_backend import InProcessBackend
-
     # Prepare a debugger instance directly to test variables path
     conn = MockConnection()
     loop = asyncio.get_event_loop()

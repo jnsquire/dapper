@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import TypedDict
 from typing import Literal
+from typing import TypedDict
 
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
@@ -21,7 +21,7 @@ class Source(TypedDict):
     sourceReference: NotRequired[int]  # If > 0, the contents must be retrieved through the source request
     presentationHint: NotRequired[Literal["normal", "emphasize", "deemphasize"]]
     origin: NotRequired[str]  # The origin of this source
-    sources: NotRequired[list["Source"]]  # List of sources that are related to this source
+    sources: NotRequired[list[Source]]  # List of sources that are related to this source
     adapterData: NotRequired[Any]  # Additional data that a debug adapter might want to loop through the client
     checksums: NotRequired[list[Any]]  # The checksums associated with this file
 

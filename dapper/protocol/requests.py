@@ -9,29 +9,15 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
 from typing import TypedDict
-from typing import Union
-
-from .capabilities import Capabilities
-from .capabilities import ExceptionFilterOptions
-from .capabilities import ExceptionOptions
-from .data_breakpoints import DataBreakpointInfoArguments
-from .data_breakpoints import DataBreakpointInfoRequest
-from .data_breakpoints import DataBreakpointInfoResponse
-from .data_breakpoints import DataBreakpointInfoResponseBody
-from .data_breakpoints import SetDataBreakpointsArguments
-from .data_breakpoints import SetDataBreakpointsRequest
-from .data_breakpoints import SetDataBreakpointsResponse
-from .data_breakpoints import SetDataBreakpointsResponseBody
-from .structures import Breakpoint
-from .structures import Scope
-from .structures import Source
-from .structures import SourceBreakpoint
-from .structures import StackFrame
-from .structures import Thread
-from .structures import Variable
 
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
+
+    from dapper.protocol.capabilities import Capabilities
+    from dapper.protocol.structures import Breakpoint
+    from dapper.protocol.structures import Source
+    from dapper.protocol.structures import SourceBreakpoint
+    from dapper.protocol.structures import Thread
 
 
 # Initialize Request and Response

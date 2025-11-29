@@ -11,6 +11,8 @@ from typing import TypedDict
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
 
+    from dapper.protocol.structures import Breakpoint
+
 
 class DataBreakpointInfoArguments(TypedDict, total=False):  # type: ignore[misc]
     """Arguments for 'dataBreakpointInfo' request.
@@ -70,7 +72,7 @@ class SetDataBreakpointsRequest(TypedDict):
 
 
 class SetDataBreakpointsResponseBody(TypedDict):  # type: ignore[misc]
-    breakpoints: list["Breakpoint"]
+    breakpoints: list[Breakpoint]
 
 
 class SetDataBreakpointsResponse(TypedDict):

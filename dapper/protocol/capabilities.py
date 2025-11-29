@@ -45,7 +45,7 @@ class ExceptionOptions(TypedDict):
 
     # A path selecting exceptions (optional). Each segment is defined by
     # ExceptionPathSegment below.
-    path: NotRequired[list["ExceptionPathSegment"]]
+    path: NotRequired[list[ExceptionPathSegment]]
     # breakMode is required per the DAP schema (one of ExceptionBreakMode)
     breakMode: str
 
