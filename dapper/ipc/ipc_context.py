@@ -6,6 +6,11 @@ related `_ipc_*` attributes. The server continues to expose legacy
 private attribute names through a property bridge for backward
 compatibility with existing tests while the implementation keeps the
 state here.
+
+Threading Model:
+- The reader thread is owned by IPCContext and started via start_reader().
+- The thread runs as a daemon and reads messages until the connection closes.
+- cleanup() will stop the reader if still running.
 """
 
 from __future__ import annotations
@@ -15,8 +20,10 @@ import logging
 import os
 import socket as _socket
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
+from dataclasses import field
 from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import Any
@@ -41,6 +48,9 @@ class IPCContext:
     pipe_conn: Any | None = None  # mp_conn.Connection | None
     unix_path: Any | None = None  # Path | None (kept Any to avoid runtime import)
     binary: bool = False
+
+    # Reader thread management
+    _reader_thread: threading.Thread | None = field(default=None, repr=False)
 
     # ------------------------------
     # Runtime helpers migrated from PyDebugger
@@ -275,6 +285,37 @@ class IPCContext:
         finally:
             # Ensure we clean up IPC resources before we exit
             self.disable()
+
+    def start_reader(
+        self,
+        handle_debug_message: Callable[[str], None],
+        *,
+        accept: bool = True,
+    ) -> None:
+        """Start the IPC reader thread.
+
+        This method spawns a daemon thread that reads messages from the IPC
+        connection and passes them to the handler callback. The thread is
+        owned by this IPCContext and will be cleaned up when cleanup() is called.
+
+        Args:
+            handle_debug_message: Callback to invoke with each received message.
+            accept: If True, wait for an incoming connection before reading
+                   (used after launch). If False, read from an already-connected
+                   transport (used after attach).
+        """
+        if self._reader_thread is not None and self._reader_thread.is_alive():
+            logger.warning("Reader thread already running")
+            return
+
+        target = self.run_accept_and_read if accept else self.run_attached_reader
+        self._reader_thread = threading.Thread(
+            target=target,
+            args=(handle_debug_message,),
+            daemon=True,
+            name="IPCReaderThread",
+        )
+        self._reader_thread.start()
 
     def create_listener(
         self,

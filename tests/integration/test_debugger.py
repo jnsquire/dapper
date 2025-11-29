@@ -765,8 +765,12 @@ async def test_evaluate_expression(debugger):
 
 
 @pytest.mark.asyncio
-async def test_handle_debug_message_stopped_event(debugger, mock_server):
+async def test_handle_debug_message_stopped_event(mock_server):
     """Test handling stopped event from debuggee"""
+    # Create debugger with the running loop so spawn_threadsafe works
+    loop = asyncio.get_running_loop()
+    debugger = PyDebugger(mock_server, loop)
+    
     message = {
         "type": "event",
         "event": "stopped",
@@ -778,6 +782,8 @@ async def test_handle_debug_message_stopped_event(debugger, mock_server):
     }
 
     await debugger.handle_debug_message(message)
+    # Pump the loop to process spawn_threadsafe callbacks
+    await asyncio.sleep(0)
 
     # Check that stopped event was set
     assert debugger.stopped_event.is_set()
@@ -790,11 +796,17 @@ async def test_handle_debug_message_stopped_event(debugger, mock_server):
 
 
 @pytest.mark.asyncio
-async def test_handle_debug_message_thread_started(debugger, mock_server):
+async def test_handle_debug_message_thread_started(mock_server):
     """Test handling thread started event"""
+    # Create debugger with the running loop so spawn_threadsafe works
+    loop = asyncio.get_running_loop()
+    debugger = PyDebugger(mock_server, loop)
+    
     message = {"event": "thread", "reason": "started", "threadId": 2}
 
     await debugger.handle_debug_message(message)
+    # Pump the loop to process spawn_threadsafe callbacks
+    await asyncio.sleep(0)
 
     # Check that thread was added
     assert 2 in debugger.threads
@@ -805,14 +817,20 @@ async def test_handle_debug_message_thread_started(debugger, mock_server):
 
 
 @pytest.mark.asyncio
-async def test_handle_debug_message_thread_exited(debugger, mock_server):
+async def test_handle_debug_message_thread_exited(mock_server):
     """Test handling thread exited event"""
+    # Create debugger with the running loop so spawn_threadsafe works
+    loop = asyncio.get_running_loop()
+    debugger = PyDebugger(mock_server, loop)
+    
     # Add a thread first
     debugger.threads[1] = PyDebuggerThread(1, "MainThread")
 
     message = {"event": "thread", "reason": "exited", "threadId": 1}
 
     await debugger.handle_debug_message(message)
+    # Pump the loop to process spawn_threadsafe callbacks
+    await asyncio.sleep(0)
 
     # Check that thread was removed
     assert 1 not in debugger.threads

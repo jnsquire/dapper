@@ -227,7 +227,7 @@ In-process mode keeps the debugged program (debugee) on the main thread and runs
 
 ### Event routing
 
-In in-process mode, `InProcessDebugger` calls adapter-supplied callbacks. The adapter forwards these as DAP events using `_forward_event`/`server.send_event(...)`. This avoids JSON encoding and IO, lowering latency and complexity.
+In in-process mode, `InProcessDebugger` calls adapter-supplied callbacks. The adapter forwards these as DAP events using `_emit_event`/`server.send_event(...)`. This avoids JSON encoding and IO, lowering latency and complexity.
 
 ### Limitations and notes
 

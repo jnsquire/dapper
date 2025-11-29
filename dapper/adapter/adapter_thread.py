@@ -16,6 +16,11 @@ Notes:
     from `dapper.connection`.
 - `stop()` schedules a graceful shutdown on the adapter loop and joins the
     thread.
+
+Threading Model:
+- The adapter runs on a dedicated daemon thread with its own asyncio event loop.
+- Shared state (_server, _loop, _loop_tasks, _thread_futures) is protected by _lock.
+- Cross-thread communication uses threading.Event and asyncio.run_coroutine_threadsafe.
 """
 
 from __future__ import annotations
@@ -33,6 +38,11 @@ from dapper.ipc.connections.tcp import TCPServerConnection
 from dapper.utils.events import EventEmitter
 
 logger = logging.getLogger(__name__)
+
+# Timeout for waiting on thread start/stop operations
+DEFAULT_THREAD_TIMEOUT = 5.0
+# Short delay before stopping the loop to allow pending callbacks to complete
+LOOP_STOP_DELAY = 0.05
 
 
 class AdapterThread:
@@ -62,6 +72,9 @@ class AdapterThread:
         # Event used to signal when the adapter thread has stopped.
         self._stopped = threading.Event()
 
+        # Lock to protect shared state accessed from multiple threads
+        self._lock = threading.Lock()
+
         # Event/future used to publish the bound port for TCP listeners.
         self.on_port_assigned = EventEmitter()
 
@@ -72,119 +85,124 @@ class AdapterThread:
         # Breakpoint controller (exposed after server is constructed)
         self.breakpoints: BreakpointController | None = None
 
-    @property
-    def loop(self) -> asyncio.AbstractEventLoop | None:
-        return self._loop
+    def _create_connection(self) -> TCPServerConnection | NamedPipeServerConnection:
+        """Build connection based on configured connection type.
+        
+        Must be called from the adapter thread context.
+        """
+        if self.connection_type == "tcp":
+            port = 0 if self.port is None else int(self.port)
+            return TCPServerConnection(host=self.host, port=port)
+        if self.connection_type == "pipe":
+            name = self.pipe_name or "dapper_debug_pipe"
+            return NamedPipeServerConnection(pipe_name=name)
+        msg = f"Unknown connection type: {self.connection_type}"
+        raise ValueError(msg)
 
-    @property
-    def server(self) -> DebugAdapterServer | None:
-        return self._server
+    def _start_server_on_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Schedule the server start coroutine and mark thread as started."""
+        async def _start_server() -> None:
+            try:
+                with self._lock:
+                    server = self._server
+                if server is not None:
+                    await server.start()
+            finally:
+                self._stopped.set()
 
-    def start(self) -> None:  # noqa: PLR0915 - structured into nested helpers
+        task = loop.create_task(_start_server())
+        with self._lock:
+            self._loop_tasks.append(task)
+        self._started.set()
+
+    async def _start_listening_and_publish_port(
+        self, connection: TCPServerConnection
+    ) -> None:
+        """Start TCP listener and emit the bound port."""
+        try:
+            await connection.start_listening()
+            port = getattr(connection, "port", None)
+            if port:
+                self.on_port_assigned.emit(port)
+        except Exception:
+            logger.exception("Error starting TCP listener to obtain port")
+
+    def _run_adapter_loop(self) -> None:
+        """Main entry point for the adapter thread.
+        
+        Creates the event loop, initializes the server, and runs until stopped.
+        """
+        loop: asyncio.AbstractEventLoop | None = None
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            with self._lock:
+                self._loop = loop
+
+            # Build connection and server in this loop context
+            connection = self._create_connection()
+            server = DebugAdapterServer(connection, loop)
+            with self._lock:
+                self._server = server
+
+            # Expose a breakpoint controller bound to the adapter loop
+            self.breakpoints = BreakpointController(loop, server.debugger)
+
+            # For TCP connections, start listening to obtain the bound port
+            if isinstance(connection, TCPServerConnection):
+                task = loop.create_task(
+                    self._start_listening_and_publish_port(connection)
+                )
+                with self._lock:
+                    self._loop_tasks.append(task)
+
+            # Kick off server start and mark as started once queued
+            self._start_server_on_loop(loop)
+
+            # Run the event loop until explicitly stopped
+            loop.run_forever()
+
+        except Exception:
+            logger.exception("Adapter thread crashed")
+        finally:
+            self._cleanup_loop(loop)
+
+    def _cleanup_loop(self, loop: asyncio.AbstractEventLoop | None) -> None:
+        """Clean up the event loop during shutdown."""
+        if loop is None or loop.is_closed():
+            with self._lock:
+                self._loop = None
+            return
+
+        try:
+            pending = asyncio.all_tasks(loop=loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                gathered = asyncio.gather(*pending, return_exceptions=True)
+                loop.run_until_complete(gathered)
+            loop.stop()
+            loop.close()
+        except Exception:
+            logger.debug("Error during loop cleanup", exc_info=True)
+        finally:
+            with self._lock:
+                self._loop = None
+
+    def start(self) -> None:
         """Start the adapter thread and event loop."""
-
         if self._thread and self._thread.is_alive():
             return
 
-        def _create_connection() -> TCPServerConnection | NamedPipeServerConnection:
-            """Build connection in thread context"""
-            if self.connection_type == "tcp":
-                port = 0 if self.port is None else int(self.port)
-                return TCPServerConnection(host=self.host, port=port)
-            if self.connection_type == "pipe":
-                name = self.pipe_name or "dapper_debug_pipe"
-                return NamedPipeServerConnection(pipe_name=name)
-            msg = f"Unknown connection type: {self.connection_type}"
-            raise ValueError(msg)
-
-        def _start_server_on_loop(loop: asyncio.AbstractEventLoop) -> None:
-            async def _start_server() -> None:
-                try:
-                    server = self._server
-                    if server is not None:
-                        await server.start()
-                finally:
-                    self._stopped.set()
-
-            task = loop.create_task(_start_server())
-            # Keep a reference to the server start task to avoid GC
-            self._loop_tasks.append(task)
-            self._started.set()
-
-        def _run() -> None:
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                self._loop = loop
-
-                # Build connection and server in this loop context
-                connection = _create_connection()
-                self._server = DebugAdapterServer(connection, loop)
-
-                # Expose a breakpoint controller bound to the adapter loop
-                self.breakpoints = BreakpointController(loop, self._server.debugger)
-
-                # For TCP connections we can call start_listening() to obtain
-                # the bound ephemeral port immediately, before waiting for a
-                # client in accept(). This avoids polling the socket.
-                if isinstance(connection, TCPServerConnection):
-                    # Schedule a coroutine on the adapter loop to call
-                    # start_listening() and publish the bound port. We don't
-                    # block here; start_listening will prepare the listening
-                    # socket and allow us to observe the port before a client
-                    # connects.
-                    async def _start_listen_and_publish() -> None:
-                        try:
-                            await connection.start_listening()
-                            port = getattr(connection, "port", None)
-                            if port:
-                                self.on_port_assigned.emit(port)
-                        except Exception:
-                            logger.exception("Error starting TCP listener to obtain port")
-
-                    # keep a reference to avoid GC
-                    t = loop.create_task(_start_listen_and_publish())
-                    self._loop_tasks.append(t)
-
-                # Kick off server start and mark as started once queued
-                _start_server_on_loop(loop)
-
-                # Run the event loop until explicitly stopped
-                loop.run_forever()
-
-            except Exception:
-                logger.exception("Adapter thread crashed")
-            finally:
-                try:
-                    # Best-effort loop shutdown
-                    if self._loop is not None and not self._loop.is_closed():
-                        pending = asyncio.all_tasks(loop=self._loop)
-                        for t in pending:
-                            t.cancel()
-                        try:
-                            gathered = asyncio.gather(
-                                *pending,
-                                return_exceptions=True,
-                            )
-                            self._loop.run_until_complete(gathered)
-                        except Exception:
-                            pass
-                        self._loop.stop()
-                        self._loop.close()
-                except Exception:
-                    pass
-                finally:
-                    self._loop = None
-
         self._thread = threading.Thread(
-            target=_run,
+            target=self._run_adapter_loop,
             name="DapperAdapterThread",
             daemon=True,
         )
         self._thread.start()
-        self._started.wait(timeout=5.0)
+        self._started.wait(timeout=DEFAULT_THREAD_TIMEOUT)
 
-    def stop(self, join: bool = True, timeout: float | None = 5.0) -> None:
+    def stop(self, join: bool = True, timeout: float | None = DEFAULT_THREAD_TIMEOUT) -> None:
         """Request a graceful shutdown of the adapter and stop the thread.
 
         Schedules `server.stop()` on the adapter loop (if available), then
@@ -192,8 +210,9 @@ class AdapterThread:
 
         If the adapter thread is not started or already stopped, this method is a no-op.
         """
-        loop = self._loop
-        server = self._server
+        with self._lock:
+            loop = self._loop
+            server = self._server
 
         if loop is None:
             # Nothing to do if thread/loop not started
@@ -207,17 +226,17 @@ class AdapterThread:
             except Exception:
                 logger.exception("Error scheduling server.stop()")
             else:
-                # keep for potential cancellation/inspection
-                self._thread_futures.append(fut)
+                with self._lock:
+                    self._thread_futures.append(fut)
 
         self._cancel_loop_tasks(loop, timeout)
         self._cancel_thread_futures(timeout)
 
         # Schedule loop.stop() after a short delay to allow pending callbacks
         try:
-            loop.call_soon_threadsafe(loop.call_later, 0.05, loop.stop)
+            loop.call_soon_threadsafe(loop.call_later, LOOP_STOP_DELAY, loop.stop)
         except Exception:
-            logger.debug("Error scheduling loop stop")
+            logger.debug("Error scheduling loop stop", exc_info=True)
 
         self._join_thread(join, timeout)
 
@@ -226,17 +245,18 @@ class AdapterThread:
         loop: asyncio.AbstractEventLoop,
         timeout: float | None,
     ) -> None:
-        if not self._loop_tasks:
-            return
-
-        tasks = list(self._loop_tasks)
-        self._loop_tasks.clear()
+        """Cancel all tracked asyncio tasks on the adapter loop."""
+        with self._lock:
+            if not self._loop_tasks:
+                return
+            tasks = list(self._loop_tasks)
+            self._loop_tasks.clear()
 
         try:
             for task in tasks:
                 loop.call_soon_threadsafe(task.cancel)
         except Exception:
-            logger.debug("Error cancelling background tasks on loop")
+            logger.debug("Error cancelling background tasks on loop", exc_info=True)
 
         async def _wait_for_all() -> None:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -245,14 +265,15 @@ class AdapterThread:
             waiter = asyncio.run_coroutine_threadsafe(_wait_for_all(), loop)
             waiter.result(timeout or 1.0)
         except Exception:
-            logger.debug("Timeout or error waiting for background tasks to finish")
+            logger.debug("Timeout or error waiting for background tasks to finish", exc_info=True)
 
     def _cancel_thread_futures(self, timeout: float | None) -> None:
-        if not self._thread_futures:
-            return
-
-        futures = list(self._thread_futures)
-        self._thread_futures.clear()
+        """Cancel all tracked cross-thread futures."""
+        with self._lock:
+            if not self._thread_futures:
+                return
+            futures = list(self._thread_futures)
+            self._thread_futures.clear()
 
         for future in futures:
             if not future.done():

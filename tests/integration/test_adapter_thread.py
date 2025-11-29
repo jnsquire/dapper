@@ -15,19 +15,6 @@ class PortTimeoutError(Exception):
         super().__init__("Timed out waiting for port assignment")
 
 
-async def _wait_for_port(runner: adapter_thread_mod.AdapterThread, timeout: float = 2.0) -> int:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while loop.time() < deadline:
-        server = runner.server
-        conn = server.connection if server else None
-        port = getattr(conn, "port", None)
-        if port:
-            return port
-        await asyncio.sleep(0.01)
-    raise PortTimeoutError
-
-
 class _FakeTCPConnection:
     def __init__(self, host: str = "localhost", port: int = 4711) -> None:
         self.host = host
@@ -87,20 +74,31 @@ async def test_start_stop_tcp(monkeypatch):
     monkeypatch.setattr(adapter_thread_mod, "DebugAdapterServer", _FakeServer)
 
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", host="127.0.0.1", port=None)
-    runner.start()
 
-    # Wait for port to be published by the adapter thread
-    result_port = await _wait_for_port(runner)
-    assert result_port == 55555
+    # Set up port listener BEFORE starting to avoid race
+    port_future: asyncio.Future[int] = asyncio.get_running_loop().create_future()
 
-    # Ensure thread and loop are active
-    assert isinstance(runner.loop, asyncio.AbstractEventLoop)
-    assert isinstance(runner.server, _FakeServer)
-    assert isinstance(runner._thread, threading.Thread)
-    assert runner._thread.is_alive()
+    def on_port(port: int) -> None:
+        if not port_future.done():
+            port_future.set_result(port)
 
-    # Stop and join
-    runner.stop(join=True, timeout=5.0)
+    runner.on_port_assigned.add_listener(on_port)
+
+    try:
+        runner.start()
+
+        # Wait for port to be published by the adapter thread
+        result_port = await asyncio.wait_for(port_future, timeout=2.0)
+        assert result_port == 55555
+
+        # Ensure thread is active
+        assert isinstance(runner._thread, threading.Thread)
+        assert runner._thread.is_alive()
+    finally:
+        runner.on_port_assigned.remove_listener(on_port)
+        # Stop and join
+        runner.stop(join=True, timeout=5.0)
+
     assert runner._thread is None
 
 
@@ -154,9 +152,7 @@ async def test_port_future_resolves_when_server_created(monkeypatch):
         port = await asyncio.wait_for(port_future, timeout=5.0)
         assert port == 55555, f"Expected port 55555, got {port}"
     except asyncio.TimeoutError:
-        server = runner.server
-        port = getattr(server.connection, "port", None) if server else None
-        pytest.fail(f"Timeout waiting for port assignment. Port: {port}")
+        pytest.fail("Timeout waiting for port assignment")
     finally:
         if hasattr(runner, "on_port_assigned"):
             runner.on_port_assigned.remove_listener(on_port_assigned)

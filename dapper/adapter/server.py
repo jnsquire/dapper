@@ -339,23 +339,14 @@ class PyDebugger:
             logger.debug("Failed bridging data watches to BDB", exc_info=True)
         return results
 
-    def _forward_event(self, event_name: str, payload: dict[str, Any]) -> None:
-        """Forward an event to the server.
+    def _emit_event(self, event_name: str, payload: dict[str, Any]) -> None:
+        """Schedule an event to be sent to the DAP client.
 
-        Calls send_event immediately so synchronous test helpers can observe
-        the call. If send_event returns an awaitable, it's scheduled via
-        spawn_threadsafe to run on the event loop.
+        This is the preferred way to send events from synchronous callbacks
+        and background threads. The event is scheduled on the event loop
+        via spawn_threadsafe.
         """
-        try:
-            res = self.server.send_event(event_name, payload)
-        except Exception:
-            logger.exception("error calling server.send_event")
-            return
-
-        if inspect.isawaitable(res):
-            # Schedule the awaitable on the event loop via spawn_threadsafe
-            # which handles all the threading/loop complexity for us
-            self.spawn_threadsafe(lambda r=res: r)
+        self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
 
     async def launch(
         self,
@@ -429,11 +420,7 @@ class PyDebugger:
 
         # Accept the IPC connection from the launcher (IPC is mandatory)
         if self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None:
-            threading.Thread(
-                target=self.ipc.run_accept_and_read,
-                args=(self._handle_debug_message,),
-                daemon=True,
-            ).start()
+            self.ipc.start_reader(self._handle_debug_message, accept=True)
 
         # Create the external process backend
         self._external_backend = ExternalProcessBackend(
@@ -487,8 +474,7 @@ class PyDebugger:
     def _handle_inproc_output(self, category: str, output: str) -> None:
         """Forward output events from in-process debugger to the server."""
         try:
-            payload = {"category": category, "output": output}
-            self.spawn_threadsafe(lambda: self.server.send_event("output", payload))
+            self._emit_event("output", {"category": category, "output": output})
         except Exception:
             logger.exception("error in on_output callback")
 
@@ -519,12 +505,8 @@ class PyDebugger:
             port=ipc_port,
         )
 
-        # Start reader thread
-        threading.Thread(
-            target=self.ipc.run_attached_reader,
-            args=(self._handle_debug_message,),
-            daemon=True,
-        ).start()
+        # Start reader thread (connection already established)
+        self.ipc.start_reader(self._handle_debug_message, accept=False)
 
         # Create the external process backend
         self._external_backend = ExternalProcessBackend(
@@ -584,22 +566,19 @@ class PyDebugger:
             self.spawn_threadsafe(lambda: self._handle_program_exit(1))
 
     def _read_output(self, stream, category: str) -> None:
-        """Read output from the debuggee's stdout/stderr streams."""
+        """Read output from the debuggee's stdout/stderr streams.
+
+        Debug protocol messages are received via IPC, not stdout/stderr.
+        This method only forwards program output to the DAP client.
+        """
         try:
             while True:
                 line = stream.readline()
                 if not line:
                     break
 
-                if line.startswith("DBGP:"):
-                    self._handle_debug_message(line[5:].strip())
-                else:
-                    # Always schedule via factory to defer coroutine creation to loop thread
-                    self.spawn_threadsafe(
-                        lambda line_text=line, cat=category: self.server.send_event(
-                            "output", {"category": cat, "output": line_text}
-                        )
-                    )
+                # Forward program output to DAP client
+                self._emit_event("output", {"category": category, "output": line})
         except Exception:
             logger.exception("Error reading %s", category)
 
@@ -702,7 +681,7 @@ class PyDebugger:
         # Forward all events that have payload extractors
         payload = extract_payload(event_type, data)
         if payload is not None:
-            self._forward_event(event_type, payload)
+            self._emit_event(event_type, payload)
 
     def _resolve_pending_response(
         self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
@@ -782,18 +761,12 @@ class PyDebugger:
         except Exception:
             progress_id = f"setBreakpoints:{path}"
 
-        self.spawn_threadsafe(
-            lambda pid=progress_id: self.server.send_event(
-                "progressStart", {"progressId": pid, "title": "Setting breakpoints"}
-            )
-        )
+        self._emit_event("progressStart", {"progressId": progress_id, "title": "Setting breakpoints"})
 
         await self._backend.set_breakpoints(path, spec_list)
         self._forward_breakpoint_events(storage_list)
 
-        self.spawn_threadsafe(
-            lambda pid=progress_id: self.server.send_event("progressEnd", {"progressId": pid})
-        )
+        self._emit_event("progressEnd", {"progressId": progress_id})
 
         return storage_list  # type: ignore[return-value]
 
@@ -833,7 +806,7 @@ class PyDebugger:
         """Forward breakpoint-changed events to clients."""
         try:
             for bp in storage_list:
-                self._forward_event("breakpoint", {
+                self._emit_event("breakpoint", {
                     "reason": "changed",
                     "breakpoint": {
                         "verified": bp.get("verified", True),
@@ -1179,14 +1152,6 @@ class PyDebugger:
         if isinstance(message, dict):
             message = json.dumps(message)
         self._handle_debug_message(message)
-        # Give the loop a chance to run any tasks spawned by the handler so
-        # tests that assert immediately after this call observe the effects.
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-        if running is self.loop:
-            await asyncio.sleep(0)
 
     async def handle_program_exit(self, exit_code: int) -> None:
         """Handle program exit (alias for _handle_program_exit)"""

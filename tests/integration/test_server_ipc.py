@@ -128,15 +128,19 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         self.process = Mock(pid=4242)
 
     class DummyThread:
-        def __init__(self, target=None, args=(), kwargs=None, daemon=False):
+        def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
             self._target = target
             self._args = args
             self._kwargs = kwargs or {}
             self.daemon = daemon
+            self.name = name
 
         def start(self):
             if self._target is not None:
                 self._target(*self._args, **self._kwargs)
+        
+        def is_alive(self):
+            return False
 
     class DummyServer:
         def __init__(self):
@@ -172,7 +176,7 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     monkeypatch.setattr(
         ipc_context.IPCContext, "run_accept_and_read", _noop_ipc, raising=False
     )
-    monkeypatch.setattr(server_module.threading, "Thread", DummyThread)
+    monkeypatch.setattr(ipc_context, "threading", type("threading", (), {"Thread": DummyThread}))
 
     await debugger.launch(
         "test.py",
