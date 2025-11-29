@@ -11,16 +11,23 @@ state here.
 from __future__ import annotations
 
 import contextlib
+import logging
+import os
+import socket as _socket
+import tempfile
+import time
 from dataclasses import dataclass
+from multiprocessing import connection as mp_conn
+from pathlib import Path
 from typing import Any
 from typing import Callable
 
 from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import read_exact
 from dapper.ipc.ipc_binary import unpack_header
 
-# NOTE: We deliberately import framing helpers lazily inside methods to avoid
-# creating hard import cycles if server.py structure changes again.
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -71,6 +78,30 @@ class IPCContext:
         with surpressed:
             if self.pipe_listener is not None:
                 self.pipe_listener.close()
+
+    def write_command(self, cmd_str: str) -> None:
+        """Write a command string to the active IPC channel.
+
+        Raises RuntimeError if no IPC channel is available.
+        """
+        if self.enabled and self.pipe_conn is not None:
+            if self.binary:
+                self.pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
+            else:
+                self.pipe_conn.send(cmd_str)
+            return
+
+        if self.enabled and self.wfile is not None:
+            if self.binary:
+                self.wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
+                self.wfile.flush()  # type: ignore[call-arg]
+            else:
+                self.wfile.write(f"{cmd_str}\n")  # type: ignore[arg-type]
+                self.wfile.flush()
+            return
+
+        msg = "IPC is required but no IPC channel is available. Cannot send command."
+        raise RuntimeError(msg)
 
     # Pipe reading -------------------------------------------------
     def accept_and_read_pipe(self, handle_debug_message: Callable[[str], None]) -> None:
@@ -225,3 +256,195 @@ class IPCContext:
         """Disable IPC and perform cleanup."""
         self.enabled = False
         self.cleanup()
+
+    def run_accept_and_read(self, handle_debug_message: Callable[[str], None]) -> None:
+        """Accept one IPC connection then stream DBGP lines to handler.
+
+        This is a blocking call that should be run in a background thread.
+        It handles both pipe and socket transports, and ensures cleanup
+        is performed when the connection ends.
+        """
+        try:
+            if self.pipe_listener is not None:
+                self.accept_and_read_pipe(handle_debug_message)
+                return
+            if self.listen_sock is not None:
+                self.accept_and_read_socket(handle_debug_message)
+        except Exception:
+            logger.exception("IPC reader error")
+        finally:
+            # Ensure we clean up IPC resources before we exit
+            self.disable()
+
+    def create_listener(
+        self,
+        transport: str | None = None,
+        pipe_name: str | None = None,
+    ) -> list[str]:
+        """Create an IPC listener and return launcher arguments.
+
+        Creates the appropriate listener (pipe, unix socket, or tcp socket)
+        based on the transport type and platform. Returns the command-line
+        arguments to pass to the debuggee launcher.
+
+        Args:
+            transport: Transport type ("pipe", "unix", or "tcp"). If None,
+                      defaults to "pipe" on Windows, "unix" elsewhere.
+            pipe_name: Optional pipe name for Windows named pipes.
+
+        Returns:
+            List of command-line arguments for the launcher (e.g.,
+            ["--ipc", "pipe", "--ipc-pipe", "<name>"]).
+        """
+        default_transport = "pipe" if os.name == "nt" else "unix"
+        transport = (transport or default_transport).lower()
+
+        # Windows named pipe
+        if os.name == "nt" and transport == "pipe":
+            name = pipe_name or rf"\\.\pipe\dapper-{os.getpid()}-{int(time.time() * 1000)}"
+            try:
+                listener = mp_conn.Listener(address=name, family="AF_PIPE")
+            except Exception:
+                logger.exception("Failed to create named pipe listener")
+                self.set_pipe_listener(None)
+                return []
+            self.set_pipe_listener(listener)
+            return ["--ipc", "pipe", "--ipc-pipe", name]
+
+        # Unix socket
+        af_unix = getattr(_socket, "AF_UNIX", None)
+        if transport == "unix" and af_unix:
+            try:
+                sock_name = f"dapper-{os.getpid()}-{int(time.time() * 1000)}.sock"
+                unix_path = Path(tempfile.gettempdir()) / sock_name
+                with contextlib.suppress(FileNotFoundError):
+                    unix_path.unlink()
+                listen = _socket.socket(af_unix, _socket.SOCK_STREAM)
+                listen.bind(str(unix_path))
+                listen.listen(1)
+            except Exception:
+                logger.exception("Failed to create UNIX socket; fallback to TCP")
+            else:
+                self.set_listen_socket(listen, unix_path)
+                return ["--ipc", "unix", "--ipc-path", str(unix_path)]
+
+        # TCP socket (fallback)
+        host = "127.0.0.1"
+        listen = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        with contextlib.suppress(Exception):
+            listen.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        listen.bind((host, 0))
+        listen.listen(1)
+        _addr, port = listen.getsockname()
+        self.set_listen_socket(listen)
+        return ["--ipc", "tcp", "--ipc-host", host, "--ipc-port", str(port)]
+
+    def connect(
+        self,
+        transport: str | None = None,
+        *,
+        pipe_name: str | None = None,
+        unix_path: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+    ) -> None:
+        """Connect to an existing debuggee IPC endpoint.
+
+        Args:
+            transport: Transport type ("pipe", "unix", or "tcp"). If None,
+                      defaults to "pipe" on Windows, "unix" elsewhere.
+            pipe_name: Pipe name for Windows named pipes (required if transport="pipe").
+            unix_path: Path for Unix socket (required if transport="unix").
+            host: Host for TCP connection (default "127.0.0.1").
+            port: Port for TCP connection (required if transport="tcp").
+
+        Raises:
+            RuntimeError: If required parameters are missing or connection fails.
+        """
+        default_transport = "pipe" if os.name == "nt" else "unix"
+        transport = (transport or default_transport).lower()
+
+        if os.name == "nt" and transport == "pipe":
+            if not pipe_name:
+                msg = "ipcPipeName required for pipe attach"
+                raise RuntimeError(msg)
+            try:
+                conn = mp_conn.Client(address=pipe_name, family="AF_PIPE")
+            except Exception as exc:
+                msg = "failed to connect pipe"
+                raise RuntimeError(msg) from exc
+            self.enable_pipe_connection(conn, binary=False)
+            return
+
+        if transport == "unix":
+            af_unix = getattr(_socket, "AF_UNIX", None)
+            if not (af_unix and unix_path):
+                msg = "ipcPath required for unix attach"
+                raise RuntimeError(msg)
+            try:
+                sock = _socket.socket(af_unix, _socket.SOCK_STREAM)
+                sock.connect(unix_path)
+            except Exception as exc:
+                msg = "failed to connect unix socket"
+                raise RuntimeError(msg) from exc
+            self.enable_socket_from_connected(sock, binary=False)
+            return
+
+        if transport == "tcp":
+            tcp_host = host or "127.0.0.1"
+            if not port:
+                msg = "ipcPort required for tcp attach"
+                raise RuntimeError(msg)
+            try:
+                sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+                sock.connect((tcp_host, int(port)))
+            except Exception as exc:
+                msg = "failed to connect tcp socket"
+                raise RuntimeError(msg) from exc
+            self.enable_socket_from_connected(sock, binary=False)
+            return
+
+        msg = f"unsupported attach transport: {transport}"
+        raise RuntimeError(msg)
+
+    def run_attached_reader(self, handle_debug_message: Callable[[str], None]) -> None:
+        """Read from an attached IPC connection until closed.
+
+        This is a blocking call that should be run in a background thread.
+        It reads messages from either a pipe or socket connection and ensures
+        cleanup is performed when the connection ends.
+        """
+        try:
+            if self.pipe_conn is not None:
+                self._read_pipe_messages(handle_debug_message)
+            elif self.rfile is not None:
+                self._read_socket_messages(handle_debug_message)
+        except Exception:
+            logger.exception("Attached IPC reader error")
+        finally:
+            self.disable()
+
+    def _read_pipe_messages(self, handle_debug_message: Callable[[str], None]) -> None:
+        """Read messages from an attached pipe connection."""
+        while True:
+            try:
+                msg = self.pipe_conn.recv()  # type: ignore[union-attr]
+            except (EOFError, OSError):
+                break
+            if isinstance(msg, str) and msg.startswith("DBGP:"):
+                try:
+                    handle_debug_message(msg[5:].strip())
+                except Exception:
+                    pass
+
+    def _read_socket_messages(self, handle_debug_message: Callable[[str], None]) -> None:
+        """Read messages from an attached socket connection."""
+        while True:
+            line = self.rfile.readline()  # type: ignore[union-attr]
+            if not line:
+                break
+            if isinstance(line, str) and line.startswith("DBGP:"):
+                try:
+                    handle_debug_message(line[5:].strip())
+                except Exception:
+                    pass

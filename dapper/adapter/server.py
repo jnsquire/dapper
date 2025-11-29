@@ -13,22 +13,17 @@ import inspect
 import json
 import logging
 import os
-import socket as _socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-from multiprocessing import connection as mp_conn
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from typing_extensions import Protocol
-
 from dapper.adapter.inprocess_bridge import InProcessBridge
-from dapper.adapter.payload_extractor import DebugDataExtractor
+from dapper.adapter.payload_extractor import extract_payload
 from dapper.adapter.request_handlers import RequestHandler
 from dapper.adapter.source_tracker import LoadedSourceTracker
 from dapper.adapter.types import BreakpointDict
@@ -37,7 +32,6 @@ from dapper.adapter.types import DAPRequest
 from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
-from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_context import IPCContext
 from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.protocol_types import Source
@@ -104,40 +98,6 @@ def _acquire_event_loop(
     return new_loop, True
 
 
-class DebugServer(Protocol):
-    """Protocol defining the interface expected by PyDebugger for server communication."""
-
-    @property
-    def debugger(self) -> PyDebugger:
-        """Access the debugger instance."""
-        ...  # type: ignore[empty-body]
-
-    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
-        """Send an event to the debug client.
-
-        Args:
-            event_name: The event name (e.g., 'stopped', 'output', 'process')
-            body: Optional event payload
-        """
-        ...  # type: ignore[empty-body]
-
-    async def send_message(self, message: dict[str, Any]) -> None:
-        """Send a raw message to the debug client.
-
-        Args:
-            message: The complete message dictionary
-        """
-        ...  # type: ignore[empty-body]
-
-    def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
-        """Schedule a callback to be run on the server's event loop.
-
-        Args:
-            callback: The function to call on the server's event loop
-        """
-        ...  # type: ignore[empty-body]
-
-
 class PyDebugger:
     """
     Main debugger class that integrates with Python's built-in debugging tools
@@ -146,18 +106,18 @@ class PyDebugger:
 
     def __init__(
         self,
-        server: DebugServer,
+        server: DebugAdapterServer,
         loop: asyncio.AbstractEventLoop | None = None,
         enable_frame_eval: bool = False,
     ):
         """Initialize the PyDebugger.
 
         Args:
-            server: The debug server that implements the DebugServer protocol
+            server: The debug adapter server instance
             loop: Optional event loop to use. If not provided, gets the current event loop.
             enable_frame_eval: Whether to enable frame evaluation optimization.
         """
-        self.server: DebugServer = server
+        self.server: DebugAdapterServer = server
         self.loop: asyncio.AbstractEventLoop
         self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)
@@ -356,50 +316,23 @@ class PyDebugger:
             logger.debug("Failed bridging data watches to BDB", exc_info=True)
         return results
 
-    def _check_data_watches_for_frame(self, frame_id: int, _frame_locals: dict[str, Any]) -> None:  # noqa: ARG002
-        """(Future) Detect variable changes for watches tied to frame_id."""
-        return
-
     def _forward_event(self, event_name: str, payload: dict[str, Any]) -> None:
-        """Forward an event (defer creation unless immediate path in spawn_threadsafe)."""
-        # Attempt to call server.send_event immediately so synchronous test
-        # helpers can observe calls without requiring an extra loop tick.
+        """Forward an event to the server.
+
+        Calls send_event immediately so synchronous test helpers can observe
+        the call. If send_event returns an awaitable, it's scheduled via
+        spawn_threadsafe to run on the event loop.
+        """
         try:
             res = self.server.send_event(event_name, payload)
         except Exception:
             logger.exception("error calling server.send_event")
             return
 
-        # If the handler returned an awaitable, ensure it's scheduled on the
-        # debugger loop for execution (safe whether or not the loop is running).
-        try:
-            if inspect.isawaitable(res):
-                try:
-                    # If already on the debugger loop, create the task directly
-                    if asyncio.get_running_loop() is self.loop:
-                        t = asyncio.ensure_future(res)
-                        # Track background task so it can be cancelled during shutdown
-                        self._bg_tasks.add(t)
-                        t.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
-                    else:
-                        # Otherwise schedule creation on the debugger loop
-                        def _spawn():
-                            t2 = asyncio.ensure_future(res)
-                            self._bg_tasks.add(t2)
-                            t2.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
-
-                        self.loop.call_soon_threadsafe(_spawn)
-                except RuntimeError:
-                    # No running loop in this thread; schedule thread-safely
-                    def _spawn2():
-                        t3 = asyncio.ensure_future(res)
-                        self._bg_tasks.add(t3)
-                        t3.add_done_callback(lambda _t: self._bg_tasks.discard(_t))
-
-                    self.loop.call_soon_threadsafe(_spawn2)
-        except Exception:
-            # Be defensive: do not let event forwarding raise during debug message handling
-            logger.debug("error scheduling awaitable returned by server.send_event", exc_info=True)
+        if inspect.isawaitable(res):
+            # Schedule the awaitable on the event loop via spawn_threadsafe
+            # which handles all the threading/loop complexity for us
+            self.spawn_threadsafe(lambda r=res: r)
 
     async def launch(
         self,
@@ -450,8 +383,8 @@ class PyDebugger:
         # If IPC is requested, prepare a listener and pass coordinates.
         # IPC is now mandatory; always enable it.
         self._use_ipc = True
-        self.set_ipc_binary(bool(use_binary_ipc))
-        self._prepare_ipc_listener(ipc_transport, ipc_pipe_name, debug_args)
+        self.ipc.set_binary(bool(use_binary_ipc))
+        debug_args.extend(self.ipc.create_listener(transport=ipc_transport, pipe_name=ipc_pipe_name))
         if self.ipc.binary:
             debug_args.append("--ipc-binary")
 
@@ -473,7 +406,11 @@ class PyDebugger:
 
         # Accept the IPC connection from the launcher (IPC is mandatory)
         if self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None:
-            threading.Thread(target=self._run_ipc_accept_and_read, daemon=True).start()
+            threading.Thread(
+                target=self.ipc.run_accept_and_read,
+                args=(self._handle_debug_message,),
+                daemon=True,
+            ).start()
 
         self.program_running = True
 
@@ -520,7 +457,7 @@ class PyDebugger:
         except Exception:
             logger.exception("error in on_output callback")
 
-    async def attach(  # noqa: PLR0915
+    async def attach(
         self,
         *,
         ipc_transport: str | None = None,
@@ -538,96 +475,21 @@ class PyDebugger:
             msg = "attach requires IPC (use_ipc must be True)"
             raise RuntimeError(msg)
 
-        default_transport = "pipe" if os.name == "nt" else "unix"
-        transport = (ipc_transport or default_transport).lower()
+        # Connect to the debuggee's IPC endpoint
+        self.ipc.connect(
+            transport=ipc_transport,
+            pipe_name=ipc_pipe_name,
+            unix_path=ipc_path,
+            host=ipc_host,
+            port=ipc_port,
+        )
 
-        if os.name == "nt" and transport == "pipe":
-            if not ipc_pipe_name:
-                msg = "ipcPipeName required for pipe attach"
-                raise RuntimeError(msg)
-            try:
-                conn = mp_conn.Client(address=ipc_pipe_name, family="AF_PIPE")
-            except Exception as exc:  # pragma: no cover - depends on OS
-                msg = "failed to connect pipe"
-                raise RuntimeError(msg) from exc
-            # Use helper to centralize state changes
-            self.enable_ipc_pipe_connection(conn, binary=False)
-
-            def _reader():
-                try:
-                    while True:
-                        try:
-                            conn = cast("mp_conn.Connection", self.ipc.pipe_conn)
-                            msg = conn.recv()
-                        except (EOFError, OSError):
-                            break
-                        if isinstance(msg, str) and msg.startswith("DBGP:"):
-                            self._handle_debug_message(msg[5:].strip())
-                finally:
-                    self.disable_ipc()
-
-            threading.Thread(target=_reader, daemon=True).start()
-        elif transport == "unix":
-            af_unix = getattr(_socket, "AF_UNIX", None)
-            if not (af_unix and ipc_path):
-                msg = "ipcPath required for unix attach"
-                raise RuntimeError(msg)
-            try:
-                sock = _socket.socket(af_unix, _socket.SOCK_STREAM)
-                sock.connect(ipc_path)
-            except Exception as exc:  # pragma: no cover - platform dependent
-                msg = "failed to connect unix socket"
-                raise RuntimeError(msg) from exc
-            # Use helper that configures rfile/wfile and flags
-            self.enable_ipc_socket_from_connected(sock, binary=False)
-
-            def _reader_sock():
-                try:
-                    while True:
-                        rfile = self.ipc.rfile
-                        assert rfile is not None
-                        line = rfile.readline()
-                        if not line:
-                            break
-                        line_s = cast("str", line)
-                        if line_s.startswith("DBGP:"):
-                            self._handle_debug_message(line_s[5:].strip())
-                finally:
-                    self.disable_ipc()
-
-            threading.Thread(target=_reader_sock, daemon=True).start()
-        elif transport == "tcp":
-            host = ipc_host or "127.0.0.1"
-            if not ipc_port:
-                msg = "ipcPort required for tcp attach"
-                raise RuntimeError(msg)
-            try:
-                sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-                sock.connect((host, int(ipc_port)))
-            except Exception as exc:
-                msg = "failed to connect tcp socket"
-                raise RuntimeError(msg) from exc
-            # Centralized helper to set up the connected socket
-            self.enable_ipc_socket_from_connected(sock, binary=False)
-
-            def _reader_tcp():
-                try:
-                    while True:
-                        rfile = self.ipc.rfile
-                        assert rfile is not None
-                        line = rfile.readline()
-                        if not line:
-                            break
-                        line_s = cast("str", line)
-                        if line_s.startswith("DBGP:"):
-                            self._handle_debug_message(line_s[5:].strip())
-                finally:
-                    self.disable_ipc()
-
-            threading.Thread(target=_reader_tcp, daemon=True).start()
-        else:
-            msg = f"unsupported attach transport: {transport}"
-            raise RuntimeError(msg)
+        # Start reader thread
+        threading.Thread(
+            target=self.ipc.run_attached_reader,
+            args=(self._handle_debug_message,),
+            daemon=True,
+        ).start()
 
         # Mark running and send a generic process event
         self.program_running = True
@@ -639,118 +501,6 @@ class PyDebugger:
                 "startMethod": "attach",
             },
         )
-
-    # --- Helper methods to reduce branching in launch ---
-
-    def _prepare_ipc_listener(
-        self,
-        ipc_transport: str | None,
-        ipc_pipe_name: str | None,
-        debug_args: list[str],
-    ) -> None:
-        """Prepare IPC listener resources and extend debug_args for launcher."""
-        default_transport = "pipe" if os.name == "nt" else "unix"
-        transport = (ipc_transport or default_transport).lower()
-
-        if os.name == "nt" and transport == "pipe":
-            pipe_name = (
-                ipc_pipe_name or rf"\\.\pipe\dapper-{os.getpid()}-{int(time.time() * 1000)}"
-            )
-            try:
-                listener = mp_conn.Listener(address=pipe_name, family="AF_PIPE")
-            except Exception:
-                logger.exception("Failed to create named pipe listener")
-                listener = None
-            self.set_ipc_pipe_listener(listener)
-            if listener is not None:
-                debug_args.extend(["--ipc", "pipe", "--ipc-pipe", pipe_name])
-            return
-
-        af_unix = getattr(_socket, "AF_UNIX", None)
-        if transport == "unix" and af_unix:
-            try:
-                name = f"dapper-{os.getpid()}-{int(time.time() * 1000)}.sock"
-                unix_path = Path(tempfile.gettempdir()) / name
-                with contextlib.suppress(FileNotFoundError):
-                    unix_path.unlink()
-                listen = _socket.socket(af_unix, _socket.SOCK_STREAM)
-                listen.bind(str(unix_path))
-                listen.listen(1)
-            except Exception:
-                logger.exception("Failed to create UNIX socket; fallback to TCP")
-            else:
-                self.set_ipc_listen_socket(listen, unix_path)
-                debug_args.extend(["--ipc", "unix", "--ipc-path", str(unix_path)])
-                return
-
-        host = "127.0.0.1"
-        listen = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        with contextlib.suppress(Exception):
-            listen.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
-        listen.bind((host, 0))
-        listen.listen(1)
-        _addr, port = listen.getsockname()
-        self.set_ipc_listen_socket(listen)
-        debug_args.extend(
-            [
-                "--ipc",
-                "tcp",
-                "--ipc-host",
-                host,
-                "--ipc-port",
-                str(port),
-            ]
-        )
-
-    def _run_ipc_accept_and_read(self) -> None:
-        """Accept one IPC connection then stream DBGP lines to handler."""
-        try:
-            if self.ipc.pipe_listener is not None:
-                self.ipc.accept_and_read_pipe(self._handle_debug_message)
-                return
-            if self.ipc.listen_sock is not None:
-                self.ipc.accept_and_read_socket(self._handle_debug_message)
-        except Exception:
-            logger.exception("IPC reader error")
-        finally:
-            # Ensure we clean up IPC resources before we exit
-            self.disable_ipc()
-
-    # ------------------------------------------------------------------
-    # IPC helper methods
-    # ------------------------------------------------------------------
-    def enable_ipc_pipe_connection(self, conn: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-connected pipe connection."""
-        self.ipc.enable_pipe_connection(conn, binary=binary)
-
-    def enable_ipc_socket_from_connected(self, sock: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-connected socket."""
-        self.ipc.enable_socket_from_connected(sock, binary=binary)
-
-    def set_ipc_pipe_listener(self, listener: Any) -> None:
-        """Register a pipe listener that will accept a single connection later."""
-        self.ipc.set_pipe_listener(listener)
-
-    def set_ipc_listen_socket(self, listen_sock: Any, unix_path: Any | None = None) -> None:
-        """Register a listening socket that will accept a single connection later."""
-        self.ipc.set_listen_socket(listen_sock, unix_path)
-
-    def set_ipc_binary(self, binary: bool) -> None:
-        """Set the binary flag on the IPC context without enabling or disabling."""
-        self.ipc.set_binary(binary)
-
-    def enable_ipc_wfile(self, wfile: Any, *, binary: bool = False) -> None:
-        """Enable IPC using an already-created writer file-like object."""
-        self.ipc.enable_wfile(wfile, binary=binary)
-
-    def disable_ipc(self) -> None:
-        """Disable IPC and perform cleanup via the IPCContext helper."""
-        try:
-            self.ipc.disable()
-        except Exception:
-            logger.exception("error disabling ipc")
-
-    # Legacy IPC helper methods removed; direct calls use ipc.* now.
 
     def _start_debuggee_process(self, debug_args: list[str]) -> None:
         """Start the debuggee process in a separate thread."""
@@ -809,7 +559,7 @@ class PyDebugger:
             logger.exception("Error reading %s", category)
 
     def _handle_event_stopped(self, data: dict[str, Any]) -> None:
-        """Handle a stopped event's local state updates and forwarding."""
+        """Handle stopped event state updates."""
         thread_id = data.get("threadId", 1)
         reason = data.get("reason", "breakpoint")
 
@@ -822,14 +572,6 @@ class PyDebugger:
             thread.is_stopped = True
             thread.stop_reason = reason
 
-        stop_event = {
-            "reason": reason,
-            "threadId": thread_id,
-            "allThreadsStopped": data.get("allThreadsStopped", True),
-        }
-        if "text" in data:
-            stop_event["text"] = data["text"]
-
         try:
             self.stopped_event.set()
         except Exception:
@@ -839,10 +581,8 @@ class PyDebugger:
                 with contextlib.suppress(Exception):
                     self.stopped_event.set()
 
-        self._forward_event("stopped", stop_event)
-
     def _handle_event_thread(self, data: dict[str, Any]) -> None:
-        """Handle thread started/exited events and forward to client."""
+        """Handle thread started/exited state updates."""
         thread_id = data.get("threadId", 1)
         reason = data.get("reason", "started")
 
@@ -857,13 +597,10 @@ class PyDebugger:
                 if thread_id in self.threads:
                     del self.threads[thread_id]
 
-        self._forward_event("thread", {"reason": reason, "threadId": thread_id})
-
     def _handle_event_exited(self, data: dict[str, Any]) -> None:
         """Handle debuggee exited event and schedule cleanup."""
         exit_code = data.get("exitCode", 0)
         self.is_terminated = True
-        # Use unified spawn_threadsafe with factory to avoid constructing coroutine off-loop
         self.spawn_threadsafe(lambda c=exit_code: self._handle_program_exit(c))
 
     def _handle_event_stacktrace(self, data: dict[str, Any]) -> None:
@@ -881,86 +618,70 @@ class PyDebugger:
             self.var_refs[var_ref] = variables
 
     def _handle_debug_message(self, message: str) -> None:
-        """Handle a debug protocol message from the debuggee.
-
-        Uses a small DataWrapper to centralize safe access to the incoming
-        dict and helper methods that construct event payload dictionaries.
-        """
+        """Handle a debug protocol message from the debuggee."""
         try:
             data: dict[str, Any] = json.loads(message)
         except Exception:
             logger.exception("Error handling debug message")
             return
 
-        wrapper = DebugDataExtractor(data)
-
-        command_id = wrapper.get("id")
+        # Handle command responses
+        command_id = data.get("id")
         if command_id is not None and command_id in self._pending_commands:
             with self.lock:
                 future = self._pending_commands.pop(command_id, None)
-
             if future is not None:
                 self._resolve_pending_response(future, data)
             return
 
-        event_type: str | None = wrapper.get("event")
+        event_type: str | None = data.get("event")
+        if event_type is None:
+            return
 
+        # Events that require state updates before forwarding
         if event_type == "stopped":
             self._handle_event_stopped(data)
         elif event_type == "thread":
             self._handle_event_thread(data)
         elif event_type == "exited":
             self._handle_event_exited(data)
+            return  # exited schedules its own events
+        # Events that only cache state (no forwarding)
         elif event_type == "stackTrace":
             self._handle_event_stacktrace(data)
+            return
         elif event_type == "variables":
             self._handle_event_variables(data)
-        # Use the registered payload mapping on DebugDataExtractor to
-        # resolve the method name for a given event and invoke it.
-        elif event_type is not None:
-            method_name = DebugDataExtractor.payload_dispatch.get(event_type)
-            if method_name is not None:
-                method = getattr(wrapper, method_name, None)
-                if callable(method):
-                    payload = method()
-                    # type: ignore[arg-type]
-                    self._forward_event(event_type, cast("dict[str, Any]", payload))
+            return
+
+        # Forward all events that have payload extractors
+        payload = extract_payload(event_type, data)
+        if payload is not None:
+            self._forward_event(event_type, payload)
 
     def _resolve_pending_response(
         self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
     ) -> None:
-        """Resolve a pending response future on the correct loop."""
-        current_loop = None
-        with contextlib.suppress(RuntimeError):
-            current_loop = asyncio.get_running_loop()
-
-        def _resolve(fut: asyncio.Future[dict[str, Any]], payload: dict[str, Any]) -> None:
-            if not fut.done():
-                fut.set_result(payload)
-
-        if current_loop is self.loop:
-            if not future.done():
-                try:
-                    future.set_result(data)
-                except Exception:
-                    logger.debug("failed to set result on pending future")
-            else:
-                return
-
-        try:
-            self.loop.call_soon_threadsafe(_resolve, future, data)
-        except Exception:
-            logger.debug("failed to schedule resolution on debugger loop")
-        else:
+        """Resolve a pending response future on the debugger's event loop."""
+        if future.done():
             return
 
-        if not future.done():
-            try:
+        def _set_result() -> None:
+            if not future.done():
                 future.set_result(data)
-            except Exception:
-                logger.debug("direct set_result failed for pending future")
-            else:
+
+        # If already on the debugger loop, resolve directly
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                _set_result()
                 return
+        except RuntimeError:
+            pass  # No running loop, use thread-safe scheduling
+
+        try:
+            self.loop.call_soon_threadsafe(_set_result)
+        except Exception:
+            logger.debug("failed to schedule resolution on debugger loop")
 
     async def _handle_program_exit(self, exit_code: int) -> None:
         """Handle the debuggee program exit"""
@@ -1109,24 +830,16 @@ class PyDebugger:
         )
 
     def _forward_breakpoint_events(self, storage_list: list[BreakpointDict]) -> None:
-        """Forward breakpoint-changed events to clients.
-
-        Args:
-            storage_list: List of breakpoint dictionaries
-        """
+        """Forward breakpoint-changed events to clients."""
         try:
-            bp_events = [
-                {
+            for bp in storage_list:
+                self._forward_event("breakpoint", {
                     "reason": "changed",
                     "breakpoint": {
                         "verified": bp.get("verified", True),
                         "line": bp.get("line"),
                     },
-                }
-                for bp in storage_list
-            ]
-            for be in bp_events:
-                self._forward_event("breakpoint", be)
+                })
         except Exception:
             logger.debug("Failed to forward breakpoint events")
 
@@ -1228,65 +941,33 @@ class PyDebugger:
         if not self.process or self.is_terminated:
             return None
 
+        response_future: asyncio.Future[dict[str, Any]] | None = None
+        command_id: int | None = None
+
+        if expect_response:
+            command_id = self._next_command_id
+            self._next_command_id += 1
+            command["id"] = command_id
+            response_future = self.loop.create_future()
+            with self.lock:
+                self._pending_commands[command_id] = response_future
+
         try:
-            command_id = None
-            response_future = None
-
-            if expect_response:
-                command_id = self._next_command_id
-                self._next_command_id += 1
-                command["id"] = command_id
-                try:
-                    response_future = self.loop.create_future()
-                except Exception:
-                    response_future = asyncio.Future()
-
-                with self.lock:
-                    self._pending_commands[command_id] = response_future
-
-            cmd_str = json.dumps(command)
-
-            await asyncio.to_thread(self._write_command_to_channel, cmd_str)
-
-            if expect_response and response_future:
-                try:
-                    response = await asyncio.wait_for(response_future, timeout=5.0)
-                except asyncio.TimeoutError:
-                    if command_id is not None:
-                        self._pending_commands.pop(command_id, None)
-                    return None
-                else:
-                    return response
-
+            await asyncio.to_thread(self.ipc.write_command, json.dumps(command))
         except Exception:
             logger.exception("Error sending command to debuggee")
+            if command_id is not None:
+                self._pending_commands.pop(command_id, None)
+            return None
 
-        return None
+        if response_future is None:
+            return None
 
-    def _write_command_to_channel(self, cmd_str: str) -> None:
-        """Write a command to the active IPC channel.
-        """
-        if self.ipc.enabled and self.ipc.pipe_conn is not None:
-            with contextlib.suppress(Exception):
-                if self.ipc.binary:
-                    self.ipc.pipe_conn.send_bytes(pack_frame(2, cmd_str.encode("utf-8")))
-                else:
-                    self.ipc.pipe_conn.send(cmd_str)
-            return
-        if self.ipc.enabled and self.ipc.wfile is not None:
-            with contextlib.suppress(Exception):
-                if self.ipc.binary:
-                    self.ipc.wfile.write(pack_frame(2, cmd_str.encode("utf-8")))  # type: ignore[arg-type]
-                    self.ipc.wfile.flush()  # type: ignore[call-arg]
-                else:
-                    self.ipc.wfile.write(f"{cmd_str}\n")  # type: ignore[arg-type]
-                    self.ipc.wfile.flush()
-            return
-
-        msg = "IPC is required but no IPC channel is available. Cannot send command."
-        raise RuntimeError(msg)
-
-    # (old _schedule_coroutine implementation removed; use spawn/spawn_threadsafe)
+        try:
+            return await asyncio.wait_for(response_future, timeout=5.0)
+        except asyncio.TimeoutError:
+            self._pending_commands.pop(command_id, None)  # type: ignore[arg-type]
+            return None
 
     async def continue_execution(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution of the specified thread"""
@@ -1796,10 +1477,11 @@ class PyDebugger:
         self.is_terminated = True
 
 
-class DebugAdapterServer(DebugServer):
+class DebugAdapterServer:
     """Server implementation that handles DAP protocol communication.
 
-    This class implements the DebugServer protocol expected by PyDebugger.
+    This class provides the server interface expected by PyDebugger and handles
+    the Debug Adapter Protocol communication with the client.
     """
 
     def __init__(
@@ -1823,8 +1505,6 @@ class DebugAdapterServer(DebugServer):
 
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a callback to be run on the server's event loop.
-
-        This implements the DebugServer protocol method.
 
         Args:
             callback: The function to call on the server's event loop

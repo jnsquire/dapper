@@ -10,6 +10,7 @@ import pytest
 import dapper.adapter.server as server_module
 from dapper.adapter.server import DebugAdapterServer
 from dapper.adapter.server import PyDebugger
+from dapper.ipc import ipc_context
 from tests.integration.test_server import AsyncCallRecorder
 from tests.mocks import MockConnection
 
@@ -22,9 +23,9 @@ def test_write_command_to_channel_ipc_pipe_text():
         def send(self, s):
             calls.append(("send", s))
 
-    p.enable_ipc_pipe_connection(PipeConn(), binary=False)
+    p.ipc.enable_pipe_connection(PipeConn(), binary=False)
 
-    p._write_command_to_channel("abc")
+    p.ipc.write_command("abc")
     # Break down assertion (PT018): verify list populated, action name, and payload
     assert calls, "Expected at least one call to pipe send"
     assert calls[0][0] == "send", f"Unexpected method {calls[0][0]!r}"
@@ -40,9 +41,9 @@ def test_write_command_to_channel_ipc_pipe_binary():
             calls.append(("send_bytes", b))
 
     # Use new PyDebugger helper to enable pipe-style binary IPC
-    p.enable_ipc_pipe_connection(PipeConn(), binary=True)
+    p.ipc.enable_pipe_connection(PipeConn(), binary=True)
 
-    p._write_command_to_channel("xyz")
+    p.ipc.write_command("xyz")
     assert calls, "Expected at least one call to pipe send_bytes"
     assert calls[0][0] == "send_bytes", f"Unexpected method {calls[0][0]!r}"
 
@@ -59,22 +60,22 @@ def test_write_command_to_channel_ipc_socket_text():
             calls.append(("flush", None))
 
     # Use the new helper to register a writer-only transport for tests
-    p.enable_ipc_wfile(WFile(), binary=False)
+    p.ipc.enable_wfile(WFile(), binary=False)
 
-    p._write_command_to_channel("bbb")
+    p.ipc.write_command("bbb")
     assert any("bbb" in c[1] for c in calls if c[0] == "write")
 
 
 def test_write_command_to_channel_requires_ipc():
-    """Test that _write_command_to_channel raises RuntimeError when IPC is not configured."""
+    """Test that ipc.write_command raises RuntimeError when IPC is not configured."""
     p = PyDebugger(server=Mock())
 
-    p.disable_ipc()
+    p.ipc.disable()
     p.process = Mock()
 
     # Should raise RuntimeError since IPC is mandatory
     with pytest.raises(RuntimeError, match="IPC is required"):
-        p._write_command_to_channel("kkk")
+        p.ipc.write_command("kkk")
 
 
 @pytest.mark.asyncio
@@ -164,11 +165,12 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False
     )
 
-    def _noop_ipc(_self):
+    # Patch the IPC accept method to be a no-op (it would block waiting for connection)
+    def _noop_ipc(_self, _handler):
         return None
 
     monkeypatch.setattr(
-        server_module.PyDebugger, "_run_ipc_accept_and_read", _noop_ipc, raising=False
+        ipc_context.IPCContext, "run_accept_and_read", _noop_ipc, raising=False
     )
     monkeypatch.setattr(server_module.threading, "Thread", DummyThread)
 
