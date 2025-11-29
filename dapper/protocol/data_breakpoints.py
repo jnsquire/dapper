@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from dapper.protocol.structures import Breakpoint
 
 
-class DataBreakpointInfoArguments(TypedDict, total=False):  # type: ignore[misc]
+class DataBreakpointInfoArguments(TypedDict, total=False):
     """Arguments for 'dataBreakpointInfo' request.
 
     Minimal subset: identify by variable name within a specific frame.
@@ -33,7 +33,7 @@ class DataBreakpointInfoRequest(TypedDict):
     arguments: DataBreakpointInfoArguments
 
 
-class DataBreakpointInfoResponseBody(TypedDict, total=False):  # type: ignore[misc]
+class DataBreakpointInfoResponseBody(TypedDict, total=False):
     dataId: str | None  # Opaque ID used in setDataBreakpoints
     description: str
     accessTypes: list[str]  # Supported access types (currently only ['write'])
@@ -52,7 +52,7 @@ class DataBreakpointInfoResponse(TypedDict):
     body: NotRequired[DataBreakpointInfoResponseBody]
 
 
-class SetDataBreakpointsArguments(TypedDict):  # type: ignore[misc]
+class SetDataBreakpointsArguments(TypedDict):
     """Arguments for 'setDataBreakpoints' request.
 
     Each breakpoint: { dataId: str, accessType?: str, condition?: str, hitCondition?: str }
@@ -71,7 +71,7 @@ class SetDataBreakpointsRequest(TypedDict):
     arguments: SetDataBreakpointsArguments
 
 
-class SetDataBreakpointsResponseBody(TypedDict):  # type: ignore[misc]
+class SetDataBreakpointsResponseBody(TypedDict):
     breakpoints: list[Breakpoint]
 
 

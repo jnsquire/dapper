@@ -739,7 +739,7 @@ class PyDebugger:
         self.breakpoints[path] = storage_list
 
         if self._backend is None:
-            return storage_list  # type: ignore[return-value]
+            return cast("list[BreakpointResponse]", storage_list)
 
         # For in-process backend, just use the backend directly
         if self._inproc_backend is not None:
@@ -753,7 +753,7 @@ class PyDebugger:
                     "logMessage": bp.get("logMessage"),
                 }
                 for bp in result
-            ]  # type: ignore[return-value]
+            ]
 
         # For external process, add progress events around the backend call
         try:
@@ -768,7 +768,7 @@ class PyDebugger:
 
         self._emit_event("progressEnd", {"progressId": progress_id})
 
-        return storage_list  # type: ignore[return-value]
+        return cast("list[BreakpointResponse]", storage_list)
 
     def _process_breakpoints(
         self, breakpoints: Sequence[SourceBreakpoint]

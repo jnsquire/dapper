@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 if TYPE_CHECKING:
     from dapper.protocol.requests import Module
@@ -79,7 +80,7 @@ class LoadedSourceTracker:
         }
         if origin:
             src["origin"] = origin
-        return src  # type: ignore[return-value]
+        return cast("Source", src)
 
     # ------------------------------------------------------------------
     # Source collection helpers
