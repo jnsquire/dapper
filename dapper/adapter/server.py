@@ -11,7 +11,6 @@ import asyncio
 import contextlib
 import inspect
 import json
-import linecache
 import logging
 import os
 import socket as _socket
@@ -31,6 +30,7 @@ from typing_extensions import Protocol
 from dapper.adapter.inprocess_bridge import InProcessBridge
 from dapper.adapter.payload_extractor import DebugDataExtractor
 from dapper.adapter.request_handlers import RequestHandler
+from dapper.adapter.source_tracker import LoadedSourceTracker
 from dapper.adapter.types import BreakpointDict
 from dapper.adapter.types import BreakpointResponse
 from dapper.adapter.types import DAPRequest
@@ -187,7 +187,7 @@ class PyDebugger:
         self.stop_on_entry: bool = False
         self.no_debug: bool = False
         self.current_stack_frames: dict[int, list] = {}
-        self.program_path: str | None = None
+        self._source_introspection = LoadedSourceTracker()
         self.thread_exit_events: dict[int, object] = {}
         self.lock: threading.RLock = threading.RLock()
         # Use thread-safe Event objects for synchronization. Tests and
@@ -216,6 +216,16 @@ class PyDebugger:
         # Data breakpoint containers
         self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
         self._frame_watches: dict[int, list[str]] = {}  # frameId -> list of dataIds
+
+    @property
+    def program_path(self) -> str | None:
+        """Get the program path being debugged."""
+        return self._source_introspection.program_path
+
+    @program_path.setter
+    def program_path(self, value: str | None) -> None:
+        """Set the program path being debugged."""
+        self._source_introspection.program_path = value
 
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a (possibly coroutine-producing) callback on the debugger loop.
@@ -1378,140 +1388,13 @@ class PyDebugger:
 
         return threads
 
-    def _is_python_source_file(self, filename: str | Path) -> bool:
-        try:
-            return str(filename).endswith((".py", ".pyw"))
-        except Exception:
-            return False
-
-    def _resolve_path(self, filename: str | Path) -> Path | None:
-        try:
-            return Path(filename).resolve()
-        except Exception:
-            return None
-
-    def _make_source(self, path: Path, origin: str, name: str | None = None) -> Source:
-        src: dict[str, Any] = {
-            "name": name or path.name,
-            "path": str(path),
-        }
-        if origin:
-            src["origin"] = origin
-        return src  # type: ignore[return-value]
-
-    def _try_add_source(
-        self,
-        seen_paths: set[str],
-        loaded_sources: list[Source],
-        filename: str | Path,
-        *,
-        origin: str = "",
-        name: str | None = None,
-        check_exists: bool = False,
-    ) -> None:
-        if not self._is_python_source_file(filename):
-            return
-        path = self._resolve_path(filename)
-        if path is None or (abs_path := str(path)) in seen_paths:
-            return
-        if check_exists and not path.exists():
-            return
-        seen_paths.add(abs_path)
-        loaded_sources.append(self._make_source(path, origin, name))
-
-    def _iter_python_module_files(self):
-        # Iterate over a snapshot to avoid 'dictionary changed size during iteration'
-        # if imports occur while scanning.
-        for module_name, module in list(sys.modules.items()):
-            if module is None:
-                continue
-            try:
-                module_file = getattr(module, "__file__", None)
-                if not module_file:
-                    continue
-                path = self._resolve_path(module_file)
-                if path is None or not self._is_python_source_file(path):
-                    continue
-                package = getattr(module, "__package__", None)
-                origin = f"module:{package or module_name}"
-                yield module_name, path, origin
-            except Exception:
-                continue
-
     async def get_loaded_sources(self) -> list[Source]:
-        """Get all loaded source files"""
-        loaded_sources: list[Source] = []
-        seen_paths: set[str] = set()
-
-        for _name, path, origin in self._iter_python_module_files():
-            self._try_add_source(
-                seen_paths,
-                loaded_sources,
-                path,
-                origin=origin,
-                name=path.name,
-                check_exists=False,
-            )
-
-        for filename in list(linecache.cache.keys()):
-            self._try_add_source(
-                seen_paths,
-                loaded_sources,
-                filename,
-                origin="linecache",
-                check_exists=True,
-            )
-
-        if self.program_path:
-            self._try_add_source(
-                seen_paths,
-                loaded_sources,
-                self.program_path,
-                origin="main",
-                check_exists=True,
-            )
-
-        loaded_sources.sort(key=lambda s: s.get("name", ""))
-        return loaded_sources
+        """Get all loaded source files."""
+        return self._source_introspection.get_loaded_sources()
 
     async def get_modules(self) -> list[Module]:
-        """Get all loaded Python modules"""
-        all_modules: list[Module] = []
-
-        for name, module in sys.modules.items():
-            if module is None:
-                continue
-
-            module_id = str(id(module))
-
-            path = None
-            try:
-                if hasattr(module, "__file__") and module.__file__:
-                    path = module.__file__
-            except Exception:
-                pass
-
-            is_user_code = False
-            if path:
-                is_user_code = (
-                    not path.startswith(sys.prefix)
-                    and not path.startswith(sys.base_prefix)
-                    and "site-packages" not in path
-                )
-
-            module_obj: Module = {
-                "id": module_id,
-                "name": name,
-                "isUserCode": is_user_code,
-            }
-            if path:
-                module_obj["path"] = path
-
-            all_modules.append(module_obj)
-
-        all_modules.sort(key=lambda m: m["name"])
-
-        return all_modules
+        """Get all loaded Python modules."""
+        return self._source_introspection.get_modules()
 
     async def get_stack_trace(
         self, thread_id: int, start_frame: int = 0, levels: int = 0
