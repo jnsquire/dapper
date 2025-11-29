@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import importlib
 import inspect
 import json
 import linecache
@@ -29,6 +28,7 @@ from typing import cast
 
 from typing_extensions import Protocol
 
+from dapper.adapter.inprocess_bridge import InProcessBridge
 from dapper.adapter.payload_extractor import DebugDataExtractor
 from dapper.adapter.request_handlers import RequestHandler
 from dapper.adapter.types import BreakpointDict
@@ -207,7 +207,7 @@ class PyDebugger:
         self._pending_commands: dict[int, asyncio.Future] = {}
         # In-process debugging support (optional/opt-in)
         self.in_process: bool = False
-        self._inproc: InProcessDebugger | None = None
+        self._inproc_bridge: InProcessBridge | None = None
 
         # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
@@ -482,13 +482,15 @@ class PyDebugger:
 
     async def _launch_in_process(self) -> None:
         """Initialize in-process debugging bridge and emit process event."""
-        # Create the in-process bridge and attach event listeners
         self.in_process = True
-        self._inproc = InProcessDebugger()
-        self._inproc.on_stopped.add_listener(self._inproc_on_stopped)
-        self._inproc.on_thread.add_listener(self._inproc_on_thread)
-        self._inproc.on_exited.add_listener(self._inproc_on_exited)
-        self._inproc.on_output.add_listener(self._inproc_on_output)
+        inproc = InProcessDebugger()
+        self._inproc_bridge = InProcessBridge(
+            inproc,
+            on_stopped=self._handle_event_stopped,
+            on_thread=self._handle_event_thread,
+            on_exited=self._handle_event_exited,
+            on_output=self._handle_inproc_output,
+        )
 
         # Mark running and emit process event for current interpreter
         self.program_running = True
@@ -500,50 +502,11 @@ class PyDebugger:
         }
         await self.server.send_event("process", proc_event)
 
-    def _import_inprocess_cls(self):
-        """Import and return the InProcessDebugger class.
-
-        This function assumes the `dapper.inprocess_debugger` module is
-        available and will raise the underlying ImportError if not.
-        """
-        module = importlib.import_module("dapper.core.inprocess_debugger")
-        return module.InProcessDebugger  # type: ignore[attr-defined]
-
-    def _make_inproc_callbacks(self):
-        """Return a dict of event handlers that forward inproc events to the server."""
-        return {
-            "stopped": self._inproc_on_stopped,
-            "thread": self._inproc_on_thread,
-            "exited": self._inproc_on_exited,
-            "output": self._inproc_on_output,
-        }
-
-    def _inproc_on_stopped(self, data: dict[str, Any]) -> None:
-        """Forward stopped events from inproc to the server, with isolation."""
-        try:
-            self._handle_event_stopped(data)
-        except Exception:
-            logger.exception("error in on_stopped callback")
-
-    def _inproc_on_thread(self, data: dict[str, Any]) -> None:
-        """Forward thread events from inproc to the server, with isolation."""
-        try:
-            self._handle_event_thread(data)
-        except Exception:
-            logger.exception("error in on_thread callback")
-
-    def _inproc_on_exited(self, data: dict[str, Any]) -> None:
-        """Forward exited events from inproc to the server, with isolation."""
-        try:
-            self._handle_event_exited(data)
-        except Exception:
-            logger.exception("error in on_exited callback")
-
-    async def _inproc_on_output(self, category: str, output: str) -> None:
-        """Forward output events from inproc to the server, with isolation."""
+    def _handle_inproc_output(self, category: str, output: str) -> None:
+        """Forward output events from in-process debugger to the server."""
         try:
             payload = {"category": category, "output": output}
-            await self.server.send_event("output", payload)
+            self.spawn_threadsafe(lambda: self.server.send_event("output", payload))
         except Exception:
             logger.exception("error in on_output callback")
 
@@ -1021,7 +984,7 @@ class PyDebugger:
         self.breakpoints[path] = storage_list
 
         # Try in-process debugger first
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             return await self._set_breakpoints_in_process(path, spec_list, storage_list)
 
         # Fall back to external process debugger
@@ -1076,9 +1039,9 @@ class PyDebugger:
             List of breakpoint responses
         """
         try:
-            if self._inproc is None:
+            if self._inproc_bridge is None:
                 return [{"verified": False} for _ in storage_list]
-            result = self._inproc.set_breakpoints(path, spec_list)
+            result = self._inproc_bridge.set_breakpoints(path, spec_list)
             return [
                 {
                     "verified": bp.get("verified", False),
@@ -1186,9 +1149,9 @@ class PyDebugger:
         # Store runtime representation (with verified flag) for IPC and state
         self.function_breakpoints = storage_funcs
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                result = self._inproc.set_function_breakpoints(spec_funcs)
+                result = self._inproc_bridge.set_function_breakpoints(spec_funcs)
                 return list(result)
             except Exception:
                 logger.exception("in-process set_function_breakpoints failed")
@@ -1221,9 +1184,9 @@ class PyDebugger:
 
         # In-process path: underlying in-process APIs accept just the
         # simple filters list for now (backwards compatible).
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                result = self._inproc.set_exception_breakpoints(filters)
+                result = self._inproc_bridge.set_exception_breakpoints(filters)
                 return list(result)
             except Exception:
                 logger.exception("in-process set_exception_breakpoints failed")
@@ -1249,8 +1212,8 @@ class PyDebugger:
         self, command: dict[str, Any], expect_response: bool = False
     ) -> dict[str, Any] | None:
         """Send a command to the debuggee process or in-process bridge."""
-        if self.in_process and self._inproc is not None:
-            return self._dispatch_inprocess_command(command, expect_response)
+        if self.in_process and self._inproc_bridge is not None:
+            return self._inproc_bridge.dispatch_command(command, expect_response)
 
         if not self.process or self.is_terminated:
             return None
@@ -1290,98 +1253,6 @@ class PyDebugger:
 
         return None
 
-    def _dispatch_inprocess_command(
-        self, command: dict[str, Any], expect_response: bool
-    ) -> Any | None:
-        """Dispatch in-process commands through the bridge using a mapping."""
-        try:
-            cmd_key = command.get("command")
-            args = command.get("arguments", {})
-            bridge = self._inproc
-            assert bridge is not None
-
-            def _exception_info() -> Any:
-                return {
-                    "exceptionId": "Unknown",
-                    "description": ("Exception information not available"),
-                    "breakMode": "unhandled",
-                    "details": {
-                        "message": ("Exception information not available"),
-                        "typeName": "Unknown",
-                        "fullTypeName": "Unknown",
-                        "source": "Unknown",
-                        "stackTrace": ("Exception information not available"),
-                    },
-                }
-
-            def _tid() -> int:
-                return int(args.get("threadId", 1))
-
-            def _cmd_next() -> Any:
-                return bridge.next_(_tid())
-
-            def _cmd_step_in() -> Any:
-                return bridge.step_in(_tid())
-
-            def _cmd_step_out() -> Any:
-                return bridge.step_out(_tid())
-
-            def _cmd_stack_trace() -> Any:
-                return bridge.stack_trace(
-                    _tid(),
-                    args.get("startFrame", 0),
-                    args.get("levels", 0),
-                )
-
-            def _cmd_variables() -> Any:
-                return bridge.variables(
-                    args.get("variablesReference"),
-                    _filter=args.get("filter"),
-                    _start=args.get("start"),
-                    _count=args.get("count"),
-                )
-
-            def _cmd_set_variable() -> Any | None:
-                return bridge.set_variable(
-                    args.get("variablesReference"),
-                    args.get("name"),
-                    args.get("value"),
-                )
-
-            def _cmd_evaluate() -> Any:
-                return bridge.evaluate(
-                    args.get("expression", ""),
-                    args.get("frameId", 0),
-                    args.get("context", "hover"),
-                )
-
-            dispatch: dict[str, Callable[[], Any]] = {
-                "continue": lambda: bridge.continue_(_tid()),
-                "next": _cmd_next,
-                "stepIn": _cmd_step_in,
-                "stepOut": _cmd_step_out,
-                "stackTrace": _cmd_stack_trace,
-                "variables": _cmd_variables,
-                "setVariable": _cmd_set_variable,
-                "evaluate": _cmd_evaluate,
-                "exceptionInfo": _exception_info,
-                "configurationDone": lambda: None,
-                "terminate": lambda: None,
-                "pause": lambda: None,
-            }
-
-            key = cmd_key if isinstance(cmd_key, str) else ""
-            body = dispatch.get(key, lambda: None)()
-        except Exception:
-            logger.exception("in-process command handling failed")
-            if expect_response:
-                return {"body": {}}
-            return None
-        else:
-            if expect_response:
-                return {"body": body or {}}
-            return None
-
     def _write_command_to_channel(self, cmd_str: str) -> None:
         """Write a command to the active IPC channel.
         """
@@ -1418,9 +1289,9 @@ class PyDebugger:
             if thread_id in self.threads:
                 self.threads[thread_id].is_stopped = False
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                result = self._inproc.continue_(thread_id)
+                result = self._inproc_bridge.continue_(thread_id)
                 return cast("ContinueResponseBody", result)
             except Exception:
                 logger.exception("in-process continue failed")
@@ -1437,9 +1308,9 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                self._inproc.next_(thread_id)
+                self._inproc_bridge.next_(thread_id)
             except Exception:
                 logger.exception("in-process next failed")
                 return
@@ -1454,9 +1325,9 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                self._inproc.step_in(thread_id)
+                self._inproc_bridge.step_in(thread_id)
             except Exception:
                 logger.exception("in-process step_in failed")
                 return
@@ -1474,9 +1345,9 @@ class PyDebugger:
 
         self.stopped_event.clear()
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                self._inproc.step_out(thread_id)
+                self._inproc_bridge.step_out(thread_id)
             except Exception:
                 logger.exception("in-process step_out failed")
                 return
@@ -1492,7 +1363,7 @@ class PyDebugger:
         if not self.program_running or self.is_terminated:
             return False
 
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             return False
         command = {"command": "pause", "arguments": {"threadId": thread_id}}
         await self._send_command_to_debuggee(command)
@@ -1646,9 +1517,9 @@ class PyDebugger:
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread"""
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                result = self._inproc.stack_trace(thread_id, start_frame, levels)
+                result = self._inproc_bridge.stack_trace(thread_id, start_frame, levels)
                 return cast("StackTraceResponseBody", result)
             except Exception:
                 logger.exception("in-process stack_trace failed")
@@ -1714,14 +1585,14 @@ class PyDebugger:
         self, variables_reference: int, filter_type: str = "", start: int = 0, count: int = 0
     ) -> list[Variable]:
         """Get variables for the given reference."""
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
                 # Use the variables method instead of get_variables
-                result = self._inproc.variables(
+                result = self._inproc_bridge.variables(
                     variables_reference,
-                    _filter=filter_type,
-                    _start=start,
-                    _count=count if count > 0 else None,
+                    filter_type=filter_type,
+                    start=start,
+                    count=count if count > 0 else None,
                 )
                 # The in-process debugger returns a list of variables directly
                 if isinstance(result, list):
@@ -1775,9 +1646,9 @@ class PyDebugger:
         if isinstance(ref_info, tuple) and len(ref_info) == scope_ref_tuple_len:
             frame_id, _scope_type = ref_info
 
-            if self.in_process and self._inproc is not None:
+            if self.in_process and self._inproc_bridge is not None:
                 try:
-                    result = self._inproc.set_variable(var_ref, name, value)
+                    result = self._inproc_bridge.set_variable(var_ref, name, value)
                     return cast("SetVariableResponseBody", result)
                 except Exception:
                     logger.exception("in-process set_variable failed")
@@ -1814,9 +1685,9 @@ class PyDebugger:
         self, expression: str, frame_id: int | None = None, context: str | None = None
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context"""
-        if self.in_process and self._inproc is not None:
+        if self.in_process and self._inproc_bridge is not None:
             try:
-                result = self._inproc.evaluate(expression, frame_id, context)
+                result = self._inproc_bridge.evaluate(expression, frame_id, context)
                 return cast("EvaluateResponseBody", result)
             except Exception:
                 logger.exception("in-process evaluate failed")

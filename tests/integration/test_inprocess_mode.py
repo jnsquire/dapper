@@ -70,18 +70,18 @@ async def test_inprocess_variables_bridge():
     loop = asyncio.get_event_loop()
     server = DebugAdapterServer(conn, loop)
 
-    # Use a real PyDebugger but patch its _inproc with a fake bridge
+    # Use a real PyDebugger but patch its _inproc_bridge with a fake bridge
     debugger = server.debugger
     debugger.in_process = True
 
     class FakeBridge:
-        def variables(self, var_ref, *, _filter=None, _start=None, _count=None):
+        def variables(self, var_ref, *, filter_type=None, start=None, count=None):
             # record call for assertion
-            FakeBridge.called = (var_ref, _filter, _start, _count)
+            FakeBridge.called = (var_ref, filter_type, start, count)
             return [{"name": "x", "value": "1", "variablesReference": 0}]
 
     fake = FakeBridge()
-    debugger._inproc = fake  # type: ignore[attr-defined]
+    debugger._inproc_bridge = fake  # type: ignore[attr-defined]
 
     # Clear any previous calls
     if hasattr(FakeBridge, "called"):

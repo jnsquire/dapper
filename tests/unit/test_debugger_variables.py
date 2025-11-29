@@ -153,18 +153,18 @@ class TestDebuggerVariables(BaseDebuggerTest):
     async def test_get_variables_in_process(self):
         """Test that get_variables delegates to in-process debugger when enabled."""
         self.debugger.in_process = True
-        self.debugger._inproc = MagicMock()
+        self.debugger._inproc_bridge = MagicMock()
 
         expected_variables = [
             {"name": "ip_a", "value": "99", "variablesReference": 0}
         ]
-        self.debugger._inproc.variables.return_value = expected_variables
+        self.debugger._inproc_bridge.variables.return_value = expected_variables
 
         result = await self.debugger.get_variables(789, filter_type="indexed", start=5, count=20)
 
         # Verify in-process call
-        self.debugger._inproc.variables.assert_called_once_with(
-            789, _filter="indexed", _start=5, _count=20
+        self.debugger._inproc_bridge.variables.assert_called_once_with(
+            789, filter_type="indexed", start=5, count=20
         )
         assert result == expected_variables
 
