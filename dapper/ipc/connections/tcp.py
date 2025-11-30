@@ -184,10 +184,11 @@ class TCPServerConnection(ConnectionBase):
         try:
             message = json.loads(payload.decode("utf-8"))
             logger.debug("Received binary message: %s", message)
-            return message
         except json.JSONDecodeError:
             logger.exception("Failed to decode binary message JSON")
             return None
+        else:
+            return message
 
     async def _read_dap_message(self) -> dict[str, Any] | None:
         """Read a regular DAP protocol message with Content-Length headers."""

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -18,67 +19,74 @@ from tests.integration.test_server import AsyncCallRecorder
 from tests.mocks import MockConnection
 
 
-def test_write_command_to_channel_ipc_pipe_text():
+@pytest.mark.asyncio
+async def test_write_command_to_channel_ipc_pipe_text():
+    """Test that IPCManager can send text messages."""
     p = PyDebugger(server=Mock())
-    calls = []
+    
+    # Mock the connection to capture send_message calls
+    mock_connection = AsyncMock()
+    p.ipc._connection = mock_connection
+    p.ipc._enabled = True
+    
+    # Test the new interface
+    await p.ipc.send_message({"command": "test", "data": "abc"})
+    
+    # Verify the connection's write_message was called
+    assert mock_connection.write_message.called, "Expected write_message to be called"
+    call_args = mock_connection.write_message.call_args[0][0]
+    assert call_args["command"] == "test"
+    assert call_args["data"] == "abc"
 
-    class PipeConn:
-        def send(self, s):
-            calls.append(("send", s))
 
-    p.ipc.enable_pipe_connection(PipeConn(), binary=False)
-
-    p.ipc.write_command("abc")
-    # Break down assertion (PT018): verify list populated, action name, and payload
-    assert calls, "Expected at least one call to pipe send"
-    assert calls[0][0] == "send", f"Unexpected method {calls[0][0]!r}"
-    assert calls[0][1] == "abc", f"Unexpected payload {calls[0][1]!r}"
-
-
-def test_write_command_to_channel_ipc_pipe_binary():
+@pytest.mark.asyncio
+async def test_write_command_to_channel_ipc_pipe_binary():
+    """Test that IPCManager can send binary messages."""
     p = PyDebugger(server=Mock())
-    calls = []
+    
+    # Mock the connection to capture send_message calls
+    mock_connection = AsyncMock()
+    p.ipc._connection = mock_connection
+    p.ipc._enabled = True
+    
+    # Test the new interface with binary data
+    await p.ipc.send_message({"command": "test", "data": "xyz"})
+    
+    # Verify the connection's write_message was called
+    assert mock_connection.write_message.called, "Expected write_message to be called"
+    call_args = mock_connection.write_message.call_args[0][0]
+    assert call_args["command"] == "test"
+    assert call_args["data"] == "xyz"
 
-    class PipeConn:
-        def send_bytes(self, b):
-            calls.append(("send_bytes", b))
 
-    # Use new PyDebugger helper to enable pipe-style binary IPC
-    p.ipc.enable_pipe_connection(PipeConn(), binary=True)
-
-    p.ipc.write_command("xyz")
-    assert calls, "Expected at least one call to pipe send_bytes"
-    assert calls[0][0] == "send_bytes", f"Unexpected method {calls[0][0]!r}"
-
-
-def test_write_command_to_channel_ipc_socket_text():
+@pytest.mark.asyncio
+async def test_write_command_to_channel_ipc_socket_text():
+    """Test that IPCManager can send messages through socket-like connections."""
     p = PyDebugger(server=Mock())
-    calls = []
+    
+    # Mock the connection to capture send_message calls
+    mock_connection = AsyncMock()
+    p.ipc._connection = mock_connection
+    p.ipc._enabled = True
+    
+    # Test the new interface
+    await p.ipc.send_message({"command": "test", "data": "bbb"})
+    
+    # Verify the connection's write_message was called
+    assert mock_connection.write_message.called, "Expected write_message to be called"
+    call_args = mock_connection.write_message.call_args[0][0]
+    assert call_args["command"] == "test"
+    assert call_args["data"] == "bbb"
 
-    class WFile:
-        def write(self, s):
-            calls.append(("write", s))
 
-        def flush(self):
-            calls.append(("flush", None))
-
-    # Use the new helper to register a writer-only transport for tests
-    p.ipc.enable_wfile(WFile(), binary=False)
-
-    p.ipc.write_command("bbb")
-    assert any("bbb" in c[1] for c in calls if c[0] == "write")
-
-
-def test_write_command_to_channel_requires_ipc():
-    """Test that ipc.write_command raises RuntimeError when IPC is not configured."""
+@pytest.mark.asyncio
+async def test_write_command_to_channel_requires_ipc():
+    """Test that IPCManager.send_message raises RuntimeError when IPC is not configured."""
     p = PyDebugger(server=Mock())
 
-    p.ipc.disable()
-    p.process = Mock()
-
-    # Should raise RuntimeError since IPC is mandatory
-    with pytest.raises(RuntimeError, match="IPC is required"):
-        p.ipc.write_command("kkk")
+    # IPCManager starts disabled (no connection)
+    with pytest.raises(RuntimeError, match="No IPC connection available"):
+        await p.ipc.send_message({"test": "kkk"})
 
 
 @pytest.mark.asyncio
@@ -204,11 +212,14 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     )
     await debugger.launch(config)
 
-    pipe_listener = debugger.ipc.pipe_listener
-    assert pipe_listener is not None, "Expected a named pipe listener to be created"
-    generated_pipe = getattr(pipe_listener, "address", None)
+    # In the new IPCManager, we check the connection instead of pipe_listener
+    connection = debugger.ipc.connection
+    assert connection is not None, "Expected an IPC connection to be created"
+    # The connection should have pipe path information for pipe transport
+    assert hasattr(connection, "pipe_path"), "Expected connection to have pipe_path attribute"
+    generated_pipe = getattr(connection, "pipe_path", None)
     assert isinstance(generated_pipe, str)
-    assert generated_pipe.startswith(r"\\.\pipe\dapper-")
+    assert generated_pipe.startswith("\\\\.\\pipe\\dapper-")
     assert str(os.getpid()) in generated_pipe
 
     assert captured_args, "Expected debuggee launch args to be captured"

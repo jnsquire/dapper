@@ -102,8 +102,6 @@ class TestDapperConfig:
 
     def test_validate_attach_tcp_missing_port(self) -> None:
         """Test validation fails when port is missing for TCP attach."""
-        from dapper.errors import ConfigurationError
-        
         config = DapperConfig(mode="attach")
         config.ipc.transport = "tcp"
         config.ipc.port = None
@@ -113,8 +111,6 @@ class TestDapperConfig:
 
     def test_validate_attach_unix_missing_path(self) -> None:
         """Test validation fails when path is missing for Unix attach."""
-        from dapper.errors import ConfigurationError
-        
         config = DapperConfig(mode="attach")
         config.ipc.transport = "unix"
         config.ipc.path = None
@@ -124,8 +120,6 @@ class TestDapperConfig:
 
     def test_validate_attach_pipe_missing_name(self) -> None:
         """Test validation fails when pipe name is missing for pipe attach."""
-        from dapper.errors import ConfigurationError
-        
         config = DapperConfig(mode="attach")
         config.ipc.transport = "pipe"
         config.ipc.pipe_name = None
@@ -135,8 +129,6 @@ class TestDapperConfig:
 
     def test_validate_in_process_attach_incompatible(self) -> None:
         """Test validation fails when in_process is used with attach."""
-        from dapper.errors import ConfigurationError
-        
         config = DapperConfig(mode="attach", in_process=True)
         
         with pytest.raises(ConfigurationError, match="In-process mode is not compatible with attach"):

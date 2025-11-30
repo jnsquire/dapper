@@ -218,9 +218,9 @@ class ErrorHandler:
                     result = handler(error)
                     if isinstance(result, dict):
                         return result
-                except Exception as handler_error:
-                    self.logger.error(
-                        f"Error handler for {exc_type.__name__} failed: {handler_error}"
+                except Exception :
+                    self.logger.exception(
+                        f"Error handler for {exc_type.__name__} failed"
                     )
         
         # Convert to standard error response
@@ -310,40 +310,3 @@ def create_dap_response(
     )
 
 
-def wrap_errors(
-    error_type: type[DapperError] = DapperError,
-    *,
-    reraise: bool = True,
-    log_level: int = logging.ERROR,
-) -> Callable:
-    """Decorator to wrap functions in error handling.
-    
-    Args:
-        error_type: The type of DapperError to create for caught exceptions
-        reraise: Whether to re-raise the wrapped exception
-        log_level: Logging level for caught exceptions
-        
-    Returns:
-        Decorated function
-    """
-    def decorator(func: Callable) -> Callable:
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                if not isinstance(e, DapperError):
-                    # Wrap non-Dapper errors
-                    wrapped_error = error_type(
-                        f"Error in {func.__name__}: {e!s}",
-                        cause=e,
-                        details={"function": func.__name__, "args": args, "kwargs": kwargs},
-                    )
-                else:
-                    wrapped_error = e
-                
-                handle_error(wrapped_error, reraise=reraise, log_level=log_level)
-                if reraise:
-                    raise wrapped_error
-                return None
-        return wrapper
-    return decorator

@@ -100,7 +100,7 @@ class IPCManager:
         )
         self._reader_thread.start()
     
-    def send_message(self, message: dict[str, Any]) -> None:
+    async def send_message(self, message: dict[str, Any]) -> None:
         """Send a message through the IPC connection.
         
         Args:
@@ -109,12 +109,7 @@ class IPCManager:
         if not self._connection:
             raise RuntimeError("No IPC connection available")
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(self._connection.write_message(message))
-        finally:
-            loop.close()
+        await self._connection.write_message(message)
 
     def cleanup(self) -> None:
         """Clean up IPC resources."""
@@ -134,7 +129,8 @@ class IPCManager:
                         asyncio.get_running_loop()
                         # If there's already a running loop, create a task but don't await
                         # This is for legacy sync cleanup calls
-                        asyncio.create_task(close_method())
+                        task = asyncio.create_task(close_method())
+                        task.add_done_callback(lambda _: None)
                     except RuntimeError:
                         # No running loop, safe to create new one
                         asyncio.run(close_method())

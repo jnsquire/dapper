@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
-from dapper.adapter.server import PyDebugger
+from dapper.ipc.ipc_context import IPCContext
 
 
 class _StubServer:
@@ -25,18 +24,18 @@ async def test_pipe_endpoints_closed_on_cleanup() -> None:
     if os.name != "nt":
         pytest.skip("Named pipe cleanup test only applicable on Windows")
 
-    loop = asyncio.get_event_loop()
-    dbg = PyDebugger(_StubServer(), loop)
-
     # Create mocks for pipe connection and listener
     conn = Mock()
     listener = Mock()
-    # Use helpers to register the listener and pipe connection
-    dbg.ipc.set_pipe_listener(listener)
-    dbg.ipc.enable_pipe_connection(conn, binary=False)
+    
+    # Use the legacy IPCContext interface directly for this test
+    # since we're testing the low-level cleanup behavior
+    ipc_context = IPCContext()
+    ipc_context.set_pipe_listener(listener)
+    ipc_context.enable_pipe_connection(conn, binary=False)
 
-    # Use the debugger helper to perform IPC shutdown/cleanup
-    dbg.ipc.disable()
+    # Test cleanup directly on the IPCContext
+    ipc_context.cleanup()
 
     # Verify close was called on both
     conn.close.assert_called_once()

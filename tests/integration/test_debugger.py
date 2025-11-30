@@ -11,6 +11,7 @@ import asyncio
 import threading
 from pathlib import Path
 from typing import TypedDict
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -122,6 +123,8 @@ def debugger(mock_server, event_loop):
 
 def setup_external_backend(debugger):
     """Helper to set up the external backend for tests that need it."""
+    # Mock the IPC manager's send_message method
+    debugger.ipc.send_message = AsyncMock()
     debugger._external_backend = ExternalProcessBackend(
         ipc=debugger.ipc,
         loop=debugger.loop,
@@ -371,27 +374,25 @@ async def test_launch_with_args(debugger):
 
 @pytest.mark.asyncio
 async def test_pause(debugger):
-    """Test pausing the debugger"""
+    """Test pause functionality"""
     debugger.process = MagicMock()
     debugger.program_running = True
     debugger.is_terminated = False
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Set up the external backend
     setup_external_backend(debugger)
 
     await debugger.pause(thread_id=1)
 
-    # Check that a command was written via IPC
-    mock_wfile.write.assert_called_once()
-    call_args = mock_wfile.write.call_args[0][0]
-    # Binary mode - should be bytes
-    assert isinstance(call_args, bytes)
+    # Check that send_message was called via IPC
+    debugger.ipc.send_message.assert_called_once()
+    call_args = debugger.ipc.send_message.call_args[0][0]
+    # Should be a dict message
+    assert isinstance(call_args, dict)
 
 
 @pytest.mark.asyncio
@@ -403,21 +404,19 @@ async def test_continue_execution(debugger):
     debugger.stopped_event.set()
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Set up the external backend
     setup_external_backend(debugger)
 
     await debugger.continue_execution(thread_id=1)
 
-    # Check that a command was written via IPC
-    mock_wfile.write.assert_called_once()
-    call_args = mock_wfile.write.call_args[0][0]
-    # Binary mode - should be bytes
-    assert isinstance(call_args, bytes)
+    # Check that send_message was called via IPC
+    debugger.ipc.send_message.assert_called_once()
+    call_args = debugger.ipc.send_message.call_args[0][0]
+    # Should be a dict message
+    assert isinstance(call_args, dict)
 
 
 @pytest.mark.asyncio
@@ -450,10 +449,8 @@ async def test_continue_execution_clears_stopped_event(debugger):
     debugger.stopped_event.set()
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Verify event is set initially
     assert debugger.stopped_event.is_set()
@@ -472,19 +469,17 @@ async def test_next_step(debugger):
     debugger.is_terminated = False
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Set up the external backend
     setup_external_backend(debugger)
 
     await debugger.next(thread_id=1)
 
-    mock_wfile.write.assert_called_once()
-    call_args = mock_wfile.write.call_args[0][0]
-    assert isinstance(call_args, bytes)
+    debugger.ipc.send_message.assert_called_once()
+    call_args = debugger.ipc.send_message.call_args[0][0]
+    assert isinstance(call_args, dict)
 
 
 @pytest.mark.asyncio
@@ -495,19 +490,17 @@ async def test_step_in(debugger):
     debugger.is_terminated = False
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Set up the external backend
     setup_external_backend(debugger)
 
     await debugger.step_in(thread_id=1)
 
-    mock_wfile.write.assert_called_once()
-    call_args = mock_wfile.write.call_args[0][0]
-    assert isinstance(call_args, bytes)
+    debugger.ipc.send_message.assert_called_once()
+    call_args = debugger.ipc.send_message.call_args[0][0]
+    assert isinstance(call_args, dict)
 
 
 @pytest.mark.asyncio
@@ -518,19 +511,17 @@ async def test_step_out(debugger):
     debugger.is_terminated = False
 
     # Set up IPC mock (IPC is now mandatory)
-    mock_wfile = MagicMock()
-    debugger.ipc.enabled = True
-    debugger.ipc.binary = True
-    debugger.ipc.wfile = mock_wfile
+    debugger.ipc._enabled = True
+    debugger.ipc._connection = MagicMock()
 
     # Set up the external backend
     setup_external_backend(debugger)
 
     await debugger.step_out(thread_id=1)
 
-    mock_wfile.write.assert_called_once()
-    call_args = mock_wfile.write.call_args[0][0]
-    assert isinstance(call_args, bytes)
+    debugger.ipc.send_message.assert_called_once()
+    call_args = debugger.ipc.send_message.call_args[0][0]
+    assert isinstance(call_args, dict)
 
 
 # ---------------------------------------------------------------------------

@@ -35,7 +35,7 @@ from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc import TransportConfig
-from dapper.ipc.ipc_adapter import IPCContextAdapter
+from dapper.ipc.ipc_manager import IPCManager
 from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.structures import Source
 from dapper.protocol.structures import SourceBreakpoint
@@ -179,7 +179,7 @@ class PyDebugger:
 
         # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
-        self.ipc: IPCContextAdapter = IPCContextAdapter()
+        self.ipc: IPCManager = IPCManager()
 
         # Data breakpoint containers
         self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
@@ -392,7 +392,6 @@ class PyDebugger:
         # If IPC is requested, prepare a listener and pass coordinates.
         # IPC is now mandatory; always enable it.
         self._use_ipc = True
-        self.ipc.set_binary(bool(config.ipc.use_binary))
         
         # Create transport config for the factory
         transport_config = TransportConfig(
@@ -405,9 +404,9 @@ class PyDebugger:
         )
         
         debug_args.extend(self.ipc.create_listener(
-            transport_config=transport_config
+            config=transport_config
         ))
-        if self.ipc.binary:
+        if transport_config.use_binary:
             debug_args.append("--ipc-binary")
 
         logger.info("Launching program: %s", self.program_path)
@@ -427,7 +426,7 @@ class PyDebugger:
                 await asyncio.to_thread(self._start_debuggee_process, debug_args)
 
         # Accept the IPC connection from the launcher (IPC is mandatory)
-        if self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None:
+        if self.ipc.is_enabled:
             # Create a wrapper to handle dict messages from binary IPC
             def _handle_ipc_message(message: dict[str, Any]) -> None:
                 """Handle IPC message that may be already parsed (binary) or string."""
@@ -514,13 +513,7 @@ class PyDebugger:
         )
         
         # Connect using the new transport configuration
-        self.ipc.connect(
-            transport=transport_config.transport,
-            pipe_name=transport_config.pipe_name,
-            unix_path=transport_config.path,
-            host=transport_config.host,
-            port=transport_config.port,
-        )
+        self.ipc.connect(transport_config)
 
         # Start reader thread (connection already established)
         # Create a wrapper to handle dict messages from binary IPC
@@ -1273,7 +1266,7 @@ class PyDebugger:
                 if stream is not None:
                     stream.close()
 
-            await self.ipc.acleanup()
+            self.ipc.cleanup()
 
         # Clear state
         self.var_refs.clear()

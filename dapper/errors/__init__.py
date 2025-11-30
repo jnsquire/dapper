@@ -11,7 +11,6 @@ from dapper.errors.dapper_errors import ProtocolError
 from dapper.errors.dapper_errors import create_dap_response
 from dapper.errors.dapper_errors import default_error_handler
 from dapper.errors.dapper_errors import handle_error
-from dapper.errors.dapper_errors import wrap_errors
 from dapper.errors.error_patterns import ErrorContext
 from dapper.errors.error_patterns import async_handle_adapter_errors
 from dapper.errors.error_patterns import async_handle_backend_errors
@@ -41,5 +40,4 @@ __all__ = [
     "handle_debugger_errors",
     "handle_error",
     "handle_protocol_errors",
-    "wrap_errors",
 ]

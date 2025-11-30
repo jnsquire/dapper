@@ -13,7 +13,6 @@ from dapper.errors import IPCError
 from dapper.errors import ProtocolError
 from dapper.errors import create_dap_response
 from dapper.errors import handle_error
-from dapper.errors import wrap_errors
 
 
 class TestDapperError:
@@ -212,65 +211,6 @@ class TestGlobalFunctions:
         assert response["request_seq"] == 42
         assert response["command"] == "attach"
         assert response["success"] is False
-
-
-class TestWrapErrorsDecorator:
-    """Test cases for the wrap_errors decorator."""
-
-    def test_wrap_errors_success(self) -> None:
-        """Test decorator with successful function."""
-        @wrap_errors()
-        def test_func(x: int) -> int:
-            return x * 2
-        
-        result = test_func(5)
-        assert result == 10
-
-    def test_wrap_errors_with_dapper_error(self) -> None:
-        """Test decorator with DapperError."""
-        @wrap_errors(reraise=False)
-        def test_func() -> None:
-            raise ConfigurationError("Test error")
-        
-        result = test_func()
-        assert result is None  # Function returns None on error when reraise=False
-
-    def test_wrap_errors_with_regular_error(self) -> None:
-        """Test decorator wrapping regular errors."""
-        @wrap_errors(reraise=False)
-        def test_func() -> None:
-            raise ValueError("Regular error")
-        
-        result = test_func()
-        assert result is None  # Function returns None on error when reraise=False
-
-    def test_wrap_errors_reraise(self) -> None:
-        """Test decorator with reraise=True."""
-        @wrap_errors(reraise=True)
-        def test_func() -> None:
-            raise ValueError("Regular error")
-        
-        with pytest.raises(DapperError) as exc_info:
-            test_func()
-        
-        assert "Regular error" in str(exc_info.value)
-        assert exc_info.value.cause is not None
-        assert isinstance(exc_info.value.cause, ValueError)
-
-    def test_wrap_errors_with_details(self) -> None:
-        """Test decorator includes function details in error."""
-        @wrap_errors(reraise=True)
-        def test_func(x: int, y: str = "default") -> None:
-            _ = f"Received: {x} {y}"
-            raise ValueError("Test error")
-        
-        with pytest.raises(DapperError) as exc_info:
-            test_func(42, "test")
-        
-        details = exc_info.value.details
-        assert details["function"] == "test_func"
-        assert details["args"] == (42, "test")
-        assert details["kwargs"] == {}
 
 
 class TestErrorIntegration:

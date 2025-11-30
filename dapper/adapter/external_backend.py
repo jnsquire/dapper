@@ -7,7 +7,6 @@ with a debuggee running in a separate subprocess via IPC.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
@@ -17,8 +16,7 @@ from dapper.adapter.base_backend import BaseBackend
 
 if TYPE_CHECKING:
     from dapper.config import DapperConfig
-    from dapper.ipc.ipc_adapter import IPCContextAdapter
-    from dapper.ipc.ipc_context import IPCContext
+    from dapper.ipc.ipc_manager import IPCManager
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
@@ -42,7 +40,7 @@ class ExternalProcessBackend(BaseBackend):
 
     def __init__(
         self,
-        ipc: IPCContext | IPCContextAdapter,
+        ipc: IPCManager,
         loop: asyncio.AbstractEventLoop,
         get_process_state: Any,  # Callable returning (process, is_terminated)
         pending_commands: dict[int, asyncio.Future[dict[str, Any]]],
@@ -311,7 +309,7 @@ class ExternalProcessBackend(BaseBackend):
                 self._pending_commands[command_id] = response_future
 
         try:
-            await asyncio.to_thread(self._ipc.write_command, json.dumps(command))
+            await self._ipc.send_message(command)
         except Exception:
             logger.exception("Error sending command to debuggee")
             if expect_response:

@@ -80,7 +80,9 @@ async def test_binary_ipc_frame_roundtrip_exited_event():
         PyDebugger._start_debuggee_process = original  # type: ignore[assignment]
 
     # Grab listener address and connect as the debuggee
-    listen = dbg.ipc.listen_sock
+    assert dbg.ipc.connection is not None, "IPC connection not established"
+    # The socket attribute is added by TransportFactory for backward compatibility
+    listen = getattr(dbg.ipc.connection, "socket", None)
     assert listen is not None, "IPC listen socket not created"
     host, port = listen.getsockname()
 

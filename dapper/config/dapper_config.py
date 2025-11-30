@@ -9,15 +9,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from dataclasses import field
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
 
 from dapper.errors import ConfigurationError
-
-if TYPE_CHECKING:
-    from dapper.protocol.requests import AttachRequest
-    from dapper.protocol.requests import LaunchRequest
 
 
 @dataclass
@@ -71,7 +66,7 @@ class DapperConfig:
     timeout_seconds: int = 30
     
     @classmethod
-    def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
+    def from_launch_request(cls, request: dict[str, Any]) -> DapperConfig:
         """Create config from launch request arguments."""
         args = request.get("arguments", {})
         
@@ -100,7 +95,7 @@ class DapperConfig:
         )
     
     @classmethod
-    def from_attach_request(cls, request: AttachRequest) -> DapperConfig:
+    def from_attach_request(cls, request: dict[str, Any]) -> DapperConfig:
         """Create config from attach request arguments."""
         args = request.get("arguments", {})
         

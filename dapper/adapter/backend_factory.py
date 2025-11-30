@@ -63,6 +63,7 @@ class InProcessStrategy:
         **kwargs: Any,
     ) -> DebuggerBackend:
         """Create an in-process backend."""
+        _ = loop
         if not config.in_process:
             raise ConfigurationError(
                 "In-process backend requires in_process=True",
