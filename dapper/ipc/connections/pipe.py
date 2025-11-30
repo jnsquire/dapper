@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_binary import unpack_header
 
 logger = logging.getLogger(__name__)
 traffic_logger = logging.getLogger("dapper.connection.traffic")
@@ -25,6 +28,12 @@ class NamedPipeServerConnection(ConnectionBase):
         self.pipe_path = self._get_pipe_path(pipe_name)
         self.server = None
         self._awaiting_connection_event: asyncio.Event | None = None
+        # For sync path we may create a low-level file descriptor wrapper
+        # attached as pipe_file (set in accept()). Declare attribute here
+        # for static analysis and clarity.
+        self.pipe_file: Any | None = None
+        # Whether DBGP frames are exchanged in binary mode (header+payload)
+        self.use_binary = False
 
     def _get_pipe_path(self, name: str) -> str:
         return rf"\\.\pipe\{name}" if sys.platform == "win32" else f"/tmp/{name}"
@@ -140,13 +149,99 @@ class NamedPipeServerConnection(ConnectionBase):
         traffic_logger.debug("Received message: %s", message)
         return message
 
+    async def read_dbgp_message(self) -> str | None:
+        """Read a DBGP-style message from the named pipe connection.
+
+        For binary listeners, the pipe receives raw frames via the file-like
+        interface; for text mode the implementation reads DBGP-prefixed strings.
+        """
+        # For the pipe implementation we expose similar behaviour as the
+        # TCP connection. The implementation varies by platform and internal
+        # state; use the existing reader when available.
+        if not hasattr(self, "reader") or self.reader is None:
+            return None
+
+        try:
+            line = await self.reader.readline()
+        except Exception:
+            return None
+
+        if not line:
+            return None
+
+        message_text: str | None = None
+
+        if isinstance(line, bytes):
+            # Try parsing a binary header first (fast path checks magic)
+            if len(line) >= HEADER_SIZE and line[:2] == b"DP":
+                try:
+                    kind, length = unpack_header(line[:HEADER_SIZE])
+                    if kind == 1:
+                        payload = line[HEADER_SIZE : HEADER_SIZE + length]
+                        return payload.decode("utf-8")
+                except Exception:
+                    # fall through and attempt to decode whole buffer
+                    pass
+
+            # fallback: try to decode whole bytes
+            try:
+                message_text = line.decode("utf-8").strip()
+            except Exception:
+                message_text = None
+        else:
+            message_text = str(line).strip()
+
+        if message_text and message_text.startswith("DBGP:"):
+            return message_text[5:].strip()
+
+        return None
+
+    async def write_dbgp_message(self, message: str) -> None:
+        """Write a DBGP-style message (text line or binary framed) to client."""
+        if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
+            raise RuntimeError("No active connection")
+
+        if self.use_binary:
+            content = message.encode("utf-8")
+            header = pack_frame(2, content)
+            payload = header + content
+            if getattr(self, "writer", None):
+                self.writer.write(payload)
+                await self.writer.drain()
+            else:
+                pf = self.pipe_file
+                assert pf is not None
+                pf.write(payload)
+                pf.flush()
+        else:
+            data = f"DBGP: {message}\n".encode()
+            if getattr(self, "writer", None):
+                self.writer.write(data)
+                await self.writer.drain()
+            else:
+                pf = self.pipe_file
+                assert pf is not None
+                pf.write(data)
+                pf.flush()
+
+    
+
     async def write_message(self, message: dict[str, Any]) -> None:
-        if not self.writer:
-            msg = "No active connection"
-            raise RuntimeError(msg)
+        """Write a DAP message to the named pipe connection."""
+        if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
+            raise RuntimeError("No active connection")
 
         content = json.dumps(message).encode("utf-8")
-        self.writer.write(f"Content-Length: {len(content)}\r\n\r\n".encode())
-        self.writer.write(content)
-        await self.writer.drain()
-        traffic_logger.debug("Sent message: %s", message)
+        header = f"Content-Length: {len(content)}\r\n\r\n".encode()
+        payload = header + content
+
+        if getattr(self, "writer", None):
+            self.writer.write(payload)
+            await self.writer.drain()
+        else:
+            pf = self.pipe_file
+            assert pf is not None
+            pf.write(payload)
+            pf.flush()
+
+        logger.debug("Sent message: %s", message)

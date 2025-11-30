@@ -29,6 +29,7 @@ from dapper.ipc.reader_helpers import read_binary_stream
 from dapper.ipc.reader_helpers import read_pipe_binary
 from dapper.ipc.reader_helpers import read_pipe_text
 from dapper.ipc.reader_helpers import read_text_stream
+from dapper.ipc.sync_adapter import SyncConnectionAdapter
 from dapper.ipc.transport_factory import TransportConfig
 from dapper.ipc.transport_factory import TransportFactory
 
@@ -44,6 +45,7 @@ class IPCContext:
     wfile: Any | None = None
     pipe_listener: Any | None = None  # mp_conn.Listener | None
     pipe_conn: Any | None = None  # mp_conn.Connection | None
+    connection_adapter: Any | None = None
     unix_path: Any | None = None  # Path | None (kept Any to avoid runtime import)
     binary: bool = False
 
@@ -125,6 +127,27 @@ class IPCContext:
         """Accept and read from a named pipe connection (blocking loop)."""
         if self.pipe_listener is None:  # defensive
             return
+        # Our listener may be either a SyncConnectionAdapter (wrapping
+        # an async ConnectionBase) or a legacy mp_conn.Listener.
+        if hasattr(self.pipe_listener, "accept") and hasattr(self.pipe_listener, "read_dbgp_message"):
+            # SyncConnectionAdapter path
+            self.pipe_listener.accept()
+            self.pipe_conn = self.pipe_listener
+            self.enabled = True
+            # read until EOF
+            conn = self.pipe_conn
+            assert conn is not None
+            while True:
+                msg = conn.read_dbgp_message()
+                if msg is None:
+                    break
+                try:
+                    handle_debug_message(msg)
+                except Exception:
+                    pass
+            return
+
+        # Legacy mp_conn.Listener path
         conn = self.pipe_listener.accept()  # type: ignore[union-attr]
         self.pipe_conn = conn
         self.enabled = True
@@ -138,6 +161,22 @@ class IPCContext:
         """Accept and read from a TCP/UNIX socket connection (blocking loop)."""
         if self.listen_sock is None:  # defensive
             return
+        # If listen_sock is an adapter (SyncConnectionAdapter), accept via it
+        if hasattr(self.listen_sock, "accept") and hasattr(self.listen_sock, "read_dbgp_message"):
+            self.listen_sock.accept()
+            self.sock = self.listen_sock
+            self.enabled = True
+            while True:
+                msg = self.listen_sock.read_dbgp_message()
+                if msg is None:
+                    break
+                try:
+                    handle_debug_message(msg)
+                except Exception:
+                    pass
+            return
+
+        # Legacy socket accept path
         conn, _ = self.listen_sock.accept()
         self.sock = conn
         # attach file-like rfile/wfile and set enabled/binary state
@@ -171,6 +210,16 @@ class IPCContext:
         transports and mark the IPC context enabled.
         """
         self.sock = sock
+        # If sock is an adapter (provides read_dbgp_message), don't create
+        # file-like objects — the adapter will handle reads/writes.
+        if hasattr(sock, "read_dbgp_message"):
+            self.rfile = None
+            self.wfile = None
+            self.binary = bool(binary)
+            self.enabled = True
+            return
+
+        # Otherwise assume a socket-like object and set up files
         self._setup_socket_files(sock, binary=binary)
         self.binary = bool(binary)
         self.enabled = True
@@ -304,15 +353,33 @@ class IPCContext:
         # centralise behaviour across pipe, unix and tcp transports.
         cfg = TransportConfig(transport=transport, pipe_name=pipe_name)
         try:
-            listener_obj, args, unix_path = TransportFactory.create_sync_listener(cfg)
+            conn, args = TransportFactory.create_listener(cfg)
         except Exception:
-            logger.exception("Failed to create synchronous listener; returning empty args")
+            logger.exception("Failed to create listener via factory; returning empty args")
             return []
 
+        # Wrap async ConnectionBase with synchronous adapter for legacy path
+        try:
+            adapter = SyncConnectionAdapter(conn)
+        except Exception:
+            logger.exception("Failed to create SyncConnectionAdapter; returning empty args")
+            return []
+
+        # Attach to context depending on transport
         if transport == "pipe":
-            self.set_pipe_listener(listener_obj)
+            self.set_pipe_listener(adapter)
+            self.connection_adapter = adapter
         else:
-            self.set_listen_socket(listener_obj, unix_path)
+            # For unix/tcp the adapter accepts and then reads messages
+            self.set_listen_socket(adapter)
+            # capture any unix path present in args for cleanup
+            if "--ipc-path" in args:
+                try:
+                    idx = args.index("--ipc-path")
+                    self.unix_path = args[idx + 1]
+                except Exception:
+                    pass
+            self.connection_adapter = adapter
 
         return args
 
@@ -341,7 +408,6 @@ class IPCContext:
         # Use centralized resolution for 'auto' / defaults
         transport = TransportFactory.resolve_transport(transport)
 
-        # Use the factory's synchronous connection helper for all transports
         cfg = TransportConfig(
             transport=transport, pipe_name=pipe_name, path=unix_path, host=host, port=port
         )
@@ -374,15 +440,21 @@ class IPCContext:
         finally:
             self.disable()
 
-    def _read_pipe_messages(self, handle_debug_message: Callable[[str], None]) -> None:
-        """Read messages from an attached pipe connection."""
-        if self.binary:
-            read_pipe_binary(self.pipe_conn, handle_debug_message)
-        else:
-            read_pipe_text(self.pipe_conn, handle_debug_message)
-
     def _read_socket_messages(self, handle_debug_message: Callable[[str], None]) -> None:
         """Read messages from an attached socket connection."""
+        # If the attached reader is an adapter, use its read_dbgp_message
+        if hasattr(self.rfile, "read_dbgp_message"):
+            while True:
+                msg = self.rfile.read_dbgp_message()  # type: ignore[attr-defined]
+                if msg is None:
+                    break
+                try:
+                    handle_debug_message(msg)
+                except Exception:
+                    pass
+            return
+
+        # Legacy behaviour for file-like rfile
         while True:
             line = self.rfile.readline()  # type: ignore[union-attr]
             if not line:
@@ -392,3 +464,33 @@ class IPCContext:
                     handle_debug_message(line[5:].strip())
                 except Exception:
                     pass
+
+    def _read_pipe_messages(self, handle_debug_message: Callable[[str], None]) -> None:
+        """Read messages from an attached pipe connection.
+
+        Handles both synchronous adapters that implement `read_dbgp_message`
+        and legacy pipe connection objects (binary/text).
+        """
+        # Defensive check
+        if self.pipe_conn is None:
+            return
+
+        # Adapter path: connection provides read_dbgp_message
+        if hasattr(self.pipe_conn, "read_dbgp_message"):
+            conn = self.pipe_conn
+            assert conn is not None
+            while True:
+                msg = conn.read_dbgp_message()
+                if msg is None:
+                    break
+                try:
+                    handle_debug_message(msg)
+                except Exception:
+                    pass
+            return
+
+        # Legacy processing for pipe connection objects
+        if self.binary:
+            read_pipe_binary(self.pipe_conn, handle_debug_message)
+        else:
+            read_pipe_text(self.pipe_conn, handle_debug_message)

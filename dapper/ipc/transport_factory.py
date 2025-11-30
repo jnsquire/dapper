@@ -155,6 +155,9 @@ class TransportFactory:
             listen.listen(1)
             
             connection = TCPServerConnection(host="127.0.0.1", port=0)
+            # For consumers that need the actual listen socket, expose it on
+            # the connection for backward compatibility
+            connection.socket = listen
             args = ["--ipc", "unix", "--ipc-path", str(unix_path)]
         except Exception:
             logger.exception("Failed to create Unix socket, falling back to TCP")
@@ -188,11 +191,14 @@ class TransportFactory:
         listen, args = TransportFactory.create_tcp_listener_socket(host)
         _, port = listen.getsockname()
 
-        connection = TCPServerConnection(host=host, port=port)
+        effective_host = listen.getsockname()[0]
+        connection = TCPServerConnection(host=effective_host, port=port)
         # Store the actual socket on the connection for backward compatibility
         connection.socket = listen
         # Store the use_binary flag for the connection to know how to read/write
         connection.use_binary = config.use_binary
+        # args already returned by create_tcp_listener_socket contain the
+        # resolved host and ephemeral port, reuse them
         return connection, args
 
     @staticmethod

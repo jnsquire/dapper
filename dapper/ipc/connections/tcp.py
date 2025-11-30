@@ -9,6 +9,7 @@ import socket
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
 
 logger = logging.getLogger(__name__)
@@ -190,6 +191,56 @@ class TCPServerConnection(ConnectionBase):
         else:
             return message
 
+    async def read_dbgp_message(self) -> str | None:
+        """Read a DBGP-style message from the TCP connection.
+
+        For binary-mode, read the DBGP header and return payload decoded as UTF-8
+        for frames with kind==1. For text-mode read a line and strip the DBGP
+        prefix if present.
+        """
+        if not self.reader:
+            raise RuntimeError("No active connection")
+
+        result: str | None = None
+
+        if self.use_binary:
+            # Read header
+            header_data = None
+            try:
+                header_data = await self.reader.readexactly(8)
+            except Exception:
+                header_data = None
+
+            if header_data:
+                try:
+                    kind, length = unpack_header(header_data)
+                except Exception:
+                    kind = None
+                    length = 0
+
+                if kind is not None:
+                    payload = None
+                    try:
+                        payload = await self.reader.readexactly(length)
+                    except Exception:
+                        payload = None
+
+                    if payload and kind == 1:
+                        try:
+                            result = payload.decode("utf-8")
+                        except Exception:
+                            result = None
+
+        else:
+            # text-mode
+            line = await self.reader.readline()
+            if line:
+                line = line.decode("utf-8").strip()
+                if line.startswith("DBGP:"):
+                    result = line[5:].strip()
+
+        return result
+
     async def _read_dap_message(self) -> dict[str, Any] | None:
         """Read a regular DAP protocol message with Content-Length headers."""
         headers: dict[str, str] = {}
@@ -232,6 +283,22 @@ class TCPServerConnection(ConnectionBase):
         self.writer.write(header + content)
         await self.writer.drain()
         logger.debug("Sent message: %s", message)
+
+    async def write_dbgp_message(self, message: str) -> None:
+        """Write a DBGP-style message (text line or binary framed) to client."""
+        if not self.writer:
+            raise RuntimeError("No active connection")
+
+        if self.use_binary:
+            content = message.encode("utf-8")
+            header = pack_frame(2, content)
+            # write raw bytes
+            self.writer.write(header + content)
+            await self.writer.drain()
+        else:
+            # write DBGP line
+            self.writer.write(f"DBGP: {message}\n".encode())
+            await self.writer.drain()
 
     def __del__(self):  # pragma: no cover - best-effort cleanup
         # Ensure underlying server socket is closed if user forgot.

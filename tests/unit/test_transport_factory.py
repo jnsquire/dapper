@@ -1,3 +1,4 @@
+import contextlib
 import os
 import socket
 import threading
@@ -103,11 +104,11 @@ def test_create_sync_listener_and_connection_unix():
         try:
             assert isinstance(client, socket.socket)
         finally:
+            with contextlib.suppress(Exception):
+                Path(path).unlink()
             client.close()
     finally:
         listen.close()
-        with contextlib.suppress(Exception):
-            Path(path).unlink()
 
 
 

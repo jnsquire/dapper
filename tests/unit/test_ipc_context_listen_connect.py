@@ -15,7 +15,9 @@ def test_create_listener_tcp_sets_listen_socket_and_args():
     ctx = IPCContext()
     args = ctx.create_listener(transport="tcp")
     try:
-        assert isinstance(ctx.listen_sock, socket.socket)
+        # the listener may be adapted via SyncConnectionAdapter and therefore
+        # won't be a raw socket; check that it exposes an accept() method.
+        assert hasattr(ctx.listen_sock, "accept")
         assert args[:3] == ["--ipc", "tcp", "--ipc-host"]
         assert any(part.isdigit() for part in args)
     finally:
@@ -65,7 +67,8 @@ def test_create_listener_unix_sets_listen_socket_and_unix_path():
     ctx = IPCContext()
     args = ctx.create_listener(transport="unix")
     try:
-        assert isinstance(ctx.listen_sock, socket.socket)
+        # listener may be an adapter exposing accept()
+        assert hasattr(ctx.listen_sock, "accept")
         assert "--ipc" in args
         assert "unix" in args
         assert ctx.unix_path is not None
