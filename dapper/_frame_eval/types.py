@@ -2,8 +2,6 @@
 Type definitions for the frame evaluator API.
 
 This module provides type hints for the Cython-accelerated frame evaluator.
-
-For internal implementation details, see types_internal.py.
 """
 
 from __future__ import annotations
@@ -20,10 +18,6 @@ else:
 if TYPE_CHECKING:
     from types import CodeType
     from types import FrameType
-
-    from dapper._frame_eval.types_internal import _dummy_trace_dispatch
-    from dapper._frame_eval.types_internal import _FrameEvalState
-    from dapper._frame_eval.types_internal import _should_trace_frame
 
 # Type aliases
 FrameStats = dict[str, Any]
@@ -115,7 +109,3 @@ def set_thread_skip_all(skip: bool) -> None:
     """Set whether current thread should skip all frames."""
 
 
-# Re-export internal types for backward compatibility
-_FrameEvalState: _FrameEvalState  # type: ignore[valid-type]
-_should_trace_frame: _should_trace_frame  # type: ignore[valid-type]
-_dummy_trace_dispatch: _dummy_trace_dispatch  # type: ignore[valid-type]

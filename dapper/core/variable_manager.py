@@ -9,15 +9,12 @@ This module provides a unified API for:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
 from typing import Union
-from typing import cast
 
-if TYPE_CHECKING:
-    from dapper.core.data_breakpoint_state import DataBreakpointState
-    from dapper.protocol.debugger_protocol import Variable
+from dapper.protocol.debugger_protocol import PresentationHint
+from dapper.protocol.debugger_protocol import Variable as VariableDict
 
 # Type aliases matching the protocol definitions
 VarRefObject = tuple[Literal["object"], Any]
@@ -144,9 +141,9 @@ class VariableManager:
         value: Any,
         *,
         max_string_length: int = 1000,
-        data_bp_state: DataBreakpointState | None = None,
+        data_bp_state: Any | None = None,
         frame: Any | None = None,
-    ) -> Variable:
+    ) -> VariableDict:
         """Create a DAP-compliant Variable object.
 
         Args:
@@ -174,21 +171,18 @@ class VariableManager:
             ):
                 attrs.append("hasDataBreakpoint")
 
-        presentation = {
-            "kind": kind,
-            "attributes": attrs,
-            "visibility": self._get_visibility(name),
-        }
+        presentation = PresentationHint(
+            kind=kind,
+            attributes=attrs,
+            visibility=self._get_visibility(name),
+        )
 
-        return cast(
-            "Variable",
-            {
-                "name": str(name),
-                "value": val_str,
-                "type": type_name,
-                "variablesReference": var_ref,
-                "presentationHint": presentation,
-            },
+        return VariableDict(
+            name=str(name),
+            value=val_str,
+            type=type_name,
+            variablesReference=var_ref,
+            presentationHint=presentation,
         )
 
     def _format_value(self, value: Any, max_length: int) -> str:

@@ -82,7 +82,7 @@ class TestFrameAnalyzer:
         mock_frame.f_lineno = 15
 
         # Set up breakpoints for different lines
-        self.analyzer.update_breakpoints("test.py", {10, 20, 30})
+        self.analyzer.update_breakpoints("test.py", [10, 20, 30])
 
         # Should not trace when not on breakpoint line
         result = self.analyzer.should_trace_frame(mock_frame)
@@ -173,7 +173,7 @@ class TestFrameAnalyzer:
             mock_get_breakpoints.return_value = set()
 
             # Clear breakpoints
-            self.analyzer.update_breakpoints("test.py", set())
+            self.analyzer.update_breakpoints("test.py", [])
 
             # Test that no breakpoints are set
             mock_frame.f_lineno = 15
@@ -604,6 +604,10 @@ class TestThreadSafety:
 
         # Get the trace function
         trace_func = self.trace_manager.get_trace_function()
+        
+        # Ensure trace_func is not None - this should not happen if enable_selective_tracing worked
+        if trace_func is None:
+            raise RuntimeError("Trace function is None after enabling selective tracing")
 
         errors = []
         results = []

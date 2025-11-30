@@ -23,8 +23,11 @@ from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 
 if TYPE_CHECKING:
+    import types
+
     from dapper.protocol.debugger_protocol import ExceptionInfo
-    from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.debugger_protocol import Variable as VariableDict
+    from dapper.protocol.structures import StackFrame as StackFrameDict
 
 try:
     from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
@@ -201,12 +204,12 @@ class DebuggerBDB(bdb.Bdb):
         self._thread_tracker.stopped_thread_ids = value
 
     @property
-    def frames_by_thread(self) -> dict[int, list[dict[str, Any]]]:
+    def frames_by_thread(self) -> dict[int, list[StackFrameDict]]:
         """Mapping of thread ID to stack frames."""
         return self._thread_tracker.frames_by_thread
 
     @frames_by_thread.setter
-    def frames_by_thread(self, value: dict[int, list[dict[str, Any]]]) -> None:
+    def frames_by_thread(self, value: dict[int, list[StackFrameDict]]) -> None:
         self._thread_tracker.frames_by_thread = value
 
     @property
@@ -356,7 +359,7 @@ class DebuggerBDB(bdb.Bdb):
     # ---------------- Variable object helper -----------------
     def make_variable_object(
         self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
-    ) -> Variable:
+    ) -> VariableDict:
         """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
         Delegates to the VariableManager for unified variable object creation.
@@ -444,7 +447,7 @@ class DebuggerBDB(bdb.Bdb):
 
         self.send_message("stopped", **event_args)
 
-    def user_line(self, frame):
+    def user_line(self, frame: types.FrameType | Any) -> None:
         filename = frame.f_code.co_filename
         line = frame.f_lineno
         thread_id = threading.get_ident()
@@ -476,7 +479,9 @@ class DebuggerBDB(bdb.Bdb):
         self.process_commands()
         self.set_continue()
 
-    def user_exception(self, frame, exc_info):
+    def user_exception(
+        self, frame: types.FrameType | Any, exc_info: tuple[type[BaseException], BaseException, Any]
+    ) -> None:
         """Handle exception breakpoints using the exception handler."""
         if not self._exception_handler.should_break(frame):
             return
@@ -557,7 +562,7 @@ class DebuggerBDB(bdb.Bdb):
         except Exception:
             pass
 
-    def user_call(self, frame, argument_list):
+    def user_call(self, frame: types.FrameType | Any, argument_list: Any) -> None:
         """Handle function breakpoints.
 
         Checks if the current function call matches any registered function

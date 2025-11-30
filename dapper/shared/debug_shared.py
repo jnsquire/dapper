@@ -142,10 +142,10 @@ class SessionState:
             raise SystemExit(code)
 
         if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-            self.exit_func: Callable[[int], Any] = _test_exit
+            self.exit_func = _test_exit
         else:
-            self.exit_func: Callable[[int], Any] = os._exit
-        self.exec_func: Callable[[str, list[str]], Any] = os.execv
+            self.exit_func = os._exit
+        self.exec_func = os.execv
 
     def require_ipc(self) -> None:
         """Raise RuntimeError if IPC is not enabled.

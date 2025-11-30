@@ -33,7 +33,17 @@ class ThreadInfo(Protocol):
         ...
 
 
+class FrameDebugInfo(TypedDict):
+    """Type definition for basic frame debugging information."""
+    
+    filename: str
+    function: str
+    lineno: int
+    is_module: bool
+
+
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from types import FrameType
 else:
     try:
@@ -74,7 +84,7 @@ class TraceDecision(TypedDict):
     should_trace: bool
     reason: str
     breakpoint_lines: set[int]
-    frame_info: dict[str, Any]
+    frame_info: FrameDebugInfo
 
 
 class FrameTraceAnalyzer:
@@ -99,7 +109,7 @@ class FrameTraceAnalyzer:
         self,
         should_trace: bool,
         reason: str,
-        frame_info: dict[str, Any],
+        frame_info: FrameDebugInfo,
         breakpoint_lines: set[int] | None = None,
         update_stats: bool = False,
     ) -> TraceDecision:
@@ -127,7 +137,7 @@ class FrameTraceAnalyzer:
             )
         return None
 
-    def _handle_no_breakpoints(self, filename: str, frame_info: dict[str, Any]) -> TraceDecision:
+    def _handle_no_breakpoints(self, filename: str, frame_info: FrameDebugInfo) -> TraceDecision:
         """Handle case when no breakpoints are found for a file."""
         if self._should_track_file(filename):
             return self._create_trace_decision(
@@ -255,7 +265,7 @@ class FrameTraceAnalyzer:
         # Check if we're in step-over mode using getattr for safety
         return bool(getattr(thread_info, "step_mode", False))
 
-    def _get_frame_info(self, frame: FrameType) -> dict[str, Any]:
+    def _get_frame_info(self, frame: FrameType) -> FrameDebugInfo:
         """Extract basic frame information for debugging."""
         return {
             "filename": frame.f_code.co_filename,
@@ -264,7 +274,7 @@ class FrameTraceAnalyzer:
             "is_module": frame.f_code.co_name == "<module>",
         }
 
-    def update_breakpoints(self, filename: str, breakpoints: set[int]) -> None:
+    def update_breakpoints(self, filename: str, breakpoints: Iterable[int]) -> None:
         """Update breakpoint information for a file."""
         set_breakpoints(filename, breakpoints)
 
@@ -368,7 +378,7 @@ class SelectiveTraceDispatcher:
             self._dispatch_stats["dispatched_calls"] += 1
             return self.debugger_trace_func(frame, event, arg)
 
-    def update_breakpoints(self, filename: str, breakpoints: set[int]) -> None:
+    def update_breakpoints(self, filename: str, breakpoints: Iterable[int]) -> None:
         """Update breakpoint information."""
         self.analyzer.update_breakpoints(filename, breakpoints)
 
@@ -471,11 +481,11 @@ class FrameTraceManager:
         with self._lock:
             if filename:
                 self._global_breakpoints[filename].clear()
-                self.dispatcher.update_breakpoints(filename, set())
+                self.dispatcher.update_breakpoints(filename, [])
             else:
                 self._global_breakpoints.clear()
                 for fname in list(self._global_breakpoints.keys()):
-                    self.dispatcher.update_breakpoints(fname, set())
+                    self.dispatcher.update_breakpoints(fname, [])
 
     def invalidate_file_cache(self, filename: str) -> None:
         """Invalidate cached information for a file."""

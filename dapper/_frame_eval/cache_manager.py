@@ -27,6 +27,7 @@ from dapper.common.constants import DEFAULT_MAX_RECURSION_DEPTH
 
 if TYPE_CHECKING:
     import os
+    from collections.abc import Iterable
     from types import CodeType
 
 
@@ -654,13 +655,13 @@ class BreakpointCache:
 
             return None
 
-    def set_breakpoints(self, filepath: str | os.PathLike, lines: set[int]) -> None:
+    def set_breakpoints(self, filepath: str | os.PathLike, lines: Iterable[int]) -> None:
         """
         Cache breakpoints for a file.
 
         Args:
             filepath: Path to the source file (PathLike)
-            lines: Set of line numbers with breakpoints
+            lines: Sequence of line numbers with breakpoints
         """
         if not CacheManager._global_cache_enabled:
             return
@@ -828,7 +829,7 @@ def get_breakpoints(filepath: str) -> set[int] | None:
     return _caches.breakpoint.get_breakpoints(filepath)
 
 
-def set_breakpoints(filepath: str, breakpoints: set[int]) -> None:
+def set_breakpoints(filepath: str, breakpoints: Iterable[int]) -> None:
     """Cache breakpoints for a file."""
     _caches.breakpoint.set_breakpoints(filepath, breakpoints)
 

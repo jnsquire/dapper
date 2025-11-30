@@ -16,9 +16,15 @@ from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Union
 
 if TYPE_CHECKING:
     import types
+
+from dapper.protocol.structures import StackFrame as StackFrameDict
+
+# Runtime type for frame objects
+FrameType = Union["types.FrameType", Any]
 
 # Safety limit for stack walking to avoid infinite loops on mocked frames
 MAX_STACK_DEPTH = 128
@@ -35,7 +41,7 @@ class StackFrame:
     source_name: str
     source_path: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> StackFrameDict:
         """Convert to DAP StackFrame dict."""
         return {
             "id": self.id,
@@ -75,8 +81,8 @@ class ThreadTracker:
 
     threads: dict[int, str] = field(default_factory=dict)
     stopped_thread_ids: set[int] = field(default_factory=set)
-    frames_by_thread: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
-    frame_id_to_frame: dict[int, Any] = field(default_factory=dict)
+    frames_by_thread: dict[int, list[StackFrameDict]] = field(default_factory=dict)
+    frame_id_to_frame: dict[int, FrameType] = field(default_factory=dict)
     next_frame_id: int = 1
     thread_count: int = 1
     thread_ids: dict[int, int] = field(default_factory=dict)  # Legacy
@@ -139,19 +145,19 @@ class ThreadTracker:
         self.next_frame_id += 1
         return frame_id
 
-    def register_frame(self, frame_id: int, frame: Any) -> None:
+    def register_frame(self, frame_id: int, frame: FrameType) -> None:
         """Register a frame object with its ID."""
         self.frame_id_to_frame[frame_id] = frame
 
-    def get_frame(self, frame_id: int) -> Any | None:
+    def get_frame(self, frame_id: int) -> FrameType | None:
         """Get a frame object by its ID."""
         return self.frame_id_to_frame.get(frame_id)
 
-    def store_stack_frames(self, thread_id: int, frames: list[dict[str, Any]]) -> None:
+    def store_stack_frames(self, thread_id: int, frames: list[StackFrameDict]) -> None:
         """Store the stack frames for a thread."""
         self.frames_by_thread[thread_id] = frames
 
-    def get_stack_frames(self, thread_id: int) -> list[dict[str, Any]]:
+    def get_stack_frames(self, thread_id: int) -> list[StackFrameDict]:
         """Get the stack frames for a thread."""
         return self.frames_by_thread.get(thread_id, [])
 
@@ -159,7 +165,7 @@ class ThreadTracker:
         self,
         frame: types.FrameType | Any | None,
         max_depth: int = MAX_STACK_DEPTH,
-    ) -> list[dict[str, Any]]:
+    ) -> list[StackFrameDict]:
         """Build a list of DAP stack frame dicts from a Python frame.
 
         Walks the frame chain, allocating frame IDs and registering each frame.
@@ -171,7 +177,7 @@ class ThreadTracker:
         Returns:
             List of DAP-style stack frame dicts.
         """
-        stack_frames: list[dict[str, Any]] = []
+        stack_frames: list[StackFrameDict] = []
         current = frame
         visited: set[int] = set()
         depth = 0
@@ -195,16 +201,16 @@ class ThreadTracker:
             frame_id = self.allocate_frame_id()
             self.register_frame(frame_id, current)
 
-            stack_frame = {
-                "id": frame_id,
-                "name": name,
-                "line": lineno,
-                "column": 0,
-                "source": {
+            stack_frame: StackFrameDict = StackFrameDict(
+                id=frame_id,
+                name=name,
+                line=lineno,
+                column=0,
+                source={
                     "name": Path(filename).name if isinstance(filename, str) else str(filename),
                     "path": filename,
                 },
-            }
+            )
             stack_frames.append(stack_frame)
 
             # Next frame with defensive getattr
