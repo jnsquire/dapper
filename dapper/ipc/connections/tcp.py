@@ -9,6 +9,7 @@ import socket
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import unpack_header
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ class TCPServerConnection(ConnectionBase):
         self.port = 4711 if port is None else port
         self.server: asyncio.Server | None = None
         self._client_connected: asyncio.Future[bool] | None = None
+        self.use_binary = False  # Default to regular DAP protocol
+        self.socket: Any = None  # For backward compatibility
 
     async def accept(self) -> None:
         """Start listening and wait for the first client to connect.
@@ -42,7 +45,7 @@ class TCPServerConnection(ConnectionBase):
         """
         if self.server is None:
             await self.start_listening()
-
+ 
         await self.wait_for_client()
 
     async def start_listening(self) -> None:
@@ -56,9 +59,19 @@ class TCPServerConnection(ConnectionBase):
             return
 
         logger.info("Starting TCP server on %s:%s", self.host, self.port)
-        self.server = await asyncio.start_server(
-            self._handle_client, self.host, self.port, reuse_address=True
-        )
+        
+        # If we have a pre-created socket (from TransportFactory), use it
+        if hasattr(self, "socket") and self.socket is not None:
+            logger.debug("Using pre-created socket")
+            self.server = await asyncio.start_server(
+                self._handle_client, sock=self.socket, reuse_address=True
+            )
+        else:
+            logger.debug("Creating new socket")
+            self.server = await asyncio.start_server(
+                self._handle_client, self.host, self.port, reuse_address=True
+            )
+        
         self._client_connected = asyncio.Future()
         self._update_bound_port()
 
@@ -92,10 +105,12 @@ class TCPServerConnection(ConnectionBase):
             RuntimeError: If called before start_listening
             asyncio.TimeoutError: If timeout is reached before a client connects
         """
+        logger.debug("wait_for_client() called, _client_connected=%s", self._client_connected)
         if self._client_connected is None:
             raise RuntimeError("wait_for_client called before start_listening")
 
         try:
+            logger.debug("Starting wait for client connection...")
             await asyncio.wait_for(asyncio.shield(self._client_connected), timeout=timeout)
             logger.info("Client connected to TCP server on %s:%s", self.host, self.port)
             self._is_connected = True
@@ -105,12 +120,17 @@ class TCPServerConnection(ConnectionBase):
             )
             raise
 
-    async def _handle_client(self, reader, writer) -> None:
+    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handle a new client connection."""
+        logger.debug("TCP client connected")
         self.reader = reader
         self.writer = writer
-        if self._client_connected is not None and not self._client_connected.done():
+        self._is_connected = True
+        
+        # Signal that client is connected
+        if self._client_connected:
             self._client_connected.set_result(True)
+            self._client_connected = None
 
     async def close(self) -> None:
         if self.writer:
@@ -125,11 +145,52 @@ class TCPServerConnection(ConnectionBase):
         logger.info("TCP connection closed")
 
     async def read_message(self) -> dict[str, Any] | None:
-        """Read a DAP message from the TCP connection using Content-Length."""
+        """Read a DAP message from the TCP connection."""
         if not self.reader:
             msg = "No active connection"
             raise RuntimeError(msg)
 
+        if self.use_binary:
+            return await self._read_binary_message()
+        
+        return await self._read_dap_message()
+
+    async def _read_binary_message(self) -> dict[str, Any] | None:
+        """Read a binary frame message."""
+        logger.debug("Reading binary frame...")
+        # Read header first
+        header_data = await self.reader.readexactly(8)
+        if not header_data:
+            logger.debug("No header data received")
+            return None  # Connection closed
+
+        try:
+            kind, length = unpack_header(header_data)
+            logger.debug("Binary frame: kind=%d, length=%d", kind, length)
+        except ValueError:
+            logger.exception("Failed to unpack binary header")
+            return None
+
+        # Read payload
+        if length == 0:
+            payload = b""
+        else:
+            payload = await self.reader.readexactly(length)
+            if not payload:
+                logger.debug("No payload data received")
+                return None
+
+        # Parse JSON payload
+        try:
+            message = json.loads(payload.decode("utf-8"))
+            logger.debug("Received binary message: %s", message)
+            return message
+        except json.JSONDecodeError:
+            logger.exception("Failed to decode binary message JSON")
+            return None
+
+    async def _read_dap_message(self) -> dict[str, Any] | None:
+        """Read a regular DAP protocol message with Content-Length headers."""
         headers: dict[str, str] = {}
 
         # Read headers

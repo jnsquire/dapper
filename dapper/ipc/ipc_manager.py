@@ -36,6 +36,7 @@ class IPCManager:
         self._reader_thread: threading.Thread | None = None
         self._message_handler: Callable[[dict[str, Any]], None] | None = None
         self._enabled = False
+        self._should_accept = False
     
     @property
     def is_enabled(self) -> bool:
@@ -79,7 +80,7 @@ class IPCManager:
         """Start the reader thread for incoming messages.
         
         Args:
-            message_handler: Function to handle incoming messages
+            message_handler: Function to handle incoming messages (expects dict)
             accept: Whether to accept a client connection (for listeners)
         """
         if not self._connection:
@@ -89,13 +90,7 @@ class IPCManager:
             raise RuntimeError("Reader thread already running")
         
         self._message_handler = message_handler
-        
-        if accept and hasattr(self._connection, "accept"):
-            # Accept client connection for listeners
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._connection.accept())
-            loop.close()
+        self._should_accept = accept
         
         # Start reader thread
         self._reader_thread = threading.Thread(
@@ -130,12 +125,44 @@ class IPCManager:
         
         # Close connection
         if self._connection:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self._connection.close())
-            finally:
-                loop.close()
+            # Handle both sync and async close methods
+            close_method = getattr(self._connection, "close", None)
+            if close_method:
+                if asyncio.iscoroutinefunction(close_method):
+                    # For sync cleanup, try to run async close
+                    try:
+                        asyncio.get_running_loop()
+                        # If there's already a running loop, create a task but don't await
+                        # This is for legacy sync cleanup calls
+                        asyncio.create_task(close_method())
+                    except RuntimeError:
+                        # No running loop, safe to create new one
+                        asyncio.run(close_method())
+                else:
+                    close_method()
+            self._connection = None
+        
+        # Reset state
+        self._enabled = False
+        self._message_handler = None
+        self._reader_thread = None
+
+    async def acleanup(self) -> None:
+        """Async version of cleanup for proper async contexts."""
+        # Stop reader thread
+        if self._reader_thread and self._reader_thread.is_alive():
+            # Reader thread will exit when connection is closed
+            pass
+        
+        # Close connection
+        if self._connection:
+            # Handle both sync and async close methods
+            close_method = getattr(self._connection, "close", None)
+            if close_method:
+                if asyncio.iscoroutinefunction(close_method):
+                    await close_method()
+                else:
+                    close_method()
             self._connection = None
         
         # Reset state
@@ -152,12 +179,22 @@ class IPCManager:
         asyncio.set_event_loop(loop)
 
         try:
+            # Accept connection if needed (for listeners)
+            if self._should_accept and hasattr(self._connection, "accept"):
+                # Always call accept() - it will handle start_listening() if needed
+                logger.debug("Accepting connection...")
+                loop.run_until_complete(self._connection.accept())
+                logger.debug("Connection accepted")
+            
+            # Read messages in a loop
             while self._enabled and self._connection:
                 try:
                     message = loop.run_until_complete(self._connection.read_message())
                     if message is None:
                         # EOF - connection closed
+                        logger.debug("Connection closed, exiting reader loop")
                         break
+                    logger.debug("Received IPC message: %s", message)
                     self._message_handler(message)
                 except Exception:
                     logger.exception("Error reading IPC message")

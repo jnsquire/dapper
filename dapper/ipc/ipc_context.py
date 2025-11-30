@@ -15,6 +15,7 @@ Threading Model:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -87,7 +88,17 @@ class IPCContext:
                 self.pipe_conn.close()
         with surpressed:
             if self.pipe_listener is not None:
-                self.pipe_listener.close()
+                # Handle both sync and async close methods
+                if asyncio.iscoroutinefunction(self.pipe_listener.close):
+                    # Run async close in a new event loop
+                    loop = asyncio.new_event_loop()
+                    try:
+                        asyncio.set_event_loop(loop)
+                        loop.run_until_complete(self.pipe_listener.close())
+                    finally:
+                        loop.close()
+                else:
+                    self.pipe_listener.close()
 
     def write_command(self, cmd_str: str) -> None:
         """Write a command string to the active IPC channel.

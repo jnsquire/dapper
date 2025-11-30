@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.adapter.base_backend import BaseBackend
+
 if TYPE_CHECKING:
     from dapper.adapter.inprocess_bridge import InProcessBridge
+    from dapper.config import DapperConfig
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
@@ -26,7 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class InProcessBackend:
+class InProcessBackend(BaseBackend):
     """Backend for in-process debugging via InProcessBridge.
 
     This wraps InProcessBridge with an async interface and error handling
@@ -35,7 +38,19 @@ class InProcessBackend:
 
     def __init__(self, bridge: InProcessBridge) -> None:
         """Initialize with an InProcessBridge instance."""
+        super().__init__()
         self._bridge = bridge
+        
+        # Register cleanup callback
+        self._lifecycle.add_cleanup_callback(self._cleanup_bridge)
+    
+    def _cleanup_bridge(self) -> None:
+        """Cleanup the bridge connection."""
+        try:
+            # Add any bridge-specific cleanup here if needed
+            pass
+        except Exception:
+            logger.exception("Failed to cleanup InProcessBridge")
 
     @property
     def bridge(self) -> InProcessBridge:
@@ -44,7 +59,173 @@ class InProcessBackend:
 
     def is_available(self) -> bool:
         """Check if the backend is available."""
-        return True
+        return self._lifecycle.is_available
+
+    async def _execute_command(
+        self,
+        command: str,
+        args: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Execute a debugger command in-process."""
+        if args is None:
+            args = {}
+        
+        # kwargs is unused but required for interface compatibility
+        _ = kwargs
+
+        # Command dispatch mapping
+        command_handlers = {
+            "set_breakpoints": self._handle_set_breakpoints,
+            "set_function_breakpoints": self._handle_set_function_breakpoints,
+            "set_exception_breakpoints": self._handle_set_exception_breakpoints,
+            "continue": self._handle_continue,
+            "next": self._handle_next,
+            "step_in": self._handle_step_in,
+            "step_out": self._handle_step_out,
+            "pause": self._handle_pause,
+            "get_stack_trace": self._handle_get_stack_trace,
+            "get_variables": self._handle_get_variables,
+            "set_variable": self._handle_set_variable,
+            "evaluate": self._handle_evaluate,
+            "exception_info": self._handle_exception_info,
+            "configuration_done": self._handle_configuration_done,
+            "terminate": self._handle_terminate,
+        }
+
+        handler = command_handlers.get(command)
+        if handler is None:
+            error_msg = f"Unknown command: {command}"
+            raise ValueError(error_msg)
+
+        try:
+            return await handler(args)
+        except Exception as e:
+            logger.exception(f"In-process command '{command}' failed")
+            error_msg = f"Command '{command}' failed: {e}"
+            raise ValueError(error_msg) from e
+
+    # Command handlers
+    async def _handle_set_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_breakpoints command."""
+        result = self._bridge.set_breakpoints(args["path"], args["breakpoints"])
+        return {"breakpoints": result}
+
+    async def _handle_set_function_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_function_breakpoints command."""
+        result = self._bridge.set_function_breakpoints(args["breakpoints"])
+        return {"breakpoints": list(result)}
+
+    async def _handle_set_exception_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_exception_breakpoints command."""
+        result = self._bridge.set_exception_breakpoints(args["filters"])
+        return {"breakpoints": list(result)}
+
+    async def _handle_continue(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle continue command."""
+        return cast("dict", self._bridge.continue_(args["thread_id"]))
+
+    async def _handle_next(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle next command."""
+        self._bridge.next_(args["thread_id"])
+        return {}
+
+    async def _handle_step_in(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle step_in command."""
+        self._bridge.step_in(args["thread_id"])
+        return {}
+
+    async def _handle_step_out(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle step_out command."""
+        self._bridge.step_out(args["thread_id"])
+        return {}
+
+    async def _handle_pause(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """Handle pause command."""
+        # In-process doesn't support pause
+        return {"sent": False}
+
+    async def _handle_get_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle get_stack_trace command."""
+        return cast("dict", self._bridge.stack_trace(
+            args["thread_id"], args["start_frame"], args["levels"]
+        ))
+
+    async def _handle_get_variables(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle get_variables command."""
+        result = self._bridge.variables(
+            args["variables_reference"],
+            filter_type=args.get("filter") or None,
+            start=args.get("start") if args.get("start", 0) > 0 else None,
+            count=args.get("count") if args.get("count", 0) > 0 else None,
+        )
+        if isinstance(result, list):
+            return {"variables": result}
+        return cast("dict", result)
+
+    async def _handle_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_variable command."""
+        return cast("dict", self._bridge.set_variable(
+            args["variables_reference"], args["name"], args["value"]
+        ))
+
+    async def _handle_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle evaluate command."""
+        return cast("dict", self._bridge.evaluate(
+            args["expression"], args.get("frame_id"), args.get("context")
+        ))
+
+    async def _handle_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle exception_info command."""
+        thread_id = args["thread_id"]
+        try:
+            # Access the debugger's exception handler through public interface
+            inproc_debugger = getattr(self._bridge, "_inproc", None)
+            if inproc_debugger:
+                debugger = getattr(inproc_debugger, "debugger", None)
+                if debugger and hasattr(debugger, "current_exception_info"):
+                    # Use the public property to access exception info
+                    exception_info_map = debugger.current_exception_info
+                    exception_info = exception_info_map.get(thread_id)
+                    if exception_info:
+                        return {
+                            "exceptionId": exception_info.get("exceptionId", "Unknown"),
+                            "description": exception_info.get("description", "Exception occurred"),
+                            "breakMode": exception_info.get("breakMode", "unhandled"),
+                            "details": exception_info.get("details", {
+                                "message": "Exception information available",
+                                "typeName": exception_info.get("exceptionId", "Unknown"),
+                                "fullTypeName": exception_info.get("exceptionId", "Unknown"),
+                                "source": "in-process debugger",
+                                "stackTrace": exception_info.get("stackTrace", ["Stack trace available"]),
+                            }),
+                        }
+        except Exception:
+            logger.exception("Failed to get exception info from in-process debugger")
+
+        # Fallback to placeholder if no real exception info available
+        return {
+            "exceptionId": "Unknown",
+            "description": "No exception information available",
+            "breakMode": "unhandled",
+            "details": {
+                "message": "No exception currently active",
+                "typeName": "None",
+                "fullTypeName": "None",
+                "source": "in-process debugger",
+                "stackTrace": ["No exception stack trace available"],
+            },
+        }
+
+    async def _handle_configuration_done(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """Handle configuration_done command."""
+        # No-op for in-process
+        return {}
+
+    async def _handle_terminate(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """Handle terminate command."""
+        # No-op for in-process
+        return {}
 
     # ------------------------------------------------------------------
     # Breakpoint operations
@@ -190,19 +371,44 @@ class InProcessBackend:
                 "variablesReference": 0,
             }
 
-    async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:  # noqa: ARG002
+    async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread."""
-        # In-process debugger doesn't have a dedicated exception_info method
+        try:
+            # Access the debugger's exception handler through public interface
+            inproc_debugger = getattr(self._bridge, "_inproc", None)
+            if inproc_debugger:
+                debugger = getattr(inproc_debugger, "debugger", None)
+                if debugger and hasattr(debugger, "current_exception_info"):
+                    # Use the public property to access exception info
+                    exception_info_map = debugger.current_exception_info
+                    exception_info = exception_info_map.get(thread_id)
+                    if exception_info:
+                        return {
+                            "exceptionId": exception_info.get("exceptionId", "Unknown"),
+                            "description": exception_info.get("description", "Exception occurred"),
+                            "breakMode": exception_info.get("breakMode", "unhandled"),
+                            "details": exception_info.get("details", {
+                                "message": "Exception information available",
+                                "typeName": exception_info.get("exceptionId", "Unknown"),
+                                "fullTypeName": exception_info.get("exceptionId", "Unknown"),
+                                "source": "in-process debugger",
+                                "stackTrace": exception_info.get("stackTrace", ["Stack trace available"]),
+                            }),
+                        }
+        except Exception:
+            logger.exception("Failed to get exception info from in-process debugger")
+        
+        # Fallback to placeholder if no real exception info available
         return {
             "exceptionId": "Unknown",
-            "description": "Exception information not available",
+            "description": "No exception information available",
             "breakMode": "unhandled",
             "details": {
-                "message": "Exception information not available",
-                "typeName": "Unknown",
-                "fullTypeName": "Unknown",
-                "source": "Unknown",
-                "stackTrace": ["Exception information not available"],
+                "message": "No exception currently active",
+                "typeName": "None",
+                "fullTypeName": "None",
+                "source": "in-process debugger",
+                "stackTrace": ["No exception stack trace available"],
             },
         }
 
@@ -212,5 +418,47 @@ class InProcessBackend:
     async def configuration_done(self) -> None:
         """Signal that configuration is done. No-op for in-process."""
 
+    async def initialize(self) -> None:
+        """Initialize the in-process backend."""
+        await self._lifecycle.initialize()
+        
+        # Verify bridge is available
+        try:
+            # Add any bridge-specific initialization here
+            pass
+        except Exception as e:
+            await self._lifecycle.mark_error(f"Bridge initialization failed: {e}")
+            raise
+        
+        await self._lifecycle.mark_ready()
+    
+    async def launch(self, config: DapperConfig) -> None:
+        """Launch in-process debugging session."""
+        # Config parameter required by protocol but unused for in-process debugging
+        _ = config  # Mark as intentionally unused
+        await self.initialize()
+        
+        # In-process debugging doesn't need separate launch/attach
+        # The bridge is already connected to the current process
+        logger.info("In-process debugging session started")
+    
+    async def attach(self, config: DapperConfig) -> None:
+        """Attach to in-process debugging session."""
+        # Config parameter required by protocol but unused for in-process debugging
+        _ = config  # Mark as intentionally unused
+        await self.initialize()
+        
+        # For in-process, attach and launch are the same
+        logger.info("In-process debugging session attached")
+    
     async def terminate(self) -> None:
-        """Terminate the debuggee. No-op for in-process."""
+        """Terminate the debuggee."""
+        await self._lifecycle.begin_termination()
+        try:
+            # In-process debugging doesn't need explicit termination
+            logger.info("In-process debugging session terminated")
+        except Exception as e:
+            logger.warning(f"Error during in-process termination: {e}")
+            await self._lifecycle.mark_error(f"Termination failed: {e}")
+        finally:
+            await self._lifecycle.complete_termination()

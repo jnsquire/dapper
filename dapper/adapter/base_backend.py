@@ -15,6 +15,7 @@ from typing import Any
 from typing import cast
 
 from dapper.adapter.debugger_backend import DebuggerBackend
+from dapper.adapter.lifecycle import LifecycleManager
 from dapper.errors import BackendError
 from dapper.errors import DapperTimeoutError
 from dapper.errors import async_handle_backend_errors
@@ -43,8 +44,8 @@ class BaseBackend(DebuggerBackend, ABC):
             timeout_seconds: Default timeout for operations
         """
         self._timeout_seconds = timeout_seconds
-        self._available = True
         self._lock = asyncio.Lock()
+        self._lifecycle = LifecycleManager(self.__class__.__name__)
     
     @abstractmethod
     async def _execute_command(
@@ -90,37 +91,48 @@ class BaseBackend(DebuggerBackend, ABC):
             TimeoutError: If the command times out
             BackendError: If the command fails
         """
-        timeout = timeout or self._timeout_seconds
-        
-        try:
-            return await asyncio.wait_for(
-                self._execute_command(command, args, **kwargs),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError as e:
-            msg = f"Command '{command}' timed out after {timeout}s"
-            raise DapperTimeoutError(
-                msg,
-                timeout_seconds=timeout,
-                operation=command,
-            ) from e
-        except Exception as e:
-            if isinstance(e, BackendError):
-                raise
-            msg = f"Command '{command}' failed: {e!s}"
-            raise BackendError(
-                msg,
-                operation=command,
-                cause=e,
-            ) from e
+        async with self._lifecycle.operation_context(f"execute_{command}"):
+            timeout = timeout or self._timeout_seconds
+            
+            try:
+                return await asyncio.wait_for(
+                    self._execute_command(command, args, **kwargs),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError as e:
+                msg = f"Command '{command}' timed out after {timeout}s"
+                raise DapperTimeoutError(
+                    msg,
+                    timeout_seconds=timeout,
+                    operation=command,
+                ) from e
+            except Exception as e:
+                if isinstance(e, BackendError):
+                    raise
+                msg = f"Command '{command}' failed: {e!s}"
+                raise BackendError(
+                    msg,
+                    operation=command,
+                    cause=e,
+                ) from e
     
     def is_available(self) -> bool:
         """Check if the backend is available and ready."""
-        return self._available
+        return self._lifecycle.is_available
     
-    def _set_available(self, available: bool) -> None:
-        """Set the availability status."""
-        self._available = available
+    def is_ready(self) -> bool:
+        """Check if the backend is ready for operations."""
+        return self._lifecycle.is_ready
+    
+    @property
+    def lifecycle_state(self):
+        """Get the current lifecycle state."""
+        return self._lifecycle.state
+    
+    @property
+    def error_info(self) -> str | None:
+        """Get information about the last error."""
+        return self._lifecycle.error_info
     
     # ------------------------------------------------------------------
     # Default implementations that delegate to _execute_command
@@ -288,12 +300,33 @@ class BaseBackend(DebuggerBackend, ABC):
     
     async def terminate(self) -> None:
         """Terminate the debuggee."""
+        await self._lifecycle.begin_termination()
         try:
             await self._execute_with_timeout("terminate")
         except Exception as e:
             logger.warning(f"Error during termination: {e}")
+            await self._lifecycle.mark_error(f"Termination failed: {e}")
         finally:
-            self._set_available(False)
+            await self._lifecycle.complete_termination()
+    
+    # ------------------------------------------------------------------
+    # Lifecycle methods that subclasses should override
+    # ------------------------------------------------------------------
+    
+    async def initialize(self) -> None:
+        """Initialize the backend. Override in subclasses."""
+        await self._lifecycle.initialize()
+        await self._lifecycle.mark_ready()
+    
+    async def launch(self, config) -> None:
+        """Launch a new debuggee process. Override in subclasses."""
+        error_msg = f"{self.__class__.__name__} does not support launch"
+        raise NotImplementedError(error_msg)
+    
+    async def attach(self, config) -> None:
+        """Attach to an existing debuggee. Override in subclasses."""
+        error_msg = f"{self.__class__.__name__} does not support attach"
+        raise NotImplementedError(error_msg)
 
 
 class CommandExecutor(ABC):

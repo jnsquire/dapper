@@ -125,9 +125,16 @@ async def test_initialization_sequence(mock_debugger_class):
         assert launch_response["command"] == "launch"
         assert launch_response["success"] is True
 
-    # Verify the debugger was called with correct args
-    # IPC is now always enabled with binary mode, so check kwargs as well
-    mock_debugger.launch.assert_called_once_with("test.py", [], False, False, use_binary_ipc=True)
+    # Verify the debugger was called with correct config
+    # The launch request creates a DapperConfig object
+    assert len(mock_debugger.launch.calls) == 1
+    args, kwargs = mock_debugger.launch.calls[0]
+    config = args[0]  # First argument should be DapperConfig
+    assert config.debuggee.program == "test.py"
+    assert config.debuggee.args == []
+    assert config.debuggee.stop_on_entry is False
+    assert config.debuggee.no_debug is False
+    assert config.ipc.use_binary is True
 
 
 @pytest.mark.asyncio
@@ -168,14 +175,14 @@ async def test_attach_request_routed(mock_debugger_class):
     assert attach_resp is not None
     assert attach_resp["success"] is True
 
-    # And debugger.attach should be called with our args
+    # And debugger.attach should be called with a DapperConfig
     calls = mock_debugger.attach.calls  # type: ignore[attr-defined]
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert kwargs["use_ipc"] is True
-    assert kwargs["ipc_transport"] == "tcp"
-    assert kwargs["ipc_host"] == "127.0.0.1"
-    assert kwargs["ipc_port"] == 5000
+    config = args[0]  # First argument should be DapperConfig
+    assert config.ipc.transport == "tcp"
+    assert config.ipc.host == "127.0.0.1"
+    assert config.ipc.port == 5000
 
 
 @pytest.mark.asyncio

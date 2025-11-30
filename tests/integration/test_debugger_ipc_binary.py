@@ -7,12 +7,23 @@ from typing import Any
 
 import pytest
 
+from dapper.adapter.server import DebugAdapterServer
 from dapper.adapter.server import PyDebugger
+from dapper.config import DapperConfig
+from dapper.config import DebuggeeConfig
+from dapper.config import IPCConfig
 
 
-class _StubServer:
-    async def send_event(self, _event: str, _payload: dict[str, Any] | None = None) -> None:
-        return
+class _StubServer(DebugAdapterServer):
+    """Stub server for testing."""
+    
+    def __init__(self) -> None:
+        # Minimal initialization for testing
+        pass
+    
+    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
+        # Stub implementation - arguments intentionally unused
+        _ = event_name, body
 
 
 @pytest.mark.asyncio
@@ -37,15 +48,20 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
     )
 
     try:
-        await dbg.launch(
-            program="sample.py",
-            args=[],
-            stop_on_entry=False,
-            no_debug=False,
+        config = DapperConfig(
+            debuggee=DebuggeeConfig(
+                program="sample.py",
+                args=[],
+                stop_on_entry=False,
+                no_debug=False,
+            ),
+            ipc=IPCConfig(
+                transport=ipc_transport,
+                use_binary=True,
+            ),
             in_process=False,
-            use_binary_ipc=True,  # IPC is now always enabled
-            ipc_transport=ipc_transport,
         )
+        await dbg.launch(config)
     finally:
         PyDebugger._start_debuggee_process = original  # type: ignore[assignment]
 

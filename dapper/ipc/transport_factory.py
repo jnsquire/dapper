@@ -103,12 +103,13 @@ class TransportFactory:
         if os.name != "nt":
             raise RuntimeError("Named pipes are only supported on Windows")
         
-        name = config.pipe_name or rf"\\.\pipe\dapper-{os.getpid()}-{int(time.time() * 1000)}"
+        name = config.pipe_name or f"dapper-{os.getpid()}-{int(time.time() * 1000)}"
+        full_path = rf"\\.\pipe\{name}"
         
         try:
-            mp_conn.Listener(address=name, family="AF_PIPE")
+            mp_conn.Listener(address=full_path, family="AF_PIPE")
             connection = NamedPipeServerConnection(pipe_name=name)
-            args = ["--ipc", "pipe", "--ipc-pipe", name]
+            args = ["--ipc", "pipe", "--ipc-pipe", full_path]
         except Exception as e:
             logger.exception("Failed to create named pipe listener")
             msg = "Failed to create pipe listener"
@@ -192,6 +193,10 @@ class TransportFactory:
         _, port = listen.getsockname()
         
         connection = TCPServerConnection(host=host, port=port)
+        # Store the actual socket on the connection for backward compatibility
+        connection.socket = listen
+        # Store the use_binary flag for the connection to know how to read/write
+        connection.use_binary = config.use_binary
         args = ["--ipc", "tcp", "--ipc-host", host, "--ipc-port", str(port)]
         return connection, args
     

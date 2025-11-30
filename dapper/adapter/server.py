@@ -405,8 +405,7 @@ class PyDebugger:
         )
         
         debug_args.extend(self.ipc.create_listener(
-            transport=transport_config.transport,
-            pipe_name=transport_config.pipe_name
+            transport_config=transport_config
         ))
         if self.ipc.binary:
             debug_args.append("--ipc-binary")
@@ -429,7 +428,19 @@ class PyDebugger:
 
         # Accept the IPC connection from the launcher (IPC is mandatory)
         if self.ipc.listen_sock is not None or self.ipc.pipe_listener is not None:
-            self.ipc.start_reader(self._handle_debug_message, accept=True)
+            # Create a wrapper to handle dict messages from binary IPC
+            def _handle_ipc_message(message: dict[str, Any]) -> None:
+                """Handle IPC message that may be already parsed (binary) or string."""
+                if isinstance(message, dict):
+                    # For binary IPC, the message is already parsed
+                    asyncio.run_coroutine_threadsafe(
+                        self.handle_debug_message(message), self.loop
+                    )
+                else:
+                    # For regular IPC, the message is a string
+                    self._handle_debug_message(message)
+            
+            self.ipc.start_reader(_handle_ipc_message, accept=True)
 
         # Create the external process backend
         self._external_backend = ExternalProcessBackend(
@@ -512,7 +523,19 @@ class PyDebugger:
         )
 
         # Start reader thread (connection already established)
-        self.ipc.start_reader(self._handle_debug_message, accept=False)
+        # Create a wrapper to handle dict messages from binary IPC
+        def _handle_ipc_message(message: dict[str, Any]) -> None:
+            """Handle IPC message that may be already parsed (binary) or string."""
+            if isinstance(message, dict):
+                # For binary IPC, the message is already parsed
+                asyncio.run_coroutine_threadsafe(
+                    self.handle_debug_message(message), self.loop
+                )
+            else:
+                # For regular IPC, the message is a string
+                self._handle_debug_message(message)
+        
+        self.ipc.start_reader(_handle_ipc_message, accept=False)
 
         # Create the external process backend
         self._external_backend = ExternalProcessBackend(
@@ -723,7 +746,7 @@ class PyDebugger:
             await self.server.send_event("terminated")
 
     async def set_breakpoints(
-        self, source: SourceDict | str, breakpoints: Sequence[SourceBreakpoint]
+        self, source: SourceDict | str, breakpoints: list[SourceBreakpoint]
     ) -> list[BreakpointResponse]:
         """Set breakpoints for a source file.
 
@@ -1246,13 +1269,11 @@ class PyDebugger:
         proc = self.process
         if proc is not None:
             for stream_name in ("stdin", "stdout", "stderr"):
-                with contextlib.suppress(Exception):
-                    stream = getattr(proc, stream_name, None)
-                    if stream is not None:
-                        stream.close()
+                stream = getattr(proc, stream_name, None)
+                if stream is not None:
+                    stream.close()
 
-            with contextlib.suppress(Exception):
-                self.ipc.cleanup()
+            await self.ipc.acleanup()
 
         # Clear state
         self.var_refs.clear()

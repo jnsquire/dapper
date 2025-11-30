@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.adapter.base_backend import BaseBackend
+
 if TYPE_CHECKING:
+    from dapper.config import DapperConfig
     from dapper.ipc.ipc_adapter import IPCContextAdapter
     from dapper.ipc.ipc_context import IPCContext
     from dapper.protocol.debugger_protocol import Variable
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ExternalProcessBackend:
+class ExternalProcessBackend(BaseBackend):
     """Backend for debugging via external subprocess + IPC.
 
     This class encapsulates all the logic for sending commands to and
@@ -56,18 +59,240 @@ class ExternalProcessBackend:
             lock: Threading lock for synchronization
             get_next_command_id: Callable to get next command ID
         """
+        super().__init__()
         self._ipc = ipc
         self._loop = loop
         self._get_process_state = get_process_state
         self._pending_commands = pending_commands
         self._lock = lock
         self._get_next_command_id = get_next_command_id
+        
+        # Register cleanup callbacks
+        self._lifecycle.add_cleanup_callback(self._cleanup_ipc)
+        self._lifecycle.add_cleanup_callback(self._cleanup_commands)
+    
+    def _cleanup_ipc(self) -> None:
+        """Cleanup IPC connection."""
+        try:
+            # IPC cleanup depends on the specific IPC implementation
+            # Add implementation-specific cleanup here if needed
+            pass
+        except Exception:
+            logger.exception("Failed to cleanup IPC connection")
+    
+    def _cleanup_commands(self) -> None:
+        """Cleanup pending commands."""
+        try:
+            with self._lock:
+                for future in self._pending_commands.values():
+                    if not future.done():
+                        future.cancel()
+                self._pending_commands.clear()
+        except Exception:
+            logger.exception("Failed to cleanup pending commands")
 
     def is_available(self) -> bool:
         """Check if the backend is available."""
+        if not self._lifecycle.is_available:
+            return False
+        
         process, is_terminated = self._get_process_state()
         return process is not None and not is_terminated
 
+    async def _execute_command(
+        self,
+        command: str,
+        args: dict[str, Any] | None = None,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        """Execute a command on the external process.
+        
+        Args:
+            command: The command to execute
+            args: Additional arguments for the command
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            The command response
+        """
+        if not self.is_available():
+            raise RuntimeError("External process not available")
+        
+        if args is None:
+            args = {}
+
+        # Command dispatch mapping
+        command_handlers = {
+            "set_breakpoints": self._handle_set_breakpoints,
+            "set_function_breakpoints": self._handle_set_function_breakpoints,
+            "set_exception_breakpoints": self._handle_set_exception_breakpoints,
+            "continue": self._handle_continue,
+            "next": self._handle_next,
+            "step_in": self._handle_step_in,
+            "step_out": self._handle_step_out,
+            "pause": self._handle_pause,
+            "get_stack_trace": self._handle_get_stack_trace,
+            "get_variables": self._handle_get_variables,
+            "set_variable": self._handle_set_variable,
+            "evaluate": self._handle_evaluate,
+            "exception_info": self._handle_exception_info,
+            "configuration_done": self._handle_configuration_done,
+            "terminate": self._handle_terminate,
+        }
+
+        handler = command_handlers.get(command)
+        if handler is None:
+            error_msg = f"Unknown command: {command}"
+            raise ValueError(error_msg)
+
+        return await handler(args)
+
+    # Command handlers
+    async def _handle_set_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_breakpoints command."""
+        cmd = {
+            "command": "setBreakpoints",
+            "arguments": {
+                "source": {"path": args["path"]},
+                "breakpoints": [dict(bp) for bp in args["breakpoints"]],
+            },
+        }
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_set_function_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_function_breakpoints command."""
+        cmd = {
+            "command": "setFunctionBreakpoints",
+            "arguments": {"breakpoints": [dict(bp) for bp in args["breakpoints"]]},
+        }
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_set_exception_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_exception_breakpoints command."""
+        cmd_args: dict[str, Any] = {"filters": args["filters"]}
+        if args.get("filter_options") is not None:
+            cmd_args["filterOptions"] = args["filter_options"]
+        if args.get("exception_options") is not None:
+            cmd_args["exceptionOptions"] = args["exception_options"]
+        
+        cmd = {"command": "setExceptionBreakpoints", "arguments": cmd_args}
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_continue(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle continue command."""
+        cmd = {"command": "continue", "arguments": {"threadId": args["thread_id"]}}
+        return await self._send_command(cmd, expect_response=False) or {"allThreadsContinued": True}
+
+    async def _handle_next(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle next command."""
+        cmd = {"command": "next", "arguments": {"threadId": args["thread_id"]}}
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_step_in(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle step_in command."""
+        cmd = {"command": "stepIn", "arguments": {"threadId": args["thread_id"]}}
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_step_out(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle step_out command."""
+        cmd = {"command": "stepOut", "arguments": {"threadId": args["thread_id"]}}
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_pause(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle pause command."""
+        cmd = {"command": "pause", "arguments": {"threadId": args["thread_id"]}}
+        return await self._send_command(cmd, expect_response=False) or {"sent": True}
+
+    async def _handle_get_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle get_stack_trace command."""
+        cmd = {
+            "command": "stackTrace",
+            "arguments": {
+                "threadId": args["thread_id"],
+                "startFrame": args["start_frame"],
+                "levels": args["levels"],
+            },
+        }
+        return await self._send_command(cmd, expect_response=True) or {"stackFrames": [], "totalFrames": 0}
+
+    async def _handle_get_variables(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle get_variables command."""
+        cmd: dict[str, Any] = {
+            "command": "variables",
+            "arguments": {"variablesReference": args["variables_reference"]},
+        }
+        if args.get("filter_type"):
+            cmd["arguments"]["filter"] = args["filter_type"]
+        if args.get("start", 0) > 0:
+            cmd["arguments"]["start"] = args["start"]
+        if args.get("count", 0) > 0:
+            cmd["arguments"]["count"] = args["count"]
+        
+        response = await self._send_command(cmd, expect_response=True)
+        if response and "body" in response and "variables" in response["body"]:
+            return {"variables": response["body"]["variables"]}
+        return {"variables": []}
+
+    async def _handle_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set_variable command."""
+        cmd = {
+            "command": "setVariable",
+            "arguments": {
+                "variablesReference": args["var_ref"],
+                "name": args["name"],
+                "value": args["value"],
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        return (response or {}).get("body", {"value": args["value"], "type": "string", "variablesReference": 0})
+
+    async def _handle_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle evaluate command."""
+        cmd = {
+            "command": "evaluate",
+            "arguments": {
+                "expression": args["expression"],
+                "frameId": args.get("frame_id"),
+                "context": args.get("context", "hover"),
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        return (response or {}).get("body", {
+            "result": f"<evaluation of '{args['expression']}' not available>",
+            "type": "string",
+            "variablesReference": 0,
+        })
+
+    async def _handle_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle exception_info command."""
+        cmd = {
+            "command": "exceptionInfo",
+            "arguments": {"threadId": args["thread_id"]},
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        return (response or {}).get("body", {
+            "exceptionId": "Unknown",
+            "description": "Exception information not available",
+            "breakMode": "unhandled",
+            "details": {
+                "message": "Exception information not available",
+                "typeName": "Unknown",
+                "fullTypeName": "Unknown",
+                "source": "Unknown",
+                "stackTrace": ["Exception information not available"],
+            },
+        })
+
+    async def _handle_configuration_done(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """Handle configuration_done command."""
+        cmd = {"command": "configurationDone"}
+        return await self._send_command(cmd, expect_response=False) or {}
+
+    async def _handle_terminate(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """Handle terminate command."""
+        cmd = {"command": "terminate"}
+        return await self._send_command(cmd, expect_response=False) or {}
+    
     async def _send_command(
         self, command: dict[str, Any], expect_response: bool = False
     ) -> dict[str, Any] | None:
@@ -101,9 +326,9 @@ class ExternalProcessBackend:
         except asyncio.TimeoutError:
             self._pending_commands.pop(command_id, None)
             return None
-
+    
     # ------------------------------------------------------------------
-    # Breakpoint operations
+    # Breakpoint operations (now handled by _execute_command)
     # ------------------------------------------------------------------
     async def set_breakpoints(
         self, path: str, breakpoints: list[SourceBreakpoint]
@@ -292,7 +517,38 @@ class ExternalProcessBackend:
         command = {"command": "configurationDone"}
         await self._send_command(command)
 
+    async def initialize(self) -> None:
+        """Initialize the external process backend."""
+        await self._lifecycle.initialize()
+        
+        # Verify IPC connection and process are available
+        if not self.is_available():
+            await self._lifecycle.mark_error("IPC connection or process not available")
+            raise RuntimeError("External process backend not available")
+        
+        await self._lifecycle.mark_ready()
+    
+    async def launch(self, config: DapperConfig) -> None:
+        """Launch external process debugging session."""
+        # Config parameter required by protocol but unused for external process debugging
+        _ = config  # Mark as intentionally unused
+        await self.initialize()
+        logger.info("External process debugging session started")
+    
+    async def attach(self, config: DapperConfig) -> None:
+        """Attach to external process debugging session."""
+        # Config parameter required by protocol but unused for external process debugging
+        _ = config  # Mark as intentionally unused
+        await self.initialize()
+        logger.info("External process debugging session attached")
+    
     async def terminate(self) -> None:
         """Terminate the debuggee."""
-        command = {"command": "terminate"}
-        await self._send_command(command)
+        await self._lifecycle.begin_termination()
+        try:
+            await self._execute_command("terminate")
+        except Exception as e:
+            logger.warning(f"Error during external process termination: {e}")
+            await self._lifecycle.mark_error(f"Termination failed: {e}")
+        finally:
+            await self._lifecycle.complete_termination()

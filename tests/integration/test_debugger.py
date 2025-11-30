@@ -8,7 +8,6 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 """
 
 import asyncio
-import sys
 import threading
 from pathlib import Path
 from typing import TypedDict
@@ -17,10 +16,9 @@ from unittest.mock import patch
 
 import pytest
 
-# Add project root to Python path for local imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-# Import protocol types for type checking
+# Import official protocol types for consistency
+from dapper.protocol.requests import FunctionBreakpoint as ProtocolFunctionBreakpoint
+from dapper.protocol.structures import SourceBreakpoint as ProtocolSourceBreakpoint
 
 
 # Type definitions for test mocks
@@ -31,22 +29,9 @@ class Source(TypedDict):
     name: str | None
 
 
-class SourceBreakpoint(TypedDict, total=False):
-    """Mock SourceBreakpoint type for testing."""
-
-    line: int
-    condition: str | None
-    hitCondition: str | None
-    column: int | None
-    logMessage: str | None
-
-
-class FunctionBreakpoint(TypedDict, total=False):
-    """Mock FunctionBreakpoint type for testing."""
-
-    name: str
-    condition: str | None
-    hitCondition: str | None
+# Type aliases for protocol types
+SourceBreakpoint = ProtocolSourceBreakpoint
+FunctionBreakpoint = ProtocolFunctionBreakpoint
 
 
 class BreakpointResponse(TypedDict, total=False):
@@ -66,6 +51,9 @@ from dapper.adapter.server import PyDebuggerThread
 from dapper.common.constants import DEFAULT_BREAKPOINT_CONDITION_VALUE
 from dapper.common.constants import DEFAULT_BREAKPOINT_LINE
 from dapper.common.constants import TEST_ALT_LINE_1
+from dapper.config import DapperConfig
+from dapper.config import DebuggeeConfig
+from dapper.config import IPCConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -234,7 +222,16 @@ async def test_launch_success(debugger, mock_server):
     # Mock the _start_debuggee_process method to avoid run_in_executor issues
     debugger._test_mode = True
     with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
-        await debugger.launch("test_program.py", [], stop_on_entry=False, no_debug=False)
+        config = DapperConfig(
+            debuggee=DebuggeeConfig(
+                program="test_program.py",
+                args=[],
+                stop_on_entry=False,
+                no_debug=False,
+            ),
+            ipc=IPCConfig(use_binary=True),
+        )
+        await debugger.launch(config)
 
     mock_popen.assert_called_once()
 
@@ -317,8 +314,16 @@ async def test_launch_already_running_error(debugger):
     debugger.process = MagicMock()
     debugger.program_running = True
 
+    config = DapperConfig(
+        debuggee=DebuggeeConfig(
+            program="test.py",
+            args=[],
+        ),
+        ipc=IPCConfig(use_binary=True),
+    )
+
     with pytest.raises(RuntimeError) as exc_info:
-        await debugger.launch("test.py", [])
+        await debugger.launch(config)
 
     assert "already being debugged" in str(exc_info.value)
 
@@ -338,7 +343,16 @@ async def test_launch_with_args(debugger):
     debugger._test_mode = True
     try:
         with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
-            await debugger.launch("test_program.py", args, stop_on_entry=False, no_debug=False)
+            config = DapperConfig(
+                debuggee=DebuggeeConfig(
+                    program="test_program.py",
+                    args=args,
+                    stop_on_entry=False,
+                    no_debug=False,
+                ),
+                ipc=IPCConfig(use_binary=True),
+            )
+            await debugger.launch(config)
             # Wait a tiny bit to allow run_coroutine_threadsafe to enqueue exit task
             await asyncio.sleep(0.05)
 
@@ -530,7 +544,7 @@ async def test_set_breakpoints(debugger: PyDebugger) -> None:
     # Create source using a simple dict that matches the expected structure
     source = {"path": "/path/to/test.py"}
 
-    # Create breakpoints using dicts that match the expected structure
+    # Create breakpoints using local test types with proper typing
     breakpoint1: SourceBreakpoint = {
         "line": DEFAULT_BREAKPOINT_LINE,
         "condition": f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}",
@@ -553,15 +567,15 @@ async def test_set_breakpoints(debugger: PyDebugger) -> None:
     assert expected_path in debugger.breakpoints
     assert len(debugger.breakpoints[expected_path]) == 2
 
-    # Check breakpoint properties using dictionary access for TypedDict
+    # Check breakpoint properties using get() for safe TypedDict access
     bp1 = debugger.breakpoints[expected_path][0]
-    assert bp1["line"] == DEFAULT_BREAKPOINT_LINE
-    assert bp1["condition"] == f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}"
-    assert bp1["verified"] is True
+    assert bp1.get("line") == DEFAULT_BREAKPOINT_LINE
+    assert bp1.get("condition") == f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}"
+    assert bp1.get("verified") is True
 
     bp2 = debugger.breakpoints[expected_path][1]
-    assert bp2["line"] == TEST_ALT_LINE_1
-    assert bp2["verified"] is True
+    assert bp2.get("line") == TEST_ALT_LINE_1
+    assert bp2.get("verified") is True
 
     # Check return value structure
     assert isinstance(result, list)

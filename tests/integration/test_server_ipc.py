@@ -10,6 +10,9 @@ import pytest
 import dapper.adapter.server as server_module
 from dapper.adapter.server import DebugAdapterServer
 from dapper.adapter.server import PyDebugger
+from dapper.config import DapperConfig
+from dapper.config import DebuggeeConfig
+from dapper.config import IPCConfig
 from dapper.ipc import ipc_context
 from tests.integration.test_server import AsyncCallRecorder
 from tests.mocks import MockConnection
@@ -106,15 +109,19 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
     server_task = asyncio.create_task(server.start())
     await asyncio.wait_for(server_task, timeout=1.0)
 
-    # Verify the debugger was called with the expected kwargs
-    # Positional args are program, args (list), stop_on_entry, no_debug
-    # IPC is now always enabled, so use_ipc is no longer passed
+    # Verify the debugger was called with the expected config object
     assert len(mock_debugger.launch.calls) == 1
     args, kwargs = mock_debugger.launch.calls[0]
-    assert args == ("test.py", [], False, False)
-    assert kwargs.get("ipc_transport") == "pipe"
-    assert kwargs.get("ipc_pipe_name") == r"\\.\pipe\dapper-test-pipe"
-    assert kwargs.get("use_binary_ipc") is True
+    config = args[0]  # First positional argument is the DapperConfig
+    
+    assert isinstance(config, DapperConfig)
+    assert config.debuggee.program == "test.py"
+    assert config.debuggee.args == []
+    assert config.debuggee.stop_on_entry is False
+    assert config.debuggee.no_debug is False
+    assert config.ipc.transport == "pipe"
+    assert config.ipc.pipe_name == r"\\.\pipe\dapper-test-pipe"
+    assert config.ipc.use_binary is True
 
 
 @pytest.mark.asyncio
@@ -142,8 +149,14 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         def is_alive(self):
             return False
 
-    class DummyServer:
-        def __init__(self):
+    class DummyServer(DebugAdapterServer):
+        def __init__(self, loop):
+            # Create a mock connection for the parent class
+            mock_connection = Mock()
+            mock_connection.send_request = Mock()
+            mock_connection.send_response = Mock()
+            mock_connection.send_event = Mock()
+            super().__init__(mock_connection, loop)
             self._debugger = None
         
         async def send_event(self, *_args, **_kwargs):
@@ -162,7 +175,7 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
             return self._debugger
 
     loop = asyncio.get_event_loop()
-    debugger = server_module.PyDebugger(DummyServer(), loop)
+    debugger = server_module.PyDebugger(DummyServer(loop), loop)
     debugger._test_mode = True  # type: ignore[attr-defined]
 
     monkeypatch.setattr(
@@ -178,11 +191,18 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     )
     monkeypatch.setattr(ipc_context, "threading", type("threading", (), {"Thread": DummyThread}))
 
-    await debugger.launch(
-        "test.py",
-        args=[],
-        ipc_transport="pipe",  # IPC is now always enabled
+        
+    config = DapperConfig(
+        mode="launch",
+        debuggee=DebuggeeConfig(
+            program="test.py",
+            args=[],
+        ),
+        ipc=IPCConfig(
+            transport="pipe",
+        ),
     )
+    await debugger.launch(config)
 
     pipe_listener = debugger.ipc.pipe_listener
     assert pipe_listener is not None, "Expected a named pipe listener to be created"
@@ -240,9 +260,12 @@ async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     server_task = asyncio.create_task(server.start())
     await asyncio.wait_for(server_task, timeout=1.0)
 
-    # Verify debugger.launch received the forwarded flag
-    # IPC is now always enabled, so use_ipc is no longer passed
+    # Verify debugger.launch received the config object
     assert len(mock_debugger.launch.calls) == 1
-    _args, kwargs = mock_debugger.launch.calls[0]
-    assert kwargs.get("use_binary_ipc") is True
-    assert kwargs.get("ipc_transport") == "tcp"
+    args, kwargs = mock_debugger.launch.calls[0]
+    config_arg = args[0]  # First positional argument (config)
+    
+    # Check that the config contains the expected IPC settings
+    assert isinstance(config_arg, DapperConfig)
+    assert config_arg.ipc.use_binary is True
+    assert config_arg.ipc.transport == "tcp"

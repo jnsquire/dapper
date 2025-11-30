@@ -105,7 +105,7 @@ async def test_continue(handler, mock_server):
     }
 
     # Mock the continue response
-    mock_server.debugger.continue_execution.return_value = True
+    mock_server.debugger.continue_execution.return_value = {"allThreadsContinued": True}
 
     result = await handler._handle_continue(request)
 

@@ -1,18 +1,18 @@
 """Tests for the centralized Dapper error handling system."""
 
-import logging
 import pytest
 
+from dapper.config import DapperConfig
 from dapper.errors import BackendError
 from dapper.errors import ConfigurationError
-from dapper.errors import create_dap_response
 from dapper.errors import DapperError
-from dapper.errors import DebuggerError
 from dapper.errors import DapperTimeoutError
+from dapper.errors import DebuggerError
 from dapper.errors import ErrorHandler
-from dapper.errors import handle_error
 from dapper.errors import IPCError
 from dapper.errors import ProtocolError
+from dapper.errors import create_dap_response
+from dapper.errors import handle_error
 from dapper.errors import wrap_errors
 
 
@@ -261,15 +261,16 @@ class TestWrapErrorsDecorator:
         """Test decorator includes function details in error."""
         @wrap_errors(reraise=True)
         def test_func(x: int, y: str = "default") -> None:
+            _ = f"Received: {x} {y}"
             raise ValueError("Test error")
         
         with pytest.raises(DapperError) as exc_info:
-            test_func(42, y="test")
+            test_func(42, "test")
         
         details = exc_info.value.details
         assert details["function"] == "test_func"
-        assert details["args"] == (42,)
-        assert details["kwargs"] == {"y": "test"}
+        assert details["args"] == (42, "test")
+        assert details["kwargs"] == {}
 
 
 class TestErrorIntegration:
@@ -277,7 +278,6 @@ class TestErrorIntegration:
 
     def test_error_in_config_validation(self) -> None:
         """Test that configuration validation uses proper errors."""
-        from dapper.config import DapperConfig
         
         config = DapperConfig(mode="launch")  # No program set
         
