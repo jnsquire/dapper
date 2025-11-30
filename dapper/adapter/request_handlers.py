@@ -1,5 +1,4 @@
-"""
-DAP request handlers.
+"""DAP request handlers.
 
 This module contains the RequestHandler class that processes incoming
 Debug Adapter Protocol requests and routes them to appropriate handlers.
@@ -19,7 +18,7 @@ from typing import cast
 
 from dapper.config import DapperConfig
 from dapper.errors import ConfigurationError
-from dapper.errors import IPCError
+from dapper.errors import async_handle_adapter_errors
 from dapper.errors import create_dap_response
 from dapper.shared import debug_shared
 
@@ -41,7 +40,6 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import ConfigurationDoneResponse
     from dapper.protocol.requests import ContinueRequest
     from dapper.protocol.requests import ContinueResponse
-    from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import DisconnectRequest
     from dapper.protocol.requests import DisconnectResponse
     from dapper.protocol.requests import EvaluateRequest
@@ -196,7 +194,7 @@ class RequestHandler:
             return cast("LaunchResponse", create_dap_response(e, request["seq"], "launch"))
 
         try:
-            await self.server.debugger.launch(**config.to_launch_kwargs())
+            await self.server.debugger.launch(config)
         except Exception as e:
             return cast("LaunchResponse", create_dap_response(e, request["seq"], "launch"))
 
@@ -208,6 +206,7 @@ class RequestHandler:
             "command": "launch",
         }
 
+    @async_handle_adapter_errors("attach")
     async def _handle_attach(self, request: AttachRequest) -> AttachResponse:
         """Handle attach request.
 
@@ -216,26 +215,10 @@ class RequestHandler:
         (transport + host/port or path or pipe name).
         IPC is always required for attach.
         """
-        try:
-            config = DapperConfig.from_attach_request(request)
-            config.validate()
-        except ConfigurationError as e:
-            return cast("AttachResponse", create_dap_response(e, request["seq"], "attach"))
-
-        try:
-            await self.server.debugger.attach(**config.to_attach_kwargs())
-        except Exception as e:
-            # Wrap IPC-related errors for better context
-            if "connection" in str(e).lower() or "pipe" in str(e).lower() or "socket" in str(e).lower():
-                ipc_error = IPCError(
-                    f"Failed to connect to debuggee: {e!s}",
-                    transport=config.ipc.transport,
-                    endpoint=f"{config.ipc.host}:{config.ipc.port}" if config.ipc.transport == "tcp" else config.ipc.path or config.ipc.pipe_name,
-                    cause=e,
-                )
-                return cast("AttachResponse", create_dap_response(ipc_error, request["seq"], "attach"))
-            
-            return cast("AttachResponse", create_dap_response(e, request["seq"], "attach"))
+        config = DapperConfig.from_attach_request(request)
+        config.validate()
+        
+        await self.server.debugger.attach(config)
 
         return {
             "seq": 0,
@@ -295,7 +278,7 @@ class RequestHandler:
             "request_seq": request["seq"],
             "success": True,
             "command": "continue",
-            "body": cast("ContinueResponseBody", {"allThreadsContinued": continued}),
+            "body": continued,
         }
 
     async def _handle_next(self, request: NextRequest) -> NextResponse:
@@ -723,7 +706,7 @@ class RequestHandler:
             "request_seq": request["seq"],
             "success": True,
             "command": "modules",
-            "body": {"modules": cast("list[Module]", modules), "totalModules": len(all_modules)},
+            "body": {"modules": cast("list[Module]", modules)}
         }
 
     async def _handle_stack_trace(self, request: StackTraceRequest) -> StackTraceResponse:

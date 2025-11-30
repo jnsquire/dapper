@@ -34,7 +34,8 @@ from dapper.adapter.types import DAPRequest
 from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
-from dapper.ipc.ipc_context import IPCContext
+from dapper.ipc import TransportConfig
+from dapper.ipc.ipc_adapter import IPCContextAdapter
 from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.structures import Source
 from dapper.protocol.structures import SourceBreakpoint
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
 
+    from dapper.config import DapperConfig
     from dapper.ipc.connections.base import ConnectionBase
     from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.capabilities import ExceptionOptions
@@ -177,7 +179,7 @@ class PyDebugger:
 
         # Optional IPC transport context (initialized lazily in launch)
         self._use_ipc: bool = False
-        self.ipc: IPCContext = IPCContext()
+        self.ipc: IPCContextAdapter = IPCContextAdapter()
 
         # Data breakpoint containers
         self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
@@ -348,30 +350,23 @@ class PyDebugger:
         """
         self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
 
-    async def launch(
-        self,
-        program: str,
-        args: list[str] | None = None,
-        stop_on_entry: bool = False,
-        no_debug: bool = False,
-        in_process: bool = False,
-        use_binary_ipc: bool = True,
-        ipc_transport: str | None = None,
-        ipc_pipe_name: str | None = None,
-    ) -> None:
-        """Launch a new Python program for debugging.
-        """
+    async def launch(self, config: DapperConfig) -> None:
+        """Launch a new Python program for debugging using centralized configuration."""
+        # Validate configuration
+        config.validate()
+        
         if self.program_running:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
 
-        self.program_path = str(Path(program).resolve())
-        self.stop_on_entry = stop_on_entry
-        self.no_debug = no_debug
-        args = args or []
+        # Update server state from config
+        self.program_path = str(Path(config.debuggee.program).resolve())
+        self.stop_on_entry = config.debuggee.stop_on_entry
+        self.no_debug = config.debuggee.no_debug
+        self.in_process = config.in_process
 
         # Optional in-process mode
-        if in_process:
+        if config.in_process:
             await self._launch_in_process()
             return
 
@@ -385,20 +380,34 @@ class PyDebugger:
         ]
 
         # Pass other arguments
-        for arg in args:
+        for arg in config.debuggee.args:
             debug_args.extend(["--arg", arg])
 
-        if stop_on_entry:
+        if config.debuggee.stop_on_entry:
             debug_args.append("--stop-on-entry")
 
-        if no_debug:
+        if config.debuggee.no_debug:
             debug_args.append("--no-debug")
 
         # If IPC is requested, prepare a listener and pass coordinates.
         # IPC is now mandatory; always enable it.
         self._use_ipc = True
-        self.ipc.set_binary(bool(use_binary_ipc))
-        debug_args.extend(self.ipc.create_listener(transport=ipc_transport, pipe_name=ipc_pipe_name))
+        self.ipc.set_binary(bool(config.ipc.use_binary))
+        
+        # Create transport config for the factory
+        transport_config = TransportConfig(
+            transport=config.ipc.transport,
+            pipe_name=config.ipc.pipe_name,
+            host=config.ipc.host,
+            port=config.ipc.port,
+            path=config.ipc.path,
+            use_binary=config.ipc.use_binary
+        )
+        
+        debug_args.extend(self.ipc.create_listener(
+            transport=transport_config.transport,
+            pipe_name=transport_config.pipe_name
+        ))
         if self.ipc.binary:
             debug_args.append("--ipc-binary")
 
@@ -444,7 +453,7 @@ class PyDebugger:
         await self.server.send_event("process", process_event)
 
         # If we need to stop on entry, we should wait for the stopped event
-        if stop_on_entry and not no_debug:
+        if self.stop_on_entry and not self.no_debug:
             await self._await_event(self.stopped_event)
 
     async def _launch_in_process(self) -> None:
@@ -478,31 +487,28 @@ class PyDebugger:
         except Exception:
             logger.exception("error in on_output callback")
 
-    async def attach(
-        self,
-        *,
-        ipc_transport: str | None = None,
-        ipc_host: str | None = None,
-        ipc_port: int | None = None,
-        ipc_path: str | None = None,
-        ipc_pipe_name: str | None = None,
-        use_ipc: bool = True,  # Kept for compatibility, must be True
-    ) -> None:
-        """Attach to an already running debuggee via IPC.
-
-        IPC is mandatory for attach; the use_ipc parameter must be True.
-        """
-        if not use_ipc:
-            msg = "attach requires IPC (use_ipc must be True)"
-            raise RuntimeError(msg)
-
-        # Connect to the debuggee's IPC endpoint
+    async def attach(self, config: DapperConfig) -> None:
+        """Attach to an already running debuggee via IPC using centralized configuration."""
+        # Validate configuration
+        config.validate()
+        
+        # Create transport config for the factory
+        transport_config = TransportConfig(
+            transport=config.ipc.transport,
+            pipe_name=config.ipc.pipe_name,
+            host=config.ipc.host,
+            port=config.ipc.port,
+            path=config.ipc.path,
+            use_binary=config.ipc.use_binary
+        )
+        
+        # Connect using the new transport configuration
         self.ipc.connect(
-            transport=ipc_transport,
-            pipe_name=ipc_pipe_name,
-            unix_path=ipc_path,
-            host=ipc_host,
-            port=ipc_port,
+            transport=transport_config.transport,
+            pipe_name=transport_config.pipe_name,
+            unix_path=transport_config.path,
+            host=transport_config.host,
+            port=transport_config.port,
         )
 
         # Start reader thread (connection already established)
@@ -731,7 +737,7 @@ class PyDebugger:
         # Extract and validate path
         path = source if isinstance(source, str) else source.get("path")
         if not path:
-            return [{"verified": False, "message": "Source path is required"} for _ in breakpoints]
+            return [BreakpointResponse(verified=False, message="Source path is required") for _ in breakpoints]
         path = str(Path(path).resolve())
 
         # Process breakpoints
@@ -739,20 +745,34 @@ class PyDebugger:
         self.breakpoints[path] = storage_list
 
         if self._backend is None:
-            return cast("list[BreakpointResponse]", storage_list)
+            return [
+                BreakpointResponse(
+                    verified=bp.get("verified", False),
+                    **{k: v for k, v in {
+                        "message": bp.get("message"),
+                        "line": bp.get("line"),
+                        "condition": bp.get("condition"),
+                        "hitCondition": bp.get("hitCondition"),
+                        "logMessage": bp.get("logMessage")
+                    }.items() if v is not None}
+                )
+                for bp in storage_list
+            ]
 
         # For in-process backend, just use the backend directly
         if self._inproc_backend is not None:
-            result = await self._inproc_backend.set_breakpoints(path, spec_list)
+            backend_result = await self._inproc_backend.set_breakpoints(path, spec_list)
             return [
-                {
-                    "verified": bp.get("verified", False),
-                    "line": bp.get("line"),
-                    "condition": bp.get("condition"),
-                    "hitCondition": bp.get("hitCondition"),
-                    "logMessage": bp.get("logMessage"),
-                }
-                for bp in result
+                BreakpointResponse(
+                    verified=bp.get("verified", False),
+                    **{k: v for k, v in {
+                        "line": bp.get("line"),
+                        "condition": bp.get("condition"),
+                        "hitCondition": bp.get("hitCondition"),
+                        "logMessage": bp.get("logMessage")
+                    }.items() if v is not None}
+                )
+                for bp in backend_result
             ]
 
         # For external process, add progress events around the backend call
@@ -768,7 +788,19 @@ class PyDebugger:
 
         self._emit_event("progressEnd", {"progressId": progress_id})
 
-        return cast("list[BreakpointResponse]", storage_list)
+        return [
+            BreakpointResponse(
+                verified=bp.get("verified", False),
+                **{k: v for k, v in {
+                    "message": bp.get("message"),
+                    "line": bp.get("line"),
+                    "condition": bp.get("condition"),
+                    "hitCondition": bp.get("hitCondition"),
+                    "logMessage": bp.get("logMessage")
+                }.items() if v is not None}
+            )
+            for bp in storage_list
+        ]
 
     def _process_breakpoints(
         self, breakpoints: Sequence[SourceBreakpoint]
@@ -833,14 +865,12 @@ class PyDebugger:
                 spec_entry["hitCondition"] = str(hc)
             spec_funcs.append(spec_entry)
 
-            storage_funcs.append(
-                {
-                    "name": name,
-                    "condition": cond,
-                    "hitCondition": hc,
-                    "verified": True,
-                }
-            )
+            storage_entry: FunctionBreakpoint = {"name": name, "verified": True}
+            if cond is not None:
+                storage_entry["condition"] = str(cond)
+            if hc is not None:
+                storage_entry["hitCondition"] = str(hc)
+            storage_funcs.append(storage_entry)
 
         # Store runtime representation (with verified flag) for IPC and state
         self.function_breakpoints = storage_funcs
@@ -1061,7 +1091,8 @@ class PyDebugger:
             "message": "Exception information not available",
             "typeName": "Unknown",
             "fullTypeName": "Unknown",
-            "stackTrace": "Exception information not available",
+            "source": "Unknown",
+            "stackTrace": ["Exception information not available"],
         }
 
         return {

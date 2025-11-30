@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from typing_extensions import NotRequired
 
     from dapper.protocol.capabilities import Capabilities
-
     from dapper.protocol.capabilities import ExceptionBreakpointsFilter
     from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.capabilities import ExceptionOptions

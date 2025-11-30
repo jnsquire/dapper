@@ -14,6 +14,7 @@ from typing import Any
 from typing import cast
 
 if TYPE_CHECKING:
+    from dapper.ipc.ipc_adapter import IPCContextAdapter
     from dapper.ipc.ipc_context import IPCContext
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
@@ -38,7 +39,7 @@ class ExternalProcessBackend:
 
     def __init__(
         self,
-        ipc: IPCContext,
+        ipc: IPCContext | IPCContextAdapter,
         loop: asyncio.AbstractEventLoop,
         get_process_state: Any,  # Callable returning (process, is_terminated)
         pending_commands: dict[int, asyncio.Future[dict[str, Any]]],
@@ -273,7 +274,8 @@ class ExternalProcessBackend:
             "message": "Exception information not available",
             "typeName": "Unknown",
             "fullTypeName": "Unknown",
-            "stackTrace": "Exception information not available",
+            "source": "Unknown",
+            "stackTrace": ["Exception information not available"],
         }
         return {
             "exceptionId": "Unknown",

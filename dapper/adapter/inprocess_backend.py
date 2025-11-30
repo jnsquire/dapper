@@ -118,7 +118,7 @@ class InProcessBackend:
         except Exception:
             logger.exception("in-process step_out failed")
 
-    async def pause(self, thread_id: int) -> bool:
+    async def pause(self, thread_id: int) -> bool:  # noqa: ARG002
         """Pause execution. In-process debugger does not support pause."""
         return False
 

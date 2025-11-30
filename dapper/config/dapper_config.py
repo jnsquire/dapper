@@ -188,14 +188,3 @@ class DapperConfig:
 
 # Default configuration instance
 DEFAULT_CONFIG = DapperConfig()
-
-
-def get_config() -> DapperConfig:
-    """Get the current configuration (placeholder for future config management)."""
-    return DEFAULT_CONFIG
-
-
-def set_config(config: DapperConfig) -> None:
-    """Set the current configuration (placeholder for future config management)."""
-    global DEFAULT_CONFIG  # noqa: PLW0603
-    DEFAULT_CONFIG = config

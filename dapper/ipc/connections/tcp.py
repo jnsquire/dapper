@@ -21,7 +21,7 @@ class TCPServerConnection(ConnectionBase):
     the bound port needs to be known before clients connect.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 4711) -> None:
+    def __init__(self, host: str|None = None, port: int|None = None) -> None:
         """Initialize the TCP server connection.
 
         Args:
@@ -29,8 +29,8 @@ class TCPServerConnection(ConnectionBase):
             port: The port to bind to. Use 0 for an ephemeral port.
         """
         super().__init__()
-        self.host = host
-        self.port = port
+        self.host = host or "localhost"
+        self.port = 4711 if port is None else port
         self.server: asyncio.Server | None = None
         self._client_connected: asyncio.Future[bool] | None = None
 

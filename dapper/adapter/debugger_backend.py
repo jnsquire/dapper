@@ -13,6 +13,7 @@ from typing import Protocol
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from dapper.config import DapperConfig
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
@@ -31,6 +32,17 @@ class DebuggerBackend(Protocol):
     Both in-process and external process debugging implement this interface,
     allowing PyDebugger to use a single code path for all operations.
     """
+
+    # ------------------------------------------------------------------
+    # Lifecycle operations
+    # ------------------------------------------------------------------
+    async def launch(self, config: DapperConfig) -> None:
+        """Launch a new debuggee process using configuration."""
+        ...
+
+    async def attach(self, config: DapperConfig) -> None:
+        """Attach to an existing debuggee using configuration."""
+        ...
 
     # ------------------------------------------------------------------
     # Breakpoint operations

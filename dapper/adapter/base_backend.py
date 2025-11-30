@@ -17,6 +17,7 @@ from typing import cast
 from dapper.adapter.debugger_backend import DebuggerBackend
 from dapper.errors import BackendError
 from dapper.errors import DapperTimeoutError
+from dapper.errors import async_handle_backend_errors
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import Variable
@@ -255,6 +256,7 @@ class BaseBackend(DebuggerBackend, ABC):
         )
         return cast("SetVariableResponseBody", response)
     
+    @async_handle_backend_errors("evaluate")
     async def evaluate(
         self,
         expression: str,
