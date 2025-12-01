@@ -1,21 +1,13 @@
-# Debug Adapter Operational Modes
+<!-- Operational mode diagrams moved from debug_adapter_operational_modes.md -->
+# Debug Adapter: Operational Modes (diagrams)
 
-This document explains Dapper's operational modes.
+This reference page consolidates the adapter operational diagrams that show Launch, Attach and In-Process modes, IPC transports, message flows, backend-selection and threading models.
 
-## Overview
-
-The Dapper debug adapter supports three primary operational modes:
-1. **Launch Mode** - Start a new debuggee process
-2. **Attach Mode** - Connect to an existing debuggee process
-3. **In-Process Mode** - Debug within the current process
-
-Each mode supports different IPC transport mechanisms and has distinct communication patterns.
+> Note: these diagrams previously lived in `doc/debug_adapter_operational_modes.md` and were moved into this reference page to make them easier to find in the reference section.
 
 ---
 
 ## 1. Launch Mode Architecture
-
-Launch mode creates a new subprocess for the debuggee and establishes IPC communication.
 
 ```mermaid
 graph TB
@@ -88,8 +80,6 @@ sequenceDiagram
 
 ## 2. Attach Mode Architecture
 
-Attach mode connects to an already-running debuggee process via IPC.
-
 ```mermaid
 graph TB
     subgraph "VS Code / DAP Client"
@@ -160,8 +150,6 @@ sequenceDiagram
 ---
 
 ## 3. In-Process Mode Architecture
-
-In-process mode debugs code within the same process as the debug adapter.
 
 ```mermaid
 graph TB
@@ -235,9 +223,7 @@ sequenceDiagram
 
 ## 4. IPC Transport Mechanisms
 
-The debug adapter supports multiple IPC transport mechanisms:
-
-### 4.1 Windows Named Pipes
+### Windows Named Pipes
 
 ```mermaid
 graph LR
@@ -256,7 +242,7 @@ graph LR
     PipeClient --> Launcher
 ```
 
-### 4.2 Unix Domain Sockets
+### Unix Domain Sockets
 
 ```mermaid
 graph LR
@@ -275,7 +261,7 @@ graph LR
     UnixClient --> Launcher
 ```
 
-### 4.3 TCP Sockets
+### TCP Sockets
 
 ```mermaid
 graph LR
@@ -298,7 +284,7 @@ graph LR
 
 ## 5. Message Flow Patterns
 
-### 5.1 Binary vs Text Protocol
+### Binary vs Text Protocol
 
 ```mermaid
 graph TB
@@ -327,7 +313,7 @@ graph TB
     end
 ```
 
-### 5.2 Request-Response Pattern
+### Request-Response Pattern
 
 ```mermaid
 sequenceDiagram
@@ -361,7 +347,7 @@ flowchart TD
     CheckExternal -->|Attach| UseExisting[Use Existing Backend]
     
     CreateInProc --> InProcReady[In-Process Backend Ready]
-    CreateExternal --> ExternalReady[External Backend Ready]
+    CreateExternal --> ExternalReady[External Process Backend Ready]
     UseExisting --> ExternalReady
     
     InProcReady --> End[Backend Selected]
@@ -435,5 +421,3 @@ graph TB
     DebuggeeThread --> DebuggerThread
     DebuggerThread -.->|IPC Events| IPC_Receive
 ```
-
-For detailed, editable diagrams see the Reference page: `doc/reference/operational_modes.md`.

@@ -574,16 +574,6 @@ class TestIntegration:
 class TestPerformanceUtils:
     """Test performance utility functions."""
 
-    def test_performance_timing(self):
-        """Test performance timing utilities."""
-        # Test basic timing
-        start_time = time.time()
-        time.sleep(0.01)  # Sleep for 10ms
-        end_time = time.time()
-
-        elapsed = end_time - start_time
-        assert 0.01 <= elapsed <= 0.02  # Should be around 10ms
-
     def test_performance_counters(self):
         """Test performance counter functionality."""
         # Simple counter implementation

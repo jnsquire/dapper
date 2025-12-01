@@ -10,29 +10,29 @@ This project uses [uv](https://github.com/astral-sh/uv) for fast Python package 
 ## Installation
 
 1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd dapper
-   ```
+	```bash
+	git clone <repository-url>
+	cd dapper
+	```
 
 2. **Install uv (if not already installed):**
-   ```bash
-   # On macOS/Linux
-   curl -LsSf https://astral.sh/uv/install.sh | sh
+	```bash
+	# On macOS/Linux
+	curl -LsSf https://astral.sh/uv/install.sh | sh
 
-   # On Windows
-   powershell -c "irm https://astral.sh/uv/install.sh | iex"
+	# On Windows
+	powershell -c "irm https://astral.sh/uv/install.sh | iex"
 
-   # Or using pip
-   pip install uv
-   ```
+	# Or using pip
+	pip install uv
+	```
 
 3. **Install dependencies using uv:**
-   ```bash
-   uv sync
-   ```
+	```bash
+	uv sync
+	```
 
-   This will create a virtual environment and install all dependencies from `pyproject.toml`.
+	This will create a virtual environment and install all dependencies from `pyproject.toml`.
 
 ## Development Workflow
 
@@ -57,24 +57,24 @@ The VS Code extension source code is located in `vscode/extension`. This is a se
 ### Setup
 
 1. **Navigate to the extension directory:**
-   ```bash
-   cd vscode/extension
-   ```
+	```bash
+	cd vscode/extension
+	```
 
 2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+	```bash
+	npm install
+	```
 
 3. **Build the extension:**
-   ```bash
-   npm run build
-   ```
+	```bash
+	npm run build
+	```
 
-   Or for development with auto-rebuild:
-   ```bash
-   npm run watch
-   ```
+	Or for development with auto-rebuild:
+	```bash
+	npm run watch
+	```
 
 ### Running the Extension
 
@@ -178,38 +178,38 @@ Extract helper functions for module source collection to eliminate
 ### Preparing Changes for Commit
 
 1. **Review your changes:**
-   ```bash
-   git status
-   git diff
-   ```
+	 ```bash
+	 git status
+	 git diff
+	 ```
 
 2. **Stage changes selectively:**
-   ```bash
-   # Stage specific files
-   git add dapper/protocol/messages.py dapper/protocol/requests.py dapper/shared/command_handlers.py
-   
-   # Or stage interactively
-   git add -p
-   ```
+	 ```bash
+	 # Stage specific files
+	 git add dapper/protocol/messages.py dapper/protocol/requests.py dapper/shared/command_handlers.py
+    
+	 # Or stage interactively
+	 git add -p
+	 ```
 
 3. **Verify staged changes:**
-   ```bash
-   git diff --staged
-   ```
+	 ```bash
+	 git diff --staged
+	 ```
 
 4. **Run tests before committing:**
-   ```bash
-   uv run pytest
-   uv run ruff check .
-   ```
+	 ```bash
+	 uv run pytest
+	 uv run ruff check .
+	 ```
 
 5. **Commit with descriptive message:**
-   ```bash
-   git commit -m "Brief summary of changes
+	 ```bash
+	 git commit -m "Brief summary of changes
 
-   Optional longer description explaining the motivation
-   and implementation details if needed."
-   ```
+	 Optional longer description explaining the motivation
+	 and implementation details if needed."
+	 ```
 
 ### Branching Strategy
 
@@ -248,12 +248,11 @@ dapper/
 These are current, informal policies the team follows during development.
 
 - API stability: Don't worry about backward compatibility of internal
-   interfaces when making changes — there are no outside users right now.
-   This means it's acceptable to change function/method signatures,
-   rename internal helpers, or move responsibilities between modules
-   without maintaining deprecated shims. Still aim to keep changes
-   well-documented in commit messages and update tests accordingly.
-
+	interfaces when making changes — there are no outside users right now.
+	This means it's acceptable to change function/method signatures,
+	rename internal helpers, or move responsibilities between modules
+	without maintaining deprecated shims. Still aim to keep changes
+	well-documented in commit messages and update tests accordingly.
 
 ## Testing Strategy
 
@@ -274,31 +273,31 @@ All tests use `pytest` with async support and comprehensive mocking.
 Please follow the Git workflow guidelines outlined above for all contributions.
 
 1. **Create a feature branch from `main`:**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+	```bash
+	git checkout -b feature/your-feature-name
+	```
 
 2. **Make your changes following our commit guidelines:**
-   - Keep commits atomic and focused
-   - Write clear, descriptive commit messages
-   - Stage and review changes before committing
+	- Keep commits atomic and focused
+	- Write clear, descriptive commit messages
+	- Stage and review changes before committing
 
 3. **Add tests for new functionality:**
-   ```bash
-   # Add tests in appropriate test_*.py files
-   uv run pytest tests/test_your_feature.py
-   ```
+	```bash
+	# Add tests in appropriate test_*.py files
+	uv run pytest tests/test_your_feature.py
+	```
 
 4. **Ensure all quality checks pass:**
-   ```bash
-   uv run pytest          # Run all tests
-   uv run ruff check .    # Lint code
-   ```
+	```bash
+	uv run pytest          # Run all tests
+	uv run ruff check .    # Lint code
+	```
 
 5. **Submit a pull request:**
-   - Reference any related issues
-   - Describe the changes and their motivation
-   - Ensure CI passes
+	- Reference any related issues
+	- Describe the changes and their motivation
+	- Ensure CI passes
 
 ### Code Quality Standards
 
@@ -315,7 +314,7 @@ If `uv` is not available, you can still work with the project using traditional 
 ```bash
 # Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate  # On Windows
+.venv\\Scripts\\activate  # On Windows
 # source .venv/bin/activate  # On macOS/Linux
 
 # Install dependencies
@@ -329,3 +328,4 @@ If you encounter permission issues with uv on Windows, try running your terminal
 ```bash
 uv run --python-preference system pytest
 ```
+-- Please see original for full details --

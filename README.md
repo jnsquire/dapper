@@ -2,6 +2,8 @@
 
 A Debug Adapter Protocol implementation in Python.
 
+[![Docs check](https://github.com/jnsquire/dapper/actions/workflows/docs-check.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/docs-check.yml)
+
 ## Features
 
 - Implements the Debug Adapter Protocol specification
@@ -19,10 +21,10 @@ For a detailed checklist of implemented and planned debugger features, see:
 
 Dapper includes an advanced frame evaluation system that significantly improves debugging performance:
 
-- **[Frame Evaluation User Guide](doc/FRAME_EVAL_USER_GUIDE.md)** - How to enable and configure frame evaluation
-- **[Frame Evaluation Performance](doc/FRAME_EVAL_PERFORMANCE.md)** - Performance characteristics and benchmarks
-- **[Frame Evaluation Troubleshooting](doc/FRAME_EVAL_TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Frame Evaluation Implementation](doc/FRAME_EVAL_IMPLEMENTATION.md)** - Technical implementation details
+- **[Frame Evaluation User Guide](doc/getting-started/frame-eval/index.md)** - How to enable and configure frame evaluation
+- **[Frame Evaluation Performance](doc/architecture/frame-eval/performance.md)** - Performance characteristics and benchmarks
+- **[Frame Evaluation Troubleshooting](doc/getting-started/frame-eval/troubleshooting.md)** - Common issues and solutions
+- **[Frame Evaluation Implementation](doc/architecture/frame-eval/implementation.md)** - Technical implementation details
 
 Quick start with frame evaluation:
 ```json

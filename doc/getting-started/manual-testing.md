@@ -1,3 +1,5 @@
+<!-- Manual testing guide migrated into Getting Started -->
+
 # Testing Dapper Debug Adapter - Manual Process
 
 This guide shows how to manually test your Dapper debug adapter by connecting to it as an external debug adapter (the way VS Code would).
@@ -134,7 +136,7 @@ to the launcher automatically.
 
 - Windows (default: named pipe)
    - In your client (or launch request), set: `{"useIpc": true}`
-   - The launcher will receive `--ipc pipe --ipc-pipe \\.\pipe\dapper-...`
+   - The launcher will receive `--ipc pipe --ipc-pipe \\\\.\\pipe\\dapper-...`
    - Verify cleanup: on terminate, the pipe endpoints are closed.
 
 - macOS/Linux (default: UNIX domain socket, TCP fallback)

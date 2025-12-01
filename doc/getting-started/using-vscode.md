@@ -1,11 +1,6 @@
-<!-- This page was migrated into Getting Started → using-vscode.md -->
-# Using Dapper with VS Code (moved)
+# Debug Python in VS Code with Dapper
 
-The full 'Using Dapper with VS Code' guide is now part of the Getting Started section.
-
-Canonical location: [Getting Started → Using Dapper with VS Code](getting-started/using-vscode.md)
-
-If you arrived here from an outside link, follow the canonical link above for the complete step-by-step instructions and examples.
+*Guide to using the Dapper VS Code extension (managed venv) or the standalone adapter with VS Code's Python tooling.*
 
 ## TL;DR (Two Paths)
 
@@ -50,6 +45,8 @@ Before you start, make sure you have:
 
 ## Path B Step 1 – Install Dapper into your environment
 
+Open a terminal that targets the environment used for your project (virtualenv, Poetry shell, conda env, etc.). Then install the adapter:
+
 ```bash
 uv pip install dapper
 # ...or...
@@ -70,7 +67,7 @@ Leave this process running; VS Code will connect to it. The number `4711` is arb
 
 ### Optional twists
 
-- **Named pipe / Unix socket:** prefer local IPC over TCP? Use `--pipe` (Windows) or `--unix` (POSIX). See the [architecture IPC section](architecture/overview.md) for the full matrix.
+- **Named pipe / Unix socket:** prefer local IPC over TCP? Use `--pipe` (Windows) or `--unix` (POSIX). See the [architecture IPC section](../architecture/overview.md) for the full matrix.
 
 ## Path B Step 3 – Create a VS Code debug configuration
 
@@ -78,6 +75,9 @@ Leave this process running; VS Code will connect to it. The number `4711` is arb
 2. Click **create a launch.json file** (or the gear icon if one already exists).
 3. Choose **Python** when prompted.
 4. Replace the generated configuration (or add a new one) with:
+
+```jsonc
+// .vscode/launch.json
 {
     "version": "0.2.0",
     "configurations": [
@@ -121,9 +121,16 @@ What this does:
 // Launch with in-process mode for lower latency
 {
     "name": "Python: Dapper (In-Process)",
+    "type": "python",
+    "request": "launch",
+    "program": "${file}",
+    "debugServer": 4711,
     "inProcess": true
 }
 ```
+
+These extra switches are interpreted by Dapper; VS Code will happily pass them through.
+
 ## Path B Step 4 – Start debugging
 
 1. Make sure the adapter terminal is still running.
@@ -139,6 +146,9 @@ You should see your terminal process (running Dapper) log the incoming client co
 When using the VS Code extension:
 
 - On activation the extension calls its `EnvironmentManager` to:
+    - Create (or reuse) a virtual environment under the extension's global storage path using `python -m venv`.
+    - Install the bundled `dapper-<version>.whl` (or PyPI fallback) via `pip`.
+    - Record a manifest (`dapper-env.json`) with installed version and source.
 - The debug adapter factory launches `python -m dapper.debug_launcher` with flags derived from your launch configuration.
 - Settings you can tune:
     - `dapper.python.installMode`: `auto | wheel | pypi | workspace`
@@ -188,12 +198,12 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 | No output in the Debug Console | Dapper defaults to forwarding stdout/stderr. If you've changed `redirectOutput`, flip it back to `true` in your configuration. |
 | Need to stop everything fast | Shift+F5 stops the session. For standalone adapter, Ctrl+C the terminal. For extension, close the session; the managed venv persists. |
 
-Still stuck? The [`Manual Testing` guide](getting-started/manual-testing.md) lists end-to-end flows for validating transports and breakpoints.
+Still stuck? The [`Manual Testing` guide](manual-testing.md) lists end-to-end flows for validating transports and breakpoints.
 
 ## Next steps
 
-- Explore the [examples](examples/README.md) for creative ways to embed Dapper into scripts and services.
-- Skim the [architecture overview](architecture/overview.md) notes if you want to extend or customize the adapter.
+-- Explore the [examples](../examples/README.md) for creative ways to embed Dapper into scripts and services.
+-- Skim the [architecture overview](../architecture/overview.md) if you want to extend or customize the adapter.
 - File issues or share your hacks—Dapper is open-source and eager for contributions!
 
 Happy debugging—whether via the managed extension or standalone adapter! 🎯

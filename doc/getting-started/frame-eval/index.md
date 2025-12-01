@@ -1,4 +1,5 @@
-# Frame Evaluation User Guide
+<!-- Frame evaluation user guide moved here from doc/FRAME_EVAL_USER_GUIDE.md -->
+# Frame Evaluation — User Guide
 
 This guide explains how to enable and use Dapper's frame evaluation system for high-performance debugging.
 
@@ -380,7 +381,7 @@ Migrating from traditional tracing to frame evaluation:
 
 If you encounter issues with frame evaluation:
 
-1. Check the [troubleshooting guide](#troubleshooting)
+1. Check the [troubleshooting guide](troubleshooting.md)
 2. Enable debug logging and collect performance statistics
 3. File an issue with the following information:
    - Python version
@@ -389,4 +390,5 @@ If you encounter issues with frame evaluation:
    - Performance statistics
    - Any error messages or logs
 
-For more information, see the [Frame Evaluation Implementation Details](FRAME_EVAL_IMPLEMENTATION.md) and [Architecture Documentation](ARCHITECTURE.md).
+For more information, see the [Frame Evaluation Implementation Details](../../architecture/frame-eval/implementation.md) and [Architecture Documentation](../../architecture/overview.md).
+

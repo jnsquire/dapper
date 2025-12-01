@@ -1,11 +1,6 @@
-<!-- Lifecycle management guide migrated into architecture/ -->
-# Lifecycle management (moved)
+# Backend Lifecycle Management Guide
 
-The lifecycle management guide has been consolidated under the Architecture section of the documentation.
-
-Canonical location: [Architecture → Lifecycle Management](architecture/lifecycle-management.md)
-
-Please consult the canonical page for the detailed lifecycle model, state machine, and operational guidance. This file is retained for compatibility.
+This guide describes the standardized lifecycle management system implemented for Dapper debugger backends, providing consistent state tracking, resource cleanup, and error handling across all backend implementations.
 
 ## Overview
 

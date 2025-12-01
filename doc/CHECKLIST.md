@@ -1,5 +1,120 @@
 # Dapper AI Debugger Features Checklist
 
+A compact status matrix for Dapper's Debug Adapter Protocol (DAP) features and the near-term roadmap.
+
+Legend
+- ✅ Implemented
+- 🟡 Partial / in-progress
+- ❌ Not implemented
+
+---
+
+## Core Debugging Features
+
+### Program control
+- ✅ Launch (start a new Python program under debugger)
+- ✅ Attach (attach to running program)
+- ✅ Restart
+- ✅ Disconnect
+- ✅ Terminate
+
+### Execution control
+- ✅ Continue
+- ✅ Pause
+- ✅ Next (step over)
+- ✅ Step In
+- ✅ Step Out
+- ❌ Reverse Continue (reverse debugging)
+- ❌ Step granularity (instruction-level stepping)
+
+---
+
+## Breakpoints
+
+### Source breakpoints
+- ✅ Set / remove source breakpoints (line-level, verified/unverified)
+- 🟡 Breakpoint conditions (basic condition evaluation supported; more advanced expressions & testing ongoing)
+- ✅ Hit conditions (N-th hit / modulo / comparisons; implemented by BreakpointResolver)
+- ✅ Log points (formatting & output without stopping; see Breakpoints Controller page)
+
+### Function breakpoints
+- ✅ Set function breakpoints (adapter + debug launcher support)
+- 🟡 Function breakpoint conditions (resolver supports them; more test coverage is desirable)
+
+### Exception breakpoints
+- ✅ Set exception breakpoints (raised/uncaught filters supported)
+- 🟡 Exception options / advanced filtering (work in progress)
+
+### Data breakpoints
+- 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
+- ❌ Runtime watchpoints (trigger on write/read) — planned (Phase 3)
+
+Reference: see doc/Breakpoints Controller — `doc/BREAKPOINTS_CONTROLLER.md` for design notes and Phase 1 status.
+
+---
+
+## Runtime introspection
+
+### Threads & frames
+- ✅ Threads listing and basic metadata
+- ❌ Dynamic thread names (improvements possible)
+- ✅ Stack traces (frames, locations, ids)
+- ❌ Source references for non-filesystem sources (e.g., generated content)
+
+### Variables & scopes
+- ✅ Scopes (locals/globals)
+- ✅ Variables listing
+- ✅ Set variable (support for complex types and conversions)
+- 🟡 Variable presentation / presentationHint (supported; expanding coverage)
+
+### Expression evaluation
+- 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
+- ❌ Set expression / expression-backed watchpoints
+- ❌ Completions / auto-complete for expression editors (planned)
+
+Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `doc/architecture/frame-eval/implementation.md`, `doc/architecture/frame-eval/performance.md`.
+
+---
+
+## Advanced features / code navigation
+- ✅ Loaded sources listing (what's present in runtime)
+- ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
+- ❌ Goto targets (find jump targets / navigation helpers — planned)
+- ✅ Modules listing
+- ❌ Module source retrieval (not fully supported in all backends)
+
+---
+
+## Implementation status — short summary
+
+Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Work remains on higher-level ergonomics: expression completions, advanced breakpoint workflows (runtime watchpoints), source navigation UX and profiling integration.
+
+---
+
+## Priorities & roadmap (high-level)
+
+Phase 1 — core polish (current)
+- Improve expression evaluation ergonomics (completions, better error messages). See: `doc/getting-started/frame-eval/index.md` and `doc/architecture/frame-eval/implementation.md`.
+
+Phase 2 — enhanced debugging experience (in-progress)
+- Improve source navigation & request-level support (goto targets, richer `source` handling). Tests & partial support already present (see `doc/BREAKPOINTS_CONTROLLER.md` and existing adapter handlers).
+- Expand variable presentation semantics and UI hints (`presentationHint` coverage).
+
+Phase 3 — advanced features (future)
+- Runtime watchpoints / data breakpoint triggers (Phase 1 bookkeeping implemented; runtime triggers remain)
+- Reverse debugging / time-travel
+- Performance profiling integration and tooling
+
+---
+
+## Tests & coverage snapshot
+- Tests exercise core DAP features extensively (adapter + launcher + core components).
+- Areas flagged for additional unit/integration coverage: expression completions, some breakpoint edge cases, and runtime watchpoint behaviors.
+
+---
+
+*Last updated: 2025-11-30*
+
 This document outlines the Debug Adapter Protocol (DAP) features implemented in Dapper, organized by category.
 
 ## Legend
@@ -13,31 +128,35 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 ## Core Debugging Features
 
 ### Program Control
-- ✅ **Launch**: Start a new Python program for debugging
-  - Supports command line arguments
-  - Supports stop-on-entry
-  - Supports no-debug mode
-- ✅ **Attach**: Attach to an already running Python process
-- ✅ **Restart**: Restart the debugged program
-- ✅ **Disconnect**: Disconnect from the debugged program
-- ✅ **Terminate**: Force terminate the debugged program
-
 ### Execution Control
-- ✅ **Continue**: Continue execution until next breakpoint
-- ✅ **Pause**: Pause execution at current location
-- ✅ **Next**: Step over to next line
-- ✅ **Step In**: Step into function calls
-- ✅ **Step Out**: Step out of current function
 - ❌ **Reverse Continue**: Continue backwards in execution
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
-
-Note: `Pause` is supported in the debugger/launcher command path, however the adapter's `RequestHandler` currently has no `_handle_pause` method to accept a client-initiated `pause` request. Consider adding `_handle_pause` in `dapper/server.py` to expose this to clients.
-
+  - Supports stop-on-entry
+ - ✅ **Hit Conditions**: Break after N hits (implemented via BreakpointResolver)
+ - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md))
+- ✅ **Restart**: Restart the debugged program
+ - ✅ **Set Function Breakpoints**: Set breakpoints on function names (adapter request handler implemented)
+ - 🟡 **Function Breakpoint Conditions**: Conditions for function breakpoints (partial — resolver supports them; adapter/tests coverage varies)
+### Execution Control
+- ✅ **Continue**: Continue execution until next breakpoint
+### Advanced Features
+### Source Code
+ - ✅ **Loaded Sources**: List all loaded source files
+ - ✅ **Source**: Request source code content (implemented — adapter handles `source`/`moduleSource` requests)
+- ✅ **Step In**: Step into function calls
+### Phase 1: Complete Basic Features (Current Priority)
+- Implement attach, restart (completed)
+- Continue improving expression evaluation (partial — evaluate works, "completions" still outstanding). See [Frame Evaluation user guide](getting-started/frame-eval/index.md) and [implementation notes](architecture/frame-eval/implementation.md).
+- ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
+### Phase 2: Enhanced Debugging Experience (in-progress)
+- Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md) for navigation helpers.
+- Add expression completions / auto-complete (work-in-progress)
+- Improve variable presentation (presentation hints already present; expand coverage and UI semantics)
 ---
-
-## Breakpoints
-
-### Source Breakpoints
+### Phase 3: Advanced Features (future)
+- Reverse debugging capabilities (not implemented)
+- Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain) — see [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md) and protocol `dataBreakpointInfo`/`setDataBreakpoints` handling.
+- Performance profiling integration (future work)
 - ✅ **Set Breakpoints**: Set/remove breakpoints in source files
   - Basic line breakpoints
   - Verified/unverified status
@@ -149,52 +268,26 @@ Note: `Pause` is supported in the debugger/launcher command path, however the ad
 
 ## Implementation Status Summary
 
-### Current Implementation Level: **Basic Debugging Support**
+### Current Implementation Level: **Stable basic debugger + advanced work in progress**
 
-**Implemented (20/35 features - 57%)**
-- Core program control (launch, disconnect, terminate)
-- Basic execution control (continue, pause, stepping)
-- Breakpoint management (source, function, exception)
-- Runtime inspection (threads, stack, variables, scopes)
-- Variable modification (set variable)
-- Basic expression evaluation
-- Configuration management (initialize, configurationDone)
-
-**Partially Implemented (1/35 features - 3%)**
-- Expression evaluation (basic support, needs enhancement)
-
-**Not Implemented (14/35 features - 40%)**
-- Advanced execution control (reverse debugging, step granularity)
-- Advanced breakpoints (hit conditions, log points, data breakpoints)
-- Advanced runtime features (completions)
-- Source code management
-- Exception details
-- Configuration management
+Many of the essential DAP features are implemented and covered by tests (program control, execution control, breakpoints, threads/stack/variables, and variable modification). Work continues on higher-level ergonomics such as expression completion, richer breakpoint options and runtime watchpoints.
 
 ---
 
 ## Priority Implementation Order
 
-### High Priority (Essential for basic debugging)
-1. ~~**Attach**~~ - ✅ Attach to running processes
-2. ~~**Terminate**~~ - ✅ Force terminate debugged programs  
-3. ~~**Restart**~~ - ✅ Restart debugged programs
-4. ~~**Set Variable**~~ - ✅ Modify variables during debugging
-5. ~~**Exception Info**~~ - ✅ Detailed exception information
+### High Priority (Essential for the remaining core gaps)
+1. **Completions** - Expression auto-completion (improves evaluate UX)
+2. **Source References** - Support source locations that are not direct filesystem paths
 
 ### Medium Priority (Enhanced debugging experience)
-1. ~~**Configuration Done**~~ - ✅ Proper configuration management
-2. ~~**Loaded Sources**~~ - ✅ Source file management
-3. ~~**Modules**~~ - ✅ Module inspection
-4. **Completions** - Expression auto-completion
-5. **Source References** - Handle dynamic source code
+1. **Data Breakpoints** - Variable watchpoints (runtime triggers)
+2. **Log Points** - Non-stopping breakpoints / log messages
+3. **Goto Targets** - Navigation features
 
 ### Low Priority (Advanced features)
 1. **Reverse Debugging** - Step back, reverse continue
-2. **Data Breakpoints** - Variable watchpoints
-3. **Log Points** - Non-stopping breakpoints
-4. **Goto Targets** - Navigation features
-5. **Step Granularity** - Fine-grained stepping control
+2. **Step Granularity** - Fine-grained stepping control
 
 ---
 
@@ -225,23 +318,21 @@ Current test coverage for debugger features:
 ## Future Development Roadmap
 
 ### Phase 1: Complete Basic Features (Current Priority)
-- Implement attach, restart
-- Enhance expression evaluation
-- ~~Add set variable functionality~~ - ✅ Completed
-- ~~Improve exception handling~~ - ✅ Exception Info implemented
+- Continue improving expression evaluation (partial — evaluate works, "completions" still outstanding)
 
-### Phase 2: Enhanced Debugging Experience
-- Add source code management
-- Add auto-completion
-- Improve variable presentation
+### Phase 2: Enhanced Debugging Experience (in-progress)
+- Complete source code requests & navigation (source content requests, goto targets, source references) — note: "Loaded Sources" and basic module listing are implemented, so this work focuses on request-level support and navigation helpers.
+- Add expression completions / auto-complete (work-in-progress)
+- Improve variable presentation (presentation hints already present; expand coverage and UI semantics)
 
-### Phase 3: Advanced Features
-- Reverse debugging capabilities
-- Data breakpoints and watchpoints
-- Log points and hit conditions
-- Performance profiling integration
+### Phase 3: Advanced Features (future)
+- Reverse debugging capabilities (not implemented)
+- Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain)
+- Log points and hit conditions (not implemented)
+- Performance profiling integration (future work)
 
 ---
 
-*Last updated: September 16, 2025*
+*Last updated: November 30, 2025*
 *Coverage data: 56% overall, 64% debugger module*
+

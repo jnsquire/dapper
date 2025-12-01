@@ -1,6 +1,11 @@
-# Dapper Debugger Architecture — Coroutines & Threads
+<!-- This file was migrated into the `doc/architecture/` folder. -->
+# Architecture (moved)
 
-This document describes the architecture of the Dapper debugger with a focus on coroutine and thread management, failure modes observed during testing, and recommended improvements.
+This page has been moved and reorganized into the Architecture section of the documentation.
+
+Canonical location: [Architecture overview](architecture/overview.md)
+
+For the full, detailed architecture content (including concurrency, IPC transports, and lifecycle guidance), please see the canonical page above. This file is kept for historic/compatibility reasons.
 
 ## Overview
 
