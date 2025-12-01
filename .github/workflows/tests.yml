@@ -31,5 +31,9 @@ jobs:
       - name: Sync dependencies (dev)
         run: uv sync --group dev
 
+      - name: Build C extensions (frame-eval)
+        # Ensure the Cython frame-eval extension is built and installed
+        run: python -m pip install -e ".[frame-eval]"
+
       - name: Run tests
         run: uv run pytest -q

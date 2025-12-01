@@ -1,15 +1,18 @@
 """Tests for individual frame evaluation components."""
 
+from __future__ import annotations
+
 # Standard library imports
 import importlib.util
 import os
 import sys
 import tempfile
 import threading
-import time
 import weakref
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any
+from typing import Callable
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -48,6 +51,16 @@ if SELECTIVE_TRACER_AVAILABLE:
 # Note: These are private APIs but necessary for frame evaluation
 # pylint: disable=protected-access
 CYTHON_AVAILABLE = importlib.util.find_spec("dapper._frame_eval._frame_evaluator") is not None
+
+# Predeclare Cython API names so static analyzers and type-checkers
+# don't report them as unbound when the Cython module isn't available.
+ThreadInfo: Any = None
+clear_thread_local_info: Callable[..., Any] | None = None
+dummy_trace_dispatch: Callable[..., Any] | None = None
+frame_eval_func: Callable[..., Any] | None = None
+get_frame_eval_stats: Callable[..., Any] | None = None
+get_thread_info: Callable[..., Any] | None = None
+stop_frame_eval: Callable[..., Any] | None = None
 
 # Import Cython modules if available
 if CYTHON_AVAILABLE:
@@ -156,7 +169,7 @@ class TestCacheComponents:
                 file_path = Path(filepath)
                 assert file_path.exists(), f"Test file {filepath} does not exist"
                 assert file_path.is_file(), f"Test file {filepath} is not a file"
-                # Use os.access for readability check as Path.readable() is not available in all Python versions
+                # Use os.access for readability check; Path.readable() is not available everywhere
                 assert os.access(file_path, os.R_OK), f"Cannot read test file {filepath}"
 
                 # Set breakpoints
@@ -244,6 +257,10 @@ class TestCythonComponents:
 
     def test_thread_info_creation(self):
         """Test ThreadInfo object creation."""
+        # Ensure Cython API is present — tests are skipped at runtime if Cython isn't available
+        assert get_thread_info is not None, "Cython get_thread_info is not available"
+        assert ThreadInfo is not None, "Cython ThreadInfo is not available"
+
         thread_info = get_thread_info()
 
         assert isinstance(thread_info, ThreadInfo)
@@ -261,6 +278,7 @@ class TestCythonComponents:
 
     def test_thread_info_isolation(self):
         """Test that thread info is isolated between threads."""
+        assert get_thread_info is not None, "Cython get_thread_info is not available"
         main_thread_info = get_thread_info()
 
         # Modify main thread info
@@ -268,12 +286,14 @@ class TestCythonComponents:
 
         # Create a new thread and check its info
         def check_thread_info():
+            assert get_thread_info is not None, "Cython get_thread_info is not available"
             thread_info = get_thread_info()
             # Should be different instance
             # The value of fully_initialized might vary by implementation
             # (0, False, or True are all possible)
+            t = type(thread_info.fully_initialized)
             assert isinstance(thread_info.fully_initialized, (int, bool)), (
-                f"fully_initialized should be int or bool, got {type(thread_info.fully_initialized)}"
+                f"fully_initialized should be int or bool, got {t}"
             )
             assert thread_info is not main_thread_info
 
@@ -288,6 +308,7 @@ class TestCythonComponents:
 
     def test_frame_eval_stats(self):
         """Test frame evaluation statistics."""
+        assert get_frame_eval_stats is not None, "Cython get_frame_eval_stats is not available"
         stats = get_frame_eval_stats()
 
         assert isinstance(stats, dict)
@@ -301,6 +322,10 @@ class TestCythonComponents:
     def test_frame_eval_activation(self):
         """Test frame evaluation activation/deactivation."""
         # Get initial state
+        assert frame_eval_func is not None, "Cython frame_eval_func not available"
+        assert get_frame_eval_stats is not None, "Cython get_frame_eval_stats not available"
+        assert stop_frame_eval is not None, "Cython stop_frame_eval not available"
+
         get_frame_eval_stats()
 
         # Activate
@@ -319,6 +344,9 @@ class TestCythonComponents:
     def test_clear_thread_local_info(self):
         """Test clearing thread local info."""
         # Get thread info and modify it
+        assert get_thread_info is not None, "Cython get_thread_info not available"
+        assert clear_thread_local_info is not None, "Cython clear_thread_local_info not available"
+
         thread_info = get_thread_info()
         thread_info.fully_initialized = 1
 
@@ -334,13 +362,14 @@ class TestCythonComponents:
     def test_dummy_trace_dispatch(self):
         """Test dummy trace dispatch function."""
         # Skip if dummy_trace_dispatch is not available
-        if not hasattr(sys.modules[__name__], "dummy_trace_dispatch"):
+        if dummy_trace_dispatch is None:
             pytest.skip("dummy_trace_dispatch not available")
 
         # Create a mock frame
         mock_frame = Mock()
 
         # Test different events
+        assert dummy_trace_dispatch is not None, "Cython dummy_trace_dispatch is not available"
         dummy_trace_dispatch(mock_frame, "call", None)
         # The actual behavior might vary, so just check it doesn't raise
         assert True
