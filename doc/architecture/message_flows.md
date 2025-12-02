@@ -1,17 +1,6 @@
 # DAP Message Flow Diagrams
 
-This document shows common DAP (Debug Adapter Protocol) message flows as Mermaid sequence diagrams. You can keep these diagrams as editable Mermaid code blocks (preferred) or pre-render them to SVG/PNG for environments that don't render Mermaid inline.
-
-## Integration notes
-
-- Inline Mermaid blocks (```mermaid ... ```) keep diagrams editable in the repo and are supported by many renderers (GitHub, some static-site generators). If your platform doesn't render Mermaid, pre-render to SVG/PNG and commit the images.
-- To pre-render, use mermaid-cli (mmdc) or the 'mmdc' package. Example:
-
-  mmdc -i diagram.mmd -o diagram.svg
-
-- For sites built with MkDocs or Sphinx, there are Mermaid plugins that render diagrams during the docs build. For CI consistency, pin the mermaid-cli version or the site's plugin version.
-
----
+This document shows common DAP (Debug Adapter Protocol) message flows as Mermaid sequence diagrams.
 
 ## 1) Launch (local) flow
 

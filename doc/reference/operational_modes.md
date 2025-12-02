@@ -1,4 +1,3 @@
-<!-- Operational mode diagrams moved from debug_adapter_operational_modes.md -->
 # Debug Adapter: Operational Modes (diagrams)
 
 This reference page consolidates the adapter operational diagrams that show Launch, Attach and In-Process modes, IPC transports, message flows, backend-selection and threading models.

@@ -6,7 +6,6 @@ This section documents the system architecture, design analyses and lifecycle ma
 Core architecture pages
 
 - [Overview and architecture details](./overview.md) — high-level architecture, transport and concurrency model, important patterns and design rationale.
-- [Current architecture analysis](./current-analysis.md) — an analysis of the current debugger architecture, tracing flow and integration points (good background for changes like frame-evaluation).
 - [Lifecycle management and process guidance](./lifecycle-management.md) — describes standardized lifecycle/state management for backends and recommended operational practices.
 
 - **Frame Evaluation (architecture)** — implementation & performance details for frame evaluation:
@@ -16,3 +15,6 @@ Core architecture pages
 
 - Breakpoints & controller — design and responsibilities for breakpoint handling and bookkeeping:
   - [Breakpoints Controller](./breakpoints_controller.md)
+
+- **Protocol & Message Flows** — DAP protocol flows and message sequences:
+  - [DAP Message Flow Diagrams](./message_flows.md) — sequence diagrams for launch, attach, breakpoints, and session lifecycle flows.
