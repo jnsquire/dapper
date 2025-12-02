@@ -179,6 +179,16 @@ class InProcessBridge:
         """Evaluate an expression."""
         return self._inproc.evaluate(expression, frame_id, context)
 
+    def completions(
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
+    ) -> dict[str, Any]:
+        """Get expression completions."""
+        return self._inproc.completions(text, column, frame_id, line)
+
     # ------------------------------------------------------------------
     # Command dispatch (for _send_command_to_debuggee compatibility)
     # ------------------------------------------------------------------

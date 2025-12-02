@@ -20,7 +20,7 @@ nav:
     - Lifecycle: architecture/lifecycle-management.md
   - Debugging:
     - Operational Modes: debug_adapter_operational_modes.md
-    - Breakpoints Controller: BREAKPOINTS_CONTROLLER.md
+    - Breakpoints Controller: architecture/breakpoints_controller.md
     - Error Handling: ERROR_HANDLING_GUIDE.md
   - IPC & Frame Eval:
     - IPC Refactor Guide: IPC_REFACTORING_GUIDE.md

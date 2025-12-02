@@ -13,6 +13,7 @@ from typing import Protocol
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from dapper.adapter.types import CompletionsResponseBody
     from dapper.config import DapperConfig
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
@@ -119,6 +120,26 @@ class DebuggerBackend(Protocol):
         self, expression: str, frame_id: int | None = None, context: str | None = None
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
+        ...
+
+    async def completions(
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
+    ) -> CompletionsResponseBody:
+        """Get expression completions for the debug console.
+
+        Args:
+            text: The input text to complete
+            column: Cursor position within text (1-based)
+            frame_id: Stack frame for scope context
+            line: Line number within text (1-based)
+
+        Returns:
+            Dict with 'targets' key containing list of completion items
+        """
         ...
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:

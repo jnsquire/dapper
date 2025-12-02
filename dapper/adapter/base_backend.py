@@ -18,6 +18,7 @@ from typing import overload
 
 from dapper.adapter.debugger_backend import DebuggerBackend
 from dapper.adapter.lifecycle import LifecycleManager
+from dapper.adapter.types import CompletionsResponseBody
 from dapper.errors import BackendError
 from dapper.errors import DapperTimeoutError
 from dapper.errors import async_handle_backend_errors
@@ -332,6 +333,36 @@ class BaseBackend(DebuggerBackend, ABC):
                 "context": context,
             },
             return_type=EvaluateResponseBody,
+        )
+
+    @async_handle_backend_errors("completions")
+    async def completions(
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
+    ) -> CompletionsResponseBody:
+        """Get expression completions for the debug console.
+
+        Args:
+            text: The input text to complete
+            column: Cursor position within text (1-based)
+            frame_id: Stack frame for scope context
+            line: Line number within text (1-based)
+
+        Returns:
+            Dict with 'targets' key containing list of completion items
+        """
+        return await self._execute_and_extract(
+            "completions",
+            {
+                "text": text,
+                "column": column,
+                "frame_id": frame_id,
+                "line": line,
+            },
+            return_type=CompletionsResponseBody,
         )
     
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:

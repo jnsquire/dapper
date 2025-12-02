@@ -304,6 +304,102 @@ class EvaluateResponse(TypedDict):
     body: NotRequired[EvaluateResponseBody]
 
 
+# Completions request/response
+class CompletionsArguments(TypedDict):
+    """Arguments for 'completions' request."""
+
+    text: str  # The text to complete
+    column: int  # Cursor position within text (UTF-16 code units)
+    frameId: NotRequired[int]  # Optional frame for scope context
+    line: NotRequired[int]  # Line number (defaults to 1 if multi-line text)
+
+
+class CompletionItemType(TypedDict, total=False):
+    """Type of completion item - used for icon hints in clients."""
+
+    # Enum values are handled as string literals
+
+
+# Literal alias for the completion item 'type' field so callers can import
+# a reusable type instead of repeating the long Literal[...] expression.
+CompletionItemKind = Literal[
+    "method",
+    "function",
+    "constructor",
+    "field",
+    "variable",
+    "class",
+    "interface",
+    "module",
+    "property",
+    "unit",
+    "value",
+    "enum",
+    "keyword",
+    "snippet",
+    "text",
+    "color",
+    "file",
+    "reference",
+    "customcolor",
+]
+
+
+class CompletionItem(TypedDict, total=False):
+    """A single completion suggestion."""
+
+    label: str  # Required: display text (also inserted if no `text`)
+    text: str  # Text to insert (if different from label)
+    sortText: str  # Sort key (defaults to label)
+    detail: str  # Additional info (e.g., type signature)
+    type: Literal[
+        "method",
+        "function",
+        "constructor",
+        "field",
+        "variable",
+        "class",
+        "interface",
+        "module",
+        "property",
+        "unit",
+        "value",
+        "enum",
+        "keyword",
+        "snippet",
+        "text",
+        "color",
+        "file",
+        "reference",
+        "customcolor",
+    ]
+    start: int  # Start position for replacement
+    length: int  # Characters to replace
+
+
+class CompletionsResponseBody(TypedDict):
+    """Body of completions response."""
+
+    targets: list[CompletionItem]
+
+
+class CompletionsRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["completions"]
+    arguments: CompletionsArguments
+
+
+class CompletionsResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["completions"]
+    message: NotRequired[str]
+    body: NotRequired[CompletionsResponseBody]
+
+
 class SetFunctionBreakpointsRequest(TypedDict):
     seq: int
     type: Literal["request"]
@@ -737,7 +833,3 @@ class RestartResponse(TypedDict):
     success: bool
     command: Literal["restart"]
     message: NotRequired[str]
-
-
-
-# ... (content continues - we already copied this portion)

@@ -9,8 +9,10 @@ stdout. It is intended to be called by `PyDebugger` directly when running in
 
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
+import types
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -20,10 +22,15 @@ from dapper.ipc.ipc_receiver import process_queued_commands
 from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from collections.abc import Sequence
+
+    from dapper.adapter.types import CompletionItem
+    from dapper.adapter.types import CompletionsResponseBody
 
     # TypedDict for variable-shaped dicts
     from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.requests import CompletionItemKind
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
@@ -318,3 +325,230 @@ class InProcessDebugger:
                 "type": "error",
                 "variablesReference": 0,
             }
+
+    def completions(
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
+    ) -> CompletionsResponseBody:
+        """Get expression completions based on runtime frame context.
+
+        Provides intelligent auto-completions by introspecting the current
+        frame's local and global namespaces. Supports:
+        - Simple name completions (variables, functions, classes)
+        - Attribute completions (obj.attr)
+        - Module member completions (module.member)
+
+        Args:
+            text: The input text to complete
+            column: Cursor position (1-based)
+            frame_id: Stack frame ID for scope context
+            line: Line number (1-based) for multi-line text
+
+        Returns:
+            Dict with 'targets' containing completion items
+        """
+        targets: list[CompletionItem] = []
+
+        # Get frame context
+        dbg = self.debugger
+        frame = dbg.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+
+        # Extract the relevant line and prefix
+        lines = text.split("\n")
+        line_idx = max(0, min(line - 1, len(lines) - 1))
+        current_line = lines[line_idx] if lines else ""
+
+        # Convert 1-based column to 0-based index
+        col_idx = max(0, column - 1)
+        prefix_text = current_line[:col_idx]
+
+        # Find the expression to complete
+        expr_to_complete = self._extract_completion_expr(prefix_text)
+
+        if frame is not None:
+            # Runtime completions using frame locals/globals
+            targets = self._get_runtime_completions(
+                expr_to_complete, frame.f_locals, frame.f_globals
+            )
+        else:
+            # Fallback: use builtins only
+            import builtins
+            targets = self._get_runtime_completions(
+                expr_to_complete, {}, vars(builtins)
+            )
+
+        return {"targets": targets}
+
+    def _extract_completion_expr(self, text: str) -> str:
+        """Extract the expression/identifier to complete from text.
+
+        Handles cases like:
+        - "x" -> "x" (simple identifier)
+        - "obj." -> "obj." (attribute access)
+        - "obj.att" -> "obj.att" (partial attribute)
+        - "print(x" -> "x" (function argument)
+        - "x + y" -> "y" (binary op)
+        """
+        if not text:
+            return ""
+
+        # Walk backwards to find expression start
+        i = len(text) - 1
+        depth = 0  # Track parentheses/brackets
+
+        while i >= 0:
+            ch = text[i]
+            if ch in ")]}>":
+                depth += 1
+            elif ch in "([{<":
+                if depth > 0:
+                    depth -= 1
+                else:
+                    # Found unmatched open bracket - expression starts after
+                    return text[i + 1 :].lstrip()
+            elif depth == 0 and ch in " \t,;:=+-*/%&|^~!":
+                # Expression delimiter (not inside brackets)
+                return text[i + 1 :].lstrip()
+            i -= 1
+
+        return text.lstrip()
+
+    def _get_runtime_completions(
+        self,
+        expr: str,
+        local_ns: Mapping[str, Any],
+        global_ns: Mapping[str, Any],
+    ) -> list[CompletionItem]:
+        """Get completions using runtime introspection.
+
+        Args:
+            expr: Expression prefix to complete
+            local_ns: Frame's local namespace
+            global_ns: Frame's global namespace
+
+        Returns:
+            List of completion items
+        """
+        import builtins
+
+        targets: list[CompletionItem] = []
+
+        if "." in expr:
+            # Attribute completion: evaluate everything before the last dot
+            parts = expr.rsplit(".", 1)
+            base_expr = parts[0]
+            attr_prefix = parts[1] if len(parts) > 1 else ""
+
+            try:
+                # Safely evaluate the base expression
+                # Cast Mapping to dict for eval() which requires dict
+                base_obj = eval(base_expr, dict(global_ns), dict(local_ns))
+                targets = self._complete_attributes(base_obj, attr_prefix)
+            except Exception:
+                # Can't evaluate base - return empty
+                pass
+        else:
+            # Name completion: search locals, globals, and builtins
+            prefix = expr
+            seen: set[str] = set()
+
+            # Collect from locals
+            for name in local_ns:
+                if name.startswith(prefix) and name not in seen:
+                    seen.add(name)
+                    obj = local_ns[name]
+                    kind = self._infer_completion_type(obj)
+                    targets.append(self._make_completion_item(name, obj, kind))
+
+            # Collect from globals
+            for name in global_ns:
+                if name.startswith(prefix) and name not in seen:
+                    seen.add(name)
+                    obj = global_ns[name]
+                    kind = self._infer_completion_type(obj)
+                    targets.append(self._make_completion_item(name, obj, kind))
+
+            # Collect from builtins
+            for name in dir(builtins):
+                if name.startswith(prefix) and name not in seen:
+                    seen.add(name)
+                    obj = getattr(builtins, name, None)
+                    kind = self._infer_completion_type(obj)
+                    targets.append(self._make_completion_item(name, obj, kind))
+
+        # Sort by label for consistent ordering
+        targets.sort(key=lambda x: x.get("label", ""))
+        return targets
+
+    def _complete_attributes(
+        self, obj: Any, prefix: str
+    ) -> list[CompletionItem]:
+        """Complete attributes of an object."""
+        targets: list[CompletionItem] = []
+        try:
+            # Get all attributes (including from __dir__ if defined)
+            attrs = dir(obj)
+        except Exception:
+            return targets
+
+        for attr in attrs:
+            if attr.startswith(prefix):
+                try:
+                    value = getattr(obj, attr, None)
+                    kind = self._infer_completion_type(value)
+                    targets.append(self._make_completion_item(attr, value, kind))
+                except Exception:
+                    # Some attributes may raise on access
+                    targets.append({
+                        "label": attr,
+                        "type": "property",
+                    })
+
+        return targets
+
+    def _make_completion_item(
+        self, name: str, obj: Any, kind: str
+    ) -> CompletionItem:
+        """Create a DAP completion item."""
+        item: CompletionItem = {
+            "label": name,
+            "type": cast("CompletionItemKind", kind),
+        }
+
+        # Add type detail for better UX
+        try:
+            type_name = type(obj).__name__
+            if kind == "function" and callable(obj):
+                # Try to get signature for functions
+                try:
+                    sig = inspect.signature(obj)
+                    item["detail"] = f"{name}{sig}"
+                except (ValueError, TypeError):
+                    item["detail"] = f"{name}(...)"
+            elif kind in ("class", "module"):
+                item["detail"] = type_name
+            else:
+                item["detail"] = f": {type_name}"
+        except Exception:
+            pass
+
+        return item
+
+    def _infer_completion_type(self, obj: Any) -> str:
+        """Infer DAP completion item type from Python object."""
+        if obj is None:
+            return "value"
+        if isinstance(obj, type):
+            return "class"
+        if isinstance(obj, types.ModuleType):
+            return "module"
+        if isinstance(obj, (types.FunctionType, types.BuiltinFunctionType)):
+            return "function"
+        if isinstance(obj, types.MethodType):
+            return "method"
+        if callable(obj):
+            return "function"
+        return "variable"

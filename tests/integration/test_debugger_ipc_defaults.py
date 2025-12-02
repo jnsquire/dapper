@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 
 from dapper.adapter.server import PyDebugger
+from dapper.config import DapperConfig
+from dapper.config import DebuggeeConfig
 
 
 class _StubServer:
@@ -43,14 +45,13 @@ async def test_unix_is_default_on_non_windows():
     # Replace the method on this instance to capture args
     dbg._start_debuggee_process = _capture_start  # type: ignore[assignment]
 
-    await dbg.launch(
-        program="sample.py",
-        args=[],
-        stop_on_entry=False,
-        no_debug=False,
+    cfg = DapperConfig(
+        mode="launch",
         in_process=False,
-        ipc_transport=None,  # IPC is now always enabled, let it default
+        debuggee=DebuggeeConfig(program="sample.py", args=[], stop_on_entry=False, no_debug=False),
     )
+
+    await dbg.launch(cfg)
 
     # We should have exactly one start invocation captured
     assert captured_args, "debuggee process was not started"

@@ -49,7 +49,7 @@ Legend
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
 - ❌ Runtime watchpoints (trigger on write/read) — planned (Phase 3)
 
-Reference: see doc/Breakpoints Controller — `doc/BREAKPOINTS_CONTROLLER.md` for design notes and Phase 1 status.
+Reference: see Architecture — [Breakpoints Controller](architecture/breakpoints_controller.md) for design notes and Phase 1 status.
 
 ---
 
@@ -70,7 +70,7 @@ Reference: see doc/Breakpoints Controller — `doc/BREAKPOINTS_CONTROLLER.md` fo
 ### Expression evaluation
 - 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
 - ❌ Set expression / expression-backed watchpoints
-- ❌ Completions / auto-complete for expression editors (planned)
+- ✅ Completions / auto-complete for expression editors
 
 Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `doc/architecture/frame-eval/implementation.md`, `doc/architecture/frame-eval/performance.md`.
 
@@ -87,17 +87,17 @@ Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `do
 
 ## Implementation status — short summary
 
-Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Work remains on higher-level ergonomics: expression completions, advanced breakpoint workflows (runtime watchpoints), source navigation UX and profiling integration.
+Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are now implemented. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX and profiling integration.
 
 ---
 
 ## Priorities & roadmap (high-level)
 
 Phase 1 — core polish (current)
-- Improve expression evaluation ergonomics (completions, better error messages). See: `doc/getting-started/frame-eval/index.md` and `doc/architecture/frame-eval/implementation.md`.
+- ✅ Improve expression evaluation ergonomics (completions implemented, evaluate works). See: `doc/getting-started/frame-eval/index.md` and `doc/architecture/frame-eval/implementation.md`.
 
 Phase 2 — enhanced debugging experience (in-progress)
-- Improve source navigation & request-level support (goto targets, richer `source` handling). Tests & partial support already present (see `doc/BREAKPOINTS_CONTROLLER.md` and existing adapter handlers).
+- Improve source navigation & request-level support (goto targets, richer `source` handling). Tests & partial support already present (see `architecture/breakpoints_controller.md` and existing adapter handlers).
 - Expand variable presentation semantics and UI hints (`presentationHint` coverage).
 
 Phase 3 — advanced features (future)
@@ -109,7 +109,7 @@ Phase 3 — advanced features (future)
 
 ## Tests & coverage snapshot
 - Tests exercise core DAP features extensively (adapter + launcher + core components).
-- Areas flagged for additional unit/integration coverage: expression completions, some breakpoint edge cases, and runtime watchpoint behaviors.
+- Areas flagged for additional unit/integration coverage: some breakpoint edge cases and runtime watchpoint behaviors.
 
 ---
 
@@ -133,7 +133,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
   - Supports stop-on-entry
  - ✅ **Hit Conditions**: Break after N hits (implemented via BreakpointResolver)
- - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md))
+ - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](architecture/breakpoints_controller.md))
 - ✅ **Restart**: Restart the debugged program
  - ✅ **Set Function Breakpoints**: Set breakpoints on function names (adapter request handler implemented)
  - 🟡 **Function Breakpoint Conditions**: Conditions for function breakpoints (partial — resolver supports them; adapter/tests coverage varies)
@@ -146,16 +146,16 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ✅ **Step In**: Step into function calls
 ### Phase 1: Complete Basic Features (Current Priority)
 - Implement attach, restart (completed)
-- Continue improving expression evaluation (partial — evaluate works, "completions" still outstanding). See [Frame Evaluation user guide](getting-started/frame-eval/index.md) and [implementation notes](architecture/frame-eval/implementation.md).
+- ✅ Expression evaluation with completions implemented. See [Frame Evaluation user guide](getting-started/frame-eval/index.md) and [implementation notes](architecture/frame-eval/implementation.md).
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
 ### Phase 2: Enhanced Debugging Experience (in-progress)
-- Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md) for navigation helpers.
-- Add expression completions / auto-complete (work-in-progress)
+- Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](architecture/breakpoints_controller.md) for navigation helpers.
+- ✅ Add expression completions / auto-complete (implemented)
 - Improve variable presentation (presentation hints already present; expand coverage and UI semantics)
 ---
 ### Phase 3: Advanced Features (future)
 - Reverse debugging capabilities (not implemented)
-- Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain) — see [Breakpoints Controller](BREAKPOINTS_CONTROLLER.md) and protocol `dataBreakpointInfo`/`setDataBreakpoints` handling.
+ - Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain) — see [Breakpoints Controller](architecture/breakpoints_controller.md) and protocol `dataBreakpointInfo`/`setDataBreakpoints` handling.
 - Performance profiling integration (future work)
 - ✅ **Set Breakpoints**: Set/remove breakpoints in source files
   - Basic line breakpoints
@@ -236,11 +236,11 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
       ```
 
 ### Expression Evaluation
-- 🟡 **Evaluate**: Evaluate expressions in debug context
+- ✅ **Evaluate**: Evaluate expressions in debug context
   - Basic expression evaluation
   - Supports different contexts (hover, watch, etc.)
 - ❌ **Set Expression**: Set expressions for watchpoints
-- ❌ **Completions**: Auto-complete for expressions
+- ✅ **Completions**: Auto-complete for expressions
 
 ---
 
@@ -277,7 +277,7 @@ Many of the essential DAP features are implemented and covered by tests (program
 ## Priority Implementation Order
 
 ### High Priority (Essential for the remaining core gaps)
-1. **Completions** - Expression auto-completion (improves evaluate UX)
+1. ✅ **Completions** - Expression auto-completion (implemented)
 2. **Source References** - Support source locations that are not direct filesystem paths
 
 ### Medium Priority (Enhanced debugging experience)
@@ -318,11 +318,11 @@ Current test coverage for debugger features:
 ## Future Development Roadmap
 
 ### Phase 1: Complete Basic Features (Current Priority)
-- Continue improving expression evaluation (partial — evaluate works, "completions" still outstanding)
+- ✅ Expression evaluation with completions implemented
 
 ### Phase 2: Enhanced Debugging Experience (in-progress)
 - Complete source code requests & navigation (source content requests, goto targets, source references) — note: "Loaded Sources" and basic module listing are implemented, so this work focuses on request-level support and navigation helpers.
-- Add expression completions / auto-complete (work-in-progress)
+- ✅ Add expression completions / auto-complete (implemented)
 - Improve variable presentation (presentation hints already present; expand coverage and UI semantics)
 
 ### Phase 3: Advanced Features (future)

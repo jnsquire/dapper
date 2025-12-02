@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from dapper.protocol.data_breakpoints import SetDataBreakpointsResponse
     from dapper.protocol.requests import AttachRequest
     from dapper.protocol.requests import AttachResponse
+    from dapper.protocol.requests import CompletionsRequest
+    from dapper.protocol.requests import CompletionsResponse
     from dapper.protocol.requests import ConfigurationDoneRequest
     from dapper.protocol.requests import ConfigurationDoneResponse
     from dapper.protocol.requests import ContinueRequest
@@ -878,4 +880,45 @@ class RequestHandler:
                 "success": False,
                 "command": "exceptionInfo",
                 "message": f"exceptionInfo failed: {e!s}",
+            }
+
+    async def _handle_completions(
+        self, request: CompletionsRequest
+    ) -> CompletionsResponse:
+        """Handle completions request for expression auto-complete.
+
+        Provides intelligent completions for the debug console and watch
+        expressions based on runtime frame context when available.
+        """
+        try:
+            args = request["arguments"]
+            text = args["text"]
+            column = args["column"]
+            frame_id = args.get("frameId")
+            line = args.get("line", 1)
+
+            body = await self.server.debugger.completions(
+                text=text,
+                column=column,
+                frame_id=frame_id,
+                line=line,
+            )
+
+            return {
+                "type": "response",
+                "seq": 0,
+                "request_seq": request["seq"],
+                "success": True,
+                "command": "completions",
+                "body": body,
+            }
+        except Exception as e:
+            logger.exception("Error handling completions request")
+            return {
+                "type": "response",
+                "seq": 0,
+                "request_seq": request["seq"],
+                "success": False,
+                "command": "completions",
+                "message": f"Completions failed: {e!s}",
             }

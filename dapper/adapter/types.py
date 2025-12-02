@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
 from typing import TypedDict
 
-from typing_extensions import NotRequired  # noqa: TC002
+from dapper.protocol.requests import CompletionItem
+from dapper.protocol.requests import CompletionsResponseBody
+
+if TYPE_CHECKING:
+    from typing_extensions import NotRequired
 
 __all__ = [
     "BreakpointDict",
     "BreakpointResponse",
+    "CompletionItem",
     "CompletionsResponseBody",
     "DAPErrorResponse",
     "DAPRequest",
@@ -69,12 +75,6 @@ class DAPRequest(TypedDict):
 # ---------------------------------------------------------------------------
 # Response Body Types (local definitions for types not in protocol module files)
 # ---------------------------------------------------------------------------
-
-
-class CompletionsResponseBody(TypedDict):
-    """Body for completions response."""
-
-    targets: list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------

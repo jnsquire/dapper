@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
 
+    from dapper.adapter.types import CompletionsResponseBody
     from dapper.config import DapperConfig
     from dapper.ipc.connections.base import ConnectionBase
     from dapper.protocol.capabilities import ExceptionFilterOptions
@@ -351,8 +352,8 @@ class PyDebugger:
         self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
 
     async def launch(self, config: DapperConfig) -> None:
-        """Launch a new Python program for debugging using centralized configuration."""
-        # Validate configuration
+        """Launch a new Python program for debugging using centralized configuration.
+        """
         config.validate()
         
         if self.program_running:
@@ -1097,6 +1098,33 @@ class PyDebugger:
             "type": "string",
             "variablesReference": 0,
         }
+
+    async def completions(
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
+    ) -> CompletionsResponseBody:
+        """Get expression completions for the debug console.
+
+        Provides intelligent auto-completions based on runtime frame context
+        when stopped at a breakpoint. Falls back to static analysis when
+        runtime introspection is not available.
+
+        Args:
+            text: The input text to complete (may be multi-line)
+            column: Cursor position within the text (1-based, UTF-16 code units)
+            frame_id: Stack frame for scope context (None = global scope)
+            line: Line number within text (1-based, default 1)
+
+        Returns:
+            CompletionsResponseBody with list of completion targets
+        """
+        if self._backend is not None:
+            result = await self._backend.completions(text, column, frame_id, line)
+            return cast("CompletionsResponseBody", result)
+        return {"targets": []}
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread"""

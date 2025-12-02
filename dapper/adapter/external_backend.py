@@ -133,6 +133,7 @@ class ExternalProcessBackend(BaseBackend):
             "get_variables": self._handle_get_variables,
             "set_variable": self._handle_set_variable,
             "evaluate": self._handle_evaluate,
+            "completions": self._handle_completions,
             "exception_info": self._handle_exception_info,
             "configuration_done": self._handle_configuration_done,
             "terminate": self._handle_terminate,
@@ -260,6 +261,26 @@ class ExternalProcessBackend(BaseBackend):
             "type": "string",
             "variablesReference": 0,
         })
+
+    async def _handle_completions(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle completions command.
+
+        Sends a completions request to the external debuggee process.
+        Falls back to empty completions if the external process doesn't
+        support completions or is unavailable.
+        """
+        cmd = {
+            "command": "completions",
+            "arguments": {
+                "text": args["text"],
+                "column": args["column"],
+                "frameId": args.get("frame_id"),
+                "line": args.get("line", 1),
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        body = (response or {}).get("body", {"targets": []})
+        return body if "targets" in body else {"targets": []}
 
     async def _handle_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle exception_info command."""

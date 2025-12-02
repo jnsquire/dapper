@@ -42,7 +42,8 @@ Binary framing (default) wraps each message in an 8-byte header containing messa
 
 Request wiring:
 
-- Server passes optional `ipcTransport`/`ipcPipeName` to `PyDebugger.launch(...)`. IPC is always enabled.
+- Server builds a `DapperConfig` from the DAP `launch` request and calls `PyDebugger.launch(config)`.
+   IPC-related routing / preferences (for example `ipcTransport` or `ipcPipeName`) are carried on `config.ipc` and passed through the configuration object instead of legacy keyword args.
 - The launcher requires `--ipc` (mandatory) and connects accordingly. Binary framing is the default.
 
 Resource management:
@@ -195,7 +196,7 @@ In-process mode keeps the debugged program (debugee) on the main thread and runs
    - `_send_command_to_debuggee(...)` maps DAP commands directly to `InProcessDebugger` methods in in-process mode; subprocess IPC path remains for the default mode.
 
 - `dapper/server.py` — request handlers
-   - Passes `inProcess` from the `launch` request to `PyDebugger.launch(...)`.
+   - Passes `inProcess` from the `launch` request via `DapperConfig.in_process` to `PyDebugger.launch(config)`.
    - Execution flow handlers accept legacy expectations used by tests (`next` maps to `step_over` when available; `stepIn` passes optional `targetId`).
    - `configurationDone` awaits only awaitable results (test doubles may return non-awaitables).
 
@@ -389,24 +390,3 @@ bridge.auto_integrate_debugger(debugger_instance)
 - Works across Python 3.9-3.13
 - Handles edge cases (gevent, threading, etc.)
 - Maintains backward compatibility with existing debugging workflows
-
-### Future Enhancements
-
-#### Planned Optimizations
-
-1. **Advanced Bytecode Analysis**:
-   - Static analysis for more precise breakpoint detection
-   - Cross-module optimization opportunities
-   - JIT compilation for hot debugging paths
-
-2. **Enhanced Caching**:
-   - Persistent breakpoint caching across sessions
-   - Predictive breakpoint loading
-   - Distributed caching for multi-process debugging
-
-3. **Performance Monitoring**:
-   - Real-time performance metrics
-   - Adaptive optimization based on usage patterns
-   - Integration with profiling tools
-
----

@@ -38,7 +38,8 @@ Binary framing (default) wraps each message in an 8-byte header containing messa
 
 Request wiring:
 
-- Server passes optional `ipcTransport`/`ipcPipeName` to `PyDebugger.launch(...)`. IPC is always enabled.
+- Server builds a `DapperConfig` from the incoming DAP `launch` request and calls `PyDebugger.launch(config)`.
+	IPC preferences (for example `ipcTransport` and `ipcPipeName`) are set on `config.ipc` rather than passed as individual keyword args.
 - The launcher requires `--ipc` (mandatory) and connects accordingly. Binary framing is the default.
 
 Resource management:

@@ -88,6 +88,7 @@ class InProcessBackend(BaseBackend):
             "get_variables": self._handle_get_variables,
             "set_variable": self._handle_set_variable,
             "evaluate": self._handle_evaluate,
+            "completions": self._handle_completions,
             "exception_info": self._handle_exception_info,
             "configuration_done": self._handle_configuration_done,
             "terminate": self._handle_terminate,
@@ -173,6 +174,15 @@ class InProcessBackend(BaseBackend):
         """Handle evaluate command."""
         return cast("dict", self._bridge.evaluate(
             args["expression"], args.get("frame_id"), args.get("context")
+        ))
+
+    async def _handle_completions(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle completions command for expression auto-complete."""
+        return cast("dict", self._bridge.completions(
+            args["text"],
+            args["column"],
+            args.get("frame_id"),
+            args.get("line", 1),
         ))
 
     async def _handle_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:

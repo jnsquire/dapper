@@ -13,3 +13,6 @@ Core architecture pages
 	- [Implementation & design notes](./frame-eval/implementation.md)
 	- [Performance & benchmarks](./frame-eval/performance.md)
 	- [Build & developer guide](./frame-eval/build-guide.md)
+
+- Breakpoints & controller — design and responsibilities for breakpoint handling and bookkeeping:
+  - [Breakpoints Controller](./breakpoints_controller.md)
