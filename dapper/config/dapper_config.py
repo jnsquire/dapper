@@ -9,10 +9,18 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
+from typing import TypeVar
 
 from dapper.errors import ConfigurationError
+
+if TYPE_CHECKING:
+    from dapper.protocol.requests import AttachRequest
+    from dapper.protocol.requests import LaunchRequest
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -66,47 +74,65 @@ class DapperConfig:
     timeout_seconds: int = 30
     
     @classmethod
-    def from_launch_request(cls, request: dict[str, Any]) -> DapperConfig:
+    def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
         """Create config from launch request arguments."""
         args = request.get("arguments", {})
+
+        def _get(key: str, default: T) -> T:
+            # Prefer value present under the canonical camelCase key; if value is
+            # explicitly None, fall back to default. Type is inferred from default.
+            if key in args:
+                v = args.get(key)
+                return default if v is None else v  # type: ignore[return-value]
+            return default
         
         # Debuggee configuration
         debuggee = DebuggeeConfig(
-            program=args.get("program", ""),
-            args=args.get("args", []),
-            stop_on_entry=args.get("stopOnEntry", False),
-            no_debug=args.get("noDebug", False),
-            working_directory=args.get("cwd"),
-            environment=args.get("env", {}),
+            program=_get("program", default=""),
+            args=_get("args", default=[]),
+            stop_on_entry=_get("stopOnEntry", default=False),
+            no_debug=_get("noDebug", default=False),
+            working_directory=_get("cwd", default=None),
+            environment=_get("env", default={}),
         )
         
         # IPC configuration
+        # Type: ignore needed because Literal type cannot be perfectly inferred from string default
         ipc = IPCConfig(
-            transport=args.get("ipcTransport", "auto"),
-            pipe_name=args.get("ipcPipeName"),
-            use_binary=args.get("useBinaryIpc", True),
+            transport=_get("ipcTransport", default="auto"),
+            pipe_name=_get("ipcPipeName", default=None),
+            use_binary=_get("useBinaryIpc", default=True),
         )
         
         return cls(
             mode="launch",
-            in_process=args.get("inProcess", False),
+            in_process=_get("inProcess", default=False),
             debuggee=debuggee,
             ipc=ipc,
         )
     
     @classmethod
-    def from_attach_request(cls, request: dict[str, Any]) -> DapperConfig:
+    def from_attach_request(cls, request: AttachRequest) -> DapperConfig:
         """Create config from attach request arguments."""
         args = request.get("arguments", {})
+
+        def _get_attach(key: str, default: T) -> T:
+            # Normalize to the same camelCase-only convention for attach args.
+            # Type is inferred from default.
+            if key in args:
+                v = args.get(key)
+                return default if v is None else v  # type: ignore[return-value]
+            return default
         
         # IPC configuration for attach
+        # Type: ignore needed because Literal type cannot be perfectly inferred from string default
         ipc = IPCConfig(
-            transport=args.get("ipcTransport", "auto"),
-            host=args.get("ipcHost", "127.0.0.1"),
-            port=args.get("ipcPort"),
-            path=args.get("ipcPath"),
-            pipe_name=args.get("ipcPipeName"),
-            use_binary=args.get("useBinaryIpc", True),
+            transport=_get_attach("ipcTransport", default="auto"),
+            host=_get_attach("ipcHost", default="127.0.0.1"),
+            port=_get_attach("ipcPort", default=None),
+            path=_get_attach("ipcPath", default=None),
+            pipe_name=_get_attach("ipcPipeName", default=None),
+            use_binary=_get_attach("useBinaryIpc", default=True),
         )
         
         return cls(
@@ -155,29 +181,29 @@ class DapperConfig:
         kwargs = {
             "program": self.debuggee.program,
             "args": self.debuggee.args,
-            "stop_on_entry": self.debuggee.stop_on_entry,
-            "no_debug": self.debuggee.no_debug,
-            "in_process": self.in_process,
-            "use_binary_ipc": self.ipc.use_binary,
+            "stopOnEntry": self.debuggee.stop_on_entry,
+            "noDebug": self.debuggee.no_debug,
+            "inProcess": self.in_process,
+            "useBinaryIpc": self.ipc.use_binary,
         }
         
         # Add IPC-specific kwargs
         if self.ipc.transport != "auto":
-            kwargs["ipc_transport"] = self.ipc.transport
+            kwargs["ipcTransport"] = self.ipc.transport
         if self.ipc.pipe_name:
-            kwargs["ipc_pipe_name"] = self.ipc.pipe_name
+            kwargs["ipcPipeName"] = self.ipc.pipe_name
         
         return kwargs
     
     def to_attach_kwargs(self) -> dict[str, Any]:
         """Convert to keyword arguments for debugger.attach()."""
         return {
-            "use_ipc": True,
-            "ipc_transport": self.ipc.transport,
-            "ipc_host": self.ipc.host,
-            "ipc_port": self.ipc.port,
-            "ipc_path": self.ipc.path,
-            "ipc_pipe_name": self.ipc.pipe_name,
+            "useIpc": True,
+            "ipcTransport": self.ipc.transport,
+            "ipcHost": self.ipc.host,
+            "ipcPort": self.ipc.port,
+            "ipcPath": self.ipc.path,
+            "ipcPipeName": self.ipc.pipe_name,
         }
 
 

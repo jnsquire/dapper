@@ -1,6 +1,7 @@
 """Tests for the centralized Dapper configuration system."""
 
 import os
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -8,6 +9,10 @@ from dapper.config import DapperConfig
 from dapper.config import DebuggeeConfig
 from dapper.config import IPCConfig
 from dapper.errors import ConfigurationError
+
+if TYPE_CHECKING:
+    from dapper.protocol.requests import AttachRequest
+    from dapper.protocol.requests import LaunchRequest
         
 
 class TestDapperConfig:
@@ -28,12 +33,16 @@ class TestDapperConfig:
 
     def test_from_launch_request_minimal(self) -> None:
         """Test creating config from minimal launch request."""
-        request = {
+        request: LaunchRequest = {
+            "seq": 1,
+            "command": "launch",
+            "type": "request",
             "arguments": {
                 "program": "/path/to/program.py",
+                "noDebug": False,
+                "args": []
             }
         }
-        
         config = DapperConfig.from_launch_request(request)
         
         assert config.mode == "launch"
@@ -45,21 +54,23 @@ class TestDapperConfig:
 
     def test_from_launch_request_full(self) -> None:
         """Test creating config from full launch request."""
-        request = {
+        request: LaunchRequest = {
+            "seq": 1,
+            "command": "launch",
+            "type": "request",
             "arguments": {
                 "program": "/path/to/program.py",
                 "args": ["--verbose", "--debug"],
-                "stopOnEntry": True,
                 "noDebug": False,
+                "stopOnEntry": True,
                 "inProcess": True,
                 "useBinaryIpc": False,
                 "ipcTransport": "tcp",
                 "ipcPipeName": "test-pipe",
                 "cwd": "/working/dir",
-                "env": {"PATH": "/custom/path"},
+                "env": {"PATH": "/custom/path"}
             }
         }
-        
         config = DapperConfig.from_launch_request(request)
         
         assert config.mode == "launch"
@@ -76,7 +87,10 @@ class TestDapperConfig:
 
     def test_from_attach_request(self) -> None:
         """Test creating config from attach request."""
-        request = {
+        request: AttachRequest = {
+            "seq": 1,
+            "command": "attach",
+            "type": "request",
             "arguments": {
                 "ipcTransport": "tcp",
                 "ipcHost": "localhost",
@@ -84,9 +98,9 @@ class TestDapperConfig:
                 "useBinaryIpc": True,
             }
         }
-        
+
         config = DapperConfig.from_attach_request(request)
-        
+
         assert config.mode == "attach"
         assert config.ipc.transport == "tcp"
         assert config.ipc.host == "localhost"
@@ -151,12 +165,12 @@ class TestDapperConfig:
         expected = {
             "program": "test.py",
             "args": ["--verbose"],
-            "stop_on_entry": True,
-            "no_debug": False,
-            "in_process": True,
-            "use_binary_ipc": False,
-            "ipc_transport": "tcp",
-            "ipc_pipe_name": "test-pipe",
+            "stopOnEntry": True,
+            "noDebug": False,
+            "inProcess": True,
+            "useBinaryIpc": False,
+            "ipcTransport": "tcp",
+            "ipcPipeName": "test-pipe",
         }
         
         assert kwargs == expected
@@ -173,12 +187,12 @@ class TestDapperConfig:
         kwargs = config.to_attach_kwargs()
         
         expected = {
-            "use_ipc": True,
-            "ipc_transport": "tcp",
-            "ipc_host": "localhost",
-            "ipc_port": 4711,
-            "ipc_path": "/tmp/socket",
-            "ipc_pipe_name": "test-pipe",
+            "useIpc": True,
+            "ipcTransport": "tcp",
+            "ipcHost": "localhost",
+            "ipcPort": 4711,
+            "ipcPath": "/tmp/socket",
+            "ipcPipeName": "test-pipe",
         }
         
         assert kwargs == expected

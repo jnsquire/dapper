@@ -84,15 +84,27 @@ class ConfigurationDoneResponse(TypedDict):
     success: bool
 
 
-# Launch/Attach/Disconnect/Terminate and many other request/response types
-# (these are copied from the original monolithic module and grouped here).
+class LaunchRequestArguments(TypedDict, total=False):
+    """Arguments for the `launch` request.
 
-# Launch
-class LaunchRequestArguments(TypedDict):
+    DAP spec allows implementation-specific fields; make the common fields
+    optional so clients can supply only the subset they need. Also include
+    commonly-used adapter-level extensions as NotRequired fields so tests / callers using either
+    naming style type-check correctly.
+    """
     program: str
     args: NotRequired[list[str]]
-    noDebug: bool
+    noDebug: NotRequired[bool]
     __restart: NotRequired[Any]
+
+    # adapter-specific optional fields (camelCase only)
+    stopOnEntry: NotRequired[bool]
+    inProcess: NotRequired[bool]
+    useBinaryIpc: NotRequired[bool]
+    ipcTransport: NotRequired[str]
+    ipcPipeName: NotRequired[str]
+    cwd: NotRequired[str]
+    env: NotRequired[dict[str, str]]
 
 
 class LaunchRequest(TypedDict):
@@ -113,8 +125,21 @@ class LaunchResponse(TypedDict):
 
 
 # Attach
-class AttachRequestArguments(TypedDict):
+class AttachRequestArguments(TypedDict, total=False):
+    """Arguments for the `attach` request.
+    
+    DAP spec allows implementation-specific fields; adapter may include
+    IPC configuration fields (all optional via total=False).
+    """
     __restart: NotRequired[Any]
+
+    # adapter-specific IPC fields (camelCase only)
+    ipcTransport: NotRequired[str]
+    ipcHost: NotRequired[str]
+    ipcPort: NotRequired[int]
+    ipcPath: NotRequired[str]
+    ipcPipeName: NotRequired[str]
+    useBinaryIpc: NotRequired[bool]
 
 
 class AttachRequest(TypedDict):
