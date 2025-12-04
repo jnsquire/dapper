@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-from types import FrameType
-from unittest.mock import MagicMock
-
 from dapper.core.breakpoint_resolver import BreakpointMeta
 from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.breakpoint_resolver import ResolveResult
 from dapper.core.breakpoint_resolver import get_resolver
+from tests.mocks import make_real_frame
 
 
-def make_frame(filename: str, lineno: int, locals_dict: dict, globals_dict: dict | None = None):
-    """Create a mock frame for testing."""
-    frame = MagicMock(spec=FrameType)
-    frame.f_code.co_filename = filename
-    frame.f_lineno = lineno
-    frame.f_locals = locals_dict
-    frame.f_globals = globals_dict or {"__builtins__": __builtins__}
+def make_frame(_filename: str, _lineno: int, locals_dict: dict, globals_dict: dict | None = None):
+    # Use real paused frame with given locals for testing.
+    frame = make_real_frame(locals_dict)
+    # set f_globals if provided
+    if globals_dict is not None:
+        frame.f_globals.clear()
+        frame.f_globals.update(globals_dict)
     return frame
 
 

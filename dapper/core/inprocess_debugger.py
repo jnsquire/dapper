@@ -9,6 +9,7 @@ stdout. It is intended to be called by `PyDebugger` directly when running in
 
 from __future__ import annotations
 
+import builtins
 import inspect
 import logging
 import threading
@@ -375,7 +376,9 @@ class InProcessDebugger:
             )
         else:
             # Fallback: use builtins only
-            import builtins
+            targets = self._get_runtime_completions(
+                expr_to_complete, {}, vars(builtins)
+            )
             targets = self._get_runtime_completions(
                 expr_to_complete, {}, vars(builtins)
             )
@@ -432,8 +435,6 @@ class InProcessDebugger:
         Returns:
             List of completion items
         """
-        import builtins
-
         targets: list[CompletionItem] = []
 
         if "." in expr:
@@ -537,7 +538,7 @@ class InProcessDebugger:
 
         return item
 
-    def _infer_completion_type(self, obj: Any) -> str:
+    def _infer_completion_type(self, obj: Any) -> str:  # noqa: PLR0911
         """Infer DAP completion item type from Python object."""
         if obj is None:
             return "value"

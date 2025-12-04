@@ -38,6 +38,9 @@ class DataBreakpointInfoResponseBody(TypedDict, total=False):
     description: str
     accessTypes: list[str]  # Supported access types (currently only ['write'])
     canPersist: bool
+    # Optional extra info provided by some adapters/debuggers
+    type: NotRequired[str]
+    value: NotRequired[str]
 
 
 class DataBreakpointInfoResponse(TypedDict):

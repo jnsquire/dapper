@@ -11,7 +11,6 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from types import FrameType
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -20,6 +19,7 @@ import pytest
 from dapper.adapter.server import DebugAdapterServer
 from dapper.core.debug_utils import format_log_message as _format_log_message
 from dapper.core.debugger_bdb import DebuggerBDB
+from tests.mocks import make_real_frame
 
 from .test_server import AsyncCallRecorder
 from .test_server import MockConnection
@@ -30,18 +30,11 @@ class TestLogMessageFormatting(unittest.TestCase):
 
     def setUp(self):
         """Set up test frame with some variables"""
-        # Create a mock frame with test variables
-        self.frame = MagicMock(spec=FrameType)
-        self.frame.f_locals = {
-            "x": 42,
-            "name": "test",
-            "items": [1, 2, 3],
-            "data": {"key": "value"},
-        }
-        self.frame.f_globals = {
-            "global_var": "global_value",
-            "__builtins__": __builtins__,
-        }
+        # Create a real frame with test variables
+        self.frame = make_real_frame(
+            {"x": 42, "name": "test", "items": [1, 2, 3], "data": {"key": "value"}},
+            globals_map={"global_var": "global_value", "__builtins__": __builtins__},
+        )
 
     def test_simple_variable_interpolation(self):
         """Test basic variable interpolation"""
@@ -153,12 +146,8 @@ print("Done")
             # Set the breakpoint
             self.debugger.set_break(test_file, 4)
 
-            # Create a mock frame at line 4
-            frame = MagicMock(spec=FrameType)
-            frame.f_code.co_filename = test_file
-            frame.f_lineno = 4
-            frame.f_locals = {"x": 10, "y": 20, "result": 30}
-            frame.f_globals = {"__builtins__": __builtins__}
+            # Create a real frame at line 4
+            frame = make_real_frame({"x": 10, "y": 20, "result": 30}, filename=test_file, lineno=4)
 
             # Mock the continue method to track if it was called
             self.debugger.set_continue = MagicMock()
@@ -199,16 +188,8 @@ for i in range(5):
 
             self.debugger.set_break(test_file, 3, cond="i > 2")
 
-            # Create mock frame with i = 1 (condition not met)
-            frame = MagicMock(spec=FrameType)
-            frame.f_code.co_filename = test_file
-            frame.f_lineno = 3
-            frame.f_locals = {"i": 1, "x": 2}
-            frame.f_globals = {"__builtins__": __builtins__}
-
-            # BDB should handle the condition, but let's simulate it passing
-            # by only testing when condition is met
-            frame.f_locals = {"i": 3, "x": 6}  # Condition met
+            # Create real frame with condition met (i = 3)
+            frame = make_real_frame({"i": 3, "x": 6}, filename=test_file, lineno=3)
 
             self.debugger.set_continue = MagicMock()
             self.debugger.user_line(frame)
@@ -245,11 +226,7 @@ for i in range(10):
 
             # Simulate multiple hits
             for hit_count in range(1, 7):  # Hits 1-6
-                frame = MagicMock(spec=FrameType)
-                frame.f_code.co_filename = test_file
-                frame.f_lineno = 3
-                frame.f_locals = {"i": hit_count - 1, "x": hit_count - 1}
-                frame.f_globals = {"__builtins__": __builtins__}
+                frame = make_real_frame({"i": hit_count - 1, "x": hit_count - 1}, filename=test_file, lineno=3)
 
                 # Manually set the hit count in metadata
                 meta = self.debugger.breakpoint_meta.get((test_file, 3), {})
@@ -286,11 +263,7 @@ y = None  # Line 3
 
             self.debugger.set_break(test_file, 3)
 
-            frame = MagicMock(spec=FrameType)
-            frame.f_code.co_filename = test_file
-            frame.f_lineno = 3
-            frame.f_locals = {"x": 10, "y": None}
-            frame.f_globals = {"__builtins__": __builtins__}
+            frame = make_real_frame({"x": 10, "y": None}, filename=test_file, lineno=3)
 
             self.debugger.set_continue = MagicMock()
             self.debugger.user_line(frame)
@@ -326,11 +299,8 @@ class TestFunctionLogPoints(unittest.TestCase):
             }
         }
 
-        # Create a mock frame for function call
-        frame = MagicMock(spec=FrameType)
-        frame.f_code.co_name = function_name
-        frame.f_locals = {"args": "(1, 2)", "function_name": function_name}
-        frame.f_globals = {"__builtins__": __builtins__}
+        # Create a real frame for function call
+        frame = make_real_frame({"args": "(1, 2)", "function_name": function_name}, func_name=function_name)
 
         self.debugger.set_continue = MagicMock()
 

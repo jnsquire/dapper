@@ -15,7 +15,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass
@@ -99,7 +103,7 @@ class DataBreakpointState:
         """Check if a specific variable is being watched."""
         return name in self.watch_names
 
-    def check_for_changes(self, frame_id: int, current_locals: dict[str, Any]) -> str | None:
+    def check_for_changes(self, frame_id: int, current_locals: Mapping[str, Any]) -> str | None:
         """Check for changes in watched variables and return changed name if any.
 
         Args:
@@ -141,7 +145,7 @@ class DataBreakpointState:
 
         return None
 
-    def update_snapshots(self, frame_id: int, current_locals: dict[str, Any]) -> None:
+    def update_snapshots(self, frame_id: int, current_locals: Mapping[str, Any]) -> None:
         """Update snapshots of watched variable values.
 
         Args:

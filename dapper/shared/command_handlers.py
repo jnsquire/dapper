@@ -32,17 +32,38 @@ from dapper.shared import debug_shared as _d_shared
 from dapper.shared.debug_shared import state
 
 if TYPE_CHECKING:
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoArguments
+
+    # Data breakpoints are defined separately
+    from dapper.protocol.data_breakpoints import SetDataBreakpointsArguments
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.requests import ContinueArguments
+    from dapper.protocol.requests import EvaluateArguments
+    from dapper.protocol.requests import ExceptionInfoArguments
     from dapper.protocol.requests import Module
+    from dapper.protocol.requests import NextArguments
+    from dapper.protocol.requests import PauseArguments
+    from dapper.protocol.requests import ScopesArguments
+    from dapper.protocol.requests import SetBreakpointsArguments
+    from dapper.protocol.requests import SetExceptionBreakpointsArguments
     from dapper.protocol.requests import SetExceptionBreakpointsResponse
     from dapper.protocol.requests import SetFunctionBreakpointsArguments
+    from dapper.protocol.requests import SetVariableArguments
+    from dapper.protocol.requests import SourceArguments
+    from dapper.protocol.requests import StackTraceArguments
+    from dapper.protocol.requests import StepInArguments
+    from dapper.protocol.requests import StepOutArguments
+    from dapper.protocol.requests import VariablesArguments
     from dapper.protocol.structures import Source
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
 _CONVERSION_FAILED = object()
 _convert_value_with_context_override: Any | None = None
+# Maximum string length for enriched repr values in dataBreakpointInfo
+MAX_VALUE_REPR_LEN = 200
+_TRUNC_SUFFIX = "..."
 
 # =============================================================================
 # Command Registry
@@ -70,8 +91,17 @@ def handle_debug_command(command: dict[str, Any]) -> None:
     """
     cmd = command.get("command")
     arguments = command.get("arguments", {})
+    # Ensure the command name is a string before looking up the handler
+    if not isinstance(cmd, str):
+        send_debug_message(
+            "response",
+            request_seq=command.get("seq"),
+            success=False,
+            message=f"Invalid command: {cmd!r}",
+        )
+        return
 
-    # Look up the command handler in the mapping table
+    # Look up the command handler in the mapping table and dispatch
     handler_func = COMMAND_HANDLERS.get(cmd)
     if handler_func is not None:
         handler_func(arguments)
@@ -452,7 +482,9 @@ def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
 # These are the canonical implementations that registered handlers call.
 # =============================================================================
 
-def _handle_set_breakpoints_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_set_breakpoints_impl(
+    dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setBreakpoints command implementation."""
     arguments = arguments or {}
     source = arguments.get("source", {})
@@ -556,7 +588,7 @@ def _handle_set_function_breakpoints_impl(dbg: DebuggerLike, arguments: SetFunct
 
 
 def _handle_set_exception_breakpoints_impl(
-    dbg: DebuggerLike, arguments: dict[str, Any]
+    dbg: DebuggerLike, arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None
 ) -> SetExceptionBreakpointsResponse | None:
     """Handle setExceptionBreakpoints command implementation."""
     arguments = arguments or {}
@@ -582,7 +614,9 @@ def _handle_set_exception_breakpoints_impl(
     return cast("SetExceptionBreakpointsResponse", response)
 
 
-def _handle_continue_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_continue_impl(
+    dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None
+):
     """Handle continue command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -593,7 +627,9 @@ def _handle_continue_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_continue()
 
 
-def _handle_next_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_next_impl(
+    dbg: DebuggerLike, arguments: NextArguments | dict[str, Any] | None
+):
     """Handle next command (step over) implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -604,7 +640,9 @@ def _handle_next_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_next(dbg.current_frame)
 
 
-def _handle_step_in_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_step_in_impl(
+    dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None
+):
     """Handle stepIn command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -614,7 +652,9 @@ def _handle_step_in_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
         dbg.set_step()
 
 
-def _handle_step_out_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_step_out_impl(
+    dbg: DebuggerLike, arguments: StepOutArguments | dict[str, Any] | None
+):
     """Handle stepOut command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -625,13 +665,17 @@ def _handle_step_out_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_return(dbg.current_frame)
 
 
-def _handle_pause_impl(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_pause_impl(
+    _dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None
+):
     """Handle pause command implementation."""
     arguments = arguments or {}
     arguments.get("threadId")
 
 
-def _handle_stack_trace_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_stack_trace_impl(
+    dbg: DebuggerLike, arguments: StackTraceArguments | dict[str, Any] | None
+):
     """Handle stackTrace command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -700,7 +744,9 @@ def _handle_threads_impl(dbg: DebuggerLike, _arguments: dict[str, Any] | None = 
     return {"success": True, "body": {"threads": threads}}
 
 
-def _handle_scopes_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_scopes_impl(
+    dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any] | None
+):
     """Handle scopes command implementation."""
     arguments = arguments or {}
     frame_id = arguments.get("frameId")
@@ -741,7 +787,9 @@ def _handle_scopes_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": True, "body": {"scopes": scopes}}
 
 
-def _handle_variables_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_variables_impl(
+    dbg: DebuggerLike, arguments: VariablesArguments | dict[str, Any] | None
+):
     """Handle variables command implementation."""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
@@ -765,7 +813,9 @@ def _handle_variables_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": True, "body": {"variables": variables}}
 
 
-def _handle_set_variable_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_set_variable_impl(
+    dbg: DebuggerLike, arguments: SetVariableArguments | dict[str, Any] | None
+):
     """Handle setVariable command implementation."""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
@@ -801,7 +851,9 @@ def _handle_set_variable_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": False, "message": f"Invalid variable reference: {variables_reference}"}
 
 
-def _handle_evaluate_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_evaluate_impl(
+    dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None
+):
     """Handle evaluate command implementation."""
     arguments = arguments or {}
     expression = arguments.get("expression", "")
@@ -849,99 +901,134 @@ def _handle_evaluate_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
     }
 
 
-def _handle_set_data_breakpoints_impl(dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_set_data_breakpoints_impl(
+    dbg: DebuggerLike, arguments: SetDataBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setDataBreakpoints command implementation."""
     arguments = arguments or {}
     breakpoints = arguments.get("breakpoints", [])
     
+    # Clear existing data breakpoints if the debugger supports it
     clear_all = getattr(dbg, "clear_all_data_breakpoints", None)
     if callable(clear_all):
         try:
             clear_all()
         except Exception:
             pass
-    
-    results = []
+
+    # Build watch lists to pass into register_data_watches (if supported).
+    watch_names: list[str] = []
+    watch_meta: list[tuple[str, dict[str, Any]]] = []
+
+    results: list[dict[str, Any]] = []
     for bp in breakpoints:
         data_id = bp.get("dataId")
         access_type = bp.get("accessType", "readWrite")
+        cond = bp.get("condition")
+        hit_condition = bp.get("hitCondition")
+
         verified = False
-        
+
+        # Support legacy set_data_breakpoint API (per-dataId) if present
         set_db = getattr(dbg, "set_data_breakpoint", None)
         if data_id and callable(set_db):
             try:
                 set_db(data_id, access_type)
                 verified = True
             except Exception:
-                pass
-        
+                # fall through to adding to watch registration if available
+                verified = False
+
+        # Try to extract variable name for watch registration. Expected patterns
+        # include a frame-scoped pattern (`frame:<id>:var:<name>`) or simple
+        # names without a frame prefix.
+        name_for_watch: str | None = None
+        # Extract name part if data_id is a string; keep logic simple (no exceptions)
+        if isinstance(data_id, str) and data_id:
+            # Use the tail after the last ':var:' if present, otherwise use the
+            # entire data_id string as a watch name.
+            sep = ":var:"
+            idx = data_id.rfind(sep)
+            name_for_watch = data_id[idx + len(sep) :] if idx != -1 else data_id
+
+        if name_for_watch:
+            # Avoid duplicates
+            if name_for_watch not in watch_names:
+                watch_names.append(name_for_watch)
+
+            meta: dict[str, Any] = {
+                "dataId": data_id,
+                "accessType": access_type,
+            }
+            if cond is not None:
+                meta["condition"] = cond
+            if hit_condition is not None:
+                meta["hitCondition"] = hit_condition
+
+            watch_meta.append((name_for_watch, meta))
+
         results.append({"verified": verified})
+
+    # If debugger supports bulk registration, call it so the core/subprocess
+    # debugger can track snapshots and perform runtime detection.
+    # Bulk-register with debugger if supported (not fatal if unsupported).
+    register = getattr(dbg, "register_data_watches", None)
+    if callable(register) and watch_names:
+        try:
+            register(watch_names, watch_meta)
+        except Exception:
+            # Not fatal — bookkeeping may still be client-side only
+            pass
     
     return {"success": True, "body": {"breakpoints": results}}
 
 
-def _handle_data_breakpoint_info_impl(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def _handle_data_breakpoint_info_impl(
+    _dbg: DebuggerLike, arguments: DataBreakpointInfoArguments | dict[str, Any] | None
+):
     """Handle dataBreakpointInfo command implementation."""
     arguments = arguments or {}
     name = arguments.get("name", "")
     variables_reference = arguments.get("variablesReference")
     
     data_id = f"{variables_reference}:{name}" if variables_reference else name
-    
-    return {
-        "success": True,
-        "body": {
-            "dataId": data_id,
-            "description": f"Data breakpoint for {name}",
-            "accessTypes": ["read", "write", "readWrite"],
-            "canPersist": False,
-        }
+
+    body: dict[str, Any] = {
+        "dataId": data_id,
+        "description": f"Data breakpoint for {name}",
+        "accessTypes": ["read", "write", "readWrite"],
+        "canPersist": False,
     }
 
-
-def _handle_configuration_done_impl(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle configurationDone command implementation."""
-    return {"success": True}
-
-
-def _handle_terminate_impl(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle terminate command implementation."""
+    # Try to enrich info based on the debugger's available frame context.
     try:
-        send_debug_message("exited", exitCode=0)
-    except Exception:
-        pass
-    state.is_terminated = True
-    state.exit_func(0)
+        dbg = _dbg
+        frame = None
+        # Prefer current_frame (common for DebuggerBDB) or botframe
+        frame = getattr(dbg, "current_frame", None) or getattr(dbg, "botframe", None)
 
-
-def _handle_initialize_impl(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle initialize command implementation."""
-    capabilities = {
-        "supportsConfigurationDoneRequest": True,
-        "supportsFunctionBreakpoints": True,
-        "supportsExceptionBreakpoints": True,
-        "supportsDataBreakpoints": True,
-        "supportsSetVariable": True,
-        "supportsEvaluateForHovers": True,
-        "supportsLogPoints": True,
-        "supportsRestartRequest": True,
-    }
-    
-    return {"success": True, "body": capabilities}
-
-
-def _handle_restart_impl(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle restart command implementation."""
-    try:
-        send_debug_message("exited", exitCode=0)
+        # Accept mapping-like frame locals (FrameLocalsProxy) rather than strict dict
+        try:
+            locals_map = getattr(frame, "f_locals", None)
+            if frame is not None and locals_map is not None and name in locals_map:
+                val = locals_map[name]
+                # Provide type name and a short repr of the current value
+                body["type"] = type(val).__name__
+                try:
+                    sval = repr(val)
+                    if len(sval) > MAX_VALUE_REPR_LEN:
+                        trim_at = MAX_VALUE_REPR_LEN - len(_TRUNC_SUFFIX)
+                        sval = sval[:trim_at] + _TRUNC_SUFFIX
+                    body["value"] = sval
+                except Exception:
+                    pass
+        except Exception:
+            # fall back to minimal information
+            pass
     except Exception:
         pass
 
-    python = sys.executable
-    argv = sys.argv[1:]
-    state.exec_func(python, [python, *argv])
-
-    return {"success": True}
+    return {"success": True, "body": body}
 
 
 # =============================================================================
@@ -949,7 +1036,9 @@ def _handle_restart_impl(_dbg: DebuggerLike, _arguments: dict[str, Any] | None =
 # These are called by tests that use the old signature.
 # =============================================================================
 
-def handle_set_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_breakpoints(
+    dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setBreakpoints command."""
     return _handle_set_breakpoints_impl(dbg, arguments)
 
@@ -960,38 +1049,42 @@ def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: SetFunctionBre
 
 
 def handle_set_exception_breakpoints(
-    dbg: DebuggerLike, arguments: dict[str, Any]
+    dbg: DebuggerLike, arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None
 ) -> SetExceptionBreakpointsResponse | None:
     """Handle setExceptionBreakpoints command."""
     return _handle_set_exception_breakpoints_impl(dbg, arguments)
 
 
-def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_continue(
+    dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None
+):
     """Handle continue command."""
     return _handle_continue_impl(dbg, arguments)
 
 
-def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_next(dbg: DebuggerLike, arguments: NextArguments | dict[str, Any] | None):
     """Handle next command (step over)."""
     return _handle_next_impl(dbg, arguments)
 
 
-def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_step_in(dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None):
     """Handle stepIn command."""
     return _handle_step_in_impl(dbg, arguments)
 
 
-def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_step_out(dbg: DebuggerLike, arguments: StepOutArguments | dict[str, Any] | None):
     """Handle stepOut command."""
     return _handle_step_out_impl(dbg, arguments)
 
 
-def handle_pause(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_pause(dbg: DebuggerLike, arguments: dict[str, Any] | None):
     """Handle pause command."""
     return _handle_pause_impl(dbg, arguments)
 
 
-def handle_stack_trace(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_stack_trace(
+    dbg: DebuggerLike, arguments: StackTraceArguments | dict[str, Any] | None
+):
     """Handle stackTrace command."""
     return _handle_stack_trace_impl(dbg, arguments)
 
@@ -1001,12 +1094,12 @@ def handle_threads(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     return _handle_threads_impl(dbg, _arguments)
 
 
-def handle_scopes(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_scopes(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any] | None):
     """Handle scopes command."""
     return _handle_scopes_impl(dbg, arguments)
 
 
-def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any] | None):
     """Handle source command (legacy signature)."""
     arguments = arguments or {}
     source_reference = arguments.get("sourceReference")
@@ -1031,32 +1124,42 @@ def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": True, "body": {"content": content}}
 
 
-def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_variables(
+    dbg: DebuggerLike, arguments: VariablesArguments | dict[str, Any] | None
+):
     """Handle variables command."""
     return _handle_variables_impl(dbg, arguments)
 
 
-def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_variable(
+    dbg: DebuggerLike, arguments: SetVariableArguments | dict[str, Any] | None
+):
     """Handle setVariable command."""
     return _handle_set_variable_impl(dbg, arguments)
 
 
-def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_evaluate(
+    dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None
+):
     """Handle evaluate command."""
     return _handle_evaluate_impl(dbg, arguments)
 
 
-def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_data_breakpoints(
+    dbg: DebuggerLike, arguments: SetDataBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setDataBreakpoints command."""
     return _handle_set_data_breakpoints_impl(dbg, arguments)
 
 
-def handle_data_breakpoint_info(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_data_breakpoint_info(
+    dbg: DebuggerLike, arguments: DataBreakpointInfoArguments | dict[str, Any] | None
+):
     """Handle dataBreakpointInfo command."""
     return _handle_data_breakpoint_info_impl(dbg, arguments)
 
 
-def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None):
     """Handle exceptionInfo command."""
     arguments = arguments or {}
     
@@ -1089,23 +1192,47 @@ def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
 
 
 def handle_configuration_done(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle configurationDone command."""
-    return _handle_configuration_done_impl(_dbg, _arguments)
+    """Handle configurationDone command (inlined)."""
+    return {"success": True}
 
 
 def handle_terminate(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle terminate command."""
-    return _handle_terminate_impl(_dbg, _arguments)
+    """Handle terminate command (inlined)."""
+    try:
+        send_debug_message("exited", exitCode=0)
+    except Exception:
+        pass
+    state.is_terminated = True
+    state.exit_func(0)
 
 
 def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle initialize command."""
-    return _handle_initialize_impl(_dbg, _arguments)
+    """Handle initialize command (inlined)."""
+    capabilities = {
+        "supportsConfigurationDoneRequest": True,
+        "supportsFunctionBreakpoints": True,
+        "supportsExceptionBreakpoints": True,
+        "supportsDataBreakpoints": True,
+        "supportsSetVariable": True,
+        "supportsEvaluateForHovers": True,
+        "supportsLogPoints": True,
+        "supportsRestartRequest": True,
+    }
+    return {"success": True, "body": capabilities}
 
 
 def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle restart command."""
-    return _handle_restart_impl(_dbg, _arguments)
+    """Handle restart command (inlined)."""
+    try:
+        send_debug_message("exited", exitCode=0)
+    except Exception:
+        pass
+
+    python = sys.executable
+    argv = sys.argv[1:]
+    state.exec_func(python, [python, *argv])
+
+    return {"success": True}
 
 
 # =============================================================================
@@ -1114,63 +1241,63 @@ def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None)
 # =============================================================================
 
 @command_handler("setBreakpoints")
-def _cmd_set_breakpoints(arguments: dict[str, Any]) -> None:
+def _cmd_set_breakpoints(arguments: SetBreakpointsArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_breakpoints_impl(dbg, arguments)
 
 
 @command_handler("setFunctionBreakpoints")
-def _cmd_set_function_breakpoints(arguments: dict[str, Any]) -> None:
+def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_function_breakpoints_impl(dbg, arguments)
 
 
 @command_handler("setExceptionBreakpoints")
-def _cmd_set_exception_breakpoints(arguments: dict[str, Any]) -> None:
+def _cmd_set_exception_breakpoints(arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_exception_breakpoints_impl(dbg, arguments)
 
 
 @command_handler("continue")
-def _cmd_continue(arguments: dict[str, Any]) -> None:
+def _cmd_continue(arguments: ContinueArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_continue_impl(dbg, arguments)
 
 
 @command_handler("next")
-def _cmd_next(arguments: dict[str, Any]) -> None:
+def _cmd_next(arguments: NextArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_next_impl(dbg, arguments)
 
 
 @command_handler("stepIn")
-def _cmd_step_in(arguments: dict[str, Any]) -> None:
+def _cmd_step_in(arguments: StepInArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_step_in_impl(dbg, arguments)
 
 
 @command_handler("stepOut")
-def _cmd_step_out(arguments: dict[str, Any]) -> None:
+def _cmd_step_out(arguments: StepOutArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_step_out_impl(dbg, arguments)
 
 
 @command_handler("pause")
-def _cmd_pause(arguments: dict[str, Any]) -> None:
+def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_pause_impl(dbg, arguments)
 
 
 @command_handler("stackTrace")
-def _cmd_stack_trace(arguments: dict[str, Any]) -> None:
+def _cmd_stack_trace(arguments: StackTraceArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_stack_trace_impl(dbg, arguments)
@@ -1184,21 +1311,21 @@ def _cmd_threads(arguments: dict[str, Any] | None = None) -> None:
 
 
 @command_handler("scopes")
-def _cmd_scopes(arguments: dict[str, Any]) -> None:
+def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_scopes_impl(dbg, arguments)
 
 
 @command_handler("variables")
-def _cmd_variables(arguments: dict[str, Any]) -> None:
+def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_variables_impl(dbg, arguments)
 
 
 @command_handler("setVariable")
-def _cmd_set_variable(arguments: dict[str, Any]) -> None:
+def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         result = _handle_set_variable_impl(dbg, arguments)
@@ -1207,21 +1334,21 @@ def _cmd_set_variable(arguments: dict[str, Any]) -> None:
 
 
 @command_handler("evaluate")
-def _cmd_evaluate(arguments: dict[str, Any]) -> None:
+def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_evaluate_impl(dbg, arguments)
 
 
 @command_handler("setDataBreakpoints")
-def _cmd_set_data_breakpoints(arguments: dict[str, Any]) -> None:
+def _cmd_set_data_breakpoints(arguments: SetDataBreakpointsArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_data_breakpoints_impl(dbg, arguments)
 
 
 @command_handler("dataBreakpointInfo")
-def _cmd_data_breakpoint_info(arguments: dict[str, Any]) -> None:
+def _cmd_data_breakpoint_info(arguments: DataBreakpointInfoArguments | dict[str, Any] | None) -> None:
     dbg = state.debugger
     if dbg:
         _handle_data_breakpoint_info_impl(dbg, arguments)
@@ -1254,19 +1381,21 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
 @command_handler("configurationDone")
 def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     dbg = state.debugger
-    _handle_configuration_done_impl(dbg, _arguments)
+    # Inline: acknowledge configuration done
+    handle_configuration_done(cast("DebuggerLike", dbg), _arguments)
 
 
 @command_handler("terminate")
 def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> None:
     dbg = state.debugger
-    _handle_terminate_impl(dbg, _arguments)
+    # Inline: terminate the debug session
+    handle_terminate(cast("DebuggerLike", dbg), _arguments)
 
 
 @command_handler("initialize")
 def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     dbg = state.debugger
-    result = _handle_initialize_impl(dbg, _arguments)
+    result = handle_initialize(cast("DebuggerLike", dbg), _arguments)
     if result:
         send_debug_message("response", **result)
 
@@ -1274,7 +1403,7 @@ def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
 @command_handler("restart")
 def _cmd_restart(_arguments: dict[str, Any] | None = None) -> None:
     dbg = state.debugger
-    _handle_restart_impl(dbg, _arguments)
+    handle_restart(cast("DebuggerLike", dbg), _arguments)
 
 
 @command_handler("loadedSources")
@@ -1361,9 +1490,11 @@ def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
             continue
 
         try:
+            # ensure required Module keys are always present
             module_info: Module = {
                 "id": module_name,
                 "name": module_name,
+                "isUserCode": False,
             }
 
             module_file = getattr(module, "__file__", None)
@@ -1378,8 +1509,9 @@ def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
                 )
                 module_info["isUserCode"] = is_user_code
 
-            if hasattr(module, "__version__"):
-                module_info["version"] = str(module.__version__)
+            # module.__version__ may exist but is not part of the Module TypedDict
+            # so we intentionally don't add it to keep the shaped data compatible
+            # with the declared Module type.
 
             all_modules.append(module_info)
 

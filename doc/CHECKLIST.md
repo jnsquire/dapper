@@ -47,7 +47,7 @@ Legend
 
 ### Data breakpoints
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
-- ❌ Runtime watchpoints (trigger on write/read) — planned (Phase 3)
+- 🟡 Runtime watchpoints (trigger on write) — supported when the debugger registers watches (in-process already works; launcher/adapter now register watches so subprocess mode can use this). Read-access detection and broader integration work remain.
 
 Reference: see Architecture — [Breakpoints Controller](architecture/breakpoints_controller.md) for design notes and Phase 1 status.
 
@@ -101,7 +101,7 @@ Phase 2 — enhanced debugging experience (in-progress)
 - Expand variable presentation semantics and UI hints (`presentationHint` coverage).
 
 Phase 3 — advanced features (future)
-- Runtime watchpoints / data breakpoint triggers (Phase 1 bookkeeping implemented; runtime triggers remain)
+- Runtime watchpoints / data breakpoint triggers (Phase 1 bookkeeping implemented; runtime triggers are now supported when watches are registered — further work remains for read-access detection, per-address watches, and cross-process robustness)
 - Reverse debugging / time-travel
 - Performance profiling integration and tooling
 

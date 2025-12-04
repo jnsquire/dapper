@@ -39,6 +39,7 @@ from dapper.ipc.ipc_manager import IPCManager
 from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.structures import Source
 from dapper.protocol.structures import SourceBreakpoint
+from dapper.shared.command_handlers import MAX_VALUE_REPR_LEN
 
 try:
     # Optional integration module; may not be present on all platforms.
@@ -185,6 +186,9 @@ class PyDebugger:
         # Data breakpoint containers
         self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
         self._frame_watches: dict[int, list[str]] = {}  # frameId -> list of dataIds
+        # Optional current frame reference for runtime helpers and tests
+        # May hold a real frame (types.FrameType) or a frame-like object used in tests
+        self.current_frame: Any | None = None
 
     @property
     def program_path(self) -> str | None:
@@ -277,12 +281,39 @@ class PyDebugger:
     def data_breakpoint_info(self, *, name: str, frame_id: int) -> DataBreakpointInfoResponseBody:
         """Return minimal data breakpoint info for a variable in a frame."""
         data_id = f"frame:{frame_id}:var:{name}"
-        return {
+        body: DataBreakpointInfoResponseBody = {
             "dataId": data_id,
             "description": f"Variable '{name}' in frame {frame_id}",
             "accessTypes": ["write"],
             "canPersist": False,
         }
+
+        # Try to enrich with type/value if we can access a matching frame
+        try:
+            # Prefer the current debugger frame if available (self is the debugger)
+            frame = getattr(self, "current_frame", None) or getattr(self, "botframe", None)
+            # If this debugger is acting as a bridge to an in-process backend,
+            # fall back to the inproc debugger's current_frame if present.
+            if frame is None and getattr(self, "_inproc_bridge", None) is not None:
+                inproc_dbg = getattr(self._inproc_bridge, "debugger", None)
+                frame = getattr(inproc_dbg, "current_frame", None) or getattr(inproc_dbg, "botframe", None)
+            if frame is not None:
+                locals_map = getattr(frame, "f_locals", None)
+                if locals_map is not None and name in locals_map:
+                    val = locals_map[name]
+                    body["type"] = type(val).__name__
+                    try:
+                        s = repr(val)
+                        if len(s) > MAX_VALUE_REPR_LEN:
+                            s = s[: MAX_VALUE_REPR_LEN - 3] + "..."
+                        body["value"] = s
+                    except Exception:
+                        pass
+        except Exception:
+            # Not fatal — return minimal information
+            pass
+
+        return body
 
     def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Breakpoint]:
         """Register a set of data breakpoints (bookkeeping only)."""

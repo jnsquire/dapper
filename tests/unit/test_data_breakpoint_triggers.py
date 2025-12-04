@@ -1,16 +1,11 @@
-from types import FrameType
 from unittest.mock import MagicMock
 
 from dapper.core.debugger_bdb import DebuggerBDB
+from tests.mocks import make_real_frame
 
 
-def make_frame(filename: str, lineno: int, locals_dict):
-    frame = MagicMock(spec=FrameType)
-    frame.f_code.co_filename = filename  # type: ignore[attr-defined]
-    frame.f_lineno = lineno
-    frame.f_locals = locals_dict
-    frame.f_globals = {"__builtins__": __builtins__}
-    return frame
+def make_frame(_filename: str, _lineno: int, locals_dict):
+    return make_real_frame(locals_dict)
 
 
 def test_data_breakpoint_triggers_on_change():

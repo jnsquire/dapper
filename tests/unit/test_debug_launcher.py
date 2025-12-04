@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import sys
-from types import FrameType
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 from unittest.mock import patch
@@ -18,6 +18,7 @@ from dapper.protocol.debugger_protocol import DebuggerLike
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared.debug_shared import SessionState
+from tests.mocks import make_real_frame
 
 
 # Create a test-specific subclass of SessionState for testing
@@ -228,11 +229,7 @@ class TestVariableHandling:
         """Test variable inspection."""
         # Setup
         dbg = MagicMock(spec=DebuggerLike)
-        mock_frame = MagicMock(spec=FrameType)
-
-        # Set up frame locals
-        mock_frame.f_locals = {"x": 42, "y": "test"}
-        mock_frame.f_globals = {}
+        mock_frame = make_real_frame({"x": 42, "y": "test"})
 
         # Set up debugger mock
         dbg.var_refs = {1: (0, "locals")}  # (frame_id, scope)
@@ -284,8 +281,7 @@ class TestExpressionEvaluation:
         """Test expression evaluation."""
         # Setup
         dl.state.debugger = MagicMock(spec=DebuggerLike)
-        mock_frame = MagicMock(spec=FrameType)
-        mock_frame.f_locals = {"x": 10, "y": 20}
+        mock_frame = make_real_frame({"x": 10, "y": 20})
         dl.state.debugger.current_frame = mock_frame
 
         # Test arguments
@@ -337,7 +333,7 @@ class TestControlFlow:
         """Test step over command."""
         # Setup
         mock_dbg = MagicMock(spec=DebuggerLike)
-        mock_frame = MagicMock()
+        mock_frame = make_real_frame({})
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
@@ -381,7 +377,7 @@ class TestControlFlow:
         """Test step out command."""
         # Setup
         mock_dbg = MagicMock(spec=DebuggerLike)
-        mock_frame = MagicMock()
+        mock_frame = make_real_frame({})
         mock_dbg.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
@@ -411,7 +407,7 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         assert body.get("breakpoints") == []
 
@@ -426,7 +422,7 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
@@ -444,7 +440,7 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
@@ -464,7 +460,7 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
@@ -482,14 +478,14 @@ class TestExceptionBreakpoints:
         # Test with non-list filters
         response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": "invalid"})
         assert response is not None
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         assert body.get("breakpoints") == []
 
         # Test with non-string elements
         response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": [123, None]})
         assert response is not None
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
@@ -514,7 +510,7 @@ class TestExceptionBreakpoints:
         # The response should still be successful
         assert response["success"] is True
         # But the breakpoint should be marked as not verified
-        body = response.get("body")
+        body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None

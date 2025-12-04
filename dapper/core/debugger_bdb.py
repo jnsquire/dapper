@@ -8,6 +8,7 @@ from __future__ import annotations
 import bdb
 import contextlib
 import threading
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -346,13 +347,15 @@ class DebuggerBDB(bdb.Bdb):
 
     def _check_data_watch_changes(self, frame):
         """Check for changes in watched variables and return changed variable name if any."""
-        if not isinstance(frame.f_locals, dict):
+        # Frame locals in CPython may be a FrameLocalsProxy; accept any
+        # mapping-like object rather than requiring a plain dict.
+        if not isinstance(frame.f_locals, Mapping):
             return None
         return self._data_bp_state.check_for_changes(id(frame), frame.f_locals)
 
     def _update_watch_snapshots(self, frame):
         """Update snapshots of watched variable values."""
-        if not isinstance(frame.f_locals, dict):
+        if not isinstance(frame.f_locals, Mapping):
             return
         self._data_bp_state.update_snapshots(id(frame), frame.f_locals)
 

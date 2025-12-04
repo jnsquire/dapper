@@ -8,7 +8,9 @@ Tests the completions implementation across:
 from __future__ import annotations
 
 import os as os_module
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import cast
 
 from dapper.core.inprocess_debugger import InProcessDebugger
 

@@ -35,10 +35,25 @@ from dapper.shared import debug_shared as _d_shared
 from dapper.shared.debug_shared import state
 
 if TYPE_CHECKING:
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoArguments
+    from dapper.protocol.data_breakpoints import SetDataBreakpointsArguments
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.debugger_protocol import Variable
+    from dapper.protocol.requests import ContinueArguments
+    from dapper.protocol.requests import EvaluateArguments
+    from dapper.protocol.requests import ExceptionInfoArguments
+    from dapper.protocol.requests import NextArguments
+    from dapper.protocol.requests import PauseArguments
+    from dapper.protocol.requests import ScopesArguments
+    from dapper.protocol.requests import SetBreakpointsArguments
     from dapper.protocol.requests import SetExceptionBreakpointsResponse
     from dapper.protocol.requests import SetFunctionBreakpointsArguments
+    from dapper.protocol.requests import SetVariableArguments
+    from dapper.protocol.requests import SourceArguments
+    from dapper.protocol.requests import StackTraceArguments
+    from dapper.protocol.requests import StepInArguments
+    from dapper.protocol.requests import StepOutArguments
+    from dapper.protocol.requests import VariablesArguments
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
@@ -168,7 +183,9 @@ def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: An
 
 # --- Breakpoint handlers (truncated example)
 
-def handle_set_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_breakpoints(
+    dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setBreakpoints command"""
     arguments = arguments or {}
     source = arguments.get("source", {})
@@ -309,7 +326,7 @@ def handle_set_exception_breakpoints(
     return cast("SetExceptionBreakpointsResponse", response)
 
 
-def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_continue(dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None):
     """Handle continue command"""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -321,7 +338,7 @@ def handle_continue(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_continue()
 
 
-def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_next(dbg: DebuggerLike, arguments: NextArguments | dict[str, Any] | None):
     """Handle next command (step over)"""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -334,7 +351,7 @@ def handle_next(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_next(dbg.current_frame)
 
 
-def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_step_in(dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None):
     """Handle stepIn command"""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -344,7 +361,7 @@ def handle_step_in(dbg: DebuggerLike, arguments: dict[str, Any]):
         dbg.set_step()
 
 
-def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_step_out(dbg: DebuggerLike, arguments: StepOutArguments | dict[str, Any] | None):
     """Handle stepOut command"""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -355,14 +372,14 @@ def handle_step_out(dbg: DebuggerLike, arguments: dict[str, Any]):
             dbg.set_return(dbg.current_frame)
 
 
-def handle_pause(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_pause(_dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None):
     """Handle pause command"""
     arguments = arguments or {}
     arguments.get("threadId")
     # This is tricky in Python - we can't easily interrupt a running thread.
 
 
-def handle_stack_trace(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_stack_trace(dbg: DebuggerLike, arguments: StackTraceArguments | dict[str, Any] | None):
     """Handle stackTrace command"""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -436,7 +453,7 @@ def handle_threads(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     return {"success": True, "body": {"threads": threads}}
 
 
-def handle_scopes(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_scopes(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any] | None):
     """Handle scopes command"""
     arguments = arguments or {}
     frame_id = arguments.get("frameId")
@@ -478,7 +495,7 @@ def handle_scopes(dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": True, "body": {"scopes": scopes}}
 
 
-def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any] | None):
     """Handle source command"""
     arguments = arguments or {}
     source_reference = arguments.get("sourceReference")
@@ -505,7 +522,7 @@ def handle_source(_dbg: DebuggerLike, arguments: dict[str, Any]):
     return {"success": True, "body": {"content": content}}
 
 
-def handle_variables(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_variables(dbg: DebuggerLike, arguments: VariablesArguments | dict[str, Any] | None):
     """Handle variables command"""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
@@ -593,7 +610,7 @@ def _extract_variables_from_mapping(dbg: DebuggerLike | None, mapping: dict[str,
     return out
 
 
-def handle_set_variable(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_variable(dbg: DebuggerLike, arguments: SetVariableArguments | dict[str, Any] | None):
     """Handle setVariable command"""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
@@ -765,7 +782,7 @@ def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str 
     return err
 
 
-def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_evaluate(dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None):
     """Handle evaluate command"""
     arguments = arguments or {}
     expression = arguments.get("expression", "")
@@ -817,7 +834,7 @@ def handle_evaluate(dbg: DebuggerLike, arguments: dict[str, Any]):
     }
 
 
-def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: SetDataBreakpointsArguments | dict[str, Any] | None):
     """Handle setDataBreakpoints command"""
     arguments = arguments or {}
     breakpoints = arguments.get("breakpoints", [])
@@ -830,26 +847,61 @@ def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: dict[str, Any]):
         except Exception:
             pass
     
+    watch_names: list[str] = []
+    watch_meta: list[tuple[str, dict[str, Any]]] = []
+
     results = []
     for bp in breakpoints:
         data_id = bp.get("dataId")
         access_type = bp.get("accessType", "readWrite")
         verified = False
-        
+
+        # Try per-dataId set API if available
         set_db = getattr(dbg, "set_data_breakpoint", None)
         if data_id and callable(set_db):
             try:
                 set_db(data_id, access_type)
                 verified = True
             except Exception:
-                pass
-        
+                verified = False
+
+        # Try to capture variable name for bulk registration. Use simple
+        # string operations (no exceptions) — prefer name after final ':var:'
+        # if present, otherwise use the whole dataId for simple names.
+        name_for_watch: str | None = None
+        if isinstance(data_id, str) and data_id:
+            sep = ":var:"
+            idx = data_id.rfind(sep)
+            name_for_watch = data_id[idx + len(sep) :] if idx != -1 else data_id
+
+        if name_for_watch:
+            if name_for_watch not in watch_names:
+                watch_names.append(name_for_watch)
+
+            meta: dict[str, Any] = {"dataId": data_id, "accessType": access_type}
+            if bp.get("condition") is not None:
+                meta["condition"] = bp.get("condition")
+            if bp.get("hitCondition") is not None:
+                meta["hitCondition"] = bp.get("hitCondition")
+
+            watch_meta.append((name_for_watch, meta))
+
         results.append({"verified": verified})
+
+    register = getattr(dbg, "register_data_watches", None)
+    if callable(register) and watch_names:
+        try:
+            register(watch_names, watch_meta)
+        except Exception:
+            # Not fatal — bookkeeping may still be client-side only
+            pass
     
     return {"success": True, "body": {"breakpoints": results}}
 
 
-def handle_data_breakpoint_info(_dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_data_breakpoint_info(
+    _dbg: DebuggerLike, arguments: DataBreakpointInfoArguments | dict[str, Any] | None
+):
     """Handle dataBreakpointInfo command"""
     arguments = arguments or {}
     name = arguments.get("name", "")
@@ -869,7 +921,7 @@ def handle_data_breakpoint_info(_dbg: DebuggerLike, arguments: dict[str, Any]):
     }
 
 
-def handle_exception_info(dbg: DebuggerLike, arguments: dict[str, Any]):
+def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None):
     """Handle exceptionInfo command"""
     arguments = arguments or {}
     # The thread id is not used by the simple exceptionInfo handler; ignore.
