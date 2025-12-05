@@ -1534,33 +1534,3 @@ def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
     send_debug_message(
         "response", success=True, body={"modules": modules, "totalModules": len(all_modules)}
     )
-
-
-# Expose for tests importing handle_loaded_sources directly
-handle_loaded_sources = _cmd_loaded_sources
-handle_source_cmd = _cmd_source
-handle_modules = _cmd_modules
-
-# Also expose single-argument versions of all handlers for tests
-# that call them directly (instead of the two-argument versions above)
-handle_set_breakpoints_cmd = _cmd_set_breakpoints
-handle_set_function_breakpoints_cmd = _cmd_set_function_breakpoints
-handle_set_exception_breakpoints_cmd = _cmd_set_exception_breakpoints
-handle_continue_cmd = _cmd_continue
-handle_next_cmd = _cmd_next
-handle_step_in_cmd = _cmd_step_in
-handle_step_out_cmd = _cmd_step_out
-handle_pause_cmd = _cmd_pause
-handle_stack_trace_cmd = _cmd_stack_trace
-handle_threads_cmd = _cmd_threads
-handle_scopes_cmd = _cmd_scopes
-handle_variables_cmd = _cmd_variables
-handle_set_variable_cmd = _cmd_set_variable
-handle_evaluate_cmd = _cmd_evaluate
-handle_set_data_breakpoints_cmd = _cmd_set_data_breakpoints
-handle_data_breakpoint_info_cmd = _cmd_data_breakpoint_info
-handle_exception_info_cmd = _cmd_exception_info
-handle_configuration_done_cmd = _cmd_configuration_done
-handle_terminate_cmd = _cmd_terminate
-handle_initialize_cmd = _cmd_initialize
-handle_restart_cmd = _cmd_restart
