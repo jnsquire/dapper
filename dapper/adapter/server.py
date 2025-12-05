@@ -978,15 +978,20 @@ class PyDebugger:
         if self._backend is not None:
             await self._backend.next_(thread_id)
 
-    async def step_in(self, thread_id: int) -> None:
-        """Step into a function"""
+    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+        """Step into a function.
+        
+        Args:
+            thread_id: The thread to step in.
+            target_id: Optional target ID for stepping into a specific call target.
+        """
         if not self.program_running or self.is_terminated:
             return
 
         self.stopped_event.clear()
 
         if self._backend is not None:
-            await self._backend.step_in(thread_id)
+            await self._backend.step_in(thread_id, target_id)
 
     async def step_out(self, thread_id: int) -> None:
         """Step out of the current function"""

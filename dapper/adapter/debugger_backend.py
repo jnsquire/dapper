@@ -79,8 +79,14 @@ class DebuggerBackend(Protocol):
         """Step over."""
         ...
 
-    async def step_in(self, thread_id: int) -> None:
-        """Step into."""
+    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+        """Step into.
+        
+        Args:
+            thread_id: The thread to step in.
+            target_id: Optional target ID for stepping into a specific call target
+                       (see DAP stepInTargets request).
+        """
         ...
 
     async def step_out(self, thread_id: int) -> None:

@@ -125,15 +125,36 @@ class RequestHandler:
             handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
         return await handler_method(request)
 
-    async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
-        """Handle an unknown request command."""
-        return {
+    def _make_response(
+        self,
+        request: Any,
+        command: str,
+        *,
+        success: bool = True,
+        body: Any | None = None,
+        message: str | None = None,
+    ) -> DAPResponse:
+        """Build a standard DAP response object used across handlers.
+
+        This centralises the common keys so handlers are shorter and
+        consistent in shape.
+        """
+        resp: dict[str, Any] = {
+            "seq": 0,
             "type": "response",
             "request_seq": request["seq"],
-            "success": False,
-            "command": request["command"],
-            "message": f"Unsupported command: {request['command']}",
+            "success": success,
+            "command": command,
         }
+        if body is not None:
+            resp["body"] = body
+        if message is not None:
+            resp["message"] = message
+        return cast("DAPResponse", resp)
+
+    async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
+        """Handle an unknown request command."""
+        return self._make_response(request, request["command"], success=False, message=f"Unsupported command: {request['command']}")
 
     async def _handle_initialize(self, request: InitializeRequest) -> None:
         """Handle initialize request."""
@@ -200,13 +221,7 @@ class RequestHandler:
         except Exception as e:
             return cast("LaunchResponse", create_dap_response(e, request["seq"], "launch"))
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "launch",
-        }
+        return cast("LaunchResponse", self._make_response(request, "launch"))
 
     @async_handle_adapter_errors("attach")
     async def _handle_attach(self, request: AttachRequest) -> AttachResponse:
@@ -222,13 +237,7 @@ class RequestHandler:
         
         await self.server.debugger.attach(config)
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "attach",
-        }
+        return cast("AttachResponse", self._make_response(request, "attach"))
 
     async def _handle_set_breakpoints(self, request: SetBreakpointsRequest) -> SetBreakpointsResponse:
         """Handle setBreakpoints request."""
@@ -239,14 +248,14 @@ class RequestHandler:
 
         verified_breakpoints = await self.server.debugger.set_breakpoints(path, breakpoints)
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "setBreakpoints",
-            "body": {"breakpoints": cast("list[Breakpoint]", verified_breakpoints)},
-        }
+        return cast(
+            "SetBreakpointsResponse",
+            self._make_response(
+                request,
+                "setBreakpoints",
+                body={"breakpoints": cast("list[Breakpoint]", verified_breakpoints)},
+            )
+        )
 
     async def _handle_set_function_breakpoints(
         self, request: SetFunctionBreakpointsRequest
@@ -261,27 +270,20 @@ class RequestHandler:
 
         verified = await self.server.debugger.set_function_breakpoints(breakpoints)
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "setFunctionBreakpoints",
-            "body": {"breakpoints": cast("list[Breakpoint]", verified)},
-        }
+        return cast(
+            "SetFunctionBreakpointsResponse",
+            self._make_response(
+                request,
+                "setFunctionBreakpoints",
+                body={"breakpoints": cast("list[Breakpoint]", verified)},
+            )
+        )
 
     async def _handle_continue(self, request: ContinueRequest) -> ContinueResponse:
         """Handle continue request."""
         thread_id = request["arguments"]["threadId"]
         continued = await self.server.debugger.continue_execution(thread_id)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "continue",
-            "body": continued,
-        }
+        return cast("ContinueResponse", self._make_response(request, "continue", body=continued))
 
     async def _handle_next(self, request: NextRequest) -> NextResponse:
         """Handle next request."""
@@ -293,44 +295,21 @@ class RequestHandler:
             await cast("Callable[[int], Awaitable[Any]]", step_over)(thread_id)
         else:
             await self.server.debugger.next(thread_id)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "next",
-        }
+        return cast("NextResponse", self._make_response(request, "next"))
 
     async def _handle_step_in(self, request: StepInRequest) -> StepInResponse:
         """Handle stepIn request."""
         args = request["arguments"]
         thread_id = args["threadId"]
         target_id = args.get("targetId")
-        # Pass targetId if provided for compatibility with tests
-        step_in = self.server.debugger.step_in
-        if target_id is not None:
-            await cast("Callable[..., Awaitable[Any]]", step_in)(thread_id, target_id)
-        else:
-            await cast("Callable[..., Awaitable[Any]]", step_in)(thread_id)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "stepIn",
-        }
+        await self.server.debugger.step_in(thread_id, target_id)
+        return cast("StepInResponse", self._make_response(request, "stepIn"))
 
     async def _handle_step_out(self, request: StepOutRequest) -> StepOutResponse:
         """Handle stepOut request."""
         thread_id = request["arguments"]["threadId"]
         await self.server.debugger.step_out(thread_id)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "stepOut",
-        }
+        return cast("StepOutResponse", self._make_response(request, "stepOut"))
 
     async def _handle_pause(self, request: PauseRequest) -> PauseResponse:
         """Handle pause request by delegating to the debugger.pause method.
@@ -344,56 +323,30 @@ class RequestHandler:
             # Support sync or async implementations of pause()
             success = await self.server.debugger.pause(thread_id)
 
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": success,
-                "command": "pause",
-            }
+            return cast("PauseResponse", self._make_response(request, "pause", success=success))
         except Exception as e:  # pragma: no cover - defensive
             logger.exception("Error handling pause request")
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "pause",
-                "message": f"Pause failed: {e!s}",
-            }
+            return cast(
+                "PauseResponse",
+                self._make_response(request, "pause", success=False, message=f"Pause failed: {e!s}"),
+            )
 
     async def _handle_disconnect(self, request: DisconnectRequest) -> DisconnectResponse:
         """Handle disconnect request."""
         await self.server.debugger.shutdown()
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "disconnect",
-        }
+        return cast("DisconnectResponse", self._make_response(request, "disconnect"))
 
     async def _handle_terminate(self, request: TerminateRequest) -> TerminateResponse:
         """Handle terminate request - force terminate the debugged program."""
         try:
             await self.server.debugger.terminate()
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": True,
-                "command": "terminate",
-            }
+            return cast("TerminateResponse", self._make_response(request, "terminate"))
         except Exception as e:
             logger.exception("Error handling terminate request")
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "terminate",
-                "message": f"Terminate failed: {e!s}",
-            }
+            return cast(
+                "TerminateResponse",
+                self._make_response(request, "terminate", success=False, message=f"Terminate failed: {e!s}"),
+            )
 
     async def _handle_restart(self, request: RestartRequest) -> RestartResponse:
         """Handle restart request.
@@ -405,23 +358,13 @@ class RequestHandler:
         try:
             # Delegate to debugger which will send the terminated(restart=true)
             await self.server.debugger.restart()
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": True,
-                "command": "restart",
-            }
+            return cast("RestartResponse", self._make_response(request, "restart"))
         except Exception as e:  # pragma: no cover - defensive
             logger.exception("Error handling restart request")
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "restart",
-                "message": f"Restart failed: {e!s}",
-            }
+            return cast(
+                "RestartResponse",
+                self._make_response(request, "restart", success=False, message=f"Restart failed: {e!s}"),
+            )
 
     async def _handle_configurationDone(  # noqa: N802
         self, request: ConfigurationDoneRequest
@@ -434,51 +377,32 @@ class RequestHandler:
                 await result
             return cast(
                 "ConfigurationDoneResponse",
-                {
-                    "seq": 0,
-                    "type": "response",
-                    "request_seq": request["seq"],
-                    "success": True,
-                    "command": "configurationDone",
-                },
+                self._make_response(request, "configurationDone"),
             )
         except Exception as e:
             logger.exception("Error handling configurationDone request")
             return cast(
                 "ConfigurationDoneResponse",
-                {
-                    "seq": 0,
-                    "type": "response",
-                    "request_seq": request["seq"],
-                    "success": False,
-                    "command": "configurationDone",
-                    "message": f"configurationDone failed: {e!s}",
-                },
+                self._make_response(
+                    request, "configurationDone", success=False, message=f"configurationDone failed: {e!s}"
+                ),
             )
 
     async def _handle_threads(self, request: ThreadsRequest) -> ThreadsResponse:
         """Handle threads request."""
         threads = await self.server.debugger.get_threads()
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "threads",
-            "body": {"threads": cast("list[Thread]", threads)},
-        }
+        return cast(
+            "ThreadsResponse",
+            self._make_response(request, "threads", body={"threads": cast("list[Thread]", threads)}),
+        )
 
     async def _handle_loaded_sources(self, request: LoadedSourcesRequest) -> LoadedSourcesResponse:
         """Handle loadedSources request."""
         loaded_sources = await self.server.debugger.get_loaded_sources()
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "loadedSources",
-            "body": {"sources": loaded_sources},
-        }
+        return cast(
+            "LoadedSourcesResponse",
+            self._make_response(request, "loadedSources", body={"sources": loaded_sources}),
+        )
 
     async def _resolve_by_ref(self, source_reference: int) -> tuple[str | None, str | None]:
         """Resolve source content and optional path by sourceReference.
@@ -582,14 +506,10 @@ class RequestHandler:
             content = await self._resolve_by_path(path)
 
         if content is None:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "source",
-                "message": "Could not load source content",
-            }
+            return cast(
+                "SourceResponse",
+                self._make_response(request, "source", success=False, message="Could not load source content"),
+            )
 
         mime_type = self._guess_mime_type(path, content)
 
@@ -597,14 +517,7 @@ class RequestHandler:
         if mime_type:
             body["mimeType"] = mime_type
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "source",
-            "body": body,
-        }
+        return cast("SourceResponse", self._make_response(request, "source", body=body))
 
     async def _handle_module_source(self, request: ModuleSourceRequest) -> ModuleSourceResponse:
         """Handle moduleSource request: return source content for a given module id.
@@ -616,14 +529,10 @@ class RequestHandler:
         args = request.get("arguments", {}) or {}
         module_id = args.get("moduleId") or args.get("module")
         if not module_id:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "moduleSource",
-                "message": "Missing moduleId",
-            }
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(request, "moduleSource", success=False, message="Missing moduleId"),
+            )
 
         found = None
         for name, mod in list(sys.modules.items()):
@@ -637,25 +546,17 @@ class RequestHandler:
                 continue
 
         if found is None:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "moduleSource",
-                "message": "Module not found",
-            }
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(request, "moduleSource", success=False, message="Module not found"),
+            )
 
         path = getattr(found, "__file__", None)
         if not path:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "moduleSource",
-                "message": "Module has no file path",
-            }
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(request, "moduleSource", success=False, message="Module has no file path"),
+            )
 
         try:
             with Path(path).open("rb") as f:
@@ -667,24 +568,15 @@ class RequestHandler:
             except Exception:
                 content = data.decode("latin-1")
         except Exception as e:
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "moduleSource",
-                "message": f"Failed to read module source: {e!s}",
-            }
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(
+                    request, "moduleSource", success=False, message=f"Failed to read module source: {e!s}"
+                ),
+            )
 
         body: ModuleSourceResponseBody = {"content": content}
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "moduleSource",
-            "body": body,
-        }
+        return cast("ModuleSourceResponse", self._make_response(request, "moduleSource", body=body))
 
     async def _handle_modules(self, request: ModulesRequest) -> ModulesResponse:
         """Handle modules request."""
@@ -702,14 +594,10 @@ class RequestHandler:
         else:
             modules = all_modules[start_module:]
 
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "modules",
-            "body": {"modules": cast("list[Module]", modules)}
-        }
+        return cast(
+            "ModulesResponse",
+            self._make_response(request, "modules", body={"modules": cast("list[Module]", modules)}),
+        )
 
     async def _handle_stack_trace(self, request: StackTraceRequest) -> StackTraceResponse:
         """Handle stackTrace request."""
@@ -718,30 +606,23 @@ class RequestHandler:
         start_frame = args.get("startFrame", 0)
         levels = args.get("levels", 20)
         stack_frames = await self.server.debugger.get_stack_trace(thread_id, start_frame, levels)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "stackTrace",
-            "body": {
-                "stackFrames": cast("list[StackFrame]", stack_frames),
-                "totalFrames": len(stack_frames),
-            },
-        }
+        return cast(
+            "StackTraceResponse",
+            self._make_response(
+                request,
+                "stackTrace",
+                body={"stackFrames": cast("list[StackFrame]", stack_frames), "totalFrames": len(stack_frames)},
+            ),
+        )
 
     async def _handle_scopes(self, request: ScopesRequest) -> ScopesResponse:
         """Handle scopes request."""
         frame_id = request["arguments"]["frameId"]
         scopes = await self.server.debugger.get_scopes(frame_id)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "scopes",
-            "body": {"scopes": cast("list[Scope]", scopes)},
-        }
+        return cast(
+            "ScopesResponse",
+            self._make_response(request, "scopes", body={"scopes": cast("list[Scope]", scopes)}),
+        )
 
     async def _handle_variables(self, request: VariablesRequest) -> VariablesResponse:
         """Handle variables request."""
@@ -753,14 +634,10 @@ class RequestHandler:
         variables = await self.server.debugger.get_variables(
             variables_reference, filter_, start, count
         )
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "variables",
-            "body": {"variables": cast("list[Variable]", variables)},
-        }
+        return cast(
+            "VariablesResponse",
+            self._make_response(request, "variables", body={"variables": cast("list[Variable]", variables)}),
+        )
 
     async def _handle_setVariable(  # noqa: N802
         self, request: SetVariableRequest
@@ -774,24 +651,16 @@ class RequestHandler:
 
             result = await self.server.debugger.set_variable(variables_reference, name, value)
 
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": True,
-                "command": "setVariable",
-                "body": cast("SetVariableResponseBody", result),
-            }
+            return cast(
+                "SetVariableResponse",
+                self._make_response(request, "setVariable", body=cast("SetVariableResponseBody", result)),
+            )
         except Exception as e:
             logger.exception("Error handling setVariable request")
-            return {
-                "seq": 0,
-                "type": "response",
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "setVariable",
-                "message": f"Set variable failed: {e!s}",
-            }
+            return cast(
+                "SetVariableResponse",
+                self._make_response(request, "setVariable", success=False, message=f"Set variable failed: {e!s}"),
+            )
 
     async def _handle_evaluate(self, request: EvaluateRequest) -> EvaluateResponse:
         """Handle evaluate request."""
@@ -800,14 +669,10 @@ class RequestHandler:
         frame_id = args.get("frameId")
         context = args.get("context")
         result = await self.server.debugger.evaluate(expression, frame_id, context)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "evaluate",
-            "body": cast("EvaluateResponseBody", result),
-        }
+        return cast(
+            "EvaluateResponse",
+            self._make_response(request, "evaluate", body=cast("EvaluateResponseBody", result)),
+        )
 
     async def _handle_dataBreakpointInfo(  # noqa: N802
         self, request: DataBreakpointInfoRequest
@@ -828,14 +693,10 @@ class RequestHandler:
                 "DataBreakpointInfoResponseBody",
                 self.server.debugger.data_breakpoint_info(name=name, frame_id=frame_id),
             )
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "dataBreakpointInfo",
-            "body": body,
-        }
+        return cast(
+            "DataBreakpointInfoResponse",
+            self._make_response(request, "dataBreakpointInfo", body=body),
+        )
 
     async def _handle_setDataBreakpoints(  # noqa: N802
         self, request: SetDataBreakpointsRequest
@@ -844,14 +705,10 @@ class RequestHandler:
         args = request.get("arguments", {})
         bps = args.get("breakpoints", [])
         results = self.server.debugger.set_data_breakpoints(bps)
-        return {
-            "seq": 0,
-            "type": "response",
-            "request_seq": request["seq"],
-            "success": True,
-            "command": "setDataBreakpoints",
-            "body": {"breakpoints": cast("list[Breakpoint]", results)},
-        }
+        return cast(
+            "SetDataBreakpointsResponse",
+            self._make_response(request, "setDataBreakpoints", body={"breakpoints": cast("list[Breakpoint]", results)}),
+        )
 
     async def _handle_exceptionInfo(  # noqa: N802
         self, request: ExceptionInfoRequest
@@ -863,24 +720,16 @@ class RequestHandler:
 
             body = await self.server.debugger.get_exception_info(thread_id)
 
-            return {
-                "type": "response",
-                "seq": 0,  # Will be set by protocol handler
-                "request_seq": request["seq"],
-                "success": True,
-                "command": "exceptionInfo",
-                "body": cast("ExceptionInfoResponseBody", body),
-            }
+            return cast(
+                "ExceptionInfoResponse",
+                self._make_response(request, "exceptionInfo", body=cast("ExceptionInfoResponseBody", body)),
+            )
         except Exception as e:
             logger.exception("Error handling exceptionInfo request")
-            return {
-                "type": "response",
-                "seq": 0,  # Will be set by protocol handler
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "exceptionInfo",
-                "message": f"exceptionInfo failed: {e!s}",
-            }
+            return cast(
+                "ExceptionInfoResponse",
+                self._make_response(request, "exceptionInfo", success=False, message=f"exceptionInfo failed: {e!s}"),
+            )
 
     async def _handle_completions(
         self, request: CompletionsRequest
@@ -904,21 +753,10 @@ class RequestHandler:
                 line=line,
             )
 
-            return {
-                "type": "response",
-                "seq": 0,
-                "request_seq": request["seq"],
-                "success": True,
-                "command": "completions",
-                "body": body,
-            }
+            return cast("CompletionsResponse", self._make_response(request, "completions", body=body))
         except Exception as e:
             logger.exception("Error handling completions request")
-            return {
-                "type": "response",
-                "seq": 0,
-                "request_seq": request["seq"],
-                "success": False,
-                "command": "completions",
-                "message": f"Completions failed: {e!s}",
-            }
+            return cast(
+                "CompletionsResponse",
+                self._make_response(request, "completions", success=False, message=f"Completions failed: {e!s}"),
+            )

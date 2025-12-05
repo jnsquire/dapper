@@ -52,6 +52,10 @@ class BackendStrategy(Protocol):
         """Get the strategy name."""
         ...
 
+# Prepare a single reusable no-op handler for optional callbacks.
+def _noop(*_args: object, **_kwargs: object) -> None:  # pragma: no cover - trivial
+    """A tiny no-op callable used as a safe default for callback hooks."""
+        
 
 class InProcessStrategy:
     """Strategy for in-process debugging."""
@@ -73,25 +77,12 @@ class InProcessStrategy:
         # Create the in-process components
         debugger = InProcessDebugger()
         
-        # Prepare callbacks with proper defaults
-        def default_on_stopped(event: dict[str, Any]) -> None:
-            pass
-        
-        def default_on_thread(event: dict[str, Any]) -> None:
-            pass
-        
-        def default_on_exited(event: dict[str, Any]) -> None:
-            pass
-        
-        def default_on_output(category: str, output: str) -> None:
-            pass
-        
         bridge = InProcessBridge(
             debugger,
-            on_stopped=kwargs.get("on_stopped") or default_on_stopped,
-            on_thread=kwargs.get("on_thread") or default_on_thread,
-            on_exited=kwargs.get("on_exited") or default_on_exited,
-            on_output=kwargs.get("on_output") or default_on_output,
+            on_stopped=kwargs.get("on_stopped", _noop),
+            on_thread=kwargs.get("on_thread", _noop),
+            on_exited=kwargs.get("on_exited", _noop),
+            on_output=kwargs.get("on_output", _noop),
         )
         
         return InProcessBackend(bridge)
@@ -132,7 +123,8 @@ class ExternalProcessStrategy:
         
         missing = required_kwargs - set(kwargs.keys())
         if missing:
-            missing_str = ", ".join(missing)
+            # sort for deterministic error messages and easier testing
+            missing_str = ", ".join(sorted(missing))
             error_msg = f"External process backend requires: {missing_str}"
             raise ConfigurationError(
                 error_msg,
@@ -192,18 +184,18 @@ class BackendFactory:
             BackendError: If no suitable strategy is found
             ConfigurationError: If the configuration is invalid
         """
-        for strategy in self._strategies:
-            if strategy.is_supported(config):
-                logger.info(f"Using backend strategy: {strategy.name}")
-                try:
-                    return strategy.create_backend(config, loop, **kwargs)
-                except Exception as e:
-                    error_msg = f"Failed to create backend with strategy {strategy.name}: {e!s}"
-                    raise BackendError(
-                        error_msg,
-                        backend_type=strategy.name,
-                        cause=e,
-                    ) from e
+        strategy = next((s for s in self._strategies if s.is_supported(config)), None)
+        if strategy is not None:
+            logger.info(f"Using backend strategy: {strategy.name}")
+            try:
+                return strategy.create_backend(config, loop, **kwargs)
+            except Exception as e:
+                error_msg = f"Failed to create backend with strategy {strategy.name}: {e!s}"
+                raise BackendError(
+                    error_msg,
+                    backend_type=strategy.name,
+                    cause=e,
+                ) from e
         
         # No strategy found
         supported_modes = [s.name for s in self._strategies]

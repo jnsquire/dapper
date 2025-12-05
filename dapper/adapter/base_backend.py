@@ -250,9 +250,12 @@ class BaseBackend(DebuggerBackend, ABC):
         """Step over."""
         await self._execute_with_timeout("next", {"thread_id": thread_id})
     
-    async def step_in(self, thread_id: int) -> None:
+    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into."""
-        await self._execute_with_timeout("step_in", {"thread_id": thread_id})
+        args: dict[str, int] = {"thread_id": thread_id}
+        if target_id is not None:
+            args["target_id"] = target_id
+        await self._execute_with_timeout("step_in", args)
     
     async def step_out(self, thread_id: int) -> None:
         """Step out."""

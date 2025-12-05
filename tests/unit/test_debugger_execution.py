@@ -112,8 +112,8 @@ class TestDebuggerExecution(BaseDebuggerTest):
 
         await self.debugger.step_in(1)
 
-        # Should call the backend's step_in method
-        mock_backend.step_in.assert_called_once_with(1)
+        # Should call the backend's step_in method with thread_id and target_id
+        mock_backend.step_in.assert_called_once_with(1, None)
 
     async def test_step_out(self):
         """Test stepping out of function"""

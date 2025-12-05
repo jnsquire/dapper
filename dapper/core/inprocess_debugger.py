@@ -203,7 +203,8 @@ class InProcessDebugger:
                 if dbg.current_frame is not None:
                     dbg.set_next(dbg.current_frame)
 
-    def step_in(self, thread_id: int) -> None:
+    def step_in(self, thread_id: int, target_id: int | None = None) -> None:  # noqa: ARG002
+        # target_id is accepted for DAP compatibility but not yet implemented.
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():

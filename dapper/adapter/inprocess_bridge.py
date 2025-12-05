@@ -130,9 +130,13 @@ class InProcessBridge:
         """Step over."""
         self._inproc.next_(thread_id)
 
-    def step_in(self, thread_id: int) -> None:
-        """Step into."""
-        self._inproc.step_in(thread_id)
+    def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+        """Step into.
+        
+        Note: target_id is accepted for API compatibility but not yet
+        used by InProcessDebugger.
+        """
+        self._inproc.step_in(thread_id, target_id)
 
     def step_out(self, thread_id: int) -> None:
         """Step out."""
