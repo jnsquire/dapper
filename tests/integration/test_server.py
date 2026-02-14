@@ -368,10 +368,26 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
             "message": message,
         }
 
+    def fake_create_error_response(request, error_message):
+        return {
+            "type": "response",
+            "command": request.get("command"),
+            "success": False,
+            "message": error_message,
+            "body": {"error": "ProtocolError", "details": {"command": request.get("command")}},
+        }
+
     monkeypatch.setattr(
         server,
         "protocol_handler",
-        type("PH", (), {"create_response": staticmethod(fake_create_response)}),
+        type(
+            "PH",
+            (),
+            {
+                "create_response": staticmethod(fake_create_response),
+                "create_error_response": staticmethod(fake_create_error_response),
+            },
+        ),
     )
 
     req = {"seq": 99, "type": "request", "command": "doIt"}
@@ -387,3 +403,4 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
     resp2 = conn.written_messages[-1]
     assert resp2["success"] is False
     assert resp2.get("message") == "bad"
+    assert resp2["body"]["error"] == "ProtocolError"

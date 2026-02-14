@@ -99,6 +99,7 @@ async def test_set_variable_request_error(request_handler, mock_debugger):
     assert response["command"] == "setVariable"
     assert "message" in response
     assert "Invalid reference" in response["message"]
+    assert response["body"]["error"] == "RequestError"
 
 
 @pytest.mark.asyncio

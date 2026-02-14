@@ -49,9 +49,10 @@ class DAPResponse(DAPResponseBase, total=False):
 
 
 class DAPErrorResponse(DAPResponseBase):
-    """DAP error response - requires message, no body."""
+    """DAP error response with standardized error body."""
 
     message: str
+    body: dict[str, Any]
 
 
 # Type alias for handler return values

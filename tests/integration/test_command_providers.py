@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+from typing import cast
+
 import pytest
 
 import dapper.shared.debug_shared as ds
@@ -230,3 +233,31 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages):
     ds.state.register_command_provider(m, priority=0)
     ds.state.dispatch_debug_command({"id": 4, "command": "ping", "arguments": {}})
     assert capture_messages == [("response", {"id": 4, "success": True})]
+
+
+@pytest.mark.usefixtures("isolated_registry")
+def test_pipe_and_socket_dispatch_initialize_emit_same_payload(capture_messages, monkeypatch):
+    import dapper.shared.command_handlers as ch
+    from dapper.ipc.ipc_receiver import DapMappingProvider
+    from dapper.shared.command_handlers import COMMAND_HANDLERS
+    from dapper.shared.command_handlers import handle_debug_command
+
+    def capture_send(event_type: str, **kwargs):
+        capture_messages.append((event_type, kwargs))
+
+    monkeypatch.setattr(ch, "send_debug_message", capture_send)
+
+    ds.state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
+
+    command = {"command": "initialize", "arguments": {}}
+
+    handle_debug_command(command)
+    pipe_messages = list(capture_messages)
+
+    capture_messages.clear()
+    ds.state.dispatch_debug_command(command)
+    socket_messages = list(capture_messages)
+
+    assert pipe_messages
+    assert socket_messages
+    assert pipe_messages[-1] == socket_messages[-1]

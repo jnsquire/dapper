@@ -32,8 +32,8 @@ This checklist turns the current review findings into incremental, low-risk work
 |---|---|---:|---|
 | [x] Replace broad `except Exception` in hot command paths with specific exceptions |  |  |  |
 | [x] Add debug-level logging for fallback/error-swallow paths |  |  |  |
-| [ ] Standardize DAP error response shape across handlers |  |  |  |
-| [ ] Add tests for expected failure modes (bad args, missing frame, conversion failures) |  |  |  |
+| [x] Standardize DAP error response shape across handlers |  |  |  |
+| [x] Add tests for expected failure modes (bad args, missing frame, conversion failures) |  |  |  |
 
 ### Exit criteria
 
@@ -47,6 +47,8 @@ This checklist turns the current review findings into incremental, low-risk work
 - Current regression status after each Phase 2 slice: `uv run pytest` passes (`1101 passed, 10 skipped`).
 - `uv run ruff check .` passes after applying safe and unsafe Ruff auto-fixes, plus one manual `TRY300` cleanup.
 - Current validation status: `uv run ruff check .` passes and `uv run pytest` passes (`1101 passed, 10 skipped`).
+- Standardized DAP error response shape across protocol/server/request handlers with canonical `body.error` + `body.details`; targeted validation: `uv run pytest -q tests/unit/test_protocol.py tests/integration/test_server.py tests/unit/test_configuration_done_handler.py tests/unit/test_terminate_handler.py tests/unit/test_set_variable_handler.py` (`53 passed`).
+- Added focused command-handler failure-mode coverage for bad arguments, missing frame references, and conversion failures in `setVariable`; targeted validation: `uv run pytest -q tests/integration/test_dap_command_handlers.py tests/integration/test_dap_command_handlers_extra.py` (`21 passed`).
 
 ---
 
@@ -54,31 +56,35 @@ This checklist turns the current review findings into incremental, low-risk work
 
 | Task | Owner | Estimate | Target PR |
 |---|---|---:|---|
-| [ ] Select a single canonical handler implementation module |  |  |  |
-| [ ] Convert duplicate module to thin wrappers/delegation only |  |  |  |
-| [ ] Add tests asserting pipe-IPC and socket-IPC use same behavior |  |  |  |
-| [ ] Remove dead helper code that became redundant after deduplication |  |  |  |
+| [x] Select a single canonical handler implementation module |  |  |  |
+| [x] Remove duplicate module/compatibility layer |  |  |  |
+| [x] Add tests asserting pipe-IPC and socket-IPC use same behavior |  |  |  |
+| [x] Remove dead helper code that became redundant after deduplication |  |  |  |
 
 ### Exit criteria
 
-- [ ] One source of truth for command logic
-- [ ] Both IPC pathways pass the same behavioral test suite
+- [x] One source of truth for command logic
+- [x] Both IPC pathways pass the same behavioral test suite
 
+- Phase 3 deduplication finalized by deleting unused compatibility modules (`dapper/shared/launcher_handlers.py`, `launcher/handlers.py`) and the obsolete compatibility-only unit test. Canonical handler source remains `dapper/shared/command_handlers.py`; parity coverage is retained in `tests/integration/test_command_providers.py`. Targeted validation: `uv run pytest -q tests/integration/test_command_providers.py tests/integration/test_ipc_receiver.py tests/integration/test_debug_launcher_handlers.py` (`27 passed`).
 ---
 
 ## Phase 4 — Eval and conversion safety
 
 | Task | Owner | Estimate | Target PR |
 |---|---|---:|---|
-| [ ] Centralize value/expression conversion in one utility |  |  |  |
-| [ ] Guard runtime `eval` use with explicit policy checks and strict context |  |  |  |
-| [ ] Add tests for malformed and hostile-like input cases |  |  |  |
-| [ ] Ensure conversion errors map to consistent user-facing messages |  |  |  |
+| [x] Centralize value/expression conversion in one utility |  |  |  |
+| [x] Guard runtime `eval` use with explicit policy checks and strict context |  |  |  |
+| [x] Add tests for malformed and hostile-like input cases |  |  |  |
+| [x] Ensure conversion errors map to consistent user-facing messages |  |  |  |
 
 ### Exit criteria
 
-- [ ] Dynamic evaluation behavior is explicitly controlled and test-covered
-- [ ] Conversion behavior is consistent across handlers
+- [x] Dynamic evaluation behavior is explicitly controlled and test-covered
+- [x] Conversion behavior is consistent across handlers
+
+- Phase 4 in progress: introduced shared conversion/eval utility in `dapper/shared/value_conversion.py`, wired `dapper/shared/command_handlers.py` to use it, and added hostile/malformed input coverage in `tests/unit/test_value_conversion.py` plus `tests/integration/test_dap_command_handlers.py`. Targeted validation: `uv run pytest -q tests/unit/test_value_conversion.py tests/integration/test_dap_command_handlers.py tests/functional/test_conversion.py` (`22 passed`).
+- Standardized conversion/evaluation failure messaging (`Conversion failed`, `<error: Evaluation failed>`, `<error: Evaluation blocked by policy>`) in `dapper/shared/command_handlers.py` with direct tests in `tests/unit/test_conversion_error_messages.py`; targeted validation: `uv run pytest -q tests/unit/test_conversion_error_messages.py tests/unit/test_value_conversion.py tests/integration/test_dap_command_handlers.py tests/functional/test_conversion.py` (`24 passed`).
 
 ---
 

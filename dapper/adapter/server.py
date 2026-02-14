@@ -1521,8 +1521,8 @@ class DebugAdapterServer:
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
         """Send an error response to a request"""
-        response = self.protocol_handler.create_response(
-            cast("GenericRequest", request), False, None, error_message
+        response = self.protocol_handler.create_error_response(
+            cast("GenericRequest", request), error_message
         )
         await self.send_message(cast("dict[str, Any]", response))
 

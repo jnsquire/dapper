@@ -42,7 +42,19 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    def handle(self, command: str, arguments: dict[str, Any]):
+    def handle(self, *args: Any):
+        # Support both legacy provider calls:
+        #   handle(command, arguments)
+        # and SessionState provider calls:
+        #   handle(session, command, arguments, full_command)
+        if len(args) == 2:
+            command, arguments = args
+        elif len(args) == 4:
+            _session, command, arguments, _full_command = args
+        else:
+            msg = f"Unexpected handle() arguments: {len(args)}"
+            raise TypeError(msg)
+
         # The underlying mapping handlers only accept `arguments` so delegate
         # and translate their return shape to the protocol expected by
         # register_command_provider.

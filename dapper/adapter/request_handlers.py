@@ -148,6 +148,11 @@ class RequestHandler:
         }
         if body is not None:
             resp["body"] = body
+        elif not success and message is not None:
+            resp["body"] = {
+                "error": "RequestError",
+                "details": {"command": command},
+            }
         if message is not None:
             resp["message"] = message
         return cast("DAPResponse", resp)

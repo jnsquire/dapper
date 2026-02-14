@@ -17,7 +17,6 @@ Dependencies:
 
 from __future__ import annotations
 
-import ast
 import linecache
 import logging
 import mimetypes
@@ -31,6 +30,8 @@ from typing import cast
 from dapper.launcher.comm import send_debug_message
 from dapper.shared import debug_shared as _d_shared
 from dapper.shared.debug_shared import state
+from dapper.shared.value_conversion import convert_value_with_context
+from dapper.shared.value_conversion import evaluate_with_policy
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,9 @@ VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
 _CONVERSION_FAILED = object()
 _convert_value_with_context_override: Any | None = None
+_CONVERSION_ERROR_MESSAGE = "Conversion failed"
+_EVALUATION_ERROR_MESSAGE = "Evaluation failed"
+_EVALUATION_POLICY_BLOCKED_MESSAGE = "Evaluation blocked by policy"
 # Maximum string length for enriched repr values in dataBreakpointInfo
 MAX_VALUE_REPR_LEN = 200
 _TRUNC_SUFFIX = "..."
@@ -79,6 +83,13 @@ COMMAND_HANDLERS: dict[str, Any] = {}
 def _error_response(message: str) -> dict[str, Any]:
     """Return a standardized failed handler response payload."""
     return {"success": False, "message": message}
+
+
+def _format_evaluation_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "blocked by policy" in text:
+        return f"<error: {_EVALUATION_POLICY_BLOCKED_MESSAGE}>"
+    return f"<error: {_EVALUATION_ERROR_MESSAGE}>"
 
 
 def _safe_send_debug_message(message_type: str, **payload: Any) -> bool:
@@ -216,39 +227,8 @@ def _try_custom_convert(
 def _convert_value_with_context(
     value_str: str, frame: Any | None = None, parent_obj: Any | None = None
 ) -> Any:
-    """Convert a string value to a Python object using available context."""
-    s = value_str.strip()
-    if s.lower() == "none":
-        return None
-    if s.lower() in ("true", "false"):
-        return s.lower() == "true"
-
-    try:
-        return ast.literal_eval(s)
-    except (ValueError, SyntaxError):
-        pass
-
-    if frame is not None:
-        try:
-            return eval(s, frame.f_globals, frame.f_locals)
-        except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
-            pass
-
-    if parent_obj is not None:
-        try:
-            target_type = None
-            if isinstance(parent_obj, list) and parent_obj:
-                target_type = type(parent_obj[0])
-            elif isinstance(parent_obj, dict) and parent_obj:
-                sample = next(iter(parent_obj.values()))
-                target_type = type(sample)
-
-            if target_type in (int, float, bool, str):
-                return target_type(s)
-        except (StopIteration, TypeError, ValueError):
-            pass
-
-    return value_str
+    """Convert a string value to a Python object using shared conversion utility."""
+    return convert_value_with_context(value_str, frame, parent_obj)
 
 
 def _convert_string_to_value(value_str: str) -> Any:
@@ -323,7 +303,11 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
         if new_value is _CONVERSION_FAILED:
             new_value = eval(value_str, frame.f_globals, frame.f_locals)
     except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
-        new_value = _convert_value_with_context(value_str, frame)
+        try:
+            new_value = _convert_value_with_context(value_str, frame)
+        except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+            logger.debug("Failed to convert value for scope assignment", exc_info=True)
+            return _error_response(_CONVERSION_ERROR_MESSAGE)
 
     if scope == "locals":
         frame.f_locals[name] = new_value
@@ -352,7 +336,7 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
             new_value = _convert_value_with_context(value_str, None, parent_obj)
     except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
         logger.debug("Failed to convert value for object member assignment", exc_info=True)
-        return _error_response("Conversion failed")
+        return _error_response(_CONVERSION_ERROR_MESSAGE)
 
     err = _assign_to_parent_member(parent_obj, name, new_value)
 
@@ -874,7 +858,7 @@ def _handle_set_variable_impl(
                     return _set_scope_variable(frame, scope, name, value)
     except (AttributeError, KeyError, TypeError, ValueError):
         logger.debug("Failed to set variable from frame reference", exc_info=True)
-        return _error_response("Failed to set variable")
+        return _error_response(_CONVERSION_ERROR_MESSAGE)
 
     return _error_response(f"Invalid variable reference: {variables_reference}")
 
@@ -895,18 +879,16 @@ def _handle_evaluate_impl(dbg: DebuggerLike, arguments: EvaluateArguments | dict
             if stack and frame_id is not None and frame_id < len(stack):
                 frame, _ = stack[frame_id]
                 try:
-                    value = eval(expression, frame.f_globals, frame.f_locals)
+                    value = evaluate_with_policy(expression, frame)
                     result = repr(value)
                 except Exception as e:
-                    result = f"<error: {e}>"
+                    result = _format_evaluation_error(e)
             elif hasattr(dbg, "current_frame") and dbg.current_frame:
                 try:
-                    value = eval(
-                        expression, dbg.current_frame.f_globals, dbg.current_frame.f_locals
-                    )
+                    value = evaluate_with_policy(expression, dbg.current_frame)
                     result = repr(value)
                 except Exception as e:
-                    result = f"<error: {e}>"
+                    result = _format_evaluation_error(e)
         except (AttributeError, IndexError, KeyError, NameError, TypeError):
             logger.debug("Evaluate context resolution failed", exc_info=True)
 

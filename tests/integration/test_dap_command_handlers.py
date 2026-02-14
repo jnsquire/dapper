@@ -174,6 +174,71 @@ def test_variables_and_set_variable(monkeypatch):
     assert calls[-1][0] == "setVariable"
 
 
+def test_set_variable_bad_args_failure_payload(monkeypatch):
+    dbg = DummyDebugger()
+    monkeypatch.setattr(dch.state, "debugger", dbg)
+
+    calls = []
+
+    def recorder(kind, **kwargs):
+        calls.append((kind, kwargs))
+
+    monkeypatch.setattr(dch, "send_debug_message", recorder)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+
+    dch._cmd_set_variable({"variablesReference": "bad", "name": "x", "value": "1"})
+
+    assert calls
+    event, payload = calls[-1]
+    assert event == "setVariable"
+    assert payload["success"] is False
+    assert payload["message"] == "Invalid arguments"
+
+
+def test_set_variable_missing_frame_failure_payload(monkeypatch):
+    dbg = DummyDebugger()
+    dbg.var_refs[10] = (999, "locals")
+    monkeypatch.setattr(dch.state, "debugger", dbg)
+
+    calls = []
+
+    def recorder(kind, **kwargs):
+        calls.append((kind, kwargs))
+
+    monkeypatch.setattr(dch, "send_debug_message", recorder)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+
+    dch._cmd_set_variable({"variablesReference": 10, "name": "x", "value": "1"})
+
+    assert calls
+    event, payload = calls[-1]
+    assert event == "setVariable"
+    assert payload["success"] is False
+    assert payload["message"] == "Invalid variable reference: 10"
+
+
+def test_set_variable_conversion_failure_payload(monkeypatch):
+    dbg = DummyDebugger()
+    dbg.var_refs[11] = ("object", {"x": 1})
+    monkeypatch.setattr(dch.state, "debugger", dbg)
+
+    calls = []
+
+    def recorder(kind, **kwargs):
+        calls.append((kind, kwargs))
+
+    monkeypatch.setattr(dch, "send_debug_message", recorder)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+
+    dch._cmd_set_variable({"variablesReference": 11, "name": "x", "value": object()})
+
+    assert calls
+    event, payload = calls[-1]
+    assert event == "setVariable"
+    assert payload["success"] is False
+    assert payload["message"] == "Conversion failed"
+
+
 def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
     # create a fake module file and inject into sys.modules
     p = tmp_path / "mymod.py"
@@ -233,6 +298,27 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
     dch._cmd_evaluate({"expression": "unknown_var", "frameId": 1})
     assert calls
     assert calls[-1][0] == "evaluate"
+
+
+def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
+    dbg = DummyDebugger()
+    frame = SimpleNamespace(f_globals={"x": 2}, f_locals={})
+    dbg.current_frame = frame
+    monkeypatch.setattr(dch.state, "debugger", dbg)
+
+    calls = []
+
+    def recorder(kind, **kwargs):
+        calls.append((kind, kwargs))
+
+    monkeypatch.setattr(dch, "send_debug_message", recorder)
+    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+
+    dch._cmd_evaluate({"expression": "__import__('os').system('id')", "frameId": 1})
+    assert calls
+    event, payload = calls[-1]
+    assert event == "evaluate"
+    assert payload["result"] == "<error: Evaluation blocked by policy>"
 
 
 def test_handle_exception_info_variants(monkeypatch):
