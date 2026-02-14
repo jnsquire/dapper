@@ -21,6 +21,9 @@ from dapper.shared.debug_shared import state
 
 logger = logging.getLogger(__name__)
 
+HANDLE_ARGS_DIRECT = 2
+HANDLE_ARGS_PROVIDER = 4
+
 
 class DapMappingProvider:
     """Provider that wraps the legacy COMMAND_HANDLERS mapping.
@@ -43,13 +46,10 @@ class DapMappingProvider:
         return command in self._mapping
 
     def handle(self, *args: Any):
-        # Support both legacy provider calls:
-        #   handle(command, arguments)
-        # and SessionState provider calls:
-        #   handle(session, command, arguments, full_command)
-        if len(args) == 2:
+        """Handle calls from both direct and provider-based dispatch paths."""
+        if len(args) == HANDLE_ARGS_DIRECT:
             command, arguments = args
-        elif len(args) == 4:
+        elif len(args) == HANDLE_ARGS_PROVIDER:
             _session, command, arguments, _full_command = args
         else:
             msg = f"Unexpected handle() arguments: {len(args)}"

@@ -5,6 +5,10 @@ from typing import cast
 
 import pytest
 
+from dapper.ipc.ipc_receiver import DapMappingProvider
+import dapper.shared.command_handlers as ch
+from dapper.shared.command_handlers import COMMAND_HANDLERS
+from dapper.shared.command_handlers import handle_debug_command
 import dapper.shared.debug_shared as ds
 
 
@@ -237,17 +241,14 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages):
 
 @pytest.mark.usefixtures("isolated_registry")
 def test_pipe_and_socket_dispatch_initialize_emit_same_payload(capture_messages, monkeypatch):
-    import dapper.shared.command_handlers as ch
-    from dapper.ipc.ipc_receiver import DapMappingProvider
-    from dapper.shared.command_handlers import COMMAND_HANDLERS
-    from dapper.shared.command_handlers import handle_debug_command
-
     def capture_send(event_type: str, **kwargs):
         capture_messages.append((event_type, kwargs))
 
     monkeypatch.setattr(ch, "send_debug_message", capture_send)
 
-    ds.state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
+    ds.state.register_command_provider(
+        cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100
+    )
 
     command = {"command": "initialize", "arguments": {}}
 
