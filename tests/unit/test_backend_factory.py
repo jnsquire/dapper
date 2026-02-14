@@ -270,12 +270,12 @@ class TestBackendFactory:
             def name(self) -> str:
                 return "failing"
 
-            def is_supported(self, config: DapperConfig) -> bool:  # noqa: ARG002
+            def is_supported(self, _config: DapperConfig) -> bool:
                 return True
 
             def create_backend(
-                self, config: DapperConfig, loop: asyncio.AbstractEventLoop, **kwargs
-            ):  # noqa: ARG002
+                self, _config: DapperConfig, _loop: asyncio.AbstractEventLoop, **_kwargs
+            ):
                 raise RuntimeError("Strategy failed")
 
         # Remove default strategies and add failing one
@@ -327,12 +327,12 @@ class TestGlobalFunctions:
             def name(self) -> str:
                 return "global_mock"
 
-            def is_supported(self, config: DapperConfig) -> bool:  # noqa: ARG002
+            def is_supported(self, _config: DapperConfig) -> bool:
                 return False
 
             def create_backend(
-                self, config: DapperConfig, loop: asyncio.AbstractEventLoop, **kwargs
-            ) -> "DebuggerBackend":  # noqa: ARG002
+                self, _config: DapperConfig, _loop: asyncio.AbstractEventLoop, **_kwargs
+            ) -> "DebuggerBackend":
                 # Return a mock backend that satisfies the protocol
                 class MockBackend:
                     def is_available(self) -> bool:
