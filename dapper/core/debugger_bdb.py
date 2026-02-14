@@ -36,6 +36,7 @@ except Exception:  # pragma: no cover - optional integration
 
 logger = logging.getLogger(__name__)
 
+
 def _noop_send_message(*args, **kwargs):
     pass
 

@@ -21,6 +21,10 @@ _config_lock = threading.RLock()
 _current_config: DapperConfig = DEFAULT_CONFIG
 
 
+def _assign_current_config(value: DapperConfig) -> None:
+    globals()["_current_config"] = value
+
+
 def get_config() -> DapperConfig:
     """Get the current configuration in a thread-safe manner.
 
@@ -37,10 +41,9 @@ def set_config(config: DapperConfig) -> None:
     Args:
         config: The new configuration to set
     """
-    global _current_config
     with _config_lock:
         config.validate()
-        _current_config = config
+        _assign_current_config(config)
 
 
 def update_config(**kwargs: Any) -> None:
@@ -49,7 +52,6 @@ def update_config(**kwargs: Any) -> None:
     Args:
         **kwargs: Configuration values to update
     """
-    global _current_config
     with _config_lock:
         # Create new config with updated values
         current = get_config()
@@ -64,14 +66,13 @@ def update_config(**kwargs: Any) -> None:
 
         # Validate and set
         current.validate()
-        _current_config = current
+        _assign_current_config(current)
 
 
 def reset_config() -> None:
     """Reset configuration to defaults."""
-    global _current_config
     with _config_lock:
-        _current_config = DEFAULT_CONFIG
+        _assign_current_config(DEFAULT_CONFIG)
 
 
 class ConfigContext:
@@ -92,7 +93,6 @@ class ConfigContext:
 
     def __enter__(self) -> DapperConfig:
         """Apply temporary configuration changes."""
-        global _current_config
         with _config_lock:
             self._original_config = get_config()
 
@@ -117,7 +117,7 @@ class ConfigContext:
                     setattr(new_config, key, value)
 
             new_config.validate()
-            _current_config = new_config
+            _assign_current_config(new_config)
             return new_config
 
     def __exit__(
@@ -127,7 +127,6 @@ class ConfigContext:
         exc_tb: types.TracebackType | None,
     ) -> None:
         """Restore original configuration."""
-        global _current_config
         if self._original_config is not None:
             with _config_lock:
-                _current_config = self._original_config
+                _assign_current_config(self._original_config)

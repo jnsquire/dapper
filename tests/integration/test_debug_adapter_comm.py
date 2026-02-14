@@ -44,7 +44,7 @@ def test_dap_mapping_provider_handle_variants():
     assert out.get("success") is False
 
 
-def test_receive_debug_commands_ipc(monkeypatch):
+def test_receive_debug_commands_ipc():
     # prepare fake state
     s = ipc_receiver.state
     s.is_terminated = False

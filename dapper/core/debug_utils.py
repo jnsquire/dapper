@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import re
 
+from dapper.shared.value_conversion import evaluate_with_policy
+
 # Safety limit for stack walking to avoid infinite loops on mocked frames
 MAX_STACK_DEPTH = 128
 
@@ -50,8 +52,6 @@ def format_log_message(template: str, frame) -> str:
     def repl(match):
         expr = match.group(1)
         try:
-            from dapper.shared.value_conversion import evaluate_with_policy
-
             val = evaluate_with_policy(expr, frame, allow_builtins=True)
             return str(val)
         except Exception:

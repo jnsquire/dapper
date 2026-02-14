@@ -134,10 +134,11 @@ class TransportFactory:
             client = mp_conn.Client(address=config.pipe_name, family="AF_PIPE")
             connection = NamedPipeServerConnection(pipe_name=config.pipe_name)
             connection.client = client  # keep reference so caller can close it
-            return connection
         except Exception as exc:
             msg = "Failed to connect to pipe"
             raise RuntimeError(msg) from exc
+        else:
+            return connection
 
     @staticmethod
     def _create_unix_listener(config: TransportConfig) -> tuple[TCPServerConnection, list[str]]:
@@ -185,10 +186,11 @@ class TransportFactory:
             sock.connect(config.path)
             connection = TCPServerConnection(host="127.0.0.1", port=0)
             connection.socket = sock  # keep reference so caller can use/close it
-            return connection
         except Exception as exc:
             msg = "Failed to connect to Unix socket"
             raise RuntimeError(msg) from exc
+        else:
+            return connection
 
     @staticmethod
     def _create_tcp_listener(config: TransportConfig) -> tuple[TCPServerConnection, list[str]]:
@@ -373,7 +375,8 @@ class TransportFactory:
             sock.connect((config.host, config.port))
             connection = TCPServerConnection(host=config.host, port=config.port)
             connection.socket = sock  # keep reference so caller can use/close it
-            return connection
         except Exception as exc:
             msg = "Failed to connect to TCP socket"
             raise RuntimeError(msg) from exc
+        else:
+            return connection

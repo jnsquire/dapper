@@ -553,101 +553,74 @@ class RequestHandler:
         """
         args = request.get("arguments", {}) or {}
         module_id = args.get("moduleId") or args.get("module")
-        if not module_id:
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request, "moduleSource", success=False, message="Missing moduleId"
-                ),
-            )
+        body, message = self._prepare_module_source_body(module_id)
+        success = body is not None
+        return cast(
+            "ModuleSourceResponse",
+            self._make_response(
+                request,
+                "moduleSource",
+                success=success,
+                message=message,
+                body=body,
+            ),
+        )
 
-        found = None
+    def _prepare_module_source_body(
+        self, module_id: str | int | None
+    ) -> tuple[ModuleSourceResponseBody | None, str | None]:
+        if not module_id:
+            return None, "Missing moduleId"
+
+        found = self._find_module_by_id(module_id)
+        if found is None:
+            return None, "Module not found"
+
+        resolved, message = self._resolve_module_path(found)
+        if resolved is None:
+            return None, message
+
+        content, message = self._read_module_content(resolved)
+        if content is None:
+            return None, message
+
+        return {"content": content}, None
+
+    def _find_module_by_id(self, module_id: str | int) -> object | None:
         for name, mod in list(sys.modules.items()):
             if mod is None:
                 continue
             try:
                 if str(id(mod)) == str(module_id) or name == module_id:
-                    found = mod
-                    break
+                    return mod
             except Exception:
                 continue
+        return None
 
-        if found is None:
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request, "moduleSource", success=False, message="Module not found"
-                ),
-            )
-
-        path = getattr(found, "__file__", None)
+    def _resolve_module_path(self, module: object) -> tuple[Path | None, str | None]:
+        path = getattr(module, "__file__", None)
         if not path:
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request, "moduleSource", success=False, message="Module has no file path"
-                ),
-            )
-
-        # Security: resolve symlinks and validate the path is a regular file
+            return None, "Module has no file path"
         try:
             resolved = Path(path).resolve(strict=True)
         except (OSError, ValueError):
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request,
-                    "moduleSource",
-                    success=False,
-                    message="Module file path could not be resolved",
-                ),
-            )
+            return None, "Module file path could not be resolved"
         if not resolved.is_file():
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request,
-                    "moduleSource",
-                    success=False,
-                    message="Module path is not a regular file",
-                ),
-            )
-        # Only serve .py/.pyw source files to prevent leaking arbitrary file contents
+            return None, "Module path is not a regular file"
         if resolved.suffix.lower() not in (".py", ".pyw"):
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request,
-                    "moduleSource",
-                    success=False,
-                    message="Module path is not a Python source file",
-                ),
-            )
+            return None, "Module path is not a Python source file"
+        return resolved, None
 
+    def _read_module_content(self, resolved: Path) -> tuple[str | None, str | None]:
         try:
             with resolved.open("rb") as f:
                 data = f.read()
-            # Try to decode as utf-8; if it fails preserve bytes as latin-1 to
-            # keep a 1:1 mapping so NUL bytes survive for downstream checks.
-            try:
-                content = data.decode("utf-8")
-            except Exception:
-                content = data.decode("latin-1")
-        except Exception as e:
-            return cast(
-                "ModuleSourceResponse",
-                self._make_response(
-                    request,
-                    "moduleSource",
-                    success=False,
-                    message=f"Failed to read module source: {e!s}",
-                ),
-            )
-
-        body: ModuleSourceResponseBody = {"content": content}
-        return cast(
-            "ModuleSourceResponse", self._make_response(request, "moduleSource", body=body)
-        )
+        except Exception as exc:
+            return None, f"Failed to read module source: {exc!s}"
+        try:
+            return data.decode("utf-8"), None
+        except Exception:
+            return data.decode("latin-1"), None
 
     async def _handle_modules(self, request: ModulesRequest) -> ModulesResponse:
         """Handle modules request."""
@@ -713,7 +686,9 @@ class RequestHandler:
         return cast(
             "VariablesResponse",
             self._make_response(
-                request, "variables", body={"variables": cast("list[Variable]", variables)}
+                request,
+                "variables",
+                body={"variables": cast("list[Variable]", variables)},
             ),
         )
 

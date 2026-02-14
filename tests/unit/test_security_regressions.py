@@ -12,6 +12,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dapper.adapter.request_handlers import RequestHandler
+from dapper.core.breakpoint_resolver import BreakpointResolver
+from dapper.core.debug_utils import format_log_message
+from dapper.core.inprocess_debugger import InProcessDebugger
+from dapper.ipc.connections.tcp import TCPServerConnection
+from dapper.shared import command_handlers
+from dapper.shared.value_conversion import evaluate_with_policy
+
 # ---------------------------------------------------------------------------
 # 1. TCP connection warns on non-loopback binding
 # ---------------------------------------------------------------------------
@@ -21,7 +29,6 @@ class TestTCPLoopbackWarning:
     """TCPServerConnection logs a warning when bound to a non-loopback address."""
 
     def test_no_warning_for_localhost(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             conn = TCPServerConnection(host="localhost", port=0)
@@ -29,21 +36,18 @@ class TestTCPLoopbackWarning:
         assert conn.host == "localhost"
 
     def test_no_warning_for_127_0_0_1(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             TCPServerConnection(host="127.0.0.1", port=0)
         assert "SECURITY" not in caplog.text
 
     def test_no_warning_for_ipv6_loopback(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             TCPServerConnection(host="::1", port=0)
         assert "SECURITY" not in caplog.text
 
     def test_warns_for_0_0_0_0(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             TCPServerConnection(host="0.0.0.0", port=0)
@@ -51,14 +55,12 @@ class TestTCPLoopbackWarning:
         assert "non-loopback" in caplog.text
 
     def test_warns_for_external_ip(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             TCPServerConnection(host="192.168.1.100", port=0)
         assert "SECURITY" in caplog.text
 
     def test_default_host_no_warning(self, caplog):
-        from dapper.ipc.connections.tcp import TCPServerConnection
 
         with caplog.at_level(logging.WARNING):
             conn = TCPServerConnection(port=0)
@@ -83,8 +85,6 @@ class TestEvalPolicyEnforcement:
     """All eval() call sites go through the policy checker."""
 
     def test_inprocess_debugger_set_variable_blocks_import(self):
-        from dapper.core.inprocess_debugger import InProcessDebugger
-
         dbg = MagicMock()
         dbg.var_refs = {1: (1, "locals")}
         frame = _make_frame({"x": 1})
@@ -95,13 +95,13 @@ class TestEvalPolicyEnforcement:
 
         result = ipd.set_variable(1, "x", "__import__('os')")
         # Should be blocked by policy (contains "__")
-        assert result.get("success") is False or "blocked" in str(
-            result.get("message", "")
-        ).lower() or "error" in str(result.get("message", "")).lower()
+        assert (
+            result.get("success") is False
+            or "blocked" in str(result.get("message", "")).lower()
+            or "error" in str(result.get("message", "")).lower()
+        )
 
     def test_inprocess_debugger_evaluate_blocks_import(self):
-        from dapper.core.inprocess_debugger import InProcessDebugger
-
         dbg = MagicMock()
         frame = _make_frame({"x": 1})
         dbg.frame_id_to_frame = {1: frame}
@@ -114,8 +114,6 @@ class TestEvalPolicyEnforcement:
         assert result["type"] == "error" or "blocked" in result.get("result", "").lower()
 
     def test_breakpoint_condition_blocks_import(self):
-        from dapper.core.breakpoint_resolver import BreakpointResolver
-
         resolver = BreakpointResolver()
         frame = _make_frame({"x": 1})
 
@@ -124,8 +122,6 @@ class TestEvalPolicyEnforcement:
         assert result is False
 
     def test_log_message_blocks_import(self):
-        from dapper.core.debug_utils import format_log_message
-
         frame = _make_frame({"x": 1})
 
         # Expression with __import__ should produce <error>
@@ -133,15 +129,16 @@ class TestEvalPolicyEnforcement:
         assert result == "<error>"
 
     def test_command_handler_set_scope_blocks_eval_of_import(self, monkeypatch):
-        from dapper.shared import command_handlers
-
         frame = _make_frame({"x": 1})
 
         # Patch _try_custom_convert to return the sentinel so we exercise the eval path
+        def _fail_convert(*_args, **_kwargs):
+            return command_handlers._CONVERSION_FAILED
+
         monkeypatch.setattr(
             command_handlers,
             "_try_custom_convert",
-            lambda *a, **kw: command_handlers._CONVERSION_FAILED,
+            _fail_convert,
         )
         # Also patch the fallback converter to fail, isolating the policy check
         monkeypatch.setattr(
@@ -150,14 +147,11 @@ class TestEvalPolicyEnforcement:
             MagicMock(side_effect=ValueError("fail")),
         )
 
-        result = command_handlers._set_scope_variable(
-            frame, "locals", "x", "__import__('os')"
-        )
+        result = command_handlers._set_scope_variable(frame, "locals", "x", "__import__('os')")
         # Policy blocks it via ValueError; fallback also fails → error
         assert result.get("success") is not True
 
     def test_policy_allows_safe_expressions(self):
-        from dapper.shared.value_conversion import evaluate_with_policy
 
         frame = _make_frame({"x": 42, "y": 10})
         # Simple arithmetic should work
@@ -176,7 +170,6 @@ class TestModuleSourcePathValidation:
     @pytest.fixture
     def handler(self):
         """Create a minimal request handler instance."""
-        from dapper.adapter.request_handlers import RequestHandler
 
         h = RequestHandler.__new__(RequestHandler)
         h._seq = 0
@@ -252,9 +245,7 @@ class TestModuleSourcePathValidation:
             monkeypatch.delitem(sys.modules, "ghost_mod", raising=False)
 
     @pytest.mark.asyncio
-    async def test_rejects_symlink_to_sensitive_file(
-        self, handler, monkeypatch, tmp_path
-    ):
+    async def test_rejects_symlink_to_sensitive_file(self, handler, monkeypatch, tmp_path):
         """A module with __file__ symlinked to a non-.py file is rejected."""
         # Create a sensitive file
         sensitive = tmp_path / "secret.txt"

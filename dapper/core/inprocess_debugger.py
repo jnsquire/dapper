@@ -20,6 +20,7 @@ from typing import cast
 
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.ipc.ipc_receiver import process_queued_commands
+from dapper.shared.value_conversion import evaluate_with_policy
 from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
@@ -292,8 +293,6 @@ class InProcessDebugger:
                 return {"success": False, "message": "Frame not found"}
             try:
                 # Evaluate through policy checker to block dangerous expressions
-                from dapper.shared.value_conversion import evaluate_with_policy
-
                 target = frame.f_locals if scope == "locals" else frame.f_globals
                 target[name] = evaluate_with_policy(value, frame, allow_builtins=True)
                 return {
@@ -309,7 +308,9 @@ class InProcessDebugger:
         self, expression: str, frame_id: int | None = None, _context: str | None = None
     ) -> EvaluateResponseBody:
         dbg = self.debugger
-        frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        frame = (
+            dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        )
         if not frame:
             return {
                 "result": f"<evaluation of '{expression}' not available>",
@@ -317,8 +318,6 @@ class InProcessDebugger:
                 "variablesReference": 0,
             }
         try:
-            from dapper.shared.value_conversion import evaluate_with_policy
-
             result = evaluate_with_policy(expression, frame, allow_builtins=True)
             return {
                 "result": repr(result),
@@ -360,7 +359,9 @@ class InProcessDebugger:
 
         # Get frame context
         dbg = self.debugger
-        frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        frame = (
+            dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        )
 
         # Extract the relevant line and prefix
         lines = text.split("\n")

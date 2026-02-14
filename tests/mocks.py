@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from types import FrameType
 
 
-
 # Expose names for import convenience in tests
 __all__ = ["CodeLike", "FrameLike", "MockCode", "MockConnection", "MockFrame", "make_real_frame"]
 

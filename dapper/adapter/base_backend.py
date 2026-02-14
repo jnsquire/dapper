@@ -60,9 +60,7 @@ class BaseBackend(DebuggerBackend, ABC):
         self._lifecycle = LifecycleManager(self.__class__.__name__)
 
     @abstractmethod
-    def _build_dispatch_table(
-        self, args: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _build_dispatch_table(self, args: dict[str, Any]) -> dict[str, Any]:
         """Build the command dispatch table.
 
         Subclasses implement this to map command names to zero-argument
@@ -80,7 +78,7 @@ class BaseBackend(DebuggerBackend, ABC):
         self,
         command: str,
         args: dict[str, Any] | None = None,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a command on the backend via the dispatch table.
 
@@ -93,7 +91,7 @@ class BaseBackend(DebuggerBackend, ABC):
         Args:
             command: The command to execute
             args: Additional arguments for the command
-            **kwargs: Additional keyword arguments
+            **_kwargs: Additional keyword arguments
 
         Returns:
             The command response

@@ -186,10 +186,7 @@ class IntegratedDebugger(DebuggerBDB):
 
         # Check if we're at a custom breakpoint
         custom = self.bp_manager.custom
-        if (
-            filename in custom
-            and line in custom[filename]
-        ):
+        if filename in custom and line in custom[filename]:
             condition = custom[filename][line]
             if condition:
                 # Evaluate the condition in the current frame

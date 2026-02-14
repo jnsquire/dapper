@@ -10,9 +10,22 @@ import asyncio
 import io
 import json
 from queue import Queue
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+from dapper.adapter.lifecycle import BackendLifecycleState
+from dapper.adapter.lifecycle import LifecycleManager
+from dapper.core.data_breakpoint_state import DataBreakpointState
+from dapper.core.thread_tracker import ThreadTracker
+from dapper.ipc import ipc_receiver
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.transport_factory import TransportConfig
+from dapper.ipc.transport_factory import TransportFactory
+from dapper.launcher import debug_launcher
+from dapper.shared.debug_shared import state
+from dapper.utils.events import EventEmitter
 
 # ---------------------------------------------------------------------------
 # 1. Memory leak in frame_id_to_frame
@@ -23,8 +36,6 @@ class TestThreadTrackerClearFrames:
     """ThreadTracker.clear_frames() evicts stale frame references."""
 
     def test_clear_frames_empties_frame_map(self):
-        from dapper.core.thread_tracker import ThreadTracker
-
         tracker = ThreadTracker()
         tracker.register_frame(1, object())
         tracker.register_frame(2, object())
@@ -34,8 +45,6 @@ class TestThreadTrackerClearFrames:
         assert tracker.frame_id_to_frame == {}
 
     def test_clear_frames_empties_frames_by_thread(self):
-        from dapper.core.thread_tracker import ThreadTracker
-
         tracker = ThreadTracker()
         tracker.store_stack_frames(1, [{"id": 1, "name": "f"}])
         assert 1 in tracker.frames_by_thread
@@ -44,8 +53,6 @@ class TestThreadTrackerClearFrames:
         assert tracker.frames_by_thread == {}
 
     def test_clear_frames_preserves_thread_registrations(self):
-        from dapper.core.thread_tracker import ThreadTracker
-
         tracker = ThreadTracker()
         tracker.register_thread(42, "MainThread")
         tracker.register_frame(1, object())
@@ -66,8 +73,6 @@ class TestDataBreakpointAllChanges:
     """check_for_changes returns ALL changed variable names."""
 
     def test_returns_list_not_string(self):
-        from dapper.core.data_breakpoint_state import DataBreakpointState
-
         state = DataBreakpointState()
         state.register_watches(["x"])
         state.update_snapshots(1, {"x": 5})
@@ -76,8 +81,6 @@ class TestDataBreakpointAllChanges:
         assert isinstance(result, list)
 
     def test_returns_empty_list_when_no_changes(self):
-        from dapper.core.data_breakpoint_state import DataBreakpointState
-
         state = DataBreakpointState()
         state.register_watches(["x"])
         state.update_snapshots(1, {"x": 5})
@@ -86,8 +89,6 @@ class TestDataBreakpointAllChanges:
         assert result == []
 
     def test_detects_multiple_simultaneous_changes(self):
-        from dapper.core.data_breakpoint_state import DataBreakpointState
-
         state = DataBreakpointState()
         state.register_watches(["x", "y", "z"])
         state.update_snapshots(1, {"x": 1, "y": 2, "z": 3})
@@ -97,8 +98,6 @@ class TestDataBreakpointAllChanges:
         assert set(result) == {"x", "z"}
 
     def test_returns_empty_list_when_no_watches(self):
-        from dapper.core.data_breakpoint_state import DataBreakpointState
-
         state = DataBreakpointState()
         result = state.check_for_changes(1, {"x": 5})
         assert result == []
@@ -113,12 +112,13 @@ class TestStreamReceiverReturnsAfterExit:
     """_recv_binary_from_stream returns after exit_func(0) on EOF."""
 
     def test_returns_on_empty_header(self):
-        from dapper.launcher import debug_launcher
-        from dapper.shared.debug_shared import state
-
         exit_called = []
         original_exit = state.exit_func
-        state.exit_func = lambda code: exit_called.append(code)
+
+        def record_exit(code: int) -> None:
+            exit_called.append(code)
+
+        state.exit_func = record_exit
         state.is_terminated = False
 
         # Provide an empty stream (header is b"")
@@ -132,13 +132,13 @@ class TestStreamReceiverReturnsAfterExit:
         assert exit_called == [0]
 
     def test_returns_on_empty_payload(self):
-        from dapper.ipc.ipc_binary import pack_frame
-        from dapper.launcher import debug_launcher
-        from dapper.shared.debug_shared import state
-
         exit_called = []
         original_exit = state.exit_func
-        state.exit_func = lambda code: exit_called.append(code)
+
+        def record_exit(code: int) -> None:
+            exit_called.append(code)
+
+        state.exit_func = record_exit
         state.is_terminated = False
 
         # Provide a valid header but truncated payload
@@ -162,8 +162,6 @@ class TestNoDoubleDispatch:
     """receive_debug_commands only queues; process_queued_commands dispatches."""
 
     def test_receive_only_queues_no_dispatch(self, monkeypatch):
-        from dapper.ipc import ipc_receiver
-
         s = ipc_receiver.state
         s.is_terminated = False
         s.ipc_enabled = True
@@ -173,7 +171,11 @@ class TestNoDoubleDispatch:
         s.ipc_rfile = io.StringIO(json.dumps(cmd) + "\n")
 
         dispatch_calls = []
-        monkeypatch.setattr(s, "dispatch_debug_command", lambda c: dispatch_calls.append(c))
+
+        def record_dispatch(command: dict[str, Any]) -> None:
+            dispatch_calls.append(command)
+
+        monkeypatch.setattr(s, "dispatch_debug_command", record_dispatch)
 
         with pytest.raises(SystemExit):
             ipc_receiver.receive_debug_commands()
@@ -185,14 +187,16 @@ class TestNoDoubleDispatch:
         assert s.command_queue.get_nowait()["command"] == "test_cmd"
 
     def test_process_queued_dispatches_exactly_once(self, monkeypatch):
-        from dapper.ipc import ipc_receiver
-
         s = ipc_receiver.state
         s.command_queue = Queue()
         s.command_queue.put({"command": "a"})
 
         dispatch_calls = []
-        monkeypatch.setattr(s, "dispatch_debug_command", lambda c: dispatch_calls.append(c))
+
+        def record_dispatch(command: dict[str, Any]) -> None:
+            dispatch_calls.append(command)
+
+        monkeypatch.setattr(s, "dispatch_debug_command", record_dispatch)
 
         ipc_receiver.process_queued_commands()
         assert len(dispatch_calls) == 1
@@ -208,8 +212,6 @@ class TestEventEmitterContinuesPastErrors:
     """A failing listener does not prevent subsequent listeners from firing."""
 
     def test_subsequent_listeners_called_after_error(self):
-        from dapper.utils.events import EventEmitter
-
         emitter = EventEmitter()
         calls = []
 
@@ -226,13 +228,15 @@ class TestEventEmitterContinuesPastErrors:
         assert calls == ["ok"]
 
     def test_multiple_errors_all_logged(self, monkeypatch):
-        from dapper.utils.events import EventEmitter
-
         emitter = EventEmitter()
         log_calls = []
+
+        def _record_exception(*_args, **_kwargs):
+            log_calls.append(True)
+
         monkeypatch.setattr(
             "dapper.utils.events.logger.exception",
-            lambda *a, **kw: log_calls.append(True),
+            _record_exception,
         )
 
         def bad1():
@@ -262,9 +266,6 @@ class TestLifecycleAutoTransition:
     """operation_context auto-transitions from UNINITIALIZED to READY."""
 
     def test_operation_context_auto_transitions(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState
-        from dapper.adapter.lifecycle import LifecycleManager
-
         async def _run():
             mgr = LifecycleManager("test")
             assert mgr.state == BackendLifecycleState.UNINITIALIZED
@@ -279,9 +280,6 @@ class TestLifecycleAutoTransition:
         asyncio.run(_run())
 
     def test_operation_context_still_works_when_ready(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState
-        from dapper.adapter.lifecycle import LifecycleManager
-
         async def _run():
             mgr = LifecycleManager("test")
             await mgr.initialize()
@@ -296,9 +294,6 @@ class TestLifecycleAutoTransition:
         asyncio.run(_run())
 
     def test_operation_context_fails_from_terminated(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState
-        from dapper.adapter.lifecycle import LifecycleManager
-
         async def _run():
             mgr = LifecycleManager("test")
             # Manually go to terminated
@@ -321,9 +316,6 @@ class TestTransportFactoryResourceRetention:
 
     def test_unix_connection_retains_socket(self, monkeypatch):
         """_create_unix_connection attaches the socket to the connection."""
-        from dapper.ipc.transport_factory import TransportConfig
-        from dapper.ipc.transport_factory import TransportFactory
-
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)
         monkeypatch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)
@@ -338,9 +330,6 @@ class TestTransportFactoryResourceRetention:
 
     def test_tcp_connection_retains_socket(self, monkeypatch):
         """_create_tcp_connection attaches the socket to the connection."""
-        from dapper.ipc.transport_factory import TransportConfig
-        from dapper.ipc.transport_factory import TransportFactory
-
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)
         monkeypatch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)

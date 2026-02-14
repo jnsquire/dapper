@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
+from dapper.adapter.external_backend import ExternalProcessBackend
 from dapper.config import DapperConfig
 from dapper.config import DebuggeeConfig
 from dapper.config.config_manager import ConfigContext
@@ -226,9 +227,7 @@ class TestCompletionsNoDuplicateCall:
         )
 
         assert "targets" in result
-        assert call_count == 1, (
-            f"_get_runtime_completions called {call_count} times, expected 1"
-        )
+        assert call_count == 1, f"_get_runtime_completions called {call_count} times, expected 1"
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +241,9 @@ class TestHandleRegularBreakpointReturnValue:
 
     def _make_test_file(self) -> str:
         """Create a real temp file so bdb.set_break succeeds."""
-        f = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
-        f.write("x = 1\ny = 2\nz = 3\nresult = x + y\nprint(z)\n")
-        f.close()
-        return f.name
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("x = 1\ny = 2\nz = 3\nresult = x + y\nprint(z)\n")
+            return f.name
 
     def test_returns_true_on_stop(self) -> None:
         """When the resolver returns STOP, the method should return True
@@ -259,9 +257,7 @@ class TestHandleRegularBreakpointReturnValue:
 
             # Make the resolver return STOP
             dbg.breakpoint_resolver = MagicMock()
-            dbg.breakpoint_resolver.resolve.return_value = ResolveResult(
-                action=ResolveAction.STOP
-            )
+            dbg.breakpoint_resolver.resolve.return_value = ResolveResult(action=ResolveAction.STOP)
 
             # Mock process_commands and set_continue so we don't block
             dbg.process_commands = MagicMock()
@@ -329,8 +325,6 @@ class TestExternalBackendDispatchNoRecursion:
     async def test_set_breakpoints_dispatch_uses_send_command(self) -> None:
         """The 'set_breakpoints' dispatch entry should call _send_command
         directly, not self.set_breakpoints."""
-        from dapper.adapter.external_backend import ExternalProcessBackend
-
         mock_ipc = MagicMock()
 
         async def noop_send(*a: Any, **kw: Any) -> None:
@@ -352,9 +346,8 @@ class TestExternalBackendDispatchNoRecursion:
 
         # Spy on _send_command to verify it's called directly
         send_calls: list[dict[str, Any]] = []
-        original_send = backend._send_command
 
-        async def spy_send(command: dict[str, Any], **kwargs: Any) -> None:
+        async def spy_send(command: dict[str, Any], **_kwargs: Any) -> None:
             send_calls.append(command)
             # Don't actually send — just record the call
 
@@ -376,8 +369,6 @@ class TestExternalBackendDispatchNoRecursion:
     @pytest.mark.asyncio
     async def test_continue_dispatch_uses_send_command(self) -> None:
         """The 'continue' dispatch entry should call _send_command directly."""
-        from dapper.adapter.external_backend import ExternalProcessBackend
-
         mock_ipc = MagicMock()
         loop = asyncio.get_event_loop()
         pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
@@ -394,7 +385,7 @@ class TestExternalBackendDispatchNoRecursion:
 
         send_calls: list[dict[str, Any]] = []
 
-        async def spy_send(command: dict[str, Any], **kwargs: Any) -> None:
+        async def spy_send(command: dict[str, Any], **_kwargs: Any) -> None:
             send_calls.append(command)
 
         backend._send_command = spy_send  # type: ignore[assignment]

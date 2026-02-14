@@ -71,6 +71,7 @@ class InProcessBackend(BaseBackend):
         Each handler delegates to the corresponding bridge-backed method
         on this backend instance.
         """
+
         async def _bp() -> dict[str, Any]:
             r = await self.set_breakpoints(args["path"], args["breakpoints"])
             return {"breakpoints": r}

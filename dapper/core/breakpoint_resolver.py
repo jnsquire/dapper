@@ -23,6 +23,7 @@ from typing import Protocol
 
 from dapper.core.debug_utils import evaluate_hit_condition
 from dapper.core.debug_utils import format_log_message
+from dapper.shared.value_conversion import evaluate_with_policy
 
 if TYPE_CHECKING:
     import types
@@ -227,8 +228,6 @@ class BreakpointResolver:
             return False
 
         try:
-            from dapper.shared.value_conversion import evaluate_with_policy
-
             result = evaluate_with_policy(condition, frame, allow_builtins=True)
             return bool(result)
         except Exception as e:

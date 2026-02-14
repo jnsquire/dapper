@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import socket
@@ -47,8 +48,6 @@ class TCPServerConnection(ConnectionBase):
         non-loopback address allows any host on the network to execute
         arbitrary code in the debuggee process.
         """
-        import ipaddress
-
         loopback_names = {"localhost", "127.0.0.1", "::1", "[::1]"}
         if host in loopback_names:
             return
