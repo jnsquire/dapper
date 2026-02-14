@@ -75,13 +75,13 @@ See [DEVELOPMENT.md](doc/DEVELOPMENT.md#vs-code-extension-development) for full 
 ### Command Line
 
 ```bash
-python -m dapper --port 4711
+python -m dapper.adapter --port 4711
 ```
 
 Or using named pipes:
 
 ```bash
-python -m dapper --pipe debug_pipe
+python -m dapper.adapter --pipe debug_pipe
 ```
 
 ### In-Process Mode (Adapter-in-Thread)

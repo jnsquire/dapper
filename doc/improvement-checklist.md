@@ -40,10 +40,12 @@ Generated from a full codebase review on 2026-02-14.
   - Nearly identical `_execute_command` dispatch tables.
   - Fix: Move the shared dispatch logic to `BaseBackend`.
 
-- [ ] **Clarify entry point confusion**
-  - Files: `dapper/__init__.py` and `dapper/__main__.py`
-  - `dapper.main()` starts the DAP adapter; `python -m dapper` starts the debuggee launcher.
-  - Fix: Document the difference clearly, or unify behind a CLI with subcommands.
+- [x] **Clarify entry point confusion**
+  - Files: `dapper/__init__.py`, `dapper/__main__.py`, `dapper/adapter/__main__.py`
+  - `python -m dapper.adapter` starts the DAP adapter; `python -m dapper` starts the debuggee launcher.
+  - Fix: Created `dapper/adapter/__main__.py` for the adapter entry point;
+    updated all docs, README, and testing scripts to use `python -m dapper.adapter`
+    for the adapter. Docstrings in `__init__.py` and `__main__.py` updated.
 
 - [ ] **Reduce compatibility property sprawl in `DebuggerBDB`**
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
@@ -235,11 +237,11 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 | Critical Bugs      | 6     | 6    | 0         |
 | High-Priority Bugs | 7     | 7    | 0         |
 | Security           | 3     | 3    | 0         |
-| Architecture       | 9     | 5    | 4         |
+| Architecture       | 9     | 6    | 3         |
 | Performance        | 8     | 0    | 8         |
 | Code Quality       | 20    | 1    | 19        |
 | Test Coverage      | 5     | 0    | 5         |
 | Windows Support    | 1     | 0    | 1         |
-| **Total**          | **59**| **22**| **37**   |
+| **Total**          | **59**| **23**| **36**   |
 
 **Next up:** Architecture improvements (9 items).

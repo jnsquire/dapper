@@ -24,7 +24,7 @@ class TerminateTest:
 
     async def start_adapter(self):
         """Start the debug adapter in a subprocess."""
-        cmd = [sys.executable, "-m", "dapper", "--tcp", str(self.port)]
+        cmd = [sys.executable, "-m", "dapper.adapter", "--tcp", str(self.port)]
         self.adapter_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,

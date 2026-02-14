@@ -11,7 +11,7 @@ echo.
 echo STEP 1: Start the debug adapter
 echo --------------------------------
 echo Run this command in one terminal:
-echo    python -m dapper --port 4711 --log-level DEBUG
+echo    python -m dapper.adapter --port 4711 --log-level DEBUG
 echo.
 echo STEP 2: Connect and debug a program  
 echo ------------------------------------

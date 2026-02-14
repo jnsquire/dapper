@@ -212,7 +212,7 @@ def test_debug_adapter_connection(host: str, port: int) -> bool:
             return True
         logger.info("❌ Cannot connect to debug adapter")
         logger.info("💡 Make sure to start the debug adapter first:")
-        logger.info("   python -m dapper --port 4711")
+        logger.info("   python -m dapper.adapter --port 4711")
         return False
 
     except Exception as e:

@@ -12,7 +12,7 @@
 ### B. Using Dapper Standalone (external adapter)
 1. Install **Python** & **Python Debug** extensions in VS Code.
 2. `uv build` (optional for dev) then `uv pip install dapper` (or `pip install dapper`).
-3. Run `python -m dapper --port 4711` in a terminal.
+3. Run `python -m dapper.adapter --port 4711` in a terminal.
 4. Use a Python launch config with `"debugServer": 4711`.
 5. Hit **F5**.
 
@@ -60,7 +60,7 @@ pip install dapper
 Dapper runs as a standalone adapter process. You can keep it in a separate terminal or wire it into a task—whatever fits your workflow.
 
 ```bash
-python -m dapper --port 4711
+python -m dapper.adapter --port 4711
 ```
 
 Leave this process running; VS Code will connect to it. The number `4711` is arbitrary—pick any open port you like, but reuse the same number in the upcoming `launch.json` configuration.
@@ -177,7 +177,7 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 
 ## Quality-of-life improvements (Both Paths)
 
-- **Task integration:** Create a VS Code task that runs `python -m dapper --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
+- **Task integration:** Create a VS Code task that runs `python -m dapper.adapter --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
 - **multi-root workspaces:** Include one adapter task per workspace folder, each with its own port, and set `debugServer` accordingly.
 - **Version pinning:** If you rely on specific Dapper features, add `dapper==<version>` to your `requirements.txt` to keep teammates in sync.
 - **Source-mapped debugging:** When editing Dapper itself, launch VS Code's debugger against the adapter process so you can step through its code while it controls your program—turtles all the way down.
