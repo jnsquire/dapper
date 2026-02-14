@@ -712,9 +712,7 @@ def test_handle_evaluate():
     dbg.frame_id_to_frame[frame_id] = frame
 
     # Test simple expression
-    handlers.handle_evaluate(
-        dbg, {"expression": "x + y", "frameId": frame_id, "context": "watch"}
-    )
+    handlers.handle_evaluate(dbg, {"expression": "x + y", "frameId": frame_id, "context": "watch"})
 
     # Test expression that creates variable reference
     handlers.handle_evaluate(
@@ -893,9 +891,7 @@ def test_handle_debug_command_unsupported():
     s.debugger = dbg
 
     # Test that unsupported command doesn't crash
-    handlers.handle_debug_command(
-        {"command": "unsupportedCommand", "arguments": {}, "id": 1}
-    )
+    handlers.handle_debug_command({"command": "unsupportedCommand", "arguments": {}, "id": 1})
     # Should not raise exception
 
 

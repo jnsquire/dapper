@@ -27,7 +27,7 @@ async def test_pipe_endpoints_closed_on_cleanup() -> None:
     # Create mocks for pipe connection and listener
     conn = Mock()
     listener = Mock()
-    
+
     # Use the legacy IPCContext interface directly for this test
     # since we're testing the low-level cleanup behavior
     ipc_context = IPCContext()

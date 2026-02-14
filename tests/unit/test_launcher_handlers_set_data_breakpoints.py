@@ -21,7 +21,7 @@ def test_launcher_handler_registers_and_calls_set():
     assert len(result["body"]["breakpoints"]) == 1
     assert ("frame:1:var:x", "write") in dbg.set_calls
     assert len(dbg.register_calls) == 1
-    names, metas = dbg.register_calls[0]
+    names, _metas = dbg.register_calls[0]
     assert names == ["x"]
 
 
@@ -39,12 +39,20 @@ def test_launcher_handler_with_real_debugger_triggers():
     dbg.user_line(frame1)
 
     # no stop yet
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" not in reasons
 
     frame2 = make_real_frame({"z": 2})
 
     dbg.user_line(frame2)
 
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" in reasons

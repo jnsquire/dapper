@@ -8,9 +8,9 @@ without stopping execution, supporting expression interpolation.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -226,7 +226,9 @@ for i in range(10):
 
             # Simulate multiple hits
             for hit_count in range(1, 7):  # Hits 1-6
-                frame = make_real_frame({"i": hit_count - 1, "x": hit_count - 1}, filename=test_file, lineno=3)
+                frame = make_real_frame(
+                    {"i": hit_count - 1, "x": hit_count - 1}, filename=test_file, lineno=3
+                )
 
                 # Manually set the hit count in metadata
                 meta = self.debugger.breakpoint_meta.get((test_file, 3), {})
@@ -300,7 +302,9 @@ class TestFunctionLogPoints(unittest.TestCase):
         }
 
         # Create a real frame for function call
-        frame = make_real_frame({"args": "(1, 2)", "function_name": function_name}, func_name=function_name)
+        frame = make_real_frame(
+            {"args": "(1, 2)", "function_name": function_name}, func_name=function_name
+        )
 
         self.debugger.set_continue = MagicMock()
 

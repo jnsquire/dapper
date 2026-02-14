@@ -38,6 +38,6 @@ def test_frame_eval_extension_importable():
     assert origin is not None, "Imported _frame_evaluator but __file__ is missing"
 
     # Basic sanity: expect a compiled extension file (.pyd on Windows, .so on Linux/macOS)
-    assert (
-        origin.endswith((".pyd", ".so", ".dylib")) or "_frame_evaluator" in origin
-    ), f"Unexpected extension origin: {origin}"
+    assert origin.endswith((".pyd", ".so", ".dylib")) or "_frame_evaluator" in origin, (
+        f"Unexpected extension origin: {origin}"
+    )

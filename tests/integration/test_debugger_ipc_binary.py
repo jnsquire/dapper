@@ -16,11 +16,11 @@ from dapper.config import IPCConfig
 
 class _StubServer(DebugAdapterServer):
     """Stub server for testing."""
-    
+
     def __init__(self) -> None:
         # Minimal initialization for testing
         pass
-    
+
     async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
         # Stub implementation - arguments intentionally unused
         _ = event_name, body

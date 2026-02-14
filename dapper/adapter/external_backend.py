@@ -65,11 +65,11 @@ class ExternalProcessBackend(BaseBackend):
         self._pending_commands = pending_commands
         self._lock = lock
         self._get_next_command_id = get_next_command_id
-        
+
         # Register cleanup callbacks
         self._lifecycle.add_cleanup_callback(self._cleanup_ipc)
         self._lifecycle.add_cleanup_callback(self._cleanup_commands)
-    
+
     def _cleanup_ipc(self) -> None:
         """Cleanup IPC connection."""
         try:
@@ -78,7 +78,7 @@ class ExternalProcessBackend(BaseBackend):
             pass
         except Exception:
             logger.exception("Failed to cleanup IPC connection")
-    
+
     def _cleanup_commands(self) -> None:
         """Cleanup pending commands."""
         try:
@@ -94,7 +94,7 @@ class ExternalProcessBackend(BaseBackend):
         """Check if the backend is available."""
         if not self._lifecycle.is_available:
             return False
-        
+
         process, is_terminated = self._get_process_state()
         return process is not None and not is_terminated
 
@@ -113,18 +113,18 @@ class ExternalProcessBackend(BaseBackend):
         **_kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a command on the external process.
-        
+
         Args:
             command: The command to execute
             args: Additional arguments for the command
             **kwargs: Additional keyword arguments
-            
+
         Returns:
             The command response
         """
         if not self.is_available():
             raise RuntimeError("External process not available")
-        
+
         if args is None:
             args = {}
 
@@ -164,9 +164,11 @@ class ExternalProcessBackend(BaseBackend):
             return {"sent": sent}
 
         async def _stack() -> dict[str, Any]:
-            return dict(await self.get_stack_trace(
-                args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
-            ))
+            return dict(
+                await self.get_stack_trace(
+                    args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
+                )
+            )
 
         async def _vars() -> dict[str, Any]:
             v = await self.get_variables(
@@ -181,14 +183,16 @@ class ExternalProcessBackend(BaseBackend):
             return dict(await self.set_variable(args["var_ref"], args["name"], args["value"]))
 
         async def _eval() -> dict[str, Any]:
-            return dict(await self.evaluate(
-                args["expression"], args.get("frame_id"), args.get("context")
-            ))
+            return dict(
+                await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
+            )
 
         async def _compl() -> dict[str, Any]:
-            return dict(await self.completions(
-                args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
-            ))
+            return dict(
+                await self.completions(
+                    args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
+                )
+            )
 
         async def _exc_info() -> dict[str, Any]:
             return dict(await self.exception_info(args["thread_id"]))
@@ -259,7 +263,7 @@ class ExternalProcessBackend(BaseBackend):
         except asyncio.TimeoutError:
             self._pending_commands.pop(command_id, None)
             return None
-    
+
     # ------------------------------------------------------------------
     # Breakpoint operations (now handled by _execute_command)
     # ------------------------------------------------------------------
@@ -383,9 +387,7 @@ class ExternalProcessBackend(BaseBackend):
         body = response.get("body", {})
         return cast("list[Variable]", body.get("variables", []))
 
-    async def set_variable(
-        self, var_ref: int, name: str, value: str
-    ) -> SetVariableResponseBody:
+    async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         command = {
             "command": "setVariable",
@@ -396,7 +398,9 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(command, expect_response=True)
-        body = self._extract_body(response, {"value": value, "type": "string", "variablesReference": 0})
+        body = self._extract_body(
+            response, {"value": value, "type": "string", "variablesReference": 0}
+        )
         return cast("SetVariableResponseBody", body)
 
     async def evaluate(
@@ -470,28 +474,28 @@ class ExternalProcessBackend(BaseBackend):
     async def initialize(self) -> None:
         """Initialize the external process backend."""
         await self._lifecycle.initialize()
-        
+
         # Verify IPC connection and process are available
         if not self.is_available():
             await self._lifecycle.mark_error("IPC connection or process not available")
             raise RuntimeError("External process backend not available")
-        
+
         await self._lifecycle.mark_ready()
-    
+
     async def launch(self, config: DapperConfig) -> None:
         """Launch external process debugging session."""
         # Config parameter required by protocol but unused for external process debugging
         _ = config  # Mark as intentionally unused
         await self.initialize()
         logger.info("External process debugging session started")
-    
+
     async def attach(self, config: DapperConfig) -> None:
         """Attach to external process debugging session."""
         # Config parameter required by protocol but unused for external process debugging
         _ = config  # Mark as intentionally unused
         await self.initialize()
         logger.info("External process debugging session attached")
-    
+
     async def terminate(self) -> None:
         """Terminate the debuggee."""
         await self._lifecycle.begin_termination()

@@ -8,8 +8,8 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 """
 
 import asyncio
-import threading
 from pathlib import Path
+import threading
 from typing import TypedDict
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -775,7 +775,7 @@ async def test_handle_debug_message_stopped_event(mock_server):
     # Create debugger with the running loop so spawn_threadsafe works
     loop = asyncio.get_running_loop()
     debugger = PyDebugger(mock_server, loop)
-    
+
     message = {
         "type": "event",
         "event": "stopped",
@@ -806,7 +806,7 @@ async def test_handle_debug_message_thread_started(mock_server):
     # Create debugger with the running loop so spawn_threadsafe works
     loop = asyncio.get_running_loop()
     debugger = PyDebugger(mock_server, loop)
-    
+
     message = {"event": "thread", "reason": "started", "threadId": 2}
 
     await debugger.handle_debug_message(message)
@@ -827,7 +827,7 @@ async def test_handle_debug_message_thread_exited(mock_server):
     # Create debugger with the running loop so spawn_threadsafe works
     loop = asyncio.get_running_loop()
     debugger = PyDebugger(mock_server, loop)
-    
+
     # Add a thread first
     debugger.threads[1] = PyDebuggerThread(1, "MainThread")
 

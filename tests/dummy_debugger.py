@@ -231,7 +231,9 @@ class DummyDebugger:
         """Start tracing from the given frame."""
         _ = frame
 
-    def get_trace_function(self) -> Callable[[Any | None, str | None, Any | None], Any | None] | None:
+    def get_trace_function(
+        self,
+    ) -> Callable[[Any | None, str | None, Any | None], Any | None] | None:
         """Get the current trace function."""
         return self._trace_func
 

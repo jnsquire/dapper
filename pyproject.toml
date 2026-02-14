@@ -11,7 +11,6 @@ authors = [
     {name = "Joel Squire", email = "joel@squire.org"}
 ]
 dependencies = [
-    "pyright>=1.1.405",
 ]
 requires-python = ">=3.9"
 classifiers = [
@@ -133,21 +132,11 @@ ignore = ["E501", "E741", "SIM105", "G004", "T201", "TRY003", "EM101"]
 fixable = ["ALL"]
 unfixable = []
 
-# Enable more aggressive fixes
-[ruff.lint]
-# Enable auto-fix for unused imports
-unused-imports = { enabled = true, detect-unused-imports = true }
-
-# Configure isort for better import organization
-[ruff.isort]
-known-first-party = ["dapper"]
-force-single-line = true
-force-sort-within-sections = true
-order-by-type = true
-
 [tool.ruff.lint.isort]
 force-single-line = true
 known-first-party = ["dapper"]
+force-sort-within-sections = true
+order-by-type = true
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -176,6 +165,8 @@ max-args = 10
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.405",
+    "ruff>=0.9.0",
     "pytest>=8.3.5",
     "pytest-cov>=4.0.0",
     "coverage>=7.0.0",

@@ -1,8 +1,8 @@
 """Unit tests for the cache manager module."""
 
+from collections import OrderedDict
 import gc
 import sys
-from collections import OrderedDict
 
 # Import the module for cache manager tests
 from dapper._frame_eval.cache_manager import BreakpointCache
@@ -21,7 +21,6 @@ class TestFuncCodeInfoCache:
         """Test that the cache initializes correctly."""
         # Create a test instance
         cache = FuncCodeInfoCache(max_size=100, ttl=60)
-
 
         # Check that the cache was initialized with the correct values
         assert cache.max_size == 100
@@ -53,12 +52,13 @@ class TestFuncCodeInfoCache:
         # After removal, refcount should be stable same as before
         assert after_remove == before
 
-
     def test_id_reuse_detection_invalidates_stale_entries(self):
         """Ensure stale LRU entries are evicted when code objects are GC'd and do not return stale info."""
+
         def make_func():
             def x():
                 return 1
+
             return x
 
         f1 = make_func()
@@ -117,6 +117,7 @@ class TestFuncCodeInfoCache:
         assert get_func_code_info(code_obj) is None
 
         # After the code object is collected, the weak map should have released the entry
+
 
 class TestBreakpointCache:
     """Tests for the BreakpointCache class."""

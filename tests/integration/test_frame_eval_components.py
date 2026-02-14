@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 # Standard library imports
 import importlib.util
 import os
+from pathlib import Path
 import sys
 import tempfile
 import threading
-import weakref
-from collections import OrderedDict
-from pathlib import Path
 from typing import Any
 from typing import Callable
 from unittest.mock import Mock
 from unittest.mock import patch
+import weakref
 
 # Third-party imports
 import pytest
@@ -208,6 +209,7 @@ class TestCacheComponents:
 
     def test_clear_all_caches(self):
         """Test clearing all caches."""
+
         # Add some data
         # Use a real code object here as well
         def _make_code_obj2():

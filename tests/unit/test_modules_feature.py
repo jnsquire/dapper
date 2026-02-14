@@ -8,8 +8,8 @@ method directly and validating basic invariants.
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
+import sys
 from unittest.mock import Mock
 
 import pytest

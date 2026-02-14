@@ -61,7 +61,8 @@ class DebuggerBackend(Protocol):
         ...
 
     async def set_exception_breakpoints(
-        self, filters: list[str],
+        self,
+        filters: list[str],
         filter_options: list[dict[str, Any]] | None = None,
         exception_options: list[dict[str, Any]] | None = None,
     ) -> list[Breakpoint]:
@@ -81,7 +82,7 @@ class DebuggerBackend(Protocol):
 
     async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into.
-        
+
         Args:
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target
@@ -116,9 +117,7 @@ class DebuggerBackend(Protocol):
         """Get variables for the given reference."""
         ...
 
-    async def set_variable(
-        self, var_ref: int, name: str, value: str
-    ) -> SetVariableResponseBody:
+    async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         ...
 

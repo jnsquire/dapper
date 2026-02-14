@@ -5,8 +5,8 @@ import asyncio
 import atexit
 import logging
 import os
-import sys
 from pathlib import Path
+import sys
 
 import pytest
 

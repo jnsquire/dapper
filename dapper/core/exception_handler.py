@@ -9,9 +9,9 @@ This module provides logic for:
 
 from __future__ import annotations
 
-import traceback
 from dataclasses import dataclass
 from dataclasses import field
+import traceback
 from typing import TYPE_CHECKING
 from typing import Any
 

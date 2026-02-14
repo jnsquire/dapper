@@ -1,8 +1,8 @@
 import contextlib
 import os
+from pathlib import Path
 import socket
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -38,7 +38,7 @@ def _accept_one(sock: socket.socket, ready_event: threading.Event):
 
 def test_create_tcp_client_socket_connects_to_listener():
     # Create a listening socket and accept one connection in a background thread
-    listen, args = TransportFactory.create_tcp_listener_socket("127.0.0.1")
+    listen, _args = TransportFactory.create_tcp_listener_socket("127.0.0.1")
     try:
         addr = listen.getsockname()
         host, port = addr[0], addr[1]
@@ -94,7 +94,7 @@ def test_create_sync_listener_and_connection_tcp():
 @pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="unix sockets not supported")
 def test_create_sync_listener_and_connection_unix():
     cfg = TransportConfig(transport="unix")
-    listen, args, path = TransportFactory.create_sync_listener(cfg)
+    listen, _args, path = TransportFactory.create_sync_listener(cfg)
     try:
         assert isinstance(listen, socket.socket)
         assert path is not None
@@ -111,10 +111,9 @@ def test_create_sync_listener_and_connection_unix():
         listen.close()
 
 
-
 @pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="unix sockets not supported")
 def test_create_unix_listener_and_client_socket_connects():
-    listen, args, path = TransportFactory.create_unix_listener_socket()
+    listen, _args, path = TransportFactory.create_unix_listener_socket()
     try:
         # Accept thread
         ready = threading.Event()

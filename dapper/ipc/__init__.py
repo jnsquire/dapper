@@ -10,6 +10,6 @@ from dapper.ipc.transport_factory import TransportFactory
 
 __all__ = [
     "IPCManager",
-    "TransportConfig", 
+    "TransportConfig",
     "TransportFactory",
 ]

@@ -208,7 +208,7 @@ class ProtocolFactory:
         body: dict[str, Any] = {}
         if restart:
             body["restart"] = True
-        event = self.create_event("terminated", body if body else None)
+        event = self.create_event("terminated", body or None)
         return cast("GenericEvent", event)
 
     def create_thread_event(self, reason: str, thread_id: int) -> GenericEvent:

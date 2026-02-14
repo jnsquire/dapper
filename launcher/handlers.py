@@ -46,18 +46,19 @@ def handle_threads(dbg: Any, _args: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "body": {"threads": threads_list}}
 
 
-def extract_variables(dbg: Any | None, variables: list[dict[str, Any]], value: Any, name: str | None = None) -> None:
+def extract_variables(
+    dbg: Any | None, variables: list[dict[str, Any]], value: Any, name: str | None = None
+) -> None:
     """
     Extract variables recursively into `variables` as a list of dicts:
       { "name": <name>, "value": <value>, "type": <type_name> }
     Handles dict, list/tuple and simple scalars. Name is composed with dot notation for dict keys and [index] for lists.
     """
+
     def append_var(n: str | None, v: Any) -> None:
-        variables.append({
-            "name": n if n is not None else "",
-            "value": v,
-            "type": type(v).__name__
-        })
+        variables.append(
+            {"name": n if n is not None else "", "value": v, "type": type(v).__name__}
+        )
 
     # None explicitly
     if value is None:

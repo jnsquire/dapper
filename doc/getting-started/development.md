@@ -50,6 +50,24 @@ uv run python --version
 uv run pytest
 ```
 
+### Linting and Type Checking
+
+Run these checks before submitting changes:
+
+```bash
+# Lint
+uv run ruff check .
+
+# Type checking
+uv run pyright dapper tests
+```
+
+Optional auto-fix for lint findings:
+
+```bash
+uv run ruff check . --fix
+```
+
 ## VS Code Extension Development
 
 The VS Code extension source code is located in `vscode/extension`. This is a separate npm project that needs to be built before running the Python unit tests.

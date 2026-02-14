@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import dapper.shared.debug_shared as ds
 from dapper.ipc.ipc_binary import unpack_header
+import dapper.shared.debug_shared as ds
 
 
 class _PipeConn:
@@ -14,8 +14,6 @@ class _PipeConn:
 
     def send_bytes(self, frame: bytes):  # pragma: no cover - simple container
         self.sent.append(frame)
-
-
 
 
 def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch):

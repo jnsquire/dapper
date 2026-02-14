@@ -8,8 +8,8 @@ Used by PyDebugger to respond to DAP loadedSources and modules requests.
 from __future__ import annotations
 
 import linecache
-import sys
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -61,9 +61,7 @@ class LoadedSourceTracker:
         except Exception:
             return None
 
-    def make_source(
-        self, path: Path, origin: str, name: str | None = None
-    ) -> Source:
+    def make_source(self, path: Path, origin: str, name: str | None = None) -> Source:
         """Create a DAP Source object from a path.
 
         Args:

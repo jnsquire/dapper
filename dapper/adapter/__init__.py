@@ -6,6 +6,6 @@ from dapper.adapter.lifecycle import LifecycleTransitionError
 
 __all__ = [
     "BackendLifecycleState",
-    "LifecycleManager", 
+    "LifecycleManager",
     "LifecycleTransitionError",
 ]

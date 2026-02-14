@@ -103,9 +103,7 @@ class InProcessBridge:
     # ------------------------------------------------------------------
     # Breakpoint operations
     # ------------------------------------------------------------------
-    def set_breakpoints(
-        self, path: str, breakpoints: list[SourceBreakpoint]
-    ) -> list[Breakpoint]:
+    def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         return self._inproc.set_breakpoints(path, breakpoints)
 
@@ -132,7 +130,7 @@ class InProcessBridge:
 
     def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into.
-        
+
         Note: target_id is accepted for API compatibility but not yet
         used by InProcessDebugger.
         """
@@ -171,9 +169,7 @@ class InProcessBridge:
             return result
         return result.get("variables", [])
 
-    def set_variable(
-        self, var_ref: int, name: str, value: str
-    ) -> SetVariableResponseBody:
+    def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         return self._inproc.set_variable(var_ref, name, value)
 

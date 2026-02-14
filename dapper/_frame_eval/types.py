@@ -107,5 +107,3 @@ def unmark_thread_as_pydevd() -> None:
 
 def set_thread_skip_all(skip: bool) -> None:
     """Set whether current thread should skip all frames."""
-
-

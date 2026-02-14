@@ -1,9 +1,9 @@
 """Comprehensive pytest-style tests for the complete frame evaluation system."""
 
+from pathlib import Path
 import sys
 import tempfile
 import threading
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest

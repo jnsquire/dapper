@@ -91,6 +91,7 @@ _EXTRACTORS: dict[str, Any] = {
     "thread": _thread,
 }
 
+
 def extract_payload(event_type: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """Extract a normalized payload for the given event type.
 

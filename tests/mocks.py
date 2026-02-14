@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
+import json
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import ClassVar
@@ -156,22 +156,41 @@ class FakeDebugger:
 
     # --- Breakpoint API ---
     def set_break(
-        self, filename: str, lineno: int, _temporary: bool = False, cond: object | None = None, _funcname: str | None = None
+        self,
+        filename: str,
+        lineno: int,
+        _temporary: bool = False,
+        cond: object | None = None,
+        _funcname: str | None = None,
     ) -> object | None:
         self.breakpoints.setdefault(filename, []).append({"line": int(lineno), "cond": cond})
         return True
 
-    def record_breakpoint(self, path: str, line: int, *, condition: object | None, hit_condition: object | None, log_message: object | None) -> None:
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: object | None,
+        hit_condition: object | None,
+        log_message: object | None,
+    ) -> None:
         # store metadata for tests
         meta = self.function_breakpoint_meta.setdefault(path, {})
-        meta[line] = {"condition": condition, "hitCondition": hit_condition, "logMessage": log_message}
+        meta[line] = {
+            "condition": condition,
+            "hitCondition": hit_condition,
+            "logMessage": log_message,
+        }
 
     def clear_breaks_for_file(self, path: str) -> None:
         self.breakpoints.pop(path, None)
 
     def clear_break(self, filename: str, lineno: int) -> object | None:
         if filename in self.breakpoints:
-            self.breakpoints[filename] = [b for b in self.breakpoints[filename] if b.get("line") != int(lineno)]
+            self.breakpoints[filename] = [
+                b for b in self.breakpoints[filename] if b.get("line") != int(lineno)
+            ]
         return None
 
     def clear_break_meta_for_file(self, path: str) -> None:
@@ -195,12 +214,14 @@ class FakeDebugger:
         self.stepping = True
 
     # --- Misc / runner ---
-    def run(self, _cmd: object, * _args: object, **_kwargs: object) -> object:
+    def run(self, _cmd: object, *_args: object, **_kwargs: object) -> object:
         return None
 
     # --- PyDebugger convenience methods ---
-    def set_breakpoints(self, source: str, breakpoints: list[dict[str, object]], **_kwargs: object) -> None:
-        self.breakpoints[source] = breakpoints # pyright: ignore[reportArgumentType]
+    def set_breakpoints(
+        self, source: str, breakpoints: list[dict[str, object]], **_kwargs: object
+    ) -> None:
+        self.breakpoints[source] = breakpoints  # pyright: ignore[reportArgumentType]
 
     def user_line(self, _frame: object) -> object | None:
         # simple change detection helper: call into data watches if present
@@ -226,11 +247,23 @@ class FakeDebugger:
         # Expect a real stdlib FrameType in tests
         self._current_frame = value
 
-    def make_variable_object(self, name: object, value: object, _frame: object | None = None, *, max_string_length: int = 1000) -> dict:
+    def make_variable_object(
+        self,
+        name: object,
+        value: object,
+        _frame: object | None = None,
+        *,
+        max_string_length: int = 1000,
+    ) -> dict:
         s = repr(value)
         if len(s) > max_string_length:
             s = s[: max_string_length - 3] + "..."
-        return {"name": str(name), "value": s, "type": type(value).__name__, "variablesReference": 0}
+        return {
+            "name": str(name),
+            "value": s,
+            "type": type(value).__name__,
+            "variablesReference": 0,
+        }
 
     # --- Data breakpoint helpers used by adapter tests ---
     def set_data_breakpoint(self, data_id: str, access_type: str = "write") -> None:
@@ -241,7 +274,9 @@ class FakeDebugger:
         # store a simple entry
         self._data_watches[data_id] = {"accessType": access_type}
 
-    def register_data_watches(self, names: list[str], metas: list[tuple[str, dict]] | None = None) -> None:
+    def register_data_watches(
+        self, names: list[str], metas: list[tuple[str, dict]] | None = None
+    ) -> None:
         self.register_calls.append((list(names), list(metas or [])))
         self.data_watch_names = set(names)
         if metas:
@@ -309,4 +344,3 @@ def make_real_frame(
         frame.f_globals.clear()
         frame.f_globals.update(globals_map)
     return gen.gi_frame
-

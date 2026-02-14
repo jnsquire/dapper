@@ -3,10 +3,10 @@ Coverage runner script for Dapper AI project.
 Run tests with coverage reporting.
 """
 
+from pathlib import Path
 import subprocess
 import sys
 import webbrowser
-from pathlib import Path
 
 
 def run_coverage():

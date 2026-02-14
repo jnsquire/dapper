@@ -23,15 +23,15 @@ from tests.mocks import MockConnection
 async def test_write_command_to_channel_ipc_pipe_text():
     """Test that IPCManager can send text messages."""
     p = PyDebugger(server=Mock())
-    
+
     # Mock the connection to capture send_message calls
     mock_connection = AsyncMock()
     p.ipc._connection = mock_connection
     p.ipc._enabled = True
-    
+
     # Test the new interface
     await p.ipc.send_message({"command": "test", "data": "abc"})
-    
+
     # Verify the connection's write_message was called
     assert mock_connection.write_message.called, "Expected write_message to be called"
     call_args = mock_connection.write_message.call_args[0][0]
@@ -43,15 +43,15 @@ async def test_write_command_to_channel_ipc_pipe_text():
 async def test_write_command_to_channel_ipc_pipe_binary():
     """Test that IPCManager can send binary messages."""
     p = PyDebugger(server=Mock())
-    
+
     # Mock the connection to capture send_message calls
     mock_connection = AsyncMock()
     p.ipc._connection = mock_connection
     p.ipc._enabled = True
-    
+
     # Test the new interface with binary data
     await p.ipc.send_message({"command": "test", "data": "xyz"})
-    
+
     # Verify the connection's write_message was called
     assert mock_connection.write_message.called, "Expected write_message to be called"
     call_args = mock_connection.write_message.call_args[0][0]
@@ -63,15 +63,15 @@ async def test_write_command_to_channel_ipc_pipe_binary():
 async def test_write_command_to_channel_ipc_socket_text():
     """Test that IPCManager can send messages through socket-like connections."""
     p = PyDebugger(server=Mock())
-    
+
     # Mock the connection to capture send_message calls
     mock_connection = AsyncMock()
     p.ipc._connection = mock_connection
     p.ipc._enabled = True
-    
+
     # Test the new interface
     await p.ipc.send_message({"command": "test", "data": "bbb"})
-    
+
     # Verify the connection's write_message was called
     assert mock_connection.write_message.called, "Expected write_message to be called"
     call_args = mock_connection.write_message.call_args[0][0]
@@ -119,9 +119,9 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
 
     # Verify the debugger was called with the expected config object
     assert len(mock_debugger.launch.calls) == 1
-    args, kwargs = mock_debugger.launch.calls[0]
+    args, _kwargs = mock_debugger.launch.calls[0]
     config = args[0]  # First positional argument is the DapperConfig
-    
+
     assert isinstance(config, DapperConfig)
     assert config.debuggee.program == "test.py"
     assert config.debuggee.args == []
@@ -153,7 +153,7 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         def start(self):
             if self._target is not None:
                 self._target(*self._args, **self._kwargs)
-        
+
         def is_alive(self):
             return False
 
@@ -166,16 +166,16 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
             mock_connection.send_event = Mock()
             super().__init__(mock_connection, loop)
             self._debugger = None
-        
+
         async def send_event(self, *_args, **_kwargs):
             return None
-        
+
         async def send_message(self, *_args, **_kwargs):
             return None
-            
+
         def spawn_threadsafe(self, *_args, **_kwargs):
             return None
-            
+
         @property
         def debugger(self):
             if self._debugger is None:
@@ -194,12 +194,9 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     def _noop_ipc(_self, _handler):
         return None
 
-    monkeypatch.setattr(
-        ipc_context.IPCContext, "run_accept_and_read", _noop_ipc, raising=False
-    )
+    monkeypatch.setattr(ipc_context.IPCContext, "run_accept_and_read", _noop_ipc, raising=False)
     monkeypatch.setattr(ipc_context, "threading", type("threading", (), {"Thread": DummyThread}))
 
-        
     config = DapperConfig(
         mode="launch",
         debuggee=DebuggeeConfig(
@@ -273,9 +270,9 @@ async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
 
     # Verify debugger.launch received the config object
     assert len(mock_debugger.launch.calls) == 1
-    args, kwargs = mock_debugger.launch.calls[0]
+    args, _kwargs = mock_debugger.launch.calls[0]
     config_arg = args[0]  # First positional argument (config)
-    
+
     # Check that the config contains the expected IPC settings
     assert isinstance(config_arg, DapperConfig)
     assert config_arg.ipc.use_binary is True

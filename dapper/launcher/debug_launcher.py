@@ -8,12 +8,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from multiprocessing import connection as _mpc
 import os
+from pathlib import Path
 import sys
 import threading
 import traceback
-from multiprocessing import connection as _mpc
-from pathlib import Path
 from typing import Any
 from typing import cast
 
@@ -128,8 +128,7 @@ def parse_args():
         choices=["tcp", "unix", "pipe"],
         required=True,
         help=(
-            "IPC transport type to connect back to the adapter. "
-            "On Windows use 'tcp' or 'pipe'."
+            "IPC transport type to connect back to the adapter. On Windows use 'tcp' or 'pipe'."
         ),
     )
     parser.add_argument("--ipc-host", type=str, help="IPC TCP host")
@@ -207,9 +206,7 @@ def setup_ipc_from_args(args: Any) -> None:
     if args.ipc == "pipe":
         _setup_ipc_pipe(args.ipc_pipe)
     else:
-        _setup_ipc_socket(
-            args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary
-        )
+        _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary)
 
 
 def start_command_listener() -> threading.Thread:
@@ -217,7 +214,6 @@ def start_command_listener() -> threading.Thread:
     thread = threading.Thread(target=receive_debug_commands, daemon=True)
     thread.start()
     return thread
-
 
     # launcher-specific processing function moved into SessionState
 

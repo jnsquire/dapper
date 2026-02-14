@@ -18,19 +18,19 @@ from tests.mocks import MockConnection
 
 class _CapturingServer(DebugAdapterServer):
     """Stub server for testing that captures events."""
-    
+
     def __init__(self) -> None:
         # Initialize parent with mock connection
         super().__init__(MockConnection(), asyncio.get_event_loop())
         self.events: list[dict[str, Any]] = []
-    
+
     async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
         self.events.append({"event": event_name, "body": body or {}})
-    
+
     async def send_message(self, message: dict[str, Any]) -> None:
         # Stub implementation
         pass
-    
+
     def spawn_threadsafe(self, target: Any, *args: Any, **kwargs: Any) -> None:
         # Stub implementation
         pass
@@ -89,7 +89,7 @@ async def test_binary_ipc_frame_roundtrip_exited_event():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(3)
     s.connect((host, port))
-    
+
     # Give the server a moment to accept the connection
     await asyncio.sleep(0.1)
 

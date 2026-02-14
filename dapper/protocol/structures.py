@@ -1,6 +1,7 @@
 """
 Common object shapes used by many requests/responses: Source, Breakpoint, StackFrame, Scope, Variable, Thread
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,11 +19,15 @@ class Source(TypedDict):
 
     name: NotRequired[str]  # The short name of the source
     path: str  # The path of the source to be shown in the UI
-    sourceReference: NotRequired[int]  # If > 0, the contents must be retrieved through the source request
+    sourceReference: NotRequired[
+        int
+    ]  # If > 0, the contents must be retrieved through the source request
     presentationHint: NotRequired[Literal["normal", "emphasize", "deemphasize"]]
     origin: NotRequired[str]  # The origin of this source
     sources: NotRequired[list[Source]]  # List of sources that are related to this source
-    adapterData: NotRequired[Any]  # Additional data that a debug adapter might want to loop through the client
+    adapterData: NotRequired[
+        Any
+    ]  # Additional data that a debug adapter might want to loop through the client
     checksums: NotRequired[list[Any]]  # The checksums associated with this file
 
 
@@ -33,8 +38,12 @@ class SourceBreakpoint(TypedDict):
     line: int  # The source line of the breakpoint or logpoint
     column: NotRequired[int]  # Start position within source line
     condition: NotRequired[str]  # The expression for conditional breakpoints
-    hitCondition: NotRequired[str]  # The expression that controls how many hits of the breakpoint are ignored
-    logMessage: NotRequired[str]  # If this exists and is non-empty, the adapter must not 'break' but log the message
+    hitCondition: NotRequired[
+        str
+    ]  # The expression that controls how many hits of the breakpoint are ignored
+    logMessage: NotRequired[
+        str
+    ]  # If this exists and is non-empty, the adapter must not 'break' but log the message
 
 
 class Breakpoint(TypedDict):
@@ -64,7 +73,9 @@ class StackFrame(TypedDict):
     endLine: NotRequired[int]  # The end line of the range covered by the stack frame
     endColumn: NotRequired[int]  # End position of the range covered by the stack frame
     canRestart: NotRequired[bool]  # Indicates whether this frame can be restarted
-    instructionPointerReference: NotRequired[str]  # A memory reference for the current instruction pointer
+    instructionPointerReference: NotRequired[
+        str
+    ]  # A memory reference for the current instruction pointer
 
 
 class Scope(TypedDict):
@@ -72,10 +83,14 @@ class Scope(TypedDict):
 
     name: str  # Name of the scope such as 'Arguments', 'Locals'
     presentationHint: NotRequired[Literal["arguments", "locals", "registers"]]
-    variablesReference: int  # The variables of this scope can be retrieved by passing this reference
+    variablesReference: (
+        int  # The variables of this scope can be retrieved by passing this reference
+    )
     namedVariables: NotRequired[int]  # The number of named variables in this scope
     indexedVariables: NotRequired[int]  # The number of indexed variables in this scope
-    expensive: bool  # If true, the number of variables in this scope is large or expensive to retrieve
+    expensive: (
+        bool  # If true, the number of variables in this scope is large or expensive to retrieve
+    )
     source: NotRequired[Source]  # The source for this scope
     line: NotRequired[int]  # The start line of the range covered by this scope
     column: NotRequired[int]  # Start position of the range covered by the scope
@@ -89,7 +104,9 @@ class VariablePresentationHint(TypedDict):
     kind: NotRequired[str]  # The kind of variable
     attributes: NotRequired[list[str]]  # Set of attributes represented as an array of strings
     visibility: NotRequired[str]  # Visibility of variable
-    lazy: NotRequired[bool]  # If true, clients can present the variable with a UI that supports a specific gesture
+    lazy: NotRequired[
+        bool
+    ]  # If true, clients can present the variable with a UI that supports a specific gesture
 
 
 class Variable(TypedDict):
@@ -98,7 +115,9 @@ class Variable(TypedDict):
     name: str  # The variable's name
     value: str  # The variable's value
     type: NotRequired[str]  # The type of the variable's value
-    presentationHint: NotRequired[VariablePresentationHint]  # Properties of a variable to determine rendering
+    presentationHint: NotRequired[
+        VariablePresentationHint
+    ]  # Properties of a variable to determine rendering
     evaluateName: NotRequired[str]  # The evaluatable name of this variable
     variablesReference: int  # If > 0, the variable is structured and its children can be retrieved
     namedVariables: NotRequired[int]  # The number of named child variables

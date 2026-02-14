@@ -5,11 +5,11 @@ Test script to verify the terminate request functionality.
 import asyncio
 import json
 import logging
+from pathlib import Path
 import socket
 import subprocess
 import sys
 import traceback
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

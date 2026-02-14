@@ -2,9 +2,9 @@
 Pytest-style tests for frame evaluation system.
 """
 
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 
 import pytest
 

@@ -128,7 +128,7 @@ async def test_initialization_sequence(mock_debugger_class):
     # Verify the debugger was called with correct config
     # The launch request creates a DapperConfig object
     assert len(mock_debugger.launch.calls) == 1
-    args, kwargs = mock_debugger.launch.calls[0]
+    args, _kwargs = mock_debugger.launch.calls[0]
     config = args[0]  # First argument should be DapperConfig
     assert config.debuggee.program == "test.py"
     assert config.debuggee.args == []
@@ -178,7 +178,7 @@ async def test_attach_request_routed(mock_debugger_class):
     # And debugger.attach should be called with a DapperConfig
     calls = mock_debugger.attach.calls  # type: ignore[attr-defined]
     assert len(calls) == 1
-    args, kwargs = calls[0]
+    args, _kwargs = calls[0]
     config = args[0]  # First argument should be DapperConfig
     assert config.ipc.transport == "tcp"
     assert config.ipc.host == "127.0.0.1"

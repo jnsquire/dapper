@@ -23,9 +23,9 @@ Dependencies:
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 import sys
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -66,27 +66,29 @@ _provider_registered = False
 
 def _ensure_provider_registered() -> None:
     """Ensure the DapMappingProvider is registered with the state.
-    
+
     This is called lazily to avoid circular imports at module load time.
     The provider wraps COMMAND_HANDLERS from command_handlers.py.
     """
     global _provider_registered  # noqa: PLW0603
     if _provider_registered:
         return
-    
+
     # Import here to avoid circular imports
     from dapper.ipc.ipc_receiver import DapMappingProvider  # noqa: PLC0415
     from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
-    
+
     # Register the provider (ipc_receiver also does this at import time,
     # but we may be called before ipc_receiver is imported)
-    state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
+    state.register_command_provider(
+        cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100
+    )
     _provider_registered = True
 
 
 def handle_debug_command(command: dict[str, Any]) -> None:
     """Handle a debug command using the provider-based dispatch system.
-    
+
     This dispatches through `state.dispatch_debug_command()`, which uses the
     registered `DapMappingProvider` to look up handlers. This ensures the same
     dispatch path is used for both pipe-based and socket-based IPC.
@@ -97,7 +99,7 @@ def handle_debug_command(command: dict[str, Any]) -> None:
 
     # Ensure the provider is registered (lazy initialization)
     _ensure_provider_registered()
-    
+
     # Dispatch through the provider system
     state.dispatch_debug_command(command)
 
@@ -114,7 +116,10 @@ def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any |
     if callable(fn):
         try:
             # Some debuggers support an optional frame argument.
-            if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT:
+            if (
+                getattr(fn, "__code__", None) is not None
+                and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT
+            ):
                 var_obj = fn(name, value, frame)
             else:
                 var_obj = fn(name, value)
@@ -150,14 +155,18 @@ def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
         pass
 
 
-def _call_convert_callable(convert: Any, value_str: str, frame: Any | None, parent_obj: Any | None) -> Any:
+def _call_convert_callable(
+    convert: Any, value_str: str, frame: Any | None, parent_obj: Any | None
+) -> Any:
     try:
         return convert(value_str, frame, parent_obj)
     except TypeError:
         return convert(value_str)
 
 
-def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+def _try_custom_convert(
+    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+) -> Any:
     converter = globals().get("_convert_value_with_context_override")
     if converter is not None:
         try:
@@ -182,6 +191,7 @@ def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: An
 # full set of functions was copied into this file in the actual change.
 
 # --- Breakpoint handlers (truncated example)
+
 
 def handle_set_breakpoints(
     dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
@@ -248,6 +258,7 @@ def handle_set_breakpoints(
 
 # Provide minimal implementations of the other handlers used by tests. The full
 # launcher's handler set is available in the original `dapper.launcher.handlers`.
+
 
 def handle_set_function_breakpoints(dbg: DebuggerLike, arguments: SetFunctionBreakpointsArguments):
     """Handle setFunctionBreakpoints command"""
@@ -390,7 +401,12 @@ def handle_stack_trace(dbg: DebuggerLike, arguments: StackTraceArguments | dict[
 
     # Support both 'frames_by_thread' (adapter style) and 'stack' (legacy BDB)
     frames = None
-    if dbg and hasattr(dbg, "frames_by_thread") and isinstance(thread_id, int) and thread_id in getattr(dbg, "frames_by_thread", {}):
+    if (
+        dbg
+        and hasattr(dbg, "frames_by_thread")
+        and isinstance(thread_id, int)
+        and thread_id in getattr(dbg, "frames_by_thread", {})
+    ):
         frames = dbg.frames_by_thread[thread_id]
     else:
         if dbg:
@@ -412,13 +428,15 @@ def handle_stack_trace(dbg: DebuggerLike, arguments: StackTraceArguments | dict[
                     name = frame.f_code.co_name
                     source_path = frame.f_code.co_filename
 
-                stack_frames.append({
-                    "id": i,
-                    "name": name,
-                    "source": {"name": Path(source_path).name, "path": source_path},
-                    "line": lineno,
-                    "column": 0,
-                })
+                stack_frames.append(
+                    {
+                        "id": i,
+                        "name": name,
+                        "source": {"name": Path(source_path).name, "path": source_path},
+                        "line": lineno,
+                        "column": 0,
+                    }
+                )
 
     # Send stack trace event similar to the original implementation
     try:
@@ -444,7 +462,7 @@ def handle_threads(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
             # string names used in unit tests.
             name = t if isinstance(t, str) else getattr(t, "name", f"Thread-{tid}")
             threads.append({"id": tid, "name": name})
-    
+
     try:
         send_debug_message("threads", threads=threads)
     except Exception:
@@ -457,7 +475,7 @@ def handle_scopes(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any]
     """Handle scopes command"""
     arguments = arguments or {}
     frame_id = arguments.get("frameId")
-    
+
     scopes = []
     # Accept both legacy dbg.stack and adapter-style frame_id_to_frame
     if frame_id is not None:
@@ -481,12 +499,12 @@ def handle_scopes(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any]
                     "expensive": False,
                 },
                 {
-                    "name": "Globals", 
+                    "name": "Globals",
                     "variablesReference": frame_id * VAR_REF_TUPLE_SIZE + 1,
                     "expensive": True,
                 },
             ]
-    
+
     try:
         send_debug_message("scopes", scopes=scopes)
     except Exception:
@@ -499,7 +517,7 @@ def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any
     """Handle source command"""
     arguments = arguments or {}
     source_reference = arguments.get("sourceReference")
-    
+
     if source_reference:
         # For now, return empty content - this would need to be implemented
         # based on how source references are managed in your debugger
@@ -513,7 +531,7 @@ def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any
                     content = fh.read()
             except Exception:
                 content = ""
-    
+
     try:
         send_debug_message("source", content=content)
     except Exception:
@@ -528,9 +546,15 @@ def handle_variables(dbg: DebuggerLike, arguments: VariablesArguments | dict[str
     variables_reference = arguments.get("variablesReference")
 
     variables: list[Variable] = []
-    if not (dbg and isinstance(variables_reference, int) and variables_reference in getattr(dbg, "var_refs", {})):
+    if not (
+        dbg
+        and isinstance(variables_reference, int)
+        and variables_reference in getattr(dbg, "var_refs", {})
+    ):
         try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
+            send_debug_message(
+                "variables", variablesReference=variables_reference, variables=variables
+            )
         except Exception:
             pass
         return None
@@ -540,7 +564,9 @@ def handle_variables(dbg: DebuggerLike, arguments: VariablesArguments | dict[str
     variables = _resolve_variables_for_reference(dbg, frame_info)
 
     try:
-        send_debug_message("variables", variablesReference=variables_reference, variables=variables)
+        send_debug_message(
+            "variables", variablesReference=variables_reference, variables=variables
+        )
     except Exception:
         pass
 
@@ -601,7 +627,9 @@ def _resolve_variables_for_reference(dbg: DebuggerLike | None, frame_info: Any) 
     return vars_out
 
 
-def _extract_variables_from_mapping(dbg: DebuggerLike | None, mapping: dict[str, Any], frame: Any | None) -> list[Variable]:
+def _extract_variables_from_mapping(
+    dbg: DebuggerLike | None, mapping: dict[str, Any], frame: Any | None
+) -> list[Variable]:
     """Convert a mapping of names -> values into a list of Variable objects."""
 
     out: list[Variable] = []
@@ -610,14 +638,15 @@ def _extract_variables_from_mapping(dbg: DebuggerLike | None, mapping: dict[str,
     return out
 
 
-def handle_set_variable(dbg: DebuggerLike, arguments: SetVariableArguments | dict[str, Any] | None):
+def handle_set_variable(
+    dbg: DebuggerLike, arguments: SetVariableArguments | dict[str, Any] | None
+):
     """Handle setVariable command"""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
     name = arguments.get("name")
     value = arguments.get("value")
-    
-    
+
     # Validate the reference
     if not (dbg and isinstance(variables_reference, int) and name and value is not None):
         return {"success": False, "message": "Invalid arguments"}
@@ -710,7 +739,9 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
         return {"success": False, "message": f"Failed to set object member '{name}': {e!s}"}
 
 
-def _convert_value_with_context(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+def _convert_value_with_context(
+    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+) -> Any:
     """Compatibility converter exposed by the original launcher handlers."""
     s = value_str.strip()
     if s.lower() == "none":
@@ -808,13 +839,15 @@ def handle_evaluate(dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, 
             elif hasattr(dbg, "current_frame") and dbg.current_frame:
                 # Fallback to current frame
                 try:
-                    value = eval(expression, dbg.current_frame.f_globals, dbg.current_frame.f_locals)
+                    value = eval(
+                        expression, dbg.current_frame.f_globals, dbg.current_frame.f_locals
+                    )
                     result = repr(value)
                 except Exception as e:
                     result = f"<error: {e}>"
         except Exception:
             pass
-    
+
     try:
         send_debug_message(
             "evaluate",
@@ -830,15 +863,17 @@ def handle_evaluate(dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, 
         "body": {
             "result": result,
             "variablesReference": 0,
-        }
+        },
     }
 
 
-def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: SetDataBreakpointsArguments | dict[str, Any] | None):
+def handle_set_data_breakpoints(
+    dbg: DebuggerLike, arguments: SetDataBreakpointsArguments | dict[str, Any] | None
+):
     """Handle setDataBreakpoints command"""
     arguments = arguments or {}
     breakpoints = arguments.get("breakpoints", [])
-    
+
     # Clear existing data breakpoints
     clear_all = getattr(dbg, "clear_all_data_breakpoints", None)
     if callable(clear_all):
@@ -846,7 +881,7 @@ def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: SetDataBreakpoints
             clear_all()
         except Exception:
             pass
-    
+
     watch_names: list[str] = []
     watch_meta: list[tuple[str, dict[str, Any]]] = []
 
@@ -895,7 +930,7 @@ def handle_set_data_breakpoints(dbg: DebuggerLike, arguments: SetDataBreakpoints
         except Exception:
             # Not fatal — bookkeeping may still be client-side only
             pass
-    
+
     return {"success": True, "body": {"breakpoints": results}}
 
 
@@ -906,10 +941,10 @@ def handle_data_breakpoint_info(
     arguments = arguments or {}
     name = arguments.get("name", "")
     variables_reference = arguments.get("variablesReference")
-    
+
     # For now, return basic info - this would need proper implementation
     data_id = f"{variables_reference}:{name}" if variables_reference else name
-    
+
     return {
         "success": True,
         "body": {
@@ -917,15 +952,17 @@ def handle_data_breakpoint_info(
             "description": f"Data breakpoint for {name}",
             "accessTypes": ["read", "write", "readWrite"],
             "canPersist": False,
-        }
+        },
     }
 
 
-def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None):
+def handle_exception_info(
+    dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None
+):
     """Handle exceptionInfo command"""
     arguments = arguments or {}
     # The thread id is not used by the simple exceptionInfo handler; ignore.
-    
+
     exception_info = {
         "exceptionId": "Exception",
         "description": "An exception occurred",
@@ -933,25 +970,27 @@ def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments |
         "details": {
             "message": "Exception details unavailable",
             "typeName": "Exception",
-        }
+        },
     }
-    
+
     # Try to get actual exception info if available
     if dbg:
         exc = getattr(dbg, "current_exception", None)
         if exc:
             try:
-                exception_info.update({
-                    "exceptionId": type(exc).__name__,
-                    "description": str(exc),
-                    "details": {
-                        "message": str(exc),
-                        "typeName": type(exc).__name__,
+                exception_info.update(
+                    {
+                        "exceptionId": type(exc).__name__,
+                        "description": str(exc),
+                        "details": {
+                            "message": str(exc),
+                            "typeName": type(exc).__name__,
+                        },
                     }
-                })
+                )
             except Exception:
                 pass
-    
+
     return {"success": True, "body": exception_info}
 
 
@@ -976,12 +1015,15 @@ def handle_terminate(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = Non
     state.exit_func(0)
 
 
-def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _name: str | None = None) -> None:
+def extract_variables(
+    dbg: Any, variables: list[dict[str, Any]], parent: Any, _name: str | None = None
+) -> None:
     """Recursively extract variables from a dict/list/object into variables list.
 
     This helper keeps the legacy `handlers.extract_variables` contract so tests
     that call it via the compatibility shim continue to work.
     """
+
     def _create_variable_object(key: str, val: Any) -> dict[str, Any]:
         """Create a variable object, using debugger method if available, otherwise fallback."""
         return cast("dict", _make_variable(dbg, key, val, None))
@@ -1039,5 +1081,5 @@ def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = No
         "supportsLogPoints": True,
         "supportsRestartRequest": True,
     }
-    
+
     return {"success": True, "body": capabilities}

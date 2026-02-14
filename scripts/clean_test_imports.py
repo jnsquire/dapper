@@ -1,8 +1,8 @@
 """Script to clean up sys.path manipulation in test files."""
 
 import argparse
-import re
 from pathlib import Path
+import re
 
 
 def find_test_files(root_dir: Path) -> list[Path]:

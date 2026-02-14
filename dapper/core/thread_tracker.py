@@ -10,10 +10,10 @@ This module provides a unified API for:
 
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
+import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Union

@@ -42,7 +42,7 @@ def _call_loaded_sources_and_find_ref() -> tuple[int, str]:
 
 
 def test_loaded_sources_exports_source_reference_and_source_handler_returns_content():
-    ref, path = _call_loaded_sources_and_find_ref()
+    ref, _path = _call_loaded_sources_and_find_ref()
     # Request the source by reference
     response_args: dict[str, Any] = {"source": {"sourceReference": ref}}
     # The handler will call send_debug_message; to keep this unit test simple,

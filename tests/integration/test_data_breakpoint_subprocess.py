@@ -22,7 +22,10 @@ def test_set_data_breakpoints_command_registers_and_triggers():
     state.debugger = cast("DebuggerLike", dbg)
 
     # Act - send the setDataBreakpoints command via standard command dispatcher
-    cmd = {"command": "setDataBreakpoints", "arguments": {"breakpoints": [{"dataId": "frame:999:var:q", "accessType": "write"}]}}
+    cmd = {
+        "command": "setDataBreakpoints",
+        "arguments": {"breakpoints": [{"dataId": "frame:999:var:q", "accessType": "write"}]},
+    }
     command_handlers.handle_debug_command(cmd)
 
     # Simulate program running with change
@@ -32,14 +35,22 @@ def test_set_data_breakpoints_command_registers_and_triggers():
     dbg.user_line(frame1)
 
     # no stopped event yet
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" not in reasons
 
     frame2 = make_real_frame({"q": 2})
 
     dbg.user_line(frame2)
 
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" in reasons
 
     # Cleanup

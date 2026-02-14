@@ -41,10 +41,10 @@ class InProcessBackend(BaseBackend):
         """Initialize with an InProcessBridge instance."""
         super().__init__()
         self._bridge = bridge
-        
+
         # Register cleanup callback
         self._lifecycle.add_cleanup_callback(self._cleanup_bridge)
-    
+
     def _cleanup_bridge(self) -> None:
         """Cleanup the bridge connection."""
         try:
@@ -71,7 +71,7 @@ class InProcessBackend(BaseBackend):
         """Execute a debugger command in-process."""
         if args is None:
             args = {}
-        
+
         # kwargs is unused but required for interface compatibility
         _ = kwargs
 
@@ -109,9 +109,11 @@ class InProcessBackend(BaseBackend):
             return {"sent": sent}
 
         async def _stack() -> dict[str, Any]:
-            return dict(await self.get_stack_trace(
-                args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
-            ))
+            return dict(
+                await self.get_stack_trace(
+                    args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
+                )
+            )
 
         async def _vars() -> dict[str, Any]:
             v = await self.get_variables(
@@ -123,19 +125,21 @@ class InProcessBackend(BaseBackend):
             return {"variables": v}
 
         async def _set_var() -> dict[str, Any]:
-            return dict(await self.set_variable(
-                args["variables_reference"], args["name"], args["value"]
-            ))
+            return dict(
+                await self.set_variable(args["variables_reference"], args["name"], args["value"])
+            )
 
         async def _eval() -> dict[str, Any]:
-            return dict(await self.evaluate(
-                args["expression"], args.get("frame_id"), args.get("context")
-            ))
+            return dict(
+                await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
+            )
 
         async def _compl() -> dict[str, Any]:
-            return dict(await self.completions(
-                args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
-            ))
+            return dict(
+                await self.completions(
+                    args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
+                )
+            )
 
         async def _exc_info() -> dict[str, Any]:
             return dict(await self.exception_info(args["thread_id"]))
@@ -293,9 +297,7 @@ class InProcessBackend(BaseBackend):
             logger.exception("in-process variables failed")
             return []
 
-    async def set_variable(
-        self, var_ref: int, name: str, value: str
-    ) -> SetVariableResponseBody:
+    async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         try:
             return cast(
@@ -352,17 +354,22 @@ class InProcessBackend(BaseBackend):
                             "exceptionId": exception_info.get("exceptionId", "Unknown"),
                             "description": exception_info.get("description", "Exception occurred"),
                             "breakMode": exception_info.get("breakMode", "unhandled"),
-                            "details": exception_info.get("details", {
-                                "message": "Exception information available",
-                                "typeName": exception_info.get("exceptionId", "Unknown"),
-                                "fullTypeName": exception_info.get("exceptionId", "Unknown"),
-                                "source": "in-process debugger",
-                                "stackTrace": exception_info.get("stackTrace", ["Stack trace available"]),
-                            }),
+                            "details": exception_info.get(
+                                "details",
+                                {
+                                    "message": "Exception information available",
+                                    "typeName": exception_info.get("exceptionId", "Unknown"),
+                                    "fullTypeName": exception_info.get("exceptionId", "Unknown"),
+                                    "source": "in-process debugger",
+                                    "stackTrace": exception_info.get(
+                                        "stackTrace", ["Stack trace available"]
+                                    ),
+                                },
+                            ),
                         }
         except Exception:
             logger.exception("Failed to get exception info from in-process debugger")
-        
+
         # Fallback to placeholder if no real exception info available
         return {
             "exceptionId": "Unknown",
@@ -386,7 +393,7 @@ class InProcessBackend(BaseBackend):
     async def initialize(self) -> None:
         """Initialize the in-process backend."""
         await self._lifecycle.initialize()
-        
+
         # Verify bridge is available
         try:
             # Add any bridge-specific initialization here
@@ -394,28 +401,28 @@ class InProcessBackend(BaseBackend):
         except Exception as e:
             await self._lifecycle.mark_error(f"Bridge initialization failed: {e}")
             raise
-        
+
         await self._lifecycle.mark_ready()
-    
+
     async def launch(self, config: DapperConfig) -> None:
         """Launch in-process debugging session."""
         # Config parameter required by protocol but unused for in-process debugging
         _ = config  # Mark as intentionally unused
         await self.initialize()
-        
+
         # In-process debugging doesn't need separate launch/attach
         # The bridge is already connected to the current process
         logger.info("In-process debugging session started")
-    
+
     async def attach(self, config: DapperConfig) -> None:
         """Attach to in-process debugging session."""
         # Config parameter required by protocol but unused for in-process debugging
         _ = config  # Mark as intentionally unused
         await self.initialize()
-        
+
         # For in-process, attach and launch are the same
         logger.info("In-process debugging session attached")
-    
+
     async def terminate(self) -> None:
         """Terminate the debuggee."""
         await self._lifecycle.begin_termination()

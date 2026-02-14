@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-import dapper._frame_eval.selective_tracer
 from dapper._frame_eval import cache_manager
+import dapper._frame_eval.selective_tracer
 from dapper._frame_eval.selective_tracer import FrameTraceAnalyzer
 from dapper._frame_eval.selective_tracer import FrameTraceManager
 from dapper._frame_eval.selective_tracer import SelectiveTraceDispatcher
@@ -604,7 +604,7 @@ class TestThreadSafety:
 
         # Get the trace function
         trace_func = self.trace_manager.get_trace_function()
-        
+
         # Ensure trace_func is not None - this should not happen if enable_selective_tracing worked
         if trace_func is None:
             raise RuntimeError("Trace function is None after enabling selective tracing")

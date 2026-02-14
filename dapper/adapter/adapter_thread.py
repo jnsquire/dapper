@@ -87,7 +87,7 @@ class AdapterThread:
 
     def _create_connection(self) -> TCPServerConnection | NamedPipeServerConnection:
         """Build connection based on configured connection type.
-        
+
         Must be called from the adapter thread context.
         """
         if self.connection_type == "tcp":
@@ -101,6 +101,7 @@ class AdapterThread:
 
     def _start_server_on_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Schedule the server start coroutine and mark thread as started."""
+
         async def _start_server() -> None:
             try:
                 with self._lock:
@@ -115,9 +116,7 @@ class AdapterThread:
             self._loop_tasks.append(task)
         self._started.set()
 
-    async def _start_listening_and_publish_port(
-        self, connection: TCPServerConnection
-    ) -> None:
+    async def _start_listening_and_publish_port(self, connection: TCPServerConnection) -> None:
         """Start TCP listener and emit the bound port."""
         try:
             await connection.start_listening()
@@ -129,7 +128,7 @@ class AdapterThread:
 
     def _run_adapter_loop(self) -> None:
         """Main entry point for the adapter thread.
-        
+
         Creates the event loop, initializes the server, and runs until stopped.
         """
         loop: asyncio.AbstractEventLoop | None = None
@@ -150,9 +149,7 @@ class AdapterThread:
 
             # For TCP connections, start listening to obtain the bound port
             if isinstance(connection, TCPServerConnection):
-                task = loop.create_task(
-                    self._start_listening_and_publish_port(connection)
-                )
+                task = loop.create_task(self._start_listening_and_publish_port(connection))
                 with self._lock:
                     self._loop_tasks.append(task)
 

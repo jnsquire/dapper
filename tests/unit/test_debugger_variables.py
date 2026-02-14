@@ -105,9 +105,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
 
         # Create a mock backend
         mock_backend = MagicMock(spec=ExternalProcessBackend)
-        mock_backend.evaluate = AsyncMock(
-            return_value={"result": "2", "variablesReference": 0}
-        )
+        mock_backend.evaluate = AsyncMock(return_value={"result": "2", "variablesReference": 0})
         self.debugger._external_backend = mock_backend
 
         result = await self.debugger.evaluate("x + 1", frame_id=1, context="watch")
@@ -121,23 +119,17 @@ class TestDebuggerVariables(BaseDebuggerTest):
 
     async def test_get_variables_sends_command(self):
         """Test that get_variables sends a command to the debuggee when var_ref is not in cache."""
-        expected_variables = [
-            {"name": "a", "value": "1", "type": "int", "variablesReference": 0}
-        ]
+        expected_variables = [{"name": "a", "value": "1", "type": "int", "variablesReference": 0}]
 
         # Create a mock backend
         mock_backend = MagicMock(spec=ExternalProcessBackend)
         mock_backend.get_variables = AsyncMock(return_value=expected_variables)
         self.debugger._external_backend = mock_backend
 
-        result = await self.debugger.get_variables(
-            123, filter_type="named", start=1, count=10
-        )
+        result = await self.debugger.get_variables(123, filter_type="named", start=1, count=10)
 
         # Verify backend's get_variables was called
-        mock_backend.get_variables.assert_called_once_with(
-            123, "named", 1, 10
-        )
+        mock_backend.get_variables.assert_called_once_with(123, "named", 1, 10)
 
         # Verify result
         assert len(result) == 1
@@ -154,9 +146,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
         expected_variables = [{"name": "ip_a", "value": "99", "variablesReference": 0}]
         mock_bridge.variables.return_value = expected_variables
 
-        result = await self.debugger.get_variables(
-            789, filter_type="indexed", start=5, count=20
-        )
+        result = await self.debugger.get_variables(789, filter_type="indexed", start=5, count=20)
 
         # Verify in-process call
         mock_bridge.variables.assert_called_once_with(

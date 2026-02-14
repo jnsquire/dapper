@@ -57,9 +57,10 @@ def test_socket_connector_unix_no_af():
 
 
 def test_socket_connector_unix_success():
-    with patch("socket.socket") as mock_socket_cls, \
-            patch("dapper.launcher.launcher_ipc.os") as mock_os:
-
+    with (
+        patch("socket.socket") as mock_socket_cls,
+        patch("dapper.launcher.launcher_ipc.os") as mock_os,
+    ):
         mock_os.AF_UNIX = getattr(socket, "AF_UNIX", 1)
         mock_sock = MagicMock()
         mock_socket_cls.return_value = mock_sock

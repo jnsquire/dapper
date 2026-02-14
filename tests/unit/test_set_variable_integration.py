@@ -3,10 +3,10 @@ Integration test for setVariable functionality.
 This test verifies that variables can actually be set during debugging.
 """
 
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 # Test program that will be debugged
 TEST_PROGRAM = """

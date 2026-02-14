@@ -8,9 +8,9 @@ by avoiding unnecessary trace function calls on frames without breakpoints.
 
 from __future__ import annotations
 
+from collections import defaultdict
 import dis
 import threading
-from collections import defaultdict
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -35,7 +35,7 @@ class ThreadInfo(Protocol):
 
 class FrameDebugInfo(TypedDict):
     """Type definition for basic frame debugging information."""
-    
+
     filename: str
     function: str
     lineno: int

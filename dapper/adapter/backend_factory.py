@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 @runtime_checkable
 class BackendStrategy(Protocol):
     """Strategy interface for different backend types."""
-    
+
     def create_backend(
         self,
         config: DapperConfig,
@@ -42,24 +42,25 @@ class BackendStrategy(Protocol):
     ) -> DebuggerBackend:
         """Create a backend instance for the given configuration."""
         ...
-    
+
     def is_supported(self, config: DapperConfig) -> bool:
         """Check if this strategy supports the given configuration."""
         ...
-    
+
     @property
     def name(self) -> str:
         """Get the strategy name."""
         ...
 
+
 # Prepare a single reusable no-op handler for optional callbacks.
 def _noop(*_args: object, **_kwargs: object) -> None:  # pragma: no cover - trivial
     """A tiny no-op callable used as a safe default for callback hooks."""
-        
+
 
 class InProcessStrategy:
     """Strategy for in-process debugging."""
-    
+
     def create_backend(
         self,
         config: DapperConfig,
@@ -73,10 +74,10 @@ class InProcessStrategy:
                 "In-process backend requires in_process=True",
                 config_key="in_process",
             )
-        
+
         # Create the in-process components
         debugger = InProcessDebugger()
-        
+
         bridge = InProcessBridge(
             debugger,
             on_stopped=kwargs.get("on_stopped", _noop),
@@ -84,13 +85,13 @@ class InProcessStrategy:
             on_exited=kwargs.get("on_exited", _noop),
             on_output=kwargs.get("on_output", _noop),
         )
-        
+
         return InProcessBackend(bridge)
-    
+
     def is_supported(self, config: DapperConfig) -> bool:
         """Check if in-process debugging is supported."""
         return config.in_process and config.mode == "launch"
-    
+
     @property
     def name(self) -> str:
         return "inprocess"
@@ -98,7 +99,7 @@ class InProcessStrategy:
 
 class ExternalProcessStrategy:
     """Strategy for external process debugging."""
-    
+
     def create_backend(
         self,
         config: DapperConfig,
@@ -111,7 +112,7 @@ class ExternalProcessStrategy:
                 "External process backend requires in_process=False",
                 config_key="in_process",
             )
-        
+
         # Required dependencies for external backend
         required_kwargs = {
             "ipc",
@@ -120,7 +121,7 @@ class ExternalProcessStrategy:
             "lock",
             "get_next_command_id",
         }
-        
+
         missing = required_kwargs - set(kwargs.keys())
         if missing:
             # sort for deterministic error messages and easier testing
@@ -130,7 +131,7 @@ class ExternalProcessStrategy:
                 error_msg,
                 details={"missing_kwargs": list(missing)},
             )
-        
+
         return ExternalProcessBackend(
             ipc=kwargs["ipc"],
             loop=loop,
@@ -139,11 +140,11 @@ class ExternalProcessStrategy:
             lock=kwargs["lock"],
             get_next_command_id=kwargs["get_next_command_id"],
         )
-    
+
     def is_supported(self, config: DapperConfig) -> bool:
         """Check if external process debugging is supported."""
         return not config.in_process
-    
+
     @property
     def name(self) -> str:
         return "external"
@@ -151,19 +152,19 @@ class ExternalProcessStrategy:
 
 class BackendFactory:
     """Factory for creating debugger backends based on configuration."""
-    
+
     def __init__(self) -> None:
         """Initialize the factory with default strategies."""
         self._strategies: list[BackendStrategy] = [
             InProcessStrategy(),
             ExternalProcessStrategy(),
         ]
-    
+
     def register_strategy(self, strategy: BackendStrategy) -> None:
         """Register a new backend strategy."""
         self._strategies.append(strategy)
         logger.info(f"Registered backend strategy: {strategy.name}")
-    
+
     def create_backend(
         self,
         config: DapperConfig,
@@ -171,15 +172,15 @@ class BackendFactory:
         **kwargs: Any,
     ) -> DebuggerBackend:
         """Create a backend instance based on the configuration.
-        
+
         Args:
             config: The debug configuration
             loop: The asyncio event loop
             **kwargs: Additional arguments passed to the strategy
-            
+
         Returns:
             A configured backend instance
-            
+
         Raises:
             BackendError: If no suitable strategy is found
             ConfigurationError: If the configuration is invalid
@@ -196,7 +197,7 @@ class BackendFactory:
                     backend_type=strategy.name,
                     cause=e,
                 ) from e
-        
+
         # No strategy found
         supported_modes = [s.name for s in self._strategies]
         error_msg = f"No backend strategy supports configuration: mode={config.mode}, in_process={config.in_process}"
@@ -208,7 +209,7 @@ class BackendFactory:
                 "supported_strategies": supported_modes,
             },
         )
-    
+
     def get_supported_strategies(self, config: DapperConfig) -> list[str]:
         """Get list of strategy names that support the given configuration."""
         return [s.name for s in self._strategies if s.is_supported(config)]
@@ -224,12 +225,12 @@ def create_backend(
     **kwargs: Any,
 ) -> DebuggerBackend:
     """Create a backend using the default factory.
-    
+
     Args:
         config: The debug configuration
         loop: The asyncio event loop
         **kwargs: Additional arguments passed to the strategy
-        
+
     Returns:
         A configured backend instance
     """
@@ -243,13 +244,13 @@ def register_backend_strategy(strategy: BackendStrategy) -> None:
 
 class BackendManager:
     """Manager for backend lifecycle and operations."""
-    
+
     def __init__(self, factory: BackendFactory | None = None) -> None:
         """Initialize the backend manager."""
         self._factory = factory or default_factory
         self._backend: DebuggerBackend | None = None
         self._config: DapperConfig | None = None
-    
+
     async def initialize(
         self,
         config: DapperConfig,
@@ -257,33 +258,33 @@ class BackendManager:
         **kwargs: Any,
     ) -> DebuggerBackend:
         """Initialize the backend based on configuration.
-        
+
         Args:
             config: The debug configuration
             loop: The asyncio event loop
             **kwargs: Additional arguments passed to the backend factory
-            
+
         Returns:
             The initialized backend
         """
         if self._backend is not None:
             await self.terminate()
-        
+
         self._config = config
         self._backend = self._factory.create_backend(config, loop, **kwargs)
-        
+
         logger.info(f"Initialized backend: {self._backend.__class__.__name__}")
         return self._backend
-    
+
     @property
     def backend(self) -> DebuggerBackend | None:
         """Get the current backend."""
         return self._backend
-    
+
     def is_available(self) -> bool:
         """Check if a backend is available and ready."""
         return self._backend is not None and self._backend.is_available()
-    
+
     async def terminate(self) -> None:
         """Terminate the current backend."""
         if self._backend is not None:
@@ -295,17 +296,17 @@ class BackendManager:
             finally:
                 self._backend = None
                 self._config = None
-    
+
     async def configuration_done(self) -> None:
         """Signal configuration done to the backend."""
         if self._backend is not None:
             await self._backend.configuration_done()
-    
+
     def get_backend_info(self) -> dict[str, Any]:
         """Get information about the current backend."""
         if self._backend is None:
             return {"status": "no_backend"}
-        
+
         return {
             "status": "active",
             "type": self._backend.__class__.__name__,

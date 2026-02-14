@@ -49,24 +49,24 @@ def test_detect_kind_and_attrs_for_various_types():
     class C:
         pass
 
-    kind2, attrs2 = ds._detect_kind_and_attrs(C)
+    kind2, _attrs2 = ds._detect_kind_and_attrs(C)
     # The implementation tests `callable` before `isinstance(type)`, so
     # classes are classified as 'method' (callable) by this helper.
     assert kind2 == "method"
 
-    kind3, attrs3 = ds._detect_kind_and_attrs([1, 2, 3])
+    kind3, _attrs3 = ds._detect_kind_and_attrs([1, 2, 3])
     assert kind3 == "data"
 
     s = "short"
-    k4, a4 = ds._detect_kind_and_attrs(s)
+    k4, _a4 = ds._detect_kind_and_attrs(s)
     assert k4 == "data"
 
     long_s = "x" * (ds.STRING_RAW_THRESHOLD + 10)
-    k5, a5 = ds._detect_kind_and_attrs(long_s)
+    _k5, a5 = ds._detect_kind_and_attrs(long_s)
     assert "rawString" in a5
 
     b = b"hello\nworld"
-    k6, a6 = ds._detect_kind_and_attrs(b)
+    k6, _a6 = ds._detect_kind_and_attrs(b)
     assert k6 == "data"
 
 

@@ -1,6 +1,6 @@
 import asyncio
-import unittest
 from pathlib import Path
+import unittest
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -81,7 +81,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                     ),
                     ipc=IPCConfig(use_binary=True),
                 )
-                
+
                 # Should not raise an exception (with timeout)
                 await asyncio.wait_for(
                     self.debugger.launch(config),
@@ -127,7 +127,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                         ),
                         ipc=IPCConfig(use_binary=True),
                     )
-                    
+
                     await asyncio.wait_for(
                         self.debugger.launch(config),
                         timeout=5.0,  # 5 second timeout

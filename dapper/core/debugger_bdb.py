@@ -6,9 +6,9 @@ DebuggerBDB class and related helpers for debug launcher.
 from __future__ import annotations
 
 import bdb
+from collections.abc import Mapping
 import contextlib
 import threading
-from collections.abc import Mapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -35,11 +35,14 @@ try:
 except Exception:  # pragma: no cover - optional integration
     integrate_debugger_bdb = None
 
+
 def _noop_send_message(*args, **kwargs):
     pass
 
+
 def _noop_process_commands():
     pass
+
 
 class DebuggerBDB(bdb.Bdb):
     def __init__(
@@ -376,8 +379,7 @@ class DebuggerBDB(bdb.Bdb):
         )
 
     def _should_stop_for_data_breakpoint(self, changed_name, frame):
-        """Evaluate conditions and hitConditions for a changed variable.
-        """
+        """Evaluate conditions and hitConditions for a changed variable."""
         metas = (self.data_watch_meta or {}).get(changed_name, [])
 
         # No metadata means default stop semantics
@@ -483,7 +485,9 @@ class DebuggerBDB(bdb.Bdb):
         self.set_continue()
 
     def user_exception(
-        self, frame: types.FrameType | Any, exc_info: tuple[type[BaseException], BaseException, Any]
+        self,
+        frame: types.FrameType | Any,
+        exc_info: tuple[type[BaseException], BaseException, Any],
     ) -> None:
         """Handle exception breakpoints using the exception handler."""
         if not self._exception_handler.should_break(frame):

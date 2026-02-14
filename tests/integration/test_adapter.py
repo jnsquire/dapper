@@ -8,9 +8,9 @@ fixtures and parametrization to reduce boilerplate.
 from __future__ import annotations
 
 import asyncio
-import logging
 from contextlib import ExitStack
 from contextlib import suppress
+import logging
 from typing import TYPE_CHECKING
 from typing import Callable
 from unittest.mock import MagicMock
@@ -254,7 +254,10 @@ def test_main_with_host_argument():
 
 
 def test_main_log_level():
-    with patch("dapper.adapter.adapter.logger"), patch("dapper.adapter.adapter.logging.getLogger") as get_logger:
+    with (
+        patch("dapper.adapter.adapter.logger"),
+        patch("dapper.adapter.adapter.logging.getLogger") as get_logger,
+    ):
         mock_root = MagicMock()
         get_logger.return_value = mock_root
         _run_main_with_args(["--port", "4711", "--log-level", "DEBUG"])

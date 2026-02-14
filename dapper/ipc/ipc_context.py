@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
-import threading
 from dataclasses import dataclass
 from dataclasses import field
+import logging
+import threading
 from typing import Any
 from typing import Callable
 
@@ -129,7 +129,9 @@ class IPCContext:
             return
         # Our listener may be either a SyncConnectionAdapter (wrapping
         # an async ConnectionBase) or a legacy mp_conn.Listener.
-        if hasattr(self.pipe_listener, "accept") and hasattr(self.pipe_listener, "read_dbgp_message"):
+        if hasattr(self.pipe_listener, "accept") and hasattr(
+            self.pipe_listener, "read_dbgp_message"
+        ):
             # SyncConnectionAdapter path
             self.pipe_listener.accept()
             self.pipe_conn = self.pipe_listener
