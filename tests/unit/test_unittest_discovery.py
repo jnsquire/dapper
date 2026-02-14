@@ -1,8 +1,8 @@
 """Test to verify unittest discovery works with our configuration."""
 
+from pathlib import Path
 import sys
 import unittest
-from pathlib import Path
 
 from dapper._frame_eval.cache_manager import get_cache_statistics
 from dapper._frame_eval.debugger_integration import get_integration_bridge

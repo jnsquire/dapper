@@ -6,10 +6,10 @@ used by all debugger backends to reduce code duplication.
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from abc import ABC
 from abc import abstractmethod
+import asyncio
+import logging
 from typing import Any
 from typing import Callable
 from typing import TypeVar
@@ -49,17 +49,17 @@ def create_timeout_error(command: str, timeout: float) -> DapperTimeoutError:
 
 class BaseBackend(DebuggerBackend, ABC):
     """Base class for debugger backends with common functionality."""
-    
+
     def __init__(self, timeout_seconds: float = 30.0) -> None:
         """Initialize the base backend.
-        
+
         Args:
             timeout_seconds: Default timeout for operations
         """
         self._timeout_seconds = timeout_seconds
         self._lock = asyncio.Lock()
         self._lifecycle = LifecycleManager(self.__class__.__name__)
-    
+
     @abstractmethod
     async def _execute_command(
         self,
@@ -68,20 +68,20 @@ class BaseBackend(DebuggerBackend, ABC):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a command on the backend.
-        
+
         This method must be implemented by concrete backends to handle
         the actual communication with the debugger.
-        
+
         Args:
             command: The command to execute
             args: Additional arguments for the command
             **kwargs: Additional keyword arguments
-            
+
         Returns:
             The command response
         """
         ...
-    
+
     async def _execute_with_timeout(
         self,
         command: str,
@@ -90,23 +90,23 @@ class BaseBackend(DebuggerBackend, ABC):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a command with timeout handling.
-        
+
         Args:
             command: The command to execute
             args: Additional arguments for the command
             timeout: Override the default timeout
             **kwargs: Additional keyword arguments
-            
+
         Returns:
             The command response
-            
+
         Raises:
             TimeoutError: If the command times out
             BackendError: If the command fails
         """
         async with self._lifecycle.operation_context(f"execute_{command}"):
             timeout = timeout or self._timeout_seconds
-            
+
             try:
                 return await asyncio.wait_for(
                     self._execute_command(command, args, **kwargs),
@@ -123,29 +123,29 @@ class BaseBackend(DebuggerBackend, ABC):
                     operation=command,
                     cause=e,
                 ) from e
-    
+
     def is_available(self) -> bool:
         """Check if the backend is available and ready."""
         return self._lifecycle.is_available
-    
+
     def is_ready(self) -> bool:
         """Check if the backend is ready for operations."""
         return self._lifecycle.is_ready
-    
+
     @property
     def lifecycle_state(self):
         """Get the current lifecycle state."""
         return self._lifecycle.state
-    
+
     @property
     def error_info(self) -> str | None:
         """Get information about the last error."""
         return self._lifecycle.error_info
-    
+
     # ------------------------------------------------------------------
     # Default implementations that delegate to _execute_command
     # ------------------------------------------------------------------
-    
+
     @overload
     async def _execute_and_extract(
         self,
@@ -156,7 +156,7 @@ class BaseBackend(DebuggerBackend, ABC):
         return_type: type[T],
         timeout: float | None = None,
     ) -> T: ...
-    
+
     @overload
     async def _execute_and_extract(
         self,
@@ -167,7 +167,7 @@ class BaseBackend(DebuggerBackend, ABC):
         return_type: None = None,
         timeout: float | None = None,
     ) -> dict[str, Any]: ...
-    
+
     async def _execute_and_extract(
         self,
         command: str,
@@ -178,23 +178,23 @@ class BaseBackend(DebuggerBackend, ABC):
         timeout: float | None = None,
     ) -> T | dict[str, Any]:
         """Execute a command and optionally extract a specific field.
-        
+
         Args:
             command: The command to execute
             args: Command arguments
             extract_key: Key to extract from response (if None, returns full response)
             return_type: Type to cast the result to
             timeout: Override timeout
-            
+
         Returns:
             The extracted field or full response, optionally cast to return_type
         """
         response = await self._execute_with_timeout(command, args, timeout=timeout)
-        
+
         result = response.get(extract_key, []) if extract_key is not None else response
-            
+
         return cast("T", result) if return_type else result
-    
+
     async def set_breakpoints(
         self,
         path: str,
@@ -207,7 +207,7 @@ class BaseBackend(DebuggerBackend, ABC):
             extract_key="breakpoints",
             return_type=list[Breakpoint],
         )
-    
+
     async def set_function_breakpoints(
         self,
         breakpoints: list[FunctionBreakpoint],
@@ -219,7 +219,7 @@ class BaseBackend(DebuggerBackend, ABC):
             extract_key="breakpoints",
             return_type=list[FunctionBreakpoint],
         )
-    
+
     async def set_exception_breakpoints(
         self,
         filters: list[str],
@@ -237,7 +237,7 @@ class BaseBackend(DebuggerBackend, ABC):
             extract_key="breakpoints",
             return_type=list[Breakpoint],
         )
-    
+
     async def continue_(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution."""
         return await self._execute_and_extract(
@@ -245,27 +245,27 @@ class BaseBackend(DebuggerBackend, ABC):
             {"thread_id": thread_id},
             return_type=ContinueResponseBody,
         )
-    
+
     async def next_(self, thread_id: int) -> None:
         """Step over."""
         await self._execute_with_timeout("next", {"thread_id": thread_id})
-    
+
     async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into."""
         args: dict[str, int] = {"thread_id": thread_id}
         if target_id is not None:
             args["target_id"] = target_id
         await self._execute_with_timeout("step_in", args)
-    
+
     async def step_out(self, thread_id: int) -> None:
         """Step out."""
         await self._execute_with_timeout("step_out", {"thread_id": thread_id})
-    
+
     async def pause(self, thread_id: int) -> bool:
         """Pause execution. Returns True if pause was sent."""
         response = await self._execute_with_timeout("pause", {"thread_id": thread_id})
         return bool(response.get("sent", False))
-    
+
     async def get_stack_trace(
         self,
         thread_id: int,
@@ -282,7 +282,7 @@ class BaseBackend(DebuggerBackend, ABC):
             },
             return_type=StackTraceResponseBody,
         )
-    
+
     async def get_variables(
         self,
         variables_reference: int,
@@ -302,7 +302,7 @@ class BaseBackend(DebuggerBackend, ABC):
             extract_key="variables",
             return_type=list[Variable],
         )
-    
+
     async def set_variable(
         self,
         var_ref: int,
@@ -319,7 +319,7 @@ class BaseBackend(DebuggerBackend, ABC):
             },
             return_type=SetVariableResponseBody,
         )
-    
+
     @async_handle_backend_errors("evaluate")
     async def evaluate(
         self,
@@ -367,7 +367,7 @@ class BaseBackend(DebuggerBackend, ABC):
             },
             return_type=CompletionsResponseBody,
         )
-    
+
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread."""
         return await self._execute_and_extract(
@@ -375,11 +375,11 @@ class BaseBackend(DebuggerBackend, ABC):
             {"thread_id": thread_id},
             return_type=ExceptionInfoResponseBody,
         )
-    
+
     async def configuration_done(self) -> None:
         """Signal that configuration is done."""
         await self._execute_with_timeout("configuration_done")
-    
+
     async def terminate(self) -> None:
         """Terminate the debuggee."""
         await self._lifecycle.begin_termination()
@@ -390,21 +390,21 @@ class BaseBackend(DebuggerBackend, ABC):
             await self._lifecycle.mark_error(f"Termination failed: {e}")
         finally:
             await self._lifecycle.complete_termination()
-    
+
     # ------------------------------------------------------------------
     # Lifecycle methods that subclasses should override
     # ------------------------------------------------------------------
-    
+
     async def initialize(self) -> None:
         """Initialize the backend. Override in subclasses."""
         await self._lifecycle.initialize()
         await self._lifecycle.mark_ready()
-    
+
     async def launch(self, config) -> None:
         """Launch a new debuggee process. Override in subclasses."""
         error_msg = f"{self.__class__.__name__} does not support launch"
         raise NotImplementedError(error_msg)
-    
+
     async def attach(self, config) -> None:
         """Attach to an existing debuggee. Override in subclasses."""
         error_msg = f"{self.__class__.__name__} does not support attach"
@@ -413,7 +413,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
 class CommandExecutor(ABC):
     """Helper class for executing commands with different patterns."""
-    
+
     @abstractmethod
     async def send_command(
         self,
@@ -422,7 +422,7 @@ class CommandExecutor(ABC):
     ) -> dict[str, Any]:
         """Send a command and get the response."""
         ...
-    
+
     @abstractmethod
     async def wait_for_response(
         self,
@@ -435,19 +435,19 @@ class CommandExecutor(ABC):
 
 class AsyncCommandExecutor(CommandExecutor):
     """Command executor that uses async/await patterns."""
-    
+
     def __init__(self, timeout: float = 30.0) -> None:
         self._timeout = timeout
         self._pending_commands: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._next_command_id = 1
         self._lock = asyncio.Lock()
-    
+
     def _get_next_command_id(self) -> int:
         """Get the next command ID."""
         command_id = self._next_command_id
         self._next_command_id += 1
         return command_id
-    
+
     def _handle_future_result(
         self,
         _command_id: int,
@@ -458,13 +458,13 @@ class AsyncCommandExecutor(CommandExecutor):
         """Handle setting result or error on a future."""
         if future.done():
             return
-        
+
         try:
             result_handler(future)
         except Exception as e:
             if error_handler:
                 error_handler(future, e)
-    
+
     async def send_command(
         self,
         command: str,
@@ -473,19 +473,19 @@ class AsyncCommandExecutor(CommandExecutor):
         """Send a command and return the future for the response."""
         async with self._lock:
             command_id = self._get_next_command_id()
-        
+
         future = asyncio.Future[dict[str, Any]]()
         self._pending_commands[command_id] = future
-        
+
         try:
             # Send the command (implementation-specific)
             await self._send_command_impl(command_id, command, args or {})
-            
+
             # Wait for the response
             return await self.wait_for_response(command_id, self._timeout)
         finally:
             self._pending_commands.pop(command_id, None)
-    
+
     @abstractmethod
     async def _send_command_impl(
         self,
@@ -495,7 +495,7 @@ class AsyncCommandExecutor(CommandExecutor):
     ) -> None:
         """Implementation-specific command sending."""
         ...
-    
+
     async def wait_for_response(
         self,
         command_id: int,
@@ -505,9 +505,9 @@ class AsyncCommandExecutor(CommandExecutor):
         if command_id not in self._pending_commands:
             error_msg = f"Command {command_id} not found"
             raise BackendError(error_msg)
-        
+
         future = self._pending_commands[command_id]
-        
+
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError as e:
@@ -517,26 +517,26 @@ class AsyncCommandExecutor(CommandExecutor):
                 timeout_seconds=timeout,
                 operation="wait_for_response",
             ) from e
-    
+
     def handle_response(self, command_id: int, response: dict[str, Any]) -> None:
         """Handle an incoming response."""
         if command_id not in self._pending_commands:
             logger.warning(f"Received response for unknown command {command_id}")
             return
-        
+
         future = self._pending_commands[command_id]
         self._handle_future_result(
             command_id,
             future,
             lambda f: f.set_result(response),
         )
-    
+
     def handle_error(self, command_id: int, error: Exception) -> None:
         """Handle an incoming error."""
         if command_id not in self._pending_commands:
             logger.warning(f"Received error for unknown command {command_id}")
             return
-        
+
         future = self._pending_commands[command_id]
         self._handle_future_result(
             command_id,

@@ -6,9 +6,9 @@ configuration handling throughout the codebase.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from dataclasses import field
+import os
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
@@ -26,14 +26,14 @@ T = TypeVar("T")
 @dataclass
 class IPCConfig:
     """IPC transport configuration."""
-    
+
     transport: Literal["auto", "pipe", "unix", "tcp"] = "auto"
     host: str = "127.0.0.1"
     port: int | None = None
     path: str | None = None
     pipe_name: str | None = None
     use_binary: bool = True
-    
+
     def __post_init__(self) -> None:
         """Set defaults based on platform and transport type."""
         if self.transport == "auto":
@@ -43,7 +43,7 @@ class IPCConfig:
 @dataclass
 class DebuggeeConfig:
     """Debuggee process configuration."""
-    
+
     program: str = ""
     args: list[str] = field(default_factory=list)
     stop_on_entry: bool = False
@@ -55,24 +55,24 @@ class DebuggeeConfig:
 @dataclass
 class DapperConfig:
     """Centralized configuration for Dapper debug adapter.
-    
+
     This configuration consolidates all settings that were previously
     scattered across multiple components and request handlers.
     """
-    
+
     # Mode selection
     mode: Literal["launch", "attach", "inprocess"] = "launch"
     in_process: bool = False
-    
+
     # Component configurations
     ipc: IPCConfig = field(default_factory=IPCConfig)
     debuggee: DebuggeeConfig = field(default_factory=DebuggeeConfig)
-    
+
     # Advanced options
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     enable_metrics: bool = False
     timeout_seconds: int = 30
-    
+
     @classmethod
     def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
         """Create config from launch request arguments."""
@@ -85,7 +85,7 @@ class DapperConfig:
                 v = args.get(key)
                 return default if v is None else v  # type: ignore[return-value]
             return default
-        
+
         # Debuggee configuration
         debuggee = DebuggeeConfig(
             program=_get("program", default=""),
@@ -95,7 +95,7 @@ class DapperConfig:
             working_directory=_get("cwd", default=None),
             environment=_get("env", default={}),
         )
-        
+
         # IPC configuration
         # Type: ignore needed because Literal type cannot be perfectly inferred from string default
         ipc = IPCConfig(
@@ -103,14 +103,14 @@ class DapperConfig:
             pipe_name=_get("ipcPipeName", default=None),
             use_binary=_get("useBinaryIpc", default=True),
         )
-        
+
         return cls(
             mode="launch",
             in_process=_get("inProcess", default=False),
             debuggee=debuggee,
             ipc=ipc,
         )
-    
+
     @classmethod
     def from_attach_request(cls, request: AttachRequest) -> DapperConfig:
         """Create config from attach request arguments."""
@@ -123,7 +123,7 @@ class DapperConfig:
                 v = args.get(key)
                 return default if v is None else v  # type: ignore[return-value]
             return default
-        
+
         # IPC configuration for attach
         # Type: ignore needed because Literal type cannot be perfectly inferred from string default
         ipc = IPCConfig(
@@ -134,12 +134,12 @@ class DapperConfig:
             pipe_name=_get_attach("ipcPipeName", default=None),
             use_binary=_get_attach("useBinaryIpc", default=True),
         )
-        
+
         return cls(
             mode="attach",
             ipc=ipc,
         )
-    
+
     def validate(self) -> None:
         """Validate configuration and raise errors for invalid setups."""
         if self.in_process and self.mode == "attach":
@@ -148,14 +148,14 @@ class DapperConfig:
                 config_key="in_process",
                 details={"mode": self.mode, "in_process": self.in_process},
             )
-        
+
         if self.mode == "launch" and not self.debuggee.program:
             raise ConfigurationError(
                 "Program path is required for launch mode",
                 config_key="program",
                 details={"mode": self.mode},
             )
-        
+
         if self.mode == "attach":
             if self.ipc.transport == "tcp" and not self.ipc.port:
                 raise ConfigurationError(
@@ -175,7 +175,7 @@ class DapperConfig:
                     config_key="ipc_pipe_name",
                     details={"transport": self.ipc.transport},
                 )
-    
+
     def to_launch_kwargs(self) -> dict[str, Any]:
         """Convert to keyword arguments for debugger.launch()."""
         kwargs = {
@@ -186,15 +186,15 @@ class DapperConfig:
             "inProcess": self.in_process,
             "useBinaryIpc": self.ipc.use_binary,
         }
-        
+
         # Add IPC-specific kwargs
         if self.ipc.transport != "auto":
             kwargs["ipcTransport"] = self.ipc.transport
         if self.ipc.pipe_name:
             kwargs["ipcPipeName"] = self.ipc.pipe_name
-        
+
         return kwargs
-    
+
     def to_attach_kwargs(self) -> dict[str, Any]:
         """Convert to keyword arguments for debugger.attach()."""
         return {

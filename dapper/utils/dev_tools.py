@@ -7,11 +7,11 @@ console scripts so tools like `uv run <name>` can invoke them.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import runpy
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 

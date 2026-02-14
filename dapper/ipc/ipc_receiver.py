@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
-import traceback
 from queue import Empty
+import traceback
 from typing import Any
 from typing import cast
 
@@ -20,6 +20,9 @@ from dapper.shared.debug_shared import send_debug_message
 from dapper.shared.debug_shared import state
 
 logger = logging.getLogger(__name__)
+
+HANDLE_ARGS_DIRECT = 2
+HANDLE_ARGS_PROVIDER = 4
 
 
 class DapMappingProvider:
@@ -42,7 +45,16 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    def handle(self, command: str, arguments: dict[str, Any]):
+    def handle(self, *args: Any):
+        """Handle calls from both direct and provider-based dispatch paths."""
+        if len(args) == HANDLE_ARGS_DIRECT:
+            command, arguments = args
+        elif len(args) == HANDLE_ARGS_PROVIDER:
+            _session, command, arguments, _full_command = args
+        else:
+            msg = f"Unexpected handle() arguments: {len(args)}"
+            raise TypeError(msg)
+
         # The underlying mapping handlers only accept `arguments` so delegate
         # and translate their return shape to the protocol expected by
         # register_command_provider.

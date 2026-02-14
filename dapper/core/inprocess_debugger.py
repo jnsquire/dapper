@@ -377,12 +377,8 @@ class InProcessDebugger:
             )
         else:
             # Fallback: use builtins only
-            targets = self._get_runtime_completions(
-                expr_to_complete, {}, vars(builtins)
-            )
-            targets = self._get_runtime_completions(
-                expr_to_complete, {}, vars(builtins)
-            )
+            targets = self._get_runtime_completions(expr_to_complete, {}, vars(builtins))
+            targets = self._get_runtime_completions(expr_to_complete, {}, vars(builtins))
 
         return {"targets": targets}
 
@@ -485,9 +481,7 @@ class InProcessDebugger:
         targets.sort(key=lambda x: x.get("label", ""))
         return targets
 
-    def _complete_attributes(
-        self, obj: Any, prefix: str
-    ) -> list[CompletionItem]:
+    def _complete_attributes(self, obj: Any, prefix: str) -> list[CompletionItem]:
         """Complete attributes of an object."""
         targets: list[CompletionItem] = []
         try:
@@ -504,16 +498,16 @@ class InProcessDebugger:
                     targets.append(self._make_completion_item(attr, value, kind))
                 except Exception:
                     # Some attributes may raise on access
-                    targets.append({
-                        "label": attr,
-                        "type": "property",
-                    })
+                    targets.append(
+                        {
+                            "label": attr,
+                            "type": "property",
+                        }
+                    )
 
         return targets
 
-    def _make_completion_item(
-        self, name: str, obj: Any, kind: str
-    ) -> CompletionItem:
+    def _make_completion_item(self, name: str, obj: Any, kind: str) -> CompletionItem:
         """Create a DAP completion item."""
         item: CompletionItem = {
             "label": name,

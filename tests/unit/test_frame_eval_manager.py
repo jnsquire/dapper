@@ -5,9 +5,9 @@ This module contains unit tests for the FrameEvalManager class in Dapper.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import sys
-from dataclasses import replace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 

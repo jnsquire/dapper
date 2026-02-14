@@ -23,7 +23,7 @@ class TCPServerConnection(ConnectionBase):
     the bound port needs to be known before clients connect.
     """
 
-    def __init__(self, host: str|None = None, port: int|None = None) -> None:
+    def __init__(self, host: str | None = None, port: int | None = None) -> None:
         """Initialize the TCP server connection.
 
         Args:
@@ -46,7 +46,7 @@ class TCPServerConnection(ConnectionBase):
         """
         if self.server is None:
             await self.start_listening()
- 
+
         await self.wait_for_client()
 
     async def start_listening(self) -> None:
@@ -60,7 +60,7 @@ class TCPServerConnection(ConnectionBase):
             return
 
         logger.info("Starting TCP server on %s:%s", self.host, self.port)
-        
+
         # If we have a pre-created socket (from TransportFactory), use it
         if hasattr(self, "socket") and self.socket is not None:
             logger.debug("Using pre-created socket")
@@ -72,7 +72,7 @@ class TCPServerConnection(ConnectionBase):
             self.server = await asyncio.start_server(
                 self._handle_client, self.host, self.port, reuse_address=True
             )
-        
+
         self._client_connected = asyncio.Future()
         self._update_bound_port()
 
@@ -121,13 +121,15 @@ class TCPServerConnection(ConnectionBase):
             )
             raise
 
-    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _handle_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         """Handle a new client connection."""
         logger.debug("TCP client connected")
         self.reader = reader
         self.writer = writer
         self._is_connected = True
-        
+
         # Signal that client is connected
         if self._client_connected:
             self._client_connected.set_result(True)
@@ -153,7 +155,7 @@ class TCPServerConnection(ConnectionBase):
 
         if self.use_binary:
             return await self._read_binary_message()
-        
+
         return await self._read_dap_message()
 
     async def _read_binary_message(self) -> dict[str, Any] | None:

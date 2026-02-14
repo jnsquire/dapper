@@ -385,7 +385,9 @@ class TestDebuggerBDBIntegration:
         dbg.set_custom_breakpoint("/test.py", 10)
         dbg.clear_custom_breakpoint("/test.py", 10)
 
-        assert "/test.py" not in dbg.custom_breakpoints or 10 not in dbg.custom_breakpoints.get("/test.py", {})
+        assert "/test.py" not in dbg.custom_breakpoints or 10 not in dbg.custom_breakpoints.get(
+            "/test.py", {}
+        )
 
     def test_clear_all_custom_breakpoints_method(self):
         """Test that clear_all_custom_breakpoints method works."""

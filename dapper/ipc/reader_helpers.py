@@ -3,6 +3,7 @@
 Centralises the blocking read loops used by IPCContext so testable
 helpers can be reused and the high-level context class is smaller.
 """
+
 from __future__ import annotations
 
 import logging
@@ -87,7 +88,7 @@ def read_pipe_binary(conn: Any, handle_debug_message: Callable[[str], None]) -> 
             kind, length = unpack_header(data[:HEADER_SIZE])
         except Exception:
             break
-        payload = data[HEADER_SIZE:HEADER_SIZE + length]
+        payload = data[HEADER_SIZE : HEADER_SIZE + length]
         if kind == 1:
             try:
                 handle_debug_message(payload.decode("utf-8"))

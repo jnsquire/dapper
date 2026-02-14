@@ -258,6 +258,13 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
         "message" not in error_resp_no_msg
     )  # Should not include message when error_message is None
 
+    # Test standardized error response helper
+    canonical_error_resp = handler.create_error_response(request, "Failed to launch")
+    assert canonical_error_resp["success"] is False
+    assert canonical_error_resp["message"] == "Failed to launch"
+    assert canonical_error_resp["body"]["error"] == "ProtocolError"
+    assert canonical_error_resp["body"]["details"]["command"] == "launch"
+
 
 def test_create_initialize_request(handler):
     """Test creating initialize requests"""

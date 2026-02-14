@@ -3,6 +3,7 @@ All request/response and event TypedDicts used by the DAP; grouped here now
 that smaller structural types are in `structures.py` and capabilities / data
 breakpoints are in their own modules.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -92,6 +93,7 @@ class LaunchRequestArguments(TypedDict, total=False):
     commonly-used adapter-level extensions as NotRequired fields so tests / callers using either
     naming style type-check correctly.
     """
+
     program: str
     args: NotRequired[list[str]]
     noDebug: NotRequired[bool]
@@ -127,10 +129,11 @@ class LaunchResponse(TypedDict):
 # Attach
 class AttachRequestArguments(TypedDict, total=False):
     """Arguments for the `attach` request.
-    
+
     DAP spec allows implementation-specific fields; adapter may include
     IPC configuration fields (all optional via total=False).
     """
+
     __restart: NotRequired[Any]
 
     # adapter-specific IPC fields (camelCase only)

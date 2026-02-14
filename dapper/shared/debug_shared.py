@@ -7,10 +7,10 @@ import itertools
 import json
 import logging
 import os
+from pathlib import Path
 import queue
 import sys
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -186,7 +186,6 @@ class SessionState:
                 # If anything goes wrong, fall back to the provider
                 # dispatch mechanism and continue processing.
                 self.dispatch_debug_command(cmd)
-            
 
     def set_exit_func(self, fn: Callable[[int], Any]) -> None:
         """Set a custom exit function for the session."""
@@ -251,8 +250,7 @@ class SessionState:
             self._providers = [(pri, p) for (pri, p) in self._providers if p is not provider]
 
     def dispatch_debug_command(self, command: dict[str, Any]) -> None:
-        """Dispatch a debug command to the first capable registered provider.
-        """
+        """Dispatch a debug command to the first capable registered provider."""
         name = str(command.get("command", "")) if isinstance(command, dict) else ""
         arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
         arguments = arguments or {}

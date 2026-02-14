@@ -1,6 +1,7 @@
 """
 Adapter capability types and exception-related TypedDicts.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

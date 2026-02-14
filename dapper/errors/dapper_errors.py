@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 class DapperError(Exception):
     """Base exception for all Dapper errors.
-    
+
     All Dapper-specific exceptions should inherit from this class to enable
     centralized error handling and reporting.
     """
-    
+
     def __init__(
         self,
         message: str,
@@ -38,7 +38,7 @@ class DapperError(Exception):
         self.error_code = error_code or self.__class__.__name__
         self.details = details or {}
         self.cause = cause
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert error to a dictionary for API responses."""
         return {
@@ -46,7 +46,7 @@ class DapperError(Exception):
             "message": self.message,
             "details": self.details,
         }
-    
+
     def __str__(self) -> str:
         if self.cause:
             return f"{self.message} (caused by: {self.cause!s})"
@@ -55,7 +55,7 @@ class DapperError(Exception):
 
 class ConfigurationError(DapperError):
     """Raised when there's a configuration problem."""
-    
+
     def __init__(
         self,
         message: str,
@@ -71,7 +71,7 @@ class ConfigurationError(DapperError):
 
 class IPCError(DapperError):
     """Raised when there's an IPC-related error."""
-    
+
     def __init__(
         self,
         message: str,
@@ -92,7 +92,7 @@ class IPCError(DapperError):
 
 class DebuggerError(DapperError):
     """Raised when there's a debugger operation error."""
-    
+
     def __init__(
         self,
         message: str,
@@ -113,7 +113,7 @@ class DebuggerError(DapperError):
 
 class ProtocolError(DapperError):
     """Raised when there's a DAP protocol error."""
-    
+
     def __init__(
         self,
         message: str,
@@ -134,7 +134,7 @@ class ProtocolError(DapperError):
 
 class BackendError(DapperError):
     """Raised when there's a backend operation error."""
-    
+
     def __init__(
         self,
         message: str,
@@ -151,7 +151,7 @@ class BackendError(DapperError):
 
 class DapperTimeoutError(DapperError):
     """Raised when an operation times out."""
-    
+
     def __init__(
         self,
         message: str,
@@ -172,11 +172,11 @@ class DapperTimeoutError(DapperError):
 
 class ErrorHandler:
     """Centralized error handling and reporting."""
-    
+
     def __init__(self, logger: logging.Logger | None = None) -> None:
         self.logger = logger or logging.getLogger(__name__)
         self._error_handlers: dict[type[Exception], Callable[[Exception], Any]] = {}
-    
+
     def register_handler(
         self,
         exception_type: type[Exception],
@@ -184,7 +184,7 @@ class ErrorHandler:
     ) -> None:
         """Register a custom error handler for an exception type."""
         self._error_handlers[exception_type] = handler
-    
+
     def handle_error(
         self,
         error: Exception,
@@ -194,13 +194,13 @@ class ErrorHandler:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle an error and return a standardized error response.
-        
+
         Args:
             error: The exception to handle
             reraise: Whether to re-raise the exception after handling
             log_level: Logging level for the error
             context: Additional context information
-            
+
         Returns:
             Dictionary with error information suitable for API responses
         """
@@ -208,9 +208,9 @@ class ErrorHandler:
         error_msg = f"Error: {error!s}"
         if context:
             error_msg += f" (context: {context})"
-        
+
         self.logger.log(log_level, error_msg, exc_info=True)
-        
+
         # Handle custom error handlers
         for exc_type, handler in self._error_handlers.items():
             if isinstance(error, exc_type):
@@ -218,11 +218,9 @@ class ErrorHandler:
                     result = handler(error)
                     if isinstance(result, dict):
                         return result
-                except Exception :
-                    self.logger.exception(
-                        f"Error handler for {exc_type.__name__} failed"
-                    )
-        
+                except Exception:
+                    self.logger.exception(f"Error handler for {exc_type.__name__} failed")
+
         # Convert to standard error response
         if isinstance(error, DapperError):
             error_dict = error.to_dict()
@@ -232,19 +230,19 @@ class ErrorHandler:
                 "message": str(error),
                 "details": {},
             }
-        
+
         # Add context if provided
         if context:
             error_dict["context"] = context
-        
+
         # Add traceback for debugging
         error_dict["traceback"] = traceback.format_exc()
-        
+
         if reraise:
             raise error
-        
+
         return error_dict
-    
+
     def create_dap_response(
         self,
         error: Exception,
@@ -254,18 +252,18 @@ class ErrorHandler:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a DAP error response for the given error.
-        
+
         Args:
             error: The exception that occurred
             request_seq: The sequence number of the request
             command: The command that failed
             context: Additional context information
-            
+
         Returns:
             DAP response dictionary with error information
         """
         error_info = self.handle_error(error, reraise=False, context=context)
-        
+
         return {
             "seq": 0,  # Will be set by protocol handler
             "type": "response",
@@ -305,8 +303,4 @@ def create_dap_response(
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a DAP error response using the default error handler."""
-    return default_error_handler.create_dap_response(
-        error, request_seq, command, context=context
-    )
-
-
+    return default_error_handler.create_dap_response(error, request_seq, command, context=context)

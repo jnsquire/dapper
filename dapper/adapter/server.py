@@ -13,11 +13,11 @@ import inspect
 import json
 import logging
 import os
+from pathlib import Path
 import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -239,7 +239,7 @@ class PyDebugger:
                     logger.exception("error creating task for awaitable")
                 else:
                     self._bg_tasks.add(task)
-                    task.add_done_callback(lambda t: self._bg_tasks.discard(t))
+                    task.add_done_callback(self._bg_tasks.discard)
 
         try:
             self.loop.call_soon_threadsafe(_run_on_loop)
@@ -296,7 +296,9 @@ class PyDebugger:
             # fall back to the inproc debugger's current_frame if present.
             if frame is None and getattr(self, "_inproc_bridge", None) is not None:
                 inproc_dbg = getattr(self._inproc_bridge, "debugger", None)
-                frame = getattr(inproc_dbg, "current_frame", None) or getattr(inproc_dbg, "botframe", None)
+                frame = getattr(inproc_dbg, "current_frame", None) or getattr(
+                    inproc_dbg, "botframe", None
+                )
             if frame is not None:
                 locals_map = getattr(frame, "f_locals", None)
                 if locals_map is not None and name in locals_map:
@@ -383,10 +385,9 @@ class PyDebugger:
         self.spawn_threadsafe(lambda: self.server.send_event(event_name, payload))
 
     async def launch(self, config: DapperConfig) -> None:
-        """Launch a new Python program for debugging using centralized configuration.
-        """
+        """Launch a new Python program for debugging using centralized configuration."""
         config.validate()
-        
+
         if self.program_running:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
@@ -424,7 +425,7 @@ class PyDebugger:
         # If IPC is requested, prepare a listener and pass coordinates.
         # IPC is now mandatory; always enable it.
         self._use_ipc = True
-        
+
         # Create transport config for the factory
         transport_config = TransportConfig(
             transport=config.ipc.transport,
@@ -432,12 +433,10 @@ class PyDebugger:
             host=config.ipc.host,
             port=config.ipc.port,
             path=config.ipc.path,
-            use_binary=config.ipc.use_binary
+            use_binary=config.ipc.use_binary,
         )
-        
-        debug_args.extend(self.ipc.create_listener(
-            config=transport_config
-        ))
+
+        debug_args.extend(self.ipc.create_listener(config=transport_config))
         if transport_config.use_binary:
             debug_args.append("--ipc-binary")
 
@@ -464,13 +463,11 @@ class PyDebugger:
                 """Handle IPC message that may be already parsed (binary) or string."""
                 if isinstance(message, dict):
                     # For binary IPC, the message is already parsed
-                    asyncio.run_coroutine_threadsafe(
-                        self.handle_debug_message(message), self.loop
-                    )
+                    asyncio.run_coroutine_threadsafe(self.handle_debug_message(message), self.loop)
                 else:
                     # For regular IPC, the message is a string
                     self._handle_debug_message(message)
-            
+
             self.ipc.start_reader(_handle_ipc_message, accept=True)
 
         # Create the external process backend
@@ -533,7 +530,7 @@ class PyDebugger:
         """Attach to an already running debuggee via IPC using centralized configuration."""
         # Validate configuration
         config.validate()
-        
+
         # Create transport config for the factory
         transport_config = TransportConfig(
             transport=config.ipc.transport,
@@ -541,9 +538,9 @@ class PyDebugger:
             host=config.ipc.host,
             port=config.ipc.port,
             path=config.ipc.path,
-            use_binary=config.ipc.use_binary
+            use_binary=config.ipc.use_binary,
         )
-        
+
         # Connect using the new transport configuration
         self.ipc.connect(transport_config)
 
@@ -553,13 +550,11 @@ class PyDebugger:
             """Handle IPC message that may be already parsed (binary) or string."""
             if isinstance(message, dict):
                 # For binary IPC, the message is already parsed
-                asyncio.run_coroutine_threadsafe(
-                    self.handle_debug_message(message), self.loop
-                )
+                asyncio.run_coroutine_threadsafe(self.handle_debug_message(message), self.loop)
             else:
                 # For regular IPC, the message is a string
                 self._handle_debug_message(message)
-        
+
         self.ipc.start_reader(_handle_ipc_message, accept=False)
 
         # Create the external process backend
@@ -785,7 +780,10 @@ class PyDebugger:
         # Extract and validate path
         path = source if isinstance(source, str) else source.get("path")
         if not path:
-            return [BreakpointResponse(verified=False, message="Source path is required") for _ in breakpoints]
+            return [
+                BreakpointResponse(verified=False, message="Source path is required")
+                for _ in breakpoints
+            ]
         path = str(Path(path).resolve())
 
         # Process breakpoints
@@ -796,13 +794,17 @@ class PyDebugger:
             return [
                 BreakpointResponse(
                     verified=bp.get("verified", False),
-                    **{k: v for k, v in {
-                        "message": bp.get("message"),
-                        "line": bp.get("line"),
-                        "condition": bp.get("condition"),
-                        "hitCondition": bp.get("hitCondition"),
-                        "logMessage": bp.get("logMessage")
-                    }.items() if v is not None}
+                    **{
+                        k: v
+                        for k, v in {
+                            "message": bp.get("message"),
+                            "line": bp.get("line"),
+                            "condition": bp.get("condition"),
+                            "hitCondition": bp.get("hitCondition"),
+                            "logMessage": bp.get("logMessage"),
+                        }.items()
+                        if v is not None
+                    },
                 )
                 for bp in storage_list
             ]
@@ -813,12 +815,16 @@ class PyDebugger:
             return [
                 BreakpointResponse(
                     verified=bp.get("verified", False),
-                    **{k: v for k, v in {
-                        "line": bp.get("line"),
-                        "condition": bp.get("condition"),
-                        "hitCondition": bp.get("hitCondition"),
-                        "logMessage": bp.get("logMessage")
-                    }.items() if v is not None}
+                    **{
+                        k: v
+                        for k, v in {
+                            "line": bp.get("line"),
+                            "condition": bp.get("condition"),
+                            "hitCondition": bp.get("hitCondition"),
+                            "logMessage": bp.get("logMessage"),
+                        }.items()
+                        if v is not None
+                    },
                 )
                 for bp in backend_result
             ]
@@ -829,7 +835,9 @@ class PyDebugger:
         except Exception:
             progress_id = f"setBreakpoints:{path}"
 
-        self._emit_event("progressStart", {"progressId": progress_id, "title": "Setting breakpoints"})
+        self._emit_event(
+            "progressStart", {"progressId": progress_id, "title": "Setting breakpoints"}
+        )
 
         await self._backend.set_breakpoints(path, spec_list)
         self._forward_breakpoint_events(storage_list)
@@ -839,13 +847,17 @@ class PyDebugger:
         return [
             BreakpointResponse(
                 verified=bp.get("verified", False),
-                **{k: v for k, v in {
-                    "message": bp.get("message"),
-                    "line": bp.get("line"),
-                    "condition": bp.get("condition"),
-                    "hitCondition": bp.get("hitCondition"),
-                    "logMessage": bp.get("logMessage")
-                }.items() if v is not None}
+                **{
+                    k: v
+                    for k, v in {
+                        "message": bp.get("message"),
+                        "line": bp.get("line"),
+                        "condition": bp.get("condition"),
+                        "hitCondition": bp.get("hitCondition"),
+                        "logMessage": bp.get("logMessage"),
+                    }.items()
+                    if v is not None
+                },
             )
             for bp in storage_list
         ]
@@ -886,13 +898,16 @@ class PyDebugger:
         """Forward breakpoint-changed events to clients."""
         try:
             for bp in storage_list:
-                self._emit_event("breakpoint", {
-                    "reason": "changed",
-                    "breakpoint": {
-                        "verified": bp.get("verified", True),
-                        "line": bp.get("line"),
+                self._emit_event(
+                    "breakpoint",
+                    {
+                        "reason": "changed",
+                        "breakpoint": {
+                            "verified": bp.get("verified", True),
+                            "line": bp.get("line"),
+                        },
                     },
-                })
+                )
         except Exception:
             logger.debug("Failed to forward breakpoint events")
 
@@ -946,7 +961,9 @@ class PyDebugger:
 
         if self._backend is not None:
             return await self._backend.set_exception_breakpoints(
-                filters, filter_options, exception_options  # type: ignore[arg-type]
+                filters,
+                filter_options,
+                exception_options,  # type: ignore[arg-type]
             )
 
         # Best-effort: assume the breakpoints were set when no backend available
@@ -980,7 +997,7 @@ class PyDebugger:
 
     async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into a function.
-        
+
         Args:
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target.
@@ -1086,7 +1103,9 @@ class PyDebugger:
     ) -> list[Variable]:
         """Get variables for the given reference."""
         if self._backend is not None:
-            result = await self._backend.get_variables(variables_reference, filter_type, start, count)
+            result = await self._backend.get_variables(
+                variables_reference, filter_type, start, count
+            )
             if result:
                 return result
 
@@ -1276,9 +1295,11 @@ class PyDebugger:
 
         try:
             await asyncio.to_thread(
-                lambda: self.process.stdin.write(f"{command}\n")
-                if self.process and self.process.stdin
-                else None,
+                lambda: (
+                    self.process.stdin.write(f"{command}\n")
+                    if self.process and self.process.stdin
+                    else None
+                ),
             )
         except Exception:
             logger.exception("Error sending command to debuggee")
@@ -1500,8 +1521,8 @@ class DebugAdapterServer:
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
         """Send an error response to a request"""
-        response = self.protocol_handler.create_response(
-            cast("GenericRequest", request), False, None, error_message
+        response = self.protocol_handler.create_error_response(
+            cast("GenericRequest", request), error_message
         )
         await self.send_message(cast("dict[str, Any]", response))
 

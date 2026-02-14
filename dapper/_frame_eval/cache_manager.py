@@ -8,17 +8,17 @@ data structures.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import logging
+from pathlib import Path
 import threading
 import time
-import weakref
-from collections import OrderedDict
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import ClassVar
 from typing import Final
 from typing import TypedDict
+import weakref
 
 # Third-party imports
 # Local application imports
@@ -26,8 +26,8 @@ from dapper.common.constants import DEFAULT_CACHE_TTL
 from dapper.common.constants import DEFAULT_MAX_RECURSION_DEPTH
 
 if TYPE_CHECKING:
-    import os
     from collections.abc import Iterable
+    import os
     from types import CodeType
 
 
@@ -213,7 +213,6 @@ class FuncCodeInfoCache:
     an LRU cache for fallback and statistics.
     """
 
-
     def __init__(self, max_size: int = 1000, ttl: int = 300):
         """
         Initialize the cache.
@@ -235,7 +234,6 @@ class FuncCodeInfoCache:
         # Timestamp map for caching entries used by cleanup
         self._timestamps: dict[Any, float] = {}
         self._lock = threading.RLock()
-
 
     def get(self, code_obj: Any) -> Any | None:
         """
@@ -297,7 +295,6 @@ class FuncCodeInfoCache:
             CacheManager._cache_stats["total_entries"] = len(self._lru_order)
             CacheManager._cache_stats["memory_usage"] = self._estimate_memory_usage()
 
-
     def _insert_into_lru(self, code_obj: Any, info: Any, timestamp: float) -> None:
         """Insert or update an entry in the weak-key LRU cache."""
         wr = None
@@ -348,7 +345,6 @@ class FuncCodeInfoCache:
                     pass
             CacheManager._cache_stats["evictions"] += 1
 
-
     def _get_from_weak_map(self, code_obj: Any) -> Any | None:
         """Retrieve info from weak-key LRU fallback storage.
 
@@ -392,7 +388,6 @@ class FuncCodeInfoCache:
 
         removed = False
 
-
         # Remove any LRU/weak entries (if present). This is a simple pop
         # operation so we avoid lots of nested try/except blocks.
         rec = self._weak_map.pop(code_obj, None)
@@ -416,7 +411,6 @@ class FuncCodeInfoCache:
     def clear(self) -> None:
         """Clear all cached entries."""
         with self._lock:
-
             self._lru_order.clear()
             self._weak_map.clear()
 
@@ -440,7 +434,6 @@ class FuncCodeInfoCache:
                     expired_keys.append(cache_key)
 
             for key in expired_keys:
-
                 if key in self._weak_map:
                     del self._weak_map[key]
                 if key in self._timestamps:

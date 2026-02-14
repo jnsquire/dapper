@@ -80,6 +80,7 @@ async def test_terminate_request_error(request_handler, mock_debugger):
     assert response["command"] == "terminate"
     assert "message" in response
     assert "Test error" in response["message"]
+    assert response["body"]["error"] == "RequestError"
 
 
 @pytest.mark.asyncio

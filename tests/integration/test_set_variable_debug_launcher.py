@@ -3,8 +3,8 @@
 Test for setVariable functionality in debug_launcher.py
 """
 
-import unittest
 from types import SimpleNamespace
+import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 

@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import ast
 import dis
+from itertools import chain
 import linecache
 import types
-from itertools import chain
 from typing import Any
 from typing import TypeVar
 from typing import cast

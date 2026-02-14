@@ -90,7 +90,6 @@ def test_func_code_cache():
     cached_info = get_func_code_info(code_obj)
     assert cached_info is None, "Cache entry should have expired"
 
-
     # Test LRU eviction
     for i in range(10):  # More than max_size
         test_info = MockFuncCodeInfo(f"test_{i}.py", has_breakpoints=i % 2 == 0)

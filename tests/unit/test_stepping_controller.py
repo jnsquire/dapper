@@ -250,7 +250,7 @@ class TestIntegrationWithDebuggerBDB:
         # Should have sent a stopped event with reason="step"
         stopped_events = [(e, k) for e, k in messages if e == "stopped"]
         assert len(stopped_events) >= 1
-        event, kwargs = stopped_events[-1]
+        _event, kwargs = stopped_events[-1]
         assert kwargs["reason"] == "step"
 
         # Stepping should be consumed
@@ -275,7 +275,7 @@ class TestIntegrationWithDebuggerBDB:
         # Should have sent a stopped event with reason="entry"
         stopped_events = [(e, k) for e, k in messages if e == "stopped"]
         assert len(stopped_events) >= 1
-        event, kwargs = stopped_events[-1]
+        _event, kwargs = stopped_events[-1]
         assert kwargs["reason"] == "entry"
 
         # stop_on_entry should be consumed

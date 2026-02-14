@@ -3,11 +3,11 @@ Simple test script for the integrated debugging example.
 This script verifies that the example can be imported and run.
 """
 
+from importlib import import_module
 import logging
+from pathlib import Path
 import subprocess
 import sys
-from importlib import import_module
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

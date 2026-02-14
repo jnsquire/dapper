@@ -9,12 +9,12 @@ more complex data structures.
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
+from dataclasses import dataclass
 import json
 import logging
 import threading
 import time
-from collections import defaultdict
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
 

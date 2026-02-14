@@ -1,6 +1,6 @@
-import unittest
 from typing import TYPE_CHECKING
 from typing import cast
+import unittest
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
@@ -81,10 +81,12 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
 
         # Create a mock backend
         mock_backend = MagicMock(spec=ExternalProcessBackend)
-        mock_backend.set_breakpoints = AsyncMock(return_value=[
-            {"verified": True, "line": 10},
-            {"verified": True, "line": 20},
-        ])
+        mock_backend.set_breakpoints = AsyncMock(
+            return_value=[
+                {"verified": True, "line": 10},
+                {"verified": True, "line": 20},
+            ]
+        )
         self.debugger._external_backend = mock_backend
 
         result = await self.debugger.set_breakpoints(source, breakpoints)

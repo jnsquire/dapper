@@ -243,6 +243,7 @@ class TestCoreCacheFunctions:
 
     def test_func_code_info_operations(self):
         """Test function code info cache operations."""
+
         # Create a real code object for testing
         def _make_code_obj():
             def _inner():
@@ -297,6 +298,7 @@ class TestCoreCacheFunctions:
 
     def test_cache_statistics_and_cleanup(self):
         """Test cache statistics and cleanup."""
+
         # Add some data to caches
         # Use a real code object rather than a Mock
         def _make_code_obj2():

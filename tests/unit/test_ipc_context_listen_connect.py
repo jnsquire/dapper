@@ -1,9 +1,9 @@
 import contextlib
 import os
+from pathlib import Path
 import socket
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -27,7 +27,7 @@ def test_create_listener_tcp_sets_listen_socket_and_args():
 
 def test_connect_tcp_establishes_client_socket_and_enables():
     # Create listening socket and accept a client in background
-    listen, args = TransportFactory.create_tcp_listener_socket("127.0.0.1")
+    listen, _args = TransportFactory.create_tcp_listener_socket("127.0.0.1")
     try:
         addr = listen.getsockname()
         host, port = addr[0], addr[1]

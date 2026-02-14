@@ -58,10 +58,10 @@ class BreakpointController:
     # ---- scheduling helper
     def _schedule(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:
         """Schedule a coroutine on the adapter event loop and return a Future.
-        
+
         Args:
             coro: The coroutine to schedule.
-            
+
         Returns:
             A Future that will be resolved with the coroutine's result.
         """

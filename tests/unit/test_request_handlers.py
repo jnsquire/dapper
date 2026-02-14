@@ -111,7 +111,7 @@ async def test_continue(handler, mock_server):
 
     # Check that we called continue_execution with the right arguments
     assert len(mock_server.debugger.continue_execution.calls) == 1
-    called_args, called_kwargs = mock_server.debugger.continue_execution.calls[0]
+    called_args, _called_kwargs = mock_server.debugger.continue_execution.calls[0]
     assert called_args == (1,)
 
     # Check the response
@@ -135,7 +135,7 @@ async def test_next(handler, mock_server):
 
     # Check that we called step_over with the right arguments
     assert len(mock_server.debugger.step_over.calls) == 1
-    called_args, called_kwargs = mock_server.debugger.step_over.calls[0]
+    called_args, _called_kwargs = mock_server.debugger.step_over.calls[0]
     assert called_args == (1,)
 
     # Check the response
@@ -158,7 +158,7 @@ async def test_step_in(handler, mock_server):
 
     # Check that we called step_in with the right arguments
     assert len(mock_server.debugger.step_in.calls) == 1
-    called_args, called_kwargs = mock_server.debugger.step_in.calls[0]
+    called_args, _called_kwargs = mock_server.debugger.step_in.calls[0]
     assert called_args == (1, 100)
 
     # Check the response
@@ -181,7 +181,7 @@ async def test_step_out(handler, mock_server):
 
     # Check that we called step_out with the right arguments
     assert len(mock_server.debugger.step_out.calls) == 1
-    called_args, called_kwargs = mock_server.debugger.step_out.calls[0]
+    called_args, _called_kwargs = mock_server.debugger.step_out.calls[0]
     assert called_args == (1,)
 
     # Check the response

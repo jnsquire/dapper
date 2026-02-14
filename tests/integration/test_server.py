@@ -128,7 +128,7 @@ async def test_initialization_sequence(mock_debugger_class):
     # Verify the debugger was called with correct config
     # The launch request creates a DapperConfig object
     assert len(mock_debugger.launch.calls) == 1
-    args, kwargs = mock_debugger.launch.calls[0]
+    args, _kwargs = mock_debugger.launch.calls[0]
     config = args[0]  # First argument should be DapperConfig
     assert config.debuggee.program == "test.py"
     assert config.debuggee.args == []
@@ -178,7 +178,7 @@ async def test_attach_request_routed(mock_debugger_class):
     # And debugger.attach should be called with a DapperConfig
     calls = mock_debugger.attach.calls  # type: ignore[attr-defined]
     assert len(calls) == 1
-    args, kwargs = calls[0]
+    args, _kwargs = calls[0]
     config = args[0]  # First argument should be DapperConfig
     assert config.ipc.transport == "tcp"
     assert config.ipc.host == "127.0.0.1"
@@ -368,10 +368,26 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
             "message": message,
         }
 
+    def fake_create_error_response(request, error_message):
+        return {
+            "type": "response",
+            "command": request.get("command"),
+            "success": False,
+            "message": error_message,
+            "body": {"error": "ProtocolError", "details": {"command": request.get("command")}},
+        }
+
     monkeypatch.setattr(
         server,
         "protocol_handler",
-        type("PH", (), {"create_response": staticmethod(fake_create_response)}),
+        type(
+            "PH",
+            (),
+            {
+                "create_response": staticmethod(fake_create_response),
+                "create_error_response": staticmethod(fake_create_error_response),
+            },
+        ),
     )
 
     req = {"seq": 99, "type": "request", "command": "doIt"}
@@ -387,3 +403,4 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
     resp2 = conn.written_messages[-1]
     assert resp2["success"] is False
     assert resp2.get("message") == "bad"
+    assert resp2["body"]["error"] == "ProtocolError"

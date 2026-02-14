@@ -51,7 +51,7 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
     # set_data_breakpoint attempted and raised, but register still called
     assert ("frame:10:var:a", "write") in dbg.set_calls
     assert len(dbg.register_calls) == 1
-    names, metas = dbg.register_calls[0]
+    names, _metas = dbg.register_calls[0]
     assert names == ["a"]
     assert isinstance(result, dict)
     assert result["success"] is True
@@ -77,12 +77,20 @@ def test_handler_with_real_debugger_triggers_on_change():
     dbg.user_line(frame1)
 
     # no stopped event yet
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" not in reasons
 
     frame2 = make_real_frame({"x": 2})
 
     dbg.user_line(frame2)
 
-    reasons = [c.kwargs.get("reason") for c in mock_send.call_args_list if c.args and c.args[0] == "stopped"]
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
     assert "data breakpoint" in reasons

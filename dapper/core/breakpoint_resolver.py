@@ -13,10 +13,10 @@ function breakpoints, data breakpoints, etc.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import Enum
 from enum import auto
+import logging
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
@@ -160,9 +160,7 @@ class BreakpointResolver:
                 original_dict["hit"] = meta.hit_count
 
         # Step 2: Check hit condition
-        if meta.hit_condition and not evaluate_hit_condition(
-            meta.hit_condition, meta.hit_count
-        ):
+        if meta.hit_condition and not evaluate_hit_condition(meta.hit_condition, meta.hit_count):
             return ResolveResult(
                 ResolveAction.CONTINUE,
                 reason=f"hit condition not met: {meta.hit_condition} (count={meta.hit_count})",

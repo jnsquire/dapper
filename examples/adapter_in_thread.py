@@ -20,12 +20,12 @@ Behavior:
 
 from __future__ import annotations
 
+from contextlib import suppress
 import logging
 import signal
 import sys
 import threading
 import time
-from contextlib import suppress
 
 from dapper.adapter.adapter_thread import AdapterThread
 

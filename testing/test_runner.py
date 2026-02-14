@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)

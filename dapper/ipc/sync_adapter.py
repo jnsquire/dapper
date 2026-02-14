@@ -3,6 +3,7 @@
 This adapter runs a private asyncio event loop in a background thread and
 exposes blocking methods that call into the async ConnectionBase methods.
 """
+
 from __future__ import annotations
 
 import asyncio

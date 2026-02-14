@@ -19,10 +19,10 @@ Windows, shell on POSIX). If those are not available, it will attempt to call
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RENDER_PS = ROOT / "scripts" / "render-mermaid.ps1"
@@ -105,8 +105,9 @@ def prepare_docs_for_build() -> dict[Path, str]:
     p = ROOT / "doc" / "using-dapper-with-vscode.md"
     if p.exists():
         original = p.read_text(encoding="utf-8")
-        patched = original.replace("../README.md", "README.md") \
-                          .replace("../examples/README.md", "examples.md")
+        patched = original.replace("../README.md", "README.md").replace(
+            "../examples/README.md", "examples.md"
+        )
         p.write_text(patched, encoding="utf-8")
         return {p: original}
     return {}

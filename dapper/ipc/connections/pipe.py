@@ -6,8 +6,8 @@ import asyncio
 import json
 import logging
 import os
-import sys
 from pathlib import Path
+import sys
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
@@ -46,7 +46,9 @@ class NamedPipeServerConnection(ConnectionBase):
             # FIXME On Windows, named pipes work differently - we need to use the proactor event loop
             # For now, we'll create a dummy server since the actual pipe handling is done differently
             # The real Windows named pipe implementation would use overlapped I/O
-            logger.warning("Windows named pipe server creation not fully implemented - using fallback")
+            logger.warning(
+                "Windows named pipe server creation not fully implemented - using fallback"
+            )
             self.server = None
             # Set up a mock connection state for compatibility
             self._is_connected = True
@@ -71,10 +73,14 @@ class NamedPipeServerConnection(ConnectionBase):
             # Create read stream
             self.reader = asyncio.StreamReader()
             read_protocol = asyncio.StreamReaderProtocol(self.reader)
-            read_transport, _ = await loop.connect_read_pipe(lambda: read_protocol, self.pipe_file)  # type: ignore[arg-type]
+            _read_transport, _ = await loop.connect_read_pipe(
+                lambda: read_protocol, self.pipe_file
+            )  # type: ignore[arg-type]
 
             # Create write stream
-            write_transport, write_protocol = await loop.connect_write_pipe(asyncio.Protocol, self.pipe_file)  # type: ignore[arg-type]
+            write_transport, write_protocol = await loop.connect_write_pipe(
+                asyncio.Protocol, self.pipe_file
+            )  # type: ignore[arg-type]
             self.writer = asyncio.StreamWriter(write_transport, write_protocol, self.reader, loop)
 
             self._is_connected = True
@@ -223,8 +229,6 @@ class NamedPipeServerConnection(ConnectionBase):
                 assert pf is not None
                 pf.write(data)
                 pf.flush()
-
-    
 
     async def write_message(self, message: dict[str, Any]) -> None:
         """Write a DAP message to the named pipe connection."""

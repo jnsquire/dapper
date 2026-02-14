@@ -92,11 +92,10 @@ class ProtocolFactory:
 
     def create_error_response(self, request: GenericRequest, error_message: str) -> ErrorResponse:
         error_body = {
-            "error": {
-                "id": 1,  # Generic error ID
-                "format": error_message,
-                "showUser": True,
-            }
+            "error": "ProtocolError",
+            "details": {
+                "command": request.get("command"),
+            },
         }
         response = self.create_response(request, False, error_body, error_message)
         return cast("ErrorResponse", response)
@@ -208,7 +207,7 @@ class ProtocolFactory:
         body: dict[str, Any] = {}
         if restart:
             body["restart"] = True
-        event = self.create_event("terminated", body if body else None)
+        event = self.create_event("terminated", body or None)
         return cast("GenericEvent", event)
 
     def create_thread_event(self, reason: str, thread_id: int) -> GenericEvent:

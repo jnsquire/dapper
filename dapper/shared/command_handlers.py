@@ -17,12 +17,12 @@ Dependencies:
 
 from __future__ import annotations
 
-import ast
 import linecache
+import logging
 import mimetypes
+from pathlib import Path
 import sys
 import threading
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -30,6 +30,10 @@ from typing import cast
 from dapper.launcher.comm import send_debug_message
 from dapper.shared import debug_shared as _d_shared
 from dapper.shared.debug_shared import state
+from dapper.shared.value_conversion import convert_value_with_context
+from dapper.shared.value_conversion import evaluate_with_policy
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from dapper.protocol.data_breakpoints import DataBreakpointInfoArguments
@@ -61,6 +65,9 @@ VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
 _CONVERSION_FAILED = object()
 _convert_value_with_context_override: Any | None = None
+_CONVERSION_ERROR_MESSAGE = "Conversion failed"
+_EVALUATION_ERROR_MESSAGE = "Evaluation failed"
+_EVALUATION_POLICY_BLOCKED_MESSAGE = "Evaluation blocked by policy"
 # Maximum string length for enriched repr values in dataBreakpointInfo
 MAX_VALUE_REPR_LEN = 200
 _TRUNC_SUFFIX = "..."
@@ -71,6 +78,29 @@ _TRUNC_SUFFIX = "..."
 
 # Command mapping table - populated by the @command_handler decorator
 COMMAND_HANDLERS: dict[str, Any] = {}
+
+
+def _error_response(message: str) -> dict[str, Any]:
+    """Return a standardized failed handler response payload."""
+    return {"success": False, "message": message}
+
+
+def _format_evaluation_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "blocked by policy" in text:
+        return f"<error: {_EVALUATION_POLICY_BLOCKED_MESSAGE}>"
+    return f"<error: {_EVALUATION_ERROR_MESSAGE}>"
+
+
+def _safe_send_debug_message(message_type: str, **payload: Any) -> bool:
+    """Send a DAP message while preserving handler flow on transport failures."""
+    try:
+        send_debug_message(message_type, **payload)
+    except (BrokenPipeError, ConnectionError, OSError, RuntimeError, TypeError, ValueError):
+        logger.debug("Failed to send debug message '%s'", message_type, exc_info=True)
+        return False
+    else:
+        return True
 
 
 def command_handler(command_name: str):
@@ -85,7 +115,7 @@ def command_handler(command_name: str):
 
 def handle_debug_command(command: dict[str, Any]) -> None:
     """Handle debug commands using the COMMAND_HANDLERS registry.
-    
+
     This is the main entry point for command dispatch. Both IPC pathways
     (pipe-based and socket-based) ultimately dispatch through this registry.
     """
@@ -93,7 +123,7 @@ def handle_debug_command(command: dict[str, Any]) -> None:
     arguments = command.get("arguments", {})
     # Ensure the command name is a string before looking up the handler
     if not isinstance(cmd, str):
-        send_debug_message(
+        _safe_send_debug_message(
             "response",
             request_seq=command.get("seq"),
             success=False,
@@ -106,7 +136,7 @@ def handle_debug_command(command: dict[str, Any]) -> None:
     if handler_func is not None:
         handler_func(arguments)
     else:
-        send_debug_message(
+        _safe_send_debug_message(
             "response",
             request_seq=command.get("seq"),
             success=False,
@@ -128,7 +158,10 @@ def _make_variable(dbg: DebuggerLike | None, name: str, value: Any, frame: Any |
     var_obj = None
     if callable(fn):
         try:
-            if getattr(fn, "__code__", None) is not None and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT:
+            if (
+                getattr(fn, "__code__", None) is not None
+                and fn.__code__.co_argcount > SIMPLE_FN_ARGCOUNT
+            ):
                 var_obj = fn(name, value, frame)
             else:
                 var_obj = fn(name, value)
@@ -164,63 +197,38 @@ def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
         pass
 
 
-def _call_convert_callable(convert: Any, value_str: str, frame: Any | None, parent_obj: Any | None) -> Any:
+def _call_convert_callable(
+    convert: Any, value_str: str, frame: Any | None, parent_obj: Any | None
+) -> Any:
     try:
         return convert(value_str, frame, parent_obj)
     except TypeError:
         return convert(value_str)
 
 
-def _try_custom_convert(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+def _try_custom_convert(
+    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+) -> Any:
     converter = globals().get("_convert_value_with_context_override")
     if converter is not None:
         try:
             return _call_convert_callable(converter, value_str, frame, parent_obj)
-        except Exception:
-            pass
+        except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+            logger.debug("Custom converter override failed", exc_info=True)
 
     try:
         return _convert_value_with_context(value_str, frame, parent_obj)
-    except Exception:
-        pass
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        logger.debug("Context conversion fallback failed", exc_info=True)
 
     return _CONVERSION_FAILED
 
 
-def _convert_value_with_context(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
-    """Convert a string value to a Python object using available context."""
-    s = value_str.strip()
-    if s.lower() == "none":
-        return None
-    if s.lower() in ("true", "false"):
-        return s.lower() == "true"
-
-    try:
-        return ast.literal_eval(s)
-    except (ValueError, SyntaxError):
-        pass
-
-    if frame is not None:
-        try:
-            return eval(s, frame.f_globals, frame.f_locals)
-        except Exception:
-            pass
-
-    if parent_obj is not None:
-        try:
-            target_type = None
-            if isinstance(parent_obj, list) and parent_obj:
-                target_type = type(parent_obj[0])
-            elif isinstance(parent_obj, dict) and parent_obj:
-                sample = next(iter(parent_obj.values()))
-                target_type = type(sample)
-
-            if target_type in (int, float, bool, str):
-                return target_type(s)
-        except Exception:
-            pass
-
-    return value_str
+def _convert_value_with_context(
+    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+) -> Any:
+    """Convert a string value to a Python object using shared conversion utility."""
+    return convert_value_with_context(value_str, frame, parent_obj)
 
 
 def _convert_string_to_value(value_str: str) -> Any:
@@ -257,7 +265,7 @@ def _resolve_variables_for_reference(dbg: DebuggerLike | None, frame_info: Any) 
                         continue
                     try:
                         val = getattr(parent, name)
-                    except Exception:
+                    except AttributeError:
                         continue
                     vars_out.append(_make_variable(dbg, name, val, None))
 
@@ -278,7 +286,9 @@ def _resolve_variables_for_reference(dbg: DebuggerLike | None, frame_info: Any) 
     return vars_out
 
 
-def _extract_variables_from_mapping(dbg: DebuggerLike | None, mapping: dict[str, Any], frame: Any | None) -> list[Variable]:
+def _extract_variables_from_mapping(
+    dbg: DebuggerLike | None, mapping: dict[str, Any], frame: Any | None
+) -> list[Variable]:
     """Convert a mapping of names -> values into a list of Variable objects."""
     out: list[Variable] = []
     for name, val in mapping.items():
@@ -292,15 +302,19 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
         new_value = _try_custom_convert(value_str, frame, None)
         if new_value is _CONVERSION_FAILED:
             new_value = eval(value_str, frame.f_globals, frame.f_locals)
-    except Exception:
-        new_value = _convert_value_with_context(value_str, frame)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        try:
+            new_value = _convert_value_with_context(value_str, frame)
+        except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+            logger.debug("Failed to convert value for scope assignment", exc_info=True)
+            return _error_response(_CONVERSION_ERROR_MESSAGE)
 
     if scope == "locals":
         frame.f_locals[name] = new_value
     elif scope == "globals":
         frame.f_globals[name] = new_value
     else:
-        return {"success": False, "message": f"Unknown scope: {scope}"}
+        return _error_response(f"Unknown scope: {scope}")
 
     dbg = state.debugger
     var_obj = _make_variable(dbg, name, new_value, frame)
@@ -320,14 +334,15 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
         new_value = _try_custom_convert(value_str, None, parent_obj)
         if new_value is _CONVERSION_FAILED:
             new_value = _convert_value_with_context(value_str, None, parent_obj)
-    except Exception:
-        return {"success": False, "message": "Conversion failed"}
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        logger.debug("Failed to convert value for object member assignment", exc_info=True)
+        return _error_response(_CONVERSION_ERROR_MESSAGE)
 
     err = _assign_to_parent_member(parent_obj, name, new_value)
 
     try:
         if err is not None:
-            return {"success": False, "message": err}
+            return _error_response(err)
 
         dbg = state.debugger
         var_obj = _make_variable(dbg, name, new_value, None)
@@ -339,8 +354,8 @@ def _set_object_member(parent_obj: Any, name: str, value_str: str) -> dict[str, 
                 "variablesReference": cast("dict", var_obj)["variablesReference"],
             },
         }
-    except Exception as e:
-        return {"success": False, "message": f"Failed to set object member '{name}': {e!s}"}
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
+        return _error_response(f"Failed to set object member '{name}': {e!s}")
 
 
 def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str | None:
@@ -352,7 +367,7 @@ def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str 
     elif isinstance(parent_obj, list):
         try:
             index = int(name)
-        except Exception:
+        except (TypeError, ValueError):
             err = f"Invalid list index: {name}"
         else:
             if not (0 <= index < len(parent_obj)):
@@ -364,14 +379,17 @@ def _assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str 
     else:
         try:
             setattr(parent_obj, name, new_value)
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError) as e:
             err = f"Cannot set attribute '{name}' on {type(parent_obj).__name__}: {e!s}"
 
     return err
 
 
-def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _name: str | None = None) -> None:
+def extract_variables(
+    dbg: Any, variables: list[dict[str, Any]], parent: Any, _name: str | None = None
+) -> None:
     """Recursively extract variables from a dict/list/object into variables list."""
+
     def _create_variable_object(key: str, val: Any) -> dict[str, Any]:
         return cast("dict", _make_variable(dbg, key, val, None))
 
@@ -399,10 +417,11 @@ def extract_variables(dbg: Any, variables: list[dict[str, Any]], parent: Any, _n
 # Source Collection Helpers (for loadedSources handler)
 # =============================================================================
 
+
 def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from sys.modules."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
-    
+
     sources: list[Source] = []
 
     for module_name, module in sys.modules.items():
@@ -437,7 +456,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
 def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from linecache."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
-    
+
     sources: list[Source] = []
 
     for filename in linecache.cache:
@@ -458,7 +477,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
 def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
     """Collect the main program source if available."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
-    
+
     sources: list[Source] = []
 
     if state.debugger:
@@ -482,6 +501,7 @@ def _collect_main_program_source(seen_paths: set[str]) -> list[Source]:
 # These are the canonical implementations that registered handlers call.
 # =============================================================================
 
+
 def _handle_set_breakpoints_impl(
     dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
 ):
@@ -494,14 +514,16 @@ def _handle_set_breakpoints_impl(
     if path and dbg:
         try:
             dbg.clear_breaks_for_file(path)  # type: ignore[attr-defined]
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             try:
                 dbg.clear_break(path)  # type: ignore[misc]
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 try:
                     dbg.clear_break_meta_for_file(path)
-                except Exception:
-                    pass
+                except (AttributeError, TypeError, ValueError):
+                    logger.debug(
+                        "Failed to clear existing breakpoints for %s", path, exc_info=True
+                    )
 
         verified_bps: list[dict[str, Any]] = []
         for bp in bps:
@@ -527,21 +549,22 @@ def _handle_set_breakpoints_impl(
                         hit_condition=hit_condition,
                         log_message=log_message,
                     )
-                except Exception:
-                    pass
+                except (AttributeError, TypeError, ValueError):
+                    logger.debug(
+                        "Failed to record breakpoint metadata for %s:%s", path, line, exc_info=True
+                    )
 
                 verified_bps.append({"verified": verified, "line": line})
 
-        try:
-            send_debug_message("breakpoints", source=source, breakpoints=verified_bps)
-        except Exception:
-            pass
+        _safe_send_debug_message("breakpoints", source=source, breakpoints=verified_bps)
 
         return {"success": True, "body": {"breakpoints": verified_bps}}
     return None
 
 
-def _handle_set_function_breakpoints_impl(dbg: DebuggerLike, arguments: SetFunctionBreakpointsArguments):
+def _handle_set_function_breakpoints_impl(
+    dbg: DebuggerLike, arguments: SetFunctionBreakpointsArguments
+):
     """Handle setFunctionBreakpoints command implementation."""
     arguments = arguments or {}
     bps = arguments.get("breakpoints", [])
@@ -561,7 +584,7 @@ def _handle_set_function_breakpoints_impl(dbg: DebuggerLike, arguments: SetFunct
             dbg.function_breakpoints.append(name)
             try:
                 fbm = dbg.function_breakpoint_meta
-            except Exception:
+            except AttributeError:
                 fbm = None
             if isinstance(fbm, dict):
                 mb = fbm.get(name, {})
@@ -579,7 +602,7 @@ def _handle_set_function_breakpoints_impl(dbg: DebuggerLike, arguments: SetFunct
             if name and isinstance(fb_list, list):
                 try:
                     verified = name in fb_list
-                except Exception:
+                except (TypeError, ValueError):
                     verified = False
             results.append({"verified": verified})
 
@@ -606,7 +629,7 @@ def _handle_set_exception_breakpoints_impl(
     try:
         dbg.exception_breakpoints_raised = "raised" in filters
         dbg.exception_breakpoints_uncaught = "uncaught" in filters
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         verified_all = False
 
     body = {"breakpoints": [{"verified": verified_all} for _ in filters]}
@@ -614,9 +637,7 @@ def _handle_set_exception_breakpoints_impl(
     return cast("SetExceptionBreakpointsResponse", response)
 
 
-def _handle_continue_impl(
-    dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None
-):
+def _handle_continue_impl(dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None):
     """Handle continue command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -627,9 +648,7 @@ def _handle_continue_impl(
             dbg.set_continue()
 
 
-def _handle_next_impl(
-    dbg: DebuggerLike, arguments: NextArguments | dict[str, Any] | None
-):
+def _handle_next_impl(dbg: DebuggerLike, arguments: NextArguments | dict[str, Any] | None):
     """Handle next command (step over) implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -640,9 +659,7 @@ def _handle_next_impl(
             dbg.set_next(dbg.current_frame)
 
 
-def _handle_step_in_impl(
-    dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None
-):
+def _handle_step_in_impl(dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None):
     """Handle stepIn command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -652,9 +669,7 @@ def _handle_step_in_impl(
         dbg.set_step()
 
 
-def _handle_step_out_impl(
-    dbg: DebuggerLike, arguments: StepOutArguments | dict[str, Any] | None
-):
+def _handle_step_out_impl(dbg: DebuggerLike, arguments: StepOutArguments | dict[str, Any] | None):
     """Handle stepOut command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -665,9 +680,7 @@ def _handle_step_out_impl(
             dbg.set_return(dbg.current_frame)
 
 
-def _handle_pause_impl(
-    _dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None
-):
+def _handle_pause_impl(_dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None):
     """Handle pause command implementation."""
     arguments = arguments or {}
     arguments.get("threadId")
@@ -685,7 +698,12 @@ def _handle_stack_trace_impl(
     stack_frames = []
 
     frames = None
-    if dbg and hasattr(dbg, "frames_by_thread") and isinstance(thread_id, int) and thread_id in getattr(dbg, "frames_by_thread", {}):
+    if (
+        dbg
+        and hasattr(dbg, "frames_by_thread")
+        and isinstance(thread_id, int)
+        and thread_id in getattr(dbg, "frames_by_thread", {})
+    ):
         frames = dbg.frames_by_thread[thread_id]
     else:
         if dbg:
@@ -707,23 +725,22 @@ def _handle_stack_trace_impl(
                     name = frame.f_code.co_name
                     source_path = frame.f_code.co_filename
 
-                stack_frames.append({
-                    "id": i,
-                    "name": name,
-                    "source": {"name": Path(source_path).name, "path": source_path},
-                    "line": lineno,
-                    "column": 0,
-                })
+                stack_frames.append(
+                    {
+                        "id": i,
+                        "name": name,
+                        "source": {"name": Path(source_path).name, "path": source_path},
+                        "line": lineno,
+                        "column": 0,
+                    }
+                )
 
-    try:
-        send_debug_message(
-            "stackTrace",
-            threadId=thread_id,
-            stackFrames=stack_frames,
-            totalFrames=len(stack_frames),
-        )
-    except Exception:
-        pass
+    _safe_send_debug_message(
+        "stackTrace",
+        threadId=thread_id,
+        stackFrames=stack_frames,
+        totalFrames=len(stack_frames),
+    )
 
     return {"success": True, "body": {"stackFrames": stack_frames}}
 
@@ -735,22 +752,17 @@ def _handle_threads_impl(dbg: DebuggerLike, _arguments: dict[str, Any] | None = 
         for tid, t in dbg.threads.items():
             name = t if isinstance(t, str) else getattr(t, "name", f"Thread-{tid}")
             threads.append({"id": tid, "name": name})
-    
-    try:
-        send_debug_message("threads", threads=threads)
-    except Exception:
-        pass
+
+    _safe_send_debug_message("threads", threads=threads)
 
     return {"success": True, "body": {"threads": threads}}
 
 
-def _handle_scopes_impl(
-    dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any] | None
-):
+def _handle_scopes_impl(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any] | None):
     """Handle scopes command implementation."""
     arguments = arguments or {}
     frame_id = arguments.get("frameId")
-    
+
     scopes = []
     if frame_id is not None:
         frame = None
@@ -763,7 +775,7 @@ def _handle_scopes_impl(
                     frame, _ = stack[frame_id]
                 else:
                     frame = None
-            except Exception:
+            except (AttributeError, IndexError, KeyError, TypeError):
                 frame = None
         if frame is not None:
             scopes = [
@@ -773,16 +785,13 @@ def _handle_scopes_impl(
                     "expensive": False,
                 },
                 {
-                    "name": "Globals", 
+                    "name": "Globals",
                     "variablesReference": frame_id * VAR_REF_TUPLE_SIZE + 1,
                     "expensive": True,
                 },
             ]
-    
-    try:
-        send_debug_message("scopes", scopes=scopes)
-    except Exception:
-        pass
+
+    _safe_send_debug_message("scopes", scopes=scopes)
 
     return {"success": True, "body": {"scopes": scopes}}
 
@@ -795,20 +804,22 @@ def _handle_variables_impl(
     variables_reference = arguments.get("variablesReference")
 
     variables: list[Variable] = []
-    if not (dbg and isinstance(variables_reference, int) and variables_reference in getattr(dbg, "var_refs", {})):
-        try:
-            send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-        except Exception:
-            pass
+    if not (
+        dbg
+        and isinstance(variables_reference, int)
+        and variables_reference in getattr(dbg, "var_refs", {})
+    ):
+        _safe_send_debug_message(
+            "variables", variablesReference=variables_reference, variables=variables
+        )
         return None
 
     frame_info = dbg.var_refs[variables_reference]
     variables = _resolve_variables_for_reference(dbg, frame_info)
 
-    try:
-        send_debug_message("variables", variablesReference=variables_reference, variables=variables)
-    except Exception:
-        pass
+    _safe_send_debug_message(
+        "variables", variablesReference=variables_reference, variables=variables
+    )
 
     return {"success": True, "body": {"variables": variables}}
 
@@ -821,12 +832,12 @@ def _handle_set_variable_impl(
     variables_reference = arguments.get("variablesReference")
     name = arguments.get("name")
     value = arguments.get("value")
-    
+
     if not (dbg and isinstance(variables_reference, int) and name and value is not None):
-        return {"success": False, "message": "Invalid arguments"}
+        return _error_response("Invalid arguments")
 
     if variables_reference not in getattr(dbg, "var_refs", {}):
-        return {"success": False, "message": "Invalid variable reference"}
+        return _error_response("Invalid variable reference")
 
     frame_info = dbg.var_refs[variables_reference]
 
@@ -845,15 +856,14 @@ def _handle_set_variable_impl(
                 frame = getattr(dbg, "frame_id_to_frame", {}).get(frame_id)
                 if frame:
                     return _set_scope_variable(frame, scope, name, value)
-    except Exception:
-        return {"success": False, "message": "Failed to set variable"}
+    except (AttributeError, KeyError, TypeError, ValueError):
+        logger.debug("Failed to set variable from frame reference", exc_info=True)
+        return _error_response(_CONVERSION_ERROR_MESSAGE)
 
-    return {"success": False, "message": f"Invalid variable reference: {variables_reference}"}
+    return _error_response(f"Invalid variable reference: {variables_reference}")
 
 
-def _handle_evaluate_impl(
-    dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None
-):
+def _handle_evaluate_impl(dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None):
     """Handle evaluate command implementation."""
     arguments = arguments or {}
     expression = arguments.get("expression", "")
@@ -869,35 +879,32 @@ def _handle_evaluate_impl(
             if stack and frame_id is not None and frame_id < len(stack):
                 frame, _ = stack[frame_id]
                 try:
-                    value = eval(expression, frame.f_globals, frame.f_locals)
+                    value = evaluate_with_policy(expression, frame)
                     result = repr(value)
                 except Exception as e:
-                    result = f"<error: {e}>"
+                    result = _format_evaluation_error(e)
             elif hasattr(dbg, "current_frame") and dbg.current_frame:
                 try:
-                    value = eval(expression, dbg.current_frame.f_globals, dbg.current_frame.f_locals)
+                    value = evaluate_with_policy(expression, dbg.current_frame)
                     result = repr(value)
                 except Exception as e:
-                    result = f"<error: {e}>"
-        except Exception:
-            pass
-    
-    try:
-        send_debug_message(
-            "evaluate",
-            expression=expression,
-            result=result,
-            variablesReference=0,
-        )
-    except Exception:
-        pass
+                    result = _format_evaluation_error(e)
+        except (AttributeError, IndexError, KeyError, NameError, TypeError):
+            logger.debug("Evaluate context resolution failed", exc_info=True)
+
+    _safe_send_debug_message(
+        "evaluate",
+        expression=expression,
+        result=result,
+        variablesReference=0,
+    )
 
     return {
         "success": True,
         "body": {
             "result": result,
             "variablesReference": 0,
-        }
+        },
     }
 
 
@@ -907,14 +914,14 @@ def _handle_set_data_breakpoints_impl(
     """Handle setDataBreakpoints command implementation."""
     arguments = arguments or {}
     breakpoints = arguments.get("breakpoints", [])
-    
+
     # Clear existing data breakpoints if the debugger supports it
     clear_all = getattr(dbg, "clear_all_data_breakpoints", None)
     if callable(clear_all):
         try:
             clear_all()
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            logger.debug("Failed clearing existing data breakpoints", exc_info=True)
 
     # Build watch lists to pass into register_data_watches (if supported).
     watch_names: list[str] = []
@@ -935,8 +942,9 @@ def _handle_set_data_breakpoints_impl(
             try:
                 set_db(data_id, access_type)
                 verified = True
-            except Exception:
+            except (AttributeError, RuntimeError, TypeError, ValueError):
                 # fall through to adding to watch registration if available
+                logger.debug("set_data_breakpoint failed for data_id=%r", data_id, exc_info=True)
                 verified = False
 
         # Try to extract variable name for watch registration. Expected patterns
@@ -976,10 +984,10 @@ def _handle_set_data_breakpoints_impl(
     if callable(register) and watch_names:
         try:
             register(watch_names, watch_meta)
-        except Exception:
+        except (AttributeError, RuntimeError, TypeError, ValueError):
             # Not fatal — bookkeeping may still be client-side only
-            pass
-    
+            logger.debug("register_data_watches failed", exc_info=True)
+
     return {"success": True, "body": {"breakpoints": results}}
 
 
@@ -990,7 +998,7 @@ def _handle_data_breakpoint_info_impl(
     arguments = arguments or {}
     name = arguments.get("name", "")
     variables_reference = arguments.get("variablesReference")
-    
+
     data_id = f"{variables_reference}:{name}" if variables_reference else name
 
     body: dict[str, Any] = {
@@ -1036,6 +1044,7 @@ def _handle_data_breakpoint_info_impl(
 # These are called by tests that use the old signature.
 # =============================================================================
 
+
 def handle_set_breakpoints(
     dbg: DebuggerLike, arguments: SetBreakpointsArguments | dict[str, Any] | None
 ):
@@ -1055,9 +1064,7 @@ def handle_set_exception_breakpoints(
     return _handle_set_exception_breakpoints_impl(dbg, arguments)
 
 
-def handle_continue(
-    dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None
-):
+def handle_continue(dbg: DebuggerLike, arguments: ContinueArguments | dict[str, Any] | None):
     """Handle continue command."""
     return _handle_continue_impl(dbg, arguments)
 
@@ -1082,9 +1089,7 @@ def handle_pause(dbg: DebuggerLike, arguments: dict[str, Any] | None):
     return _handle_pause_impl(dbg, arguments)
 
 
-def handle_stack_trace(
-    dbg: DebuggerLike, arguments: StackTraceArguments | dict[str, Any] | None
-):
+def handle_stack_trace(dbg: DebuggerLike, arguments: StackTraceArguments | dict[str, Any] | None):
     """Handle stackTrace command."""
     return _handle_stack_trace_impl(dbg, arguments)
 
@@ -1103,7 +1108,7 @@ def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any
     """Handle source command (legacy signature)."""
     arguments = arguments or {}
     source_reference = arguments.get("sourceReference")
-    
+
     if source_reference:
         content = ""
     else:
@@ -1113,20 +1118,15 @@ def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any
             try:
                 with Path(path).open(encoding="utf-8") as fh:
                     content = fh.read()
-            except Exception:
+            except (OSError, UnicodeError):
                 content = ""
-    
-    try:
-        send_debug_message("source", content=content)
-    except Exception:
-        pass
+
+    _safe_send_debug_message("source", content=content)
 
     return {"success": True, "body": {"content": content}}
 
 
-def handle_variables(
-    dbg: DebuggerLike, arguments: VariablesArguments | dict[str, Any] | None
-):
+def handle_variables(dbg: DebuggerLike, arguments: VariablesArguments | dict[str, Any] | None):
     """Handle variables command."""
     return _handle_variables_impl(dbg, arguments)
 
@@ -1138,9 +1138,7 @@ def handle_set_variable(
     return _handle_set_variable_impl(dbg, arguments)
 
 
-def handle_evaluate(
-    dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None
-):
+def handle_evaluate(dbg: DebuggerLike, arguments: EvaluateArguments | dict[str, Any] | None):
     """Handle evaluate command."""
     return _handle_evaluate_impl(dbg, arguments)
 
@@ -1159,10 +1157,12 @@ def handle_data_breakpoint_info(
     return _handle_data_breakpoint_info_impl(dbg, arguments)
 
 
-def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None):
+def handle_exception_info(
+    dbg: DebuggerLike, arguments: ExceptionInfoArguments | dict[str, Any] | None
+):
     """Handle exceptionInfo command."""
     arguments = arguments or {}
-    
+
     exception_info = {
         "exceptionId": "Exception",
         "description": "An exception occurred",
@@ -1170,24 +1170,26 @@ def handle_exception_info(dbg: DebuggerLike, arguments: ExceptionInfoArguments |
         "details": {
             "message": "Exception details unavailable",
             "typeName": "Exception",
-        }
+        },
     }
-    
+
     if dbg:
         exc = getattr(dbg, "current_exception", None)
         if exc:
             try:
-                exception_info.update({
-                    "exceptionId": type(exc).__name__,
-                    "description": str(exc),
-                    "details": {
-                        "message": str(exc),
-                        "typeName": type(exc).__name__,
+                exception_info.update(
+                    {
+                        "exceptionId": type(exc).__name__,
+                        "description": str(exc),
+                        "details": {
+                            "message": str(exc),
+                            "typeName": type(exc).__name__,
+                        },
                     }
-                })
-            except Exception:
-                pass
-    
+                )
+            except (AttributeError, TypeError, ValueError):
+                logger.debug("Failed to enrich exception info payload", exc_info=True)
+
     return {"success": True, "body": exception_info}
 
 
@@ -1198,10 +1200,7 @@ def handle_configuration_done(_dbg: DebuggerLike, _arguments: dict[str, Any] | N
 
 def handle_terminate(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle terminate command (inlined)."""
-    try:
-        send_debug_message("exited", exitCode=0)
-    except Exception:
-        pass
+    _safe_send_debug_message("exited", exitCode=0)
     state.is_terminated = True
     state.exit_func(0)
 
@@ -1223,10 +1222,7 @@ def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = No
 
 def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle restart command (inlined)."""
-    try:
-        send_debug_message("exited", exitCode=0)
-    except Exception:
-        pass
+    _safe_send_debug_message("exited", exitCode=0)
 
     python = sys.executable
     argv = sys.argv[1:]
@@ -1239,6 +1235,7 @@ def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None)
 # Registered Handlers (decorated with @command_handler)
 # These take only (arguments) and get dbg from state.debugger
 # =============================================================================
+
 
 @command_handler("setBreakpoints")
 def _cmd_set_breakpoints(arguments: SetBreakpointsArguments | dict[str, Any] | None) -> None:
@@ -1255,7 +1252,9 @@ def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) ->
 
 
 @command_handler("setExceptionBreakpoints")
-def _cmd_set_exception_breakpoints(arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None) -> None:
+def _cmd_set_exception_breakpoints(
+    arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None,
+) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_exception_breakpoints_impl(dbg, arguments)
@@ -1330,7 +1329,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
     if dbg:
         result = _handle_set_variable_impl(dbg, arguments)
         if result:
-            send_debug_message("setVariable", **result)
+            _safe_send_debug_message("setVariable", **result)
 
 
 @command_handler("evaluate")
@@ -1341,14 +1340,18 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
 
 
 @command_handler("setDataBreakpoints")
-def _cmd_set_data_breakpoints(arguments: SetDataBreakpointsArguments | dict[str, Any] | None) -> None:
+def _cmd_set_data_breakpoints(
+    arguments: SetDataBreakpointsArguments | dict[str, Any] | None,
+) -> None:
     dbg = state.debugger
     if dbg:
         _handle_set_data_breakpoints_impl(dbg, arguments)
 
 
 @command_handler("dataBreakpointInfo")
-def _cmd_data_breakpoint_info(arguments: DataBreakpointInfoArguments | dict[str, Any] | None) -> None:
+def _cmd_data_breakpoint_info(
+    arguments: DataBreakpointInfoArguments | dict[str, Any] | None,
+) -> None:
     dbg = state.debugger
     if dbg:
         _handle_data_breakpoint_info_impl(dbg, arguments)
@@ -1359,17 +1362,19 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
     """Handle exceptionInfo request."""
     thread_id = arguments.get("threadId") if arguments else None
     if thread_id is None:
-        send_debug_message("error", message="Missing required argument 'threadId'")
+        _safe_send_debug_message("error", message="Missing required argument 'threadId'")
         return
     dbg = state.debugger
     if not dbg:
-        send_debug_message("error", message="Debugger not initialized")
+        _safe_send_debug_message("error", message="Debugger not initialized")
         return
     if thread_id not in dbg.current_exception_info:
-        send_debug_message("error", message=f"No exception info available for thread {thread_id}")
+        _safe_send_debug_message(
+            "error", message=f"No exception info available for thread {thread_id}"
+        )
         return
     exception_info = dbg.current_exception_info[thread_id]
-    send_debug_message(
+    _safe_send_debug_message(
         "exceptionInfo",
         exceptionId=exception_info["exceptionId"],
         description=exception_info["description"],
@@ -1397,7 +1402,7 @@ def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     dbg = state.debugger
     result = handle_initialize(cast("DebuggerLike", dbg), _arguments)
     if result:
-        send_debug_message("response", **result)
+        _safe_send_debug_message("response", **result)
 
 
 @command_handler("restart")
@@ -1409,7 +1414,7 @@ def _cmd_restart(_arguments: dict[str, Any] | None = None) -> None:
 @command_handler("loadedSources")
 def _cmd_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
     """Handle loadedSources request to return all loaded source files."""
-    
+
     seen_paths = set[str]()
 
     loaded_sources: list[Source] = []
@@ -1426,14 +1431,14 @@ def _cmd_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
         ref_id = state.get_ref_for_path(p) or state.get_or_create_source_ref(p, s.get("name"))
         s["sourceReference"] = ref_id
 
-    send_debug_message("response", success=True, body={"sources": loaded_sources})
+    _safe_send_debug_message("response", success=True, body={"sources": loaded_sources})
 
 
 @command_handler("source")
 def _cmd_source(arguments: dict[str, Any] | None = None) -> None:
     """Handle 'source' request to return source content."""
     if arguments is None:
-        send_debug_message(
+        _safe_send_debug_message(
             "response", success=False, message="Missing arguments for source request"
         )
         return
@@ -1470,19 +1475,21 @@ def _cmd_source(arguments: dict[str, Any] | None = None) -> None:
             mime_type = "text/plain; charset=utf-8"
 
     if content is None:
-        send_debug_message("response", success=False, message="Could not load source content")
+        _safe_send_debug_message(
+            "response", success=False, message="Could not load source content"
+        )
         return
 
     body: dict[str, Any] = {"content": content}
     if mime_type:
         body["mimeType"] = mime_type
-    send_debug_message("response", success=True, body=body)
+    _safe_send_debug_message("response", success=True, body=body)
 
 
 @command_handler("modules")
 def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
     """Handle modules request to return loaded Python modules."""
-    
+
     all_modules: list[Module] = []
 
     for module_name, module in sys.modules.items():
@@ -1531,6 +1538,6 @@ def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
     else:
         modules = all_modules
 
-    send_debug_message(
+    _safe_send_debug_message(
         "response", success=True, body={"modules": modules, "totalModules": len(all_modules)}
     )

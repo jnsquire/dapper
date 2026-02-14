@@ -2,9 +2,10 @@
 
 Tests the completions implementation across:
 - InProcessDebugger._get_runtime_completions
-- InProcessDebugger.completions 
+- InProcessDebugger.completions
 - DAP request handler integration
 """
+
 from __future__ import annotations
 
 import os as os_module
@@ -42,7 +43,11 @@ def labels_from_targets(targets: Sequence[Any]) -> list[str]:
     a `label` field. Tests expect a plain list of strings, so we cast to str
     for typing clarity.
     """
-    return [cast("str", t["label"]) for t in targets if isinstance(t, dict) and "label" in t and t["label"] is not None]
+    return [
+        cast("str", t["label"])
+        for t in targets
+        if isinstance(t, dict) and "label" in t and t["label"] is not None
+    ]
 
 
 class TestExpressionExtraction:

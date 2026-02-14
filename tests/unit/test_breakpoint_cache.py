@@ -1,9 +1,9 @@
 """Unit tests for the BreakpointCache class."""
 
-import tempfile
-import time
 from collections import OrderedDict
 from pathlib import Path
+import tempfile
+import time
 
 # Import the module without any mocks first to avoid import-time side effects
 from dapper._frame_eval.cache_manager import BreakpointCache
