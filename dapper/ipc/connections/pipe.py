@@ -209,8 +209,7 @@ class NamedPipeServerConnection(ConnectionBase):
 
         if self.use_binary:
             content = message.encode("utf-8")
-            header = pack_frame(2, content)
-            payload = header + content
+            payload = pack_frame(2, content)
             if getattr(self, "writer", None):
                 self.writer.write(payload)
                 await self.writer.drain()

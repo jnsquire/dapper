@@ -8,6 +8,7 @@ from __future__ import annotations
 import bdb
 from collections.abc import Mapping
 import contextlib
+import logging
 import threading
 from typing import TYPE_CHECKING
 from typing import Any
@@ -35,6 +36,7 @@ try:
 except Exception:  # pragma: no cover - optional integration
     integrate_debugger_bdb = None
 
+logger = logging.getLogger(__name__)
 
 def _noop_send_message(*args, **kwargs):
     pass
@@ -335,25 +337,31 @@ class DebuggerBDB(bdb.Bdb):
         self._data_bp_state.register_watches(names, metas)
 
     def record_breakpoint(self, path, line, *, condition, hit_condition, log_message):
-        key = (path, int(line))
-        meta = self.breakpoint_meta.get(key, {})
-        meta.setdefault("hit", 0)
-        meta["condition"] = condition
-        meta["hitCondition"] = hit_condition
-        meta["logMessage"] = log_message
-        self.breakpoint_meta[key] = meta
+        """Record metadata for a line breakpoint.
+
+        Delegates to BreakpointManager.record_line_breakpoint.
+        """
+        self._bp_manager.record_line_breakpoint(
+            path,
+            line,
+            condition=condition,
+            hit_condition=hit_condition,
+            log_message=log_message,
+        )
 
     def clear_break_meta_for_file(self, path):
-        to_del = [k for k in self.breakpoint_meta if k[0] == path]
-        for k in to_del:
-            self.breakpoint_meta.pop(k, None)
+        """Clear all breakpoint metadata for a file.
+
+        Delegates to BreakpointManager.clear_line_meta_for_file.
+        """
+        self._bp_manager.clear_line_meta_for_file(path)
 
     def _check_data_watch_changes(self, frame):
-        """Check for changes in watched variables and return changed variable name if any."""
+        """Check for changes in watched variables and return list of changed names."""
         # Frame locals in CPython may be a FrameLocalsProxy; accept any
         # mapping-like object rather than requiring a plain dict.
         if not isinstance(frame.f_locals, Mapping):
-            return None
+            return []
         return self._data_bp_state.check_for_changes(id(frame), frame.f_locals)
 
     def _update_watch_snapshots(self, frame):
@@ -432,8 +440,13 @@ class DebuggerBDB(bdb.Bdb):
             self.set_continue()
             return True
 
-        # STOP action means conditions passed - let caller handle the stop
-        return False
+        # STOP action means conditions passed - stop with "breakpoint" reason
+        thread_id = threading.get_ident()
+        self._ensure_thread_registered(thread_id)
+        self._emit_stopped_event(frame, thread_id, "breakpoint")
+        self.process_commands()
+        self.set_continue()
+        return True
 
     def _emit_stopped_event(self, frame, thread_id, reason, description=None):
         """Emit a stopped event with proper bookkeeping."""
@@ -460,15 +473,18 @@ class DebuggerBDB(bdb.Bdb):
         self.botframe = frame  # to satisfy bdb expectations
 
         # Check for data watch changes first
-        changed_name = self._check_data_watch_changes(frame)
+        changed_names = self._check_data_watch_changes(frame)
         self._update_watch_snapshots(frame)
 
-        if changed_name and self._should_stop_for_data_breakpoint(changed_name, frame):
-            self._ensure_thread_registered(thread_id)
-            self._emit_stopped_event(
-                frame, thread_id, "data breakpoint", f"{changed_name} changed"
-            )
-            return
+        if changed_names:
+            for changed_name in changed_names:
+                if self._should_stop_for_data_breakpoint(changed_name, frame):
+                    self._ensure_thread_registered(thread_id)
+                    self._emit_stopped_event(
+                        frame, thread_id, "data breakpoint", f"{changed_name} changed"
+                    )
+            if changed_names:
+                return
 
         # Handle regular breakpoints
         if self._handle_regular_breakpoint(filename, line, frame):
@@ -482,6 +498,7 @@ class DebuggerBDB(bdb.Bdb):
 
         self._emit_stopped_event(frame, thread_id, reason)
         self.process_commands()
+        self._thread_tracker.clear_frames()
         self.set_continue()
 
     def user_exception(
@@ -516,7 +533,7 @@ class DebuggerBDB(bdb.Bdb):
         try:
             self.set_continue()
         except Exception:
-            pass
+            logger.debug("set_continue failed after exception stop", exc_info=True)
 
     def _get_stack_frames(self, frame):
         """Build stack frames for the given frame using the thread tracker."""
@@ -567,7 +584,7 @@ class DebuggerBDB(bdb.Bdb):
         try:
             self.clear_break_meta_for_file(path)
         except Exception:
-            pass
+            logger.debug("Failed to clear breakpoint metadata for %s", path, exc_info=True)
 
     def user_call(self, frame: types.FrameType | Any, argument_list: Any) -> None:
         """Handle function breakpoints.

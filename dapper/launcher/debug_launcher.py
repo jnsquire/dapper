@@ -70,6 +70,7 @@ def _recv_binary_from_stream(rfile: Any) -> None:
         header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
         if not header:
             state.exit_func(0)
+            return
         try:
             kind, length = unpack_header(header)
         except Exception as e:
@@ -78,6 +79,7 @@ def _recv_binary_from_stream(rfile: Any) -> None:
         payload = read_exact(rfile, length)  # type: ignore[arg-type]
         if not payload:
             state.exit_func(0)
+            return
         if kind == KIND_COMMAND:
             _handle_command_bytes(payload)
 

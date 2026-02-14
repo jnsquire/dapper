@@ -37,6 +37,7 @@ def set_config(config: DapperConfig) -> None:
     Args:
         config: The new configuration to set
     """
+    global _current_config
     with _config_lock:
         config.validate()
         _current_config = config
@@ -48,6 +49,7 @@ def update_config(**kwargs: Any) -> None:
     Args:
         **kwargs: Configuration values to update
     """
+    global _current_config
     with _config_lock:
         # Create new config with updated values
         current = get_config()
@@ -67,6 +69,7 @@ def update_config(**kwargs: Any) -> None:
 
 def reset_config() -> None:
     """Reset configuration to defaults."""
+    global _current_config
     with _config_lock:
         _current_config = DEFAULT_CONFIG
 
@@ -89,6 +92,7 @@ class ConfigContext:
 
     def __enter__(self) -> DapperConfig:
         """Apply temporary configuration changes."""
+        global _current_config
         with _config_lock:
             self._original_config = get_config()
 
@@ -123,6 +127,7 @@ class ConfigContext:
         exc_tb: types.TracebackType | None,
     ) -> None:
         """Restore original configuration."""
+        global _current_config
         if self._original_config is not None:
             with _config_lock:
                 _current_config = self._original_config

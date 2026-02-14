@@ -301,7 +301,9 @@ def _set_scope_variable(frame: Any, scope: str, name: str, value_str: str) -> di
     try:
         new_value = _try_custom_convert(value_str, frame, None)
         if new_value is _CONVERSION_FAILED:
-            new_value = eval(value_str, frame.f_globals, frame.f_locals)
+            from dapper.shared.value_conversion import evaluate_with_policy
+
+            new_value = evaluate_with_policy(value_str, frame, allow_builtins=True)
     except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
         try:
             new_value = _convert_value_with_context(value_str, frame)

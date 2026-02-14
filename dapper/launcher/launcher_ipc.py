@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import os
 import socket
 from typing import TYPE_CHECKING
 
@@ -51,7 +50,7 @@ class SocketConnector:
     def connect_unix(self, path: str | None) -> socket.socket | None:
         if not path:
             return None
-        af_unix = getattr(os, "AF_UNIX", None)
+        af_unix = getattr(socket, "AF_UNIX", None)
         if not af_unix:
             return None
         sock = None

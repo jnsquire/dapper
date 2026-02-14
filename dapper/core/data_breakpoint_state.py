@@ -103,19 +103,20 @@ class DataBreakpointState:
         """Check if a specific variable is being watched."""
         return name in self.watch_names
 
-    def check_for_changes(self, frame_id: int, current_locals: Mapping[str, Any]) -> str | None:
-        """Check for changes in watched variables and return changed name if any.
+    def check_for_changes(self, frame_id: int, current_locals: Mapping[str, Any]) -> list[str]:
+        """Check for changes in watched variables and return all changed names.
 
         Args:
             frame_id: The id of the current frame (typically id(frame)).
             current_locals: The current local variables dict.
 
         Returns:
-            The name of the first changed variable, or None if no changes.
+            A list of changed variable names (empty if no changes).
         """
         if not self.watch_names:
-            return None
+            return []
 
+        changed: list[str] = []
         prior = self.last_values_by_frame.get(frame_id)
 
         for name in self.watch_names:
@@ -141,9 +142,9 @@ class DataBreakpointState:
                 except Exception:  # pragma: no cover - defensive
                     equal = False
                 if old_val is not new_val and not equal:
-                    return name
+                    changed.append(name)
 
-        return None
+        return changed
 
     def update_snapshots(self, frame_id: int, current_locals: Mapping[str, Any]) -> None:
         """Update snapshots of watched variable values.

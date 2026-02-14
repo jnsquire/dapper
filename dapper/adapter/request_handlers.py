@@ -589,8 +589,43 @@ class RequestHandler:
                 ),
             )
 
+        # Security: resolve symlinks and validate the path is a regular file
         try:
-            with Path(path).open("rb") as f:
+            resolved = Path(path).resolve(strict=True)
+        except (OSError, ValueError):
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(
+                    request,
+                    "moduleSource",
+                    success=False,
+                    message="Module file path could not be resolved",
+                ),
+            )
+        if not resolved.is_file():
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(
+                    request,
+                    "moduleSource",
+                    success=False,
+                    message="Module path is not a regular file",
+                ),
+            )
+        # Only serve .py/.pyw source files to prevent leaking arbitrary file contents
+        if resolved.suffix.lower() not in (".py", ".pyw"):
+            return cast(
+                "ModuleSourceResponse",
+                self._make_response(
+                    request,
+                    "moduleSource",
+                    success=False,
+                    message="Module path is not a Python source file",
+                ),
+            )
+
+        try:
+            with resolved.open("rb") as f:
                 data = f.read()
             # Try to decode as utf-8; if it fails preserve bytes as latin-1 to
             # keep a 1:1 mapping so NUL bytes survive for downstream checks.

@@ -62,21 +62,15 @@ class InProcessBackend(BaseBackend):
         """Check if the backend is available."""
         return self._lifecycle.is_available
 
-    async def _execute_command(
+    def _build_dispatch_table(
         self,
-        command: str,
-        args: dict[str, Any] | None = None,
-        **kwargs: Any,
+        args: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a debugger command in-process."""
-        if args is None:
-            args = {}
+        """Build dispatch table for in-process commands.
 
-        # kwargs is unused but required for interface compatibility
-        _ = kwargs
-
-        # Build dispatch table that maps command names to async handlers.
-        # Each handler returns a dict[str, Any] for consistency.
+        Each handler delegates to the corresponding bridge-backed method
+        on this backend instance.
+        """
         async def _bp() -> dict[str, Any]:
             r = await self.set_breakpoints(args["path"], args["breakpoints"])
             return {"breakpoints": r}
@@ -152,7 +146,7 @@ class InProcessBackend(BaseBackend):
             await self.terminate()
             return {}
 
-        dispatch: dict[str, Any] = {
+        return {
             "set_breakpoints": _bp,
             "set_function_breakpoints": _fbp,
             "set_exception_breakpoints": _ebp,
@@ -171,13 +165,17 @@ class InProcessBackend(BaseBackend):
             "terminate": _term,
         }
 
-        handler = dispatch.get(command)
-        if handler is None:
-            error_msg = f"Unknown command: {command}"
-            raise ValueError(error_msg)
-
+    async def _execute_command(
+        self,
+        command: str,
+        args: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Execute a debugger command in-process with error wrapping."""
         try:
-            return await handler()
+            return await super()._execute_command(command, args, **kwargs)
+        except ValueError:
+            raise
         except Exception as e:
             logger.exception(f"In-process command '{command}' failed")
             error_msg = f"Command '{command}' failed: {e}"

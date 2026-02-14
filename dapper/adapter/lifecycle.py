@@ -163,9 +163,17 @@ class LifecycleManager:
     async def operation_context(self, operation_name: str):
         """Context manager for backend operations with automatic state management.
 
+        If the backend is still UNINITIALIZED, it is automatically transitioned
+        through INITIALIZING to READY before the operation proceeds.
+
         Args:
             operation_name: Name of the operation for logging
         """
+        # Auto-transition from UNINITIALIZED -> INITIALIZING -> READY
+        if self._state == BackendLifecycleState.UNINITIALIZED:
+            await self.transition_to(BackendLifecycleState.INITIALIZING)
+            await self.transition_to(BackendLifecycleState.READY)
+
         if not self.is_ready:
             error_msg = f"Backend not ready for operation: {operation_name}"
             raise RuntimeError(error_msg)

@@ -11,7 +11,6 @@ from abc import abstractmethod
 import asyncio
 import logging
 from typing import Any
-from typing import Callable
 from typing import TypeVar
 from typing import cast
 from typing import overload
@@ -61,16 +60,35 @@ class BaseBackend(DebuggerBackend, ABC):
         self._lifecycle = LifecycleManager(self.__class__.__name__)
 
     @abstractmethod
+    def _build_dispatch_table(
+        self, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the command dispatch table.
+
+        Subclasses implement this to map command names to zero-argument
+        async handler callables. Each handler returns a ``dict[str, Any]``.
+
+        Args:
+            args: The command arguments (closures may reference these).
+
+        Returns:
+            Mapping of command name to async handler callable.
+        """
+        ...
+
     async def _execute_command(
         self,
         command: str,
         args: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Execute a command on the backend.
+        """Execute a command on the backend via the dispatch table.
 
-        This method must be implemented by concrete backends to handle
-        the actual communication with the debugger.
+        Looks up *command* in the table returned by
+        ``_build_dispatch_table`` and awaits the matching handler.
+        Subclasses may override this to add pre/post processing
+        (e.g. availability checks, extra error wrapping) while
+        calling ``super()._execute_command(...)`` for the dispatch.
 
         Args:
             command: The command to execute
@@ -80,7 +98,15 @@ class BaseBackend(DebuggerBackend, ABC):
         Returns:
             The command response
         """
-        ...
+        if args is None:
+            args = {}
+
+        dispatch = self._build_dispatch_table(args)
+        handler = dispatch.get(command)
+        if handler is None:
+            error_msg = f"Unknown command: {command}"
+            raise ValueError(error_msg)
+        return await handler()
 
     async def _execute_with_timeout(
         self,
@@ -409,137 +435,3 @@ class BaseBackend(DebuggerBackend, ABC):
         """Attach to an existing debuggee. Override in subclasses."""
         error_msg = f"{self.__class__.__name__} does not support attach"
         raise NotImplementedError(error_msg)
-
-
-class CommandExecutor(ABC):
-    """Helper class for executing commands with different patterns."""
-
-    @abstractmethod
-    async def send_command(
-        self,
-        command: str,
-        args: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Send a command and get the response."""
-        ...
-
-    @abstractmethod
-    async def wait_for_response(
-        self,
-        command_id: int,
-        timeout: float,
-    ) -> dict[str, Any]:
-        """Wait for a response to a specific command."""
-        ...
-
-
-class AsyncCommandExecutor(CommandExecutor):
-    """Command executor that uses async/await patterns."""
-
-    def __init__(self, timeout: float = 30.0) -> None:
-        self._timeout = timeout
-        self._pending_commands: dict[int, asyncio.Future[dict[str, Any]]] = {}
-        self._next_command_id = 1
-        self._lock = asyncio.Lock()
-
-    def _get_next_command_id(self) -> int:
-        """Get the next command ID."""
-        command_id = self._next_command_id
-        self._next_command_id += 1
-        return command_id
-
-    def _handle_future_result(
-        self,
-        _command_id: int,
-        future: asyncio.Future[dict[str, Any]],
-        result_handler: Callable[[asyncio.Future[dict[str, Any]]], None],
-        error_handler: Callable[[asyncio.Future[dict[str, Any]], Exception], None] | None = None,
-    ) -> None:
-        """Handle setting result or error on a future."""
-        if future.done():
-            return
-
-        try:
-            result_handler(future)
-        except Exception as e:
-            if error_handler:
-                error_handler(future, e)
-
-    async def send_command(
-        self,
-        command: str,
-        args: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Send a command and return the future for the response."""
-        async with self._lock:
-            command_id = self._get_next_command_id()
-
-        future = asyncio.Future[dict[str, Any]]()
-        self._pending_commands[command_id] = future
-
-        try:
-            # Send the command (implementation-specific)
-            await self._send_command_impl(command_id, command, args or {})
-
-            # Wait for the response
-            return await self.wait_for_response(command_id, self._timeout)
-        finally:
-            self._pending_commands.pop(command_id, None)
-
-    @abstractmethod
-    async def _send_command_impl(
-        self,
-        command_id: int,
-        command: str,
-        args: dict[str, Any],
-    ) -> None:
-        """Implementation-specific command sending."""
-        ...
-
-    async def wait_for_response(
-        self,
-        command_id: int,
-        timeout: float,
-    ) -> dict[str, Any]:
-        """Wait for a response to a specific command."""
-        if command_id not in self._pending_commands:
-            error_msg = f"Command {command_id} not found"
-            raise BackendError(error_msg)
-
-        future = self._pending_commands[command_id]
-
-        try:
-            return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError as e:
-            timeout_msg = f"Command {command_id} timed out"
-            raise DapperTimeoutError(
-                timeout_msg,
-                timeout_seconds=timeout,
-                operation="wait_for_response",
-            ) from e
-
-    def handle_response(self, command_id: int, response: dict[str, Any]) -> None:
-        """Handle an incoming response."""
-        if command_id not in self._pending_commands:
-            logger.warning(f"Received response for unknown command {command_id}")
-            return
-
-        future = self._pending_commands[command_id]
-        self._handle_future_result(
-            command_id,
-            future,
-            lambda f: f.set_result(response),
-        )
-
-    def handle_error(self, command_id: int, error: Exception) -> None:
-        """Handle an incoming error."""
-        if command_id not in self._pending_commands:
-            logger.warning(f"Received error for unknown command {command_id}")
-            return
-
-        future = self._pending_commands[command_id]
-        self._handle_future_result(
-            command_id,
-            future,
-            lambda f: f.set_exception(error),
-        )

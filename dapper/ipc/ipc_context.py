@@ -146,7 +146,7 @@ class IPCContext:
                 try:
                     handle_debug_message(msg)
                 except Exception:
-                    pass
+                    logger.exception("Error handling debug message (pipe/adapter)")
             return
 
         # Legacy mp_conn.Listener path
@@ -175,7 +175,7 @@ class IPCContext:
                 try:
                     handle_debug_message(msg)
                 except Exception:
-                    pass
+                    logger.exception("Error handling debug message (socket/adapter)")
             return
 
         # Legacy socket accept path
@@ -379,8 +379,8 @@ class IPCContext:
                 try:
                     idx = args.index("--ipc-path")
                     self.unix_path = args[idx + 1]
-                except Exception:
-                    pass
+                except (ValueError, IndexError):
+                    logger.debug("Could not extract --ipc-path from args", exc_info=True)
             self.connection_adapter = adapter
 
         return args
@@ -453,7 +453,7 @@ class IPCContext:
                 try:
                     handle_debug_message(msg)
                 except Exception:
-                    pass
+                    logger.exception("Error handling debug message (socket reader/adapter)")
             return
 
         # Legacy behaviour for file-like rfile
@@ -465,7 +465,7 @@ class IPCContext:
                 try:
                     handle_debug_message(line[5:].strip())
                 except Exception:
-                    pass
+                    logger.exception("Error handling debug message (socket reader/legacy)")
 
     def _read_pipe_messages(self, handle_debug_message: Callable[[str], None]) -> None:
         """Read messages from an attached pipe connection.
@@ -488,7 +488,7 @@ class IPCContext:
                 try:
                     handle_debug_message(msg)
                 except Exception:
-                    pass
+                    logger.exception("Error handling debug message (pipe reader/adapter)")
             return
 
         # Legacy processing for pipe connection objects

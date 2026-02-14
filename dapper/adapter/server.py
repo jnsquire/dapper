@@ -264,7 +264,7 @@ class PyDebugger:
                 await self.loop.run_in_executor(None, wait)
                 return
         except Exception:
-            pass
+            logger.debug("Event introspection failed, trying fallback", exc_info=True)
 
         try:
             res = wait()
@@ -310,10 +310,10 @@ class PyDebugger:
                             s = s[: MAX_VALUE_REPR_LEN - 3] + "..."
                         body["value"] = s
                     except Exception:
-                        pass
+                        logger.debug("repr() failed for variable %r", name, exc_info=True)
         except Exception:
             # Not fatal — return minimal information
-            pass
+            logger.debug("Variable lookup failed for %r", name, exc_info=True)
 
         return body
 

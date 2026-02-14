@@ -92,7 +92,6 @@ def receive_debug_commands() -> None:
             try:
                 command = json.loads(command_json)
                 state.command_queue.put(command)
-                state.dispatch_debug_command(command)
             except Exception as e:
                 send_debug_message("error", message=f"Error receiving command: {e!s}")
                 traceback.print_exc()

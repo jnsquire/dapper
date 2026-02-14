@@ -106,106 +106,173 @@ class ExternalProcessBackend(BaseBackend):
             return default
         return response.get("body", default)
 
-    async def _execute_command(
+    def _build_dispatch_table(
         self,
-        command: str,
-        args: dict[str, Any] | None = None,
-        **_kwargs: Any,
+        args: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a command on the external process.
+        """Build dispatch table for external-process commands.
 
-        Args:
-            command: The command to execute
-            args: Additional arguments for the command
-            **kwargs: Additional keyword arguments
-
-        Returns:
-            The command response
+        Each handler constructs a DAP protocol message and sends it
+        via ``_send_command``.
         """
-        if not self.is_available():
-            raise RuntimeError("External process not available")
-
-        if args is None:
-            args = {}
-
-        # Build dispatch table that maps command names to async handlers.
-        # Each handler returns a dict[str, Any] for consistency.
         async def _bp() -> dict[str, Any]:
-            r = await self.set_breakpoints(args["path"], args["breakpoints"])
-            return {"breakpoints": r}
+            cmd = {
+                "command": "setBreakpoints",
+                "arguments": {
+                    "source": {"path": args["path"]},
+                    "breakpoints": [dict(bp) for bp in args["breakpoints"]],
+                },
+            }
+            await self._send_command(cmd)
+            return {
+                "breakpoints": [
+                    {"verified": True, "line": bp.get("line")} for bp in args["breakpoints"]
+                ]
+            }
 
         async def _fbp() -> dict[str, Any]:
-            r = await self.set_function_breakpoints(args["breakpoints"])
-            return {"breakpoints": r}
+            cmd = {
+                "command": "setFunctionBreakpoints",
+                "arguments": {"breakpoints": [dict(bp) for bp in args["breakpoints"]]},
+            }
+            await self._send_command(cmd)
+            return {
+                "breakpoints": [
+                    {"verified": bp.get("verified", True)} for bp in args["breakpoints"]
+                ]
+            }
 
         async def _ebp() -> dict[str, Any]:
-            r = await self.set_exception_breakpoints(
-                args["filters"], args.get("filter_options"), args.get("exception_options")
-            )
-            return {"breakpoints": r}
+            ebp_args: dict[str, Any] = {"filters": args["filters"]}
+            if args.get("filter_options") is not None:
+                ebp_args["filterOptions"] = args["filter_options"]
+            if args.get("exception_options") is not None:
+                ebp_args["exceptionOptions"] = args["exception_options"]
+            cmd = {"command": "setExceptionBreakpoints", "arguments": ebp_args}
+            await self._send_command(cmd)
+            return {"breakpoints": [{"verified": True} for _ in args["filters"]]}
 
         async def _cont() -> dict[str, Any]:
-            return dict(await self.continue_(args["thread_id"]))
+            cmd = {"command": "continue", "arguments": {"threadId": args["thread_id"]}}
+            await self._send_command(cmd)
+            return {"allThreadsContinued": True}
 
         async def _next() -> dict[str, Any]:
-            await self.next_(args["thread_id"])
+            cmd = {"command": "next", "arguments": {"threadId": args["thread_id"]}}
+            await self._send_command(cmd)
             return {}
 
         async def _step_in() -> dict[str, Any]:
-            await self.step_in(args["thread_id"])
+            cmd = {"command": "stepIn", "arguments": {"threadId": args["thread_id"]}}
+            await self._send_command(cmd)
             return {}
 
         async def _step_out() -> dict[str, Any]:
-            await self.step_out(args["thread_id"])
+            cmd = {"command": "stepOut", "arguments": {"threadId": args["thread_id"]}}
+            await self._send_command(cmd)
             return {}
 
         async def _pause() -> dict[str, Any]:
-            sent = await self.pause(args["thread_id"])
-            return {"sent": sent}
+            cmd = {"command": "pause", "arguments": {"threadId": args["thread_id"]}}
+            await self._send_command(cmd)
+            return {"sent": True}
 
         async def _stack() -> dict[str, Any]:
-            return dict(
-                await self.get_stack_trace(
-                    args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
-                )
-            )
+            cmd = {
+                "command": "stackTrace",
+                "arguments": {
+                    "threadId": args["thread_id"],
+                    "startFrame": args.get("start_frame", 0),
+                    "levels": args.get("levels", 0),
+                },
+            }
+            response = await self._send_command(cmd, expect_response=True)
+            return self._extract_body(response, {"stackFrames": [], "totalFrames": 0})
 
         async def _vars() -> dict[str, Any]:
-            v = await self.get_variables(
-                args["variables_reference"],
-                args.get("filter_type", ""),
-                args.get("start", 0),
-                args.get("count", 0),
-            )
-            return {"variables": v}
+            cmd: dict[str, Any] = {
+                "command": "variables",
+                "arguments": {"variablesReference": args["variables_reference"]},
+            }
+            ft = args.get("filter_type", "")
+            if ft:
+                cmd["arguments"]["filter"] = ft
+            s = args.get("start", 0)
+            if s > 0:
+                cmd["arguments"]["start"] = s
+            c = args.get("count", 0)
+            if c > 0:
+                cmd["arguments"]["count"] = c
+            response = await self._send_command(cmd, expect_response=True)
+            if not response:
+                return {"variables": []}
+            body = response.get("body", {})
+            return {"variables": body.get("variables", [])}
 
         async def _set_var() -> dict[str, Any]:
-            return dict(await self.set_variable(args["var_ref"], args["name"], args["value"]))
+            cmd = {
+                "command": "setVariable",
+                "arguments": {
+                    "variablesReference": args["var_ref"],
+                    "name": args["name"],
+                    "value": args["value"],
+                },
+            }
+            response = await self._send_command(cmd, expect_response=True)
+            return self._extract_body(
+                response,
+                {"value": args["value"], "type": "string", "variablesReference": 0},
+            )
 
         async def _eval() -> dict[str, Any]:
-            return dict(
-                await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
-            )
+            cmd = {
+                "command": "evaluate",
+                "arguments": {
+                    "expression": args["expression"],
+                    "frameId": args.get("frame_id"),
+                    "context": args.get("context", "hover"),
+                },
+            }
+            response = await self._send_command(cmd, expect_response=True)
+            default = {
+                "result": f"<evaluation of '{args['expression']}' not available>",
+                "type": "string",
+                "variablesReference": 0,
+            }
+            return self._extract_body(response, default)
 
         async def _compl() -> dict[str, Any]:
-            return dict(
-                await self.completions(
-                    args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
-                )
-            )
+            cmd = {
+                "command": "completions",
+                "arguments": {
+                    "text": args["text"],
+                    "column": args["column"],
+                    "frameId": args.get("frame_id"),
+                    "line": args.get("line", 1),
+                },
+            }
+            response = await self._send_command(cmd, expect_response=True)
+            return self._extract_body(response, {"targets": []})
 
         async def _exc_info() -> dict[str, Any]:
-            return dict(await self.exception_info(args["thread_id"]))
+            cmd = {
+                "command": "exceptionInfo",
+                "arguments": {"threadId": args["thread_id"]},
+            }
+            response = await self._send_command(cmd, expect_response=True)
+            if response and "body" in response:
+                return response["body"]
+            return {}
 
         async def _cfg_done() -> dict[str, Any]:
-            await self.configuration_done()
+            await self._send_command({"command": "configurationDone"})
             return {}
 
         async def _term() -> dict[str, Any]:
             await self._send_command({"command": "terminate"})
             return {}
 
-        dispatch: dict[str, Any] = {
+        return {
             "set_breakpoints": _bp,
             "set_function_breakpoints": _fbp,
             "set_exception_breakpoints": _ebp,
@@ -224,11 +291,16 @@ class ExternalProcessBackend(BaseBackend):
             "terminate": _term,
         }
 
-        handler = dispatch.get(command)
-        if handler is None:
-            error_msg = f"Unknown command: {command}"
-            raise ValueError(error_msg)
-        return await handler()
+    async def _execute_command(
+        self,
+        command: str,
+        args: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Execute a command on the external process with availability check."""
+        if not self.is_available():
+            raise RuntimeError("External process not available")
+        return await super()._execute_command(command, args, **kwargs)
 
     async def _send_command(
         self, command: dict[str, Any], expect_response: bool = False

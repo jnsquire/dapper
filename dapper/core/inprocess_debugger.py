@@ -291,9 +291,11 @@ class InProcessDebugger:
             if not frame:
                 return {"success": False, "message": "Frame not found"}
             try:
-                # naive eval into the target scope (mirrors launcher)
+                # Evaluate through policy checker to block dangerous expressions
+                from dapper.shared.value_conversion import evaluate_with_policy
+
                 target = frame.f_locals if scope == "locals" else frame.f_globals
-                target[name] = eval(value, frame.f_globals, frame.f_locals)
+                target[name] = evaluate_with_policy(value, frame, allow_builtins=True)
                 return {
                     "value": target[name],
                     "type": type(target[name]).__name__,
@@ -315,7 +317,9 @@ class InProcessDebugger:
                 "variablesReference": 0,
             }
         try:
-            result = eval(expression, frame.f_globals, frame.f_locals)
+            from dapper.shared.value_conversion import evaluate_with_policy
+
+            result = evaluate_with_policy(expression, frame, allow_builtins=True)
             return {
                 "result": repr(result),
                 "type": type(result).__name__,
@@ -377,7 +381,6 @@ class InProcessDebugger:
             )
         else:
             # Fallback: use builtins only
-            targets = self._get_runtime_completions(expr_to_complete, {}, vars(builtins))
             targets = self._get_runtime_completions(expr_to_complete, {}, vars(builtins))
 
         return {"targets": targets}

@@ -48,22 +48,20 @@ def test_socket_connector_tcp_failure_bad_port_string():
 
 def test_socket_connector_unix_no_af():
     # Simulate environment without unix sockets
-    # We patch 'os' in launcher_ipc module
-    with patch("dapper.launcher.launcher_ipc.os") as mock_os:
-        del mock_os.AF_UNIX
+    # We patch 'socket' in launcher_ipc module
+    with patch("dapper.launcher.launcher_ipc.socket") as mock_socket:
+        del mock_socket.AF_UNIX
         connector = launcher_ipc.SocketConnector()
         sock = connector.connect_unix("/tmp/x")
         assert sock is None
 
 
 def test_socket_connector_unix_success():
-    with (
-        patch("socket.socket") as mock_socket_cls,
-        patch("dapper.launcher.launcher_ipc.os") as mock_os,
-    ):
-        mock_os.AF_UNIX = getattr(socket, "AF_UNIX", 1)
+    with patch("dapper.launcher.launcher_ipc.socket") as mock_socket:
+        mock_socket.AF_UNIX = getattr(socket, "AF_UNIX", 1)
+        mock_socket.SOCK_STREAM = socket.SOCK_STREAM
         mock_sock = MagicMock()
-        mock_socket_cls.return_value = mock_sock
+        mock_socket.socket.return_value = mock_sock
 
         connector = launcher_ipc.SocketConnector()
         sock = connector.connect_unix("/tmp/x")

@@ -87,14 +87,14 @@ class TestDataBreakpointState:
 
     def test_check_for_changes_no_watches(self):
         state = DataBreakpointState()
-        assert state.check_for_changes(1, {"x": 5}) is None
+        assert state.check_for_changes(1, {"x": 5}) == []
 
     def test_check_for_changes_no_prior(self):
         state = DataBreakpointState()
         state.register_watches(["x"])
 
         # First call - no prior value, so no change detected
-        assert state.check_for_changes(1, {"x": 5}) is None
+        assert state.check_for_changes(1, {"x": 5}) == []
 
     def test_check_for_changes_detects_change(self):
         state = DataBreakpointState()
@@ -105,7 +105,7 @@ class TestDataBreakpointState:
 
         # Now change the value
         changed = state.check_for_changes(1, {"x": 10})
-        assert changed == "x"
+        assert changed == ["x"]
 
     def test_check_for_changes_no_change(self):
         state = DataBreakpointState()
@@ -113,7 +113,7 @@ class TestDataBreakpointState:
 
         state.update_snapshots(1, {"x": 5})
         changed = state.check_for_changes(1, {"x": 5})
-        assert changed is None
+        assert changed == []
 
     def test_check_for_changes_uses_global_fallback(self):
         state = DataBreakpointState()
@@ -124,7 +124,7 @@ class TestDataBreakpointState:
 
         # Check with different frame - should use global fallback
         changed = state.check_for_changes(2, {"x": 10})
-        assert changed == "x"
+        assert changed == ["x"]
 
     def test_check_for_changes_variable_not_in_locals(self):
         state = DataBreakpointState()
@@ -134,7 +134,7 @@ class TestDataBreakpointState:
 
         # y is watched but not in locals - no change reported for y
         changed = state.check_for_changes(1, {"x": 10})
-        assert changed == "x"
+        assert changed == ["x"]
 
     def test_update_snapshots(self):
         state = DataBreakpointState()
@@ -197,14 +197,14 @@ class TestDataBreakpointStateIntegration:
 
         # 2. First execution - establish baseline
         state.update_snapshots(1, {"counter": 0})
-        assert state.check_for_changes(1, {"counter": 0}) is None
+        assert state.check_for_changes(1, {"counter": 0}) == []
 
         # 3. Value changes
-        assert state.check_for_changes(1, {"counter": 1}) == "counter"
+        assert state.check_for_changes(1, {"counter": 1}) == ["counter"]
         state.update_snapshots(1, {"counter": 1})
 
         # 4. Same value - no change
-        assert state.check_for_changes(1, {"counter": 1}) is None
+        assert state.check_for_changes(1, {"counter": 1}) == []
 
         # 5. Clear watches
         state.clear()

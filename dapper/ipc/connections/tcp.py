@@ -37,6 +37,33 @@ class TCPServerConnection(ConnectionBase):
         self._client_connected: asyncio.Future[bool] | None = None
         self.use_binary = False  # Default to regular DAP protocol
         self.socket: Any = None  # For backward compatibility
+        self._warn_if_not_loopback(self.host)
+
+    @staticmethod
+    def _warn_if_not_loopback(host: str) -> None:
+        """Log a security warning if host is not a loopback address.
+
+        Debug adapters expose eval()-based code execution.  Binding to a
+        non-loopback address allows any host on the network to execute
+        arbitrary code in the debuggee process.
+        """
+        import ipaddress
+
+        loopback_names = {"localhost", "127.0.0.1", "::1", "[::1]"}
+        if host in loopback_names:
+            return
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_loopback:
+                return
+        except ValueError:
+            pass
+        logger.warning(
+            "SECURITY: binding debug adapter to non-loopback address '%s'. "
+            "Any host on the network can execute arbitrary code in the "
+            "debuggee process. Prefer localhost or 127.0.0.1.",
+            host,
+        )
 
     async def accept(self) -> None:
         """Start listening and wait for the first client to connect.

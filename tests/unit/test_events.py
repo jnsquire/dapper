@@ -130,8 +130,8 @@ def test_exception_in_listener_stops_following_and_logs(monkeypatch):
     e.add_listener(bad)
     e.add_listener(good)
     e.emit()
-    # Good listener should not have been called because bad raised
-    assert calls == []
+    # Good listener should still be called despite bad raising
+    assert calls == ["ok"]
     assert logged["ok"]
 
 

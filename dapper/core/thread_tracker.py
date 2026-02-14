@@ -153,6 +153,15 @@ class ThreadTracker:
         """Get a frame object by its ID."""
         return self.frame_id_to_frame.get(frame_id)
 
+    def clear_frames(self) -> None:
+        """Evict all frame references to prevent memory leaks.
+
+        Should be called when the debuggee resumes (continue/step/next)
+        so that stale frame objects (and their locals/globals) are released.
+        """
+        self.frame_id_to_frame.clear()
+        self.frames_by_thread.clear()
+
     def store_stack_frames(self, thread_id: int, frames: list[StackFrameDict]) -> None:
         """Store the stack frames for a thread."""
         self.frames_by_thread[thread_id] = frames

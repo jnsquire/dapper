@@ -227,7 +227,9 @@ class BreakpointResolver:
             return False
 
         try:
-            result = eval(condition, frame.f_globals, frame.f_locals)
+            from dapper.shared.value_conversion import evaluate_with_policy
+
+            result = evaluate_with_policy(condition, frame, allow_builtins=True)
             return bool(result)
         except Exception as e:
             logger.debug("Condition evaluation failed: %s (%s)", condition, e)

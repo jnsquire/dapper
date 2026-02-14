@@ -110,8 +110,9 @@ class TransportFactory:
         full_path = rf"\\.\pipe\{name}"
 
         try:
-            mp_conn.Listener(address=full_path, family="AF_PIPE")
+            listener = mp_conn.Listener(address=full_path, family="AF_PIPE")
             connection = NamedPipeServerConnection(pipe_name=name)
+            connection.listener = listener  # keep reference so caller can close it
             args = ["--ipc", "pipe", "--ipc-pipe", full_path]
         except Exception as e:
             logger.exception("Failed to create named pipe listener")
@@ -130,8 +131,10 @@ class TransportFactory:
             raise ValueError("pipe_name is required for pipe connections")
 
         try:
-            mp_conn.Client(address=config.pipe_name, family="AF_PIPE")
-            return NamedPipeServerConnection(pipe_name=config.pipe_name)
+            client = mp_conn.Client(address=config.pipe_name, family="AF_PIPE")
+            connection = NamedPipeServerConnection(pipe_name=config.pipe_name)
+            connection.client = client  # keep reference so caller can close it
+            return connection
         except Exception as exc:
             msg = "Failed to connect to pipe"
             raise RuntimeError(msg) from exc
@@ -180,7 +183,9 @@ class TransportFactory:
         try:
             sock = _socket.socket(af_unix, _socket.SOCK_STREAM)
             sock.connect(config.path)
-            return TCPServerConnection(host="127.0.0.1", port=0)
+            connection = TCPServerConnection(host="127.0.0.1", port=0)
+            connection.socket = sock  # keep reference so caller can use/close it
+            return connection
         except Exception as exc:
             msg = "Failed to connect to Unix socket"
             raise RuntimeError(msg) from exc
@@ -366,7 +371,9 @@ class TransportFactory:
         try:
             sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
             sock.connect((config.host, config.port))
-            return TCPServerConnection(host=config.host, port=config.port)
+            connection = TCPServerConnection(host=config.host, port=config.port)
+            connection.socket = sock  # keep reference so caller can use/close it
+            return connection
         except Exception as exc:
             msg = "Failed to connect to TCP socket"
             raise RuntimeError(msg) from exc

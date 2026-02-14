@@ -50,7 +50,9 @@ def format_log_message(template: str, frame) -> str:
     def repl(match):
         expr = match.group(1)
         try:
-            val = eval(expr, frame.f_globals, frame.f_locals)
+            from dapper.shared.value_conversion import evaluate_with_policy
+
+            val = evaluate_with_policy(expr, frame, allow_builtins=True)
             return str(val)
         except Exception:
             return "<error>"

@@ -34,8 +34,8 @@ class EventEmitter:
 
     def emit(self, *args: Any, **kwargs: Any) -> None:
         listeners = list(self._listeners)
-        try:
-            for fn in listeners:
+        for fn in listeners:
+            try:
                 fn(*args, **kwargs)
-        except Exception:
-            logger.exception("error in event listener")
+            except Exception:
+                logger.exception("error in event listener")

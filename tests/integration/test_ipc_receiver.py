@@ -58,13 +58,6 @@ def test_receive_debug_commands_ipc(monkeypatch):
     # use StringIO which implements TextIOBase for typing compatibility
     s.ipc_rfile = io.StringIO(line)
 
-    called = []
-
-    def fake_dispatch(c):
-        called.append(c)
-        # ensure the receive loop exits after first command
-        s.is_terminated = True
-
     class DummyLock:
         def __enter__(self):
             return None
@@ -72,16 +65,16 @@ def test_receive_debug_commands_ipc(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return None
 
-    monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
+    # run receiver - it will queue the command, then encounter EOF
+    # which triggers exit_func(0) -> SystemExit in test mode
+    with pytest.raises(SystemExit):
+        ipc_receiver.receive_debug_commands()
 
-    # run receiver (should process one command and return)
-    ipc_receiver.receive_debug_commands()
-    assert called
-    assert called[0]["command"] == "dummy"
-    # queue should have at least one item
+    # queue should have exactly one item (no double-dispatch)
     assert not s.command_queue.empty()
     got = s.command_queue.get_nowait()
     assert got["command"] == "dummy"
+    assert s.command_queue.empty()
 
 
 def test_process_queued_commands(monkeypatch):
