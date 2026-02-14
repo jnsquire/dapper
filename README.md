@@ -15,7 +15,7 @@ A Debug Adapter Protocol implementation in Python.
 ### Debugger Features Overview
 
 For a detailed checklist of implemented and planned debugger features, see:
-- **[Debugger Features Checklist](doc/CHECKLIST.md)** - Complete feature matrix with implementation status
+- **[Debugger Features Checklist](doc/reference/checklist.md)** - Complete feature matrix with implementation status
 
 ### Frame Evaluation System
 
@@ -101,7 +101,7 @@ Enable it in your DAP launch request with `"inProcess": true`:
 }
 ```
 
-See [Architecture: In-Process Mode](doc/ARCHITECTURE.md#new-in-process-debugging-mode-opt-in) for lifecycle and termination semantics.
+See [Architecture: In-Process Mode](doc/architecture/overview.md#new-in-process-debugging-mode-opt-in) for lifecycle and termination semantics.
 
 ### Subprocess IPC (adapter ↔ launcher)
 
@@ -222,7 +222,7 @@ VS Code attach configuration examples:
 
 ### Configuration in VS Code
 
-Add this to your launch.json (for a step-by-step walkthrough, see [Debug Python in VS Code with Dapper](doc/using-dapper-with-vscode.md)):
+Add this to your launch.json (for a step-by-step walkthrough, see [Debug Python in VS Code with Dapper](doc/getting-started/using-vscode.md)):
 
 ```json
 {

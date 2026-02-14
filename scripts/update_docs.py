@@ -99,15 +99,13 @@ def prepare_docs_for_build() -> dict[Path, str]:
     # 2. Copy examples/README.md -> doc/examples.md
     shutil.copy(ROOT / "examples" / "README.md", ROOT / "doc" / "examples.md")
 
-    # 3. Patch doc/using-dapper-with-vscode.md
+    # 3. Patch doc/getting-started/using-vscode.md
     #    It links to ../README.md and ../examples/README.md
-    #    We want it to link to README.md and examples.md
-    p = ROOT / "doc" / "using-dapper-with-vscode.md"
+    #    We want it to link to ../README.md and ../examples.md
+    p = ROOT / "doc" / "getting-started" / "using-vscode.md"
     if p.exists():
         original = p.read_text(encoding="utf-8")
-        patched = original.replace("../README.md", "README.md").replace(
-            "../examples/README.md", "examples.md"
-        )
+        patched = original.replace("../examples/README.md", "../examples.md")
         p.write_text(patched, encoding="utf-8")
         return {p: original}
     return {}

@@ -18,17 +18,18 @@ nav:
     - Overview: architecture/overview.md
     - Analysis: architecture/current-analysis.md
     - Lifecycle: architecture/lifecycle-management.md
+    - Error Handling: architecture/error-handling.md
+    - IPC Refactor Guide: architecture/ipc-refactoring.md
   - Debugging:
-    - Operational Modes: debug_adapter_operational_modes.md
+    - Operational Modes: reference/operational_modes.md
     - Breakpoints Controller: architecture/breakpoints_controller.md
-    - Error Handling: ERROR_HANDLING_GUIDE.md
   - IPC & Frame Eval:
-    - IPC Refactor Guide: IPC_REFACTORING_GUIDE.md
     - Frame Eval User Guide: getting-started/frame-eval/index.md
     - Frame Eval Troubleshooting: getting-started/frame-eval/troubleshooting.md
     - Frame Eval Implementation: architecture/frame-eval/implementation.md
     - Frame Eval Performance: architecture/frame-eval/performance.md
     - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
   - Reference:
+    - Checklist: reference/checklist.md
     - Message Flows: reference/message_flows.md
     - Operational Modes: reference/operational_modes.md

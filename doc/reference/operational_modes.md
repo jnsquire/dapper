@@ -2,8 +2,6 @@
 
 This reference page consolidates the adapter operational diagrams that show Launch, Attach and In-Process modes, IPC transports, message flows, backend-selection and threading models.
 
-> Note: these diagrams previously lived in `doc/debug_adapter_operational_modes.md` and were moved into this reference page to make them easier to find in the reference section.
-
 ---
 
 ## 1. Launch Mode Architecture

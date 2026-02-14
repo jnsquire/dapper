@@ -16,5 +16,9 @@ Core architecture pages
 - Breakpoints & controller — design and responsibilities for breakpoint handling and bookkeeping:
   - [Breakpoints Controller](./breakpoints_controller.md)
 
+- **Standardized Patterns** — guidelines for error handling and system evolution:
+  - [Error Handling Guide](./error-handling.md)
+  - [IPC Refactoring Guide](./ipc-refactoring.md)
+
 - **Protocol & Message Flows** — DAP protocol flows and message sequences:
-  - [DAP Message Flow Diagrams](./message_flows.md) — sequence diagrams for launch, attach, breakpoints, and session lifecycle flows.
+  - [DAP Message Flow Diagrams](../reference/message_flows.md) — sequence diagrams for launch, attach, breakpoints, and session lifecycle flows.
