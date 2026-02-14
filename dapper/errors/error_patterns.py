@@ -6,6 +6,7 @@ across the adapter, backend, and protocol layers.
 
 from __future__ import annotations
 
+from functools import wraps
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
@@ -57,6 +58,7 @@ def handle_adapter_errors(
     """
 
     def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -64,19 +66,19 @@ def handle_adapter_errors(
                 # Already properly typed - just log and re-raise if needed
                 if reraise:
                     raise
-                logger.exception(f"Configuration error in {operation or func.__name__}")
+                logger.exception("Configuration error in %s", operation or func.__name__)
                 return None
             except IPCError:
                 # Already properly typed - just log and re-raise if needed
                 if reraise:
                     raise
-                logger.exception(f"IPC error in {operation or func.__name__}")
+                logger.exception("IPC error in %s", operation or func.__name__)
                 return None
             except ProtocolError:
                 # Already properly typed - just log and re-raise if needed
                 if reraise:
                     raise
-                logger.exception(f"Protocol error in {operation or func.__name__}")
+                logger.exception("Protocol error in %s", operation or func.__name__)
                 return None
             except Exception as e:
                 # Wrap generic exceptions
@@ -136,6 +138,7 @@ def handle_backend_errors(
     """
 
     def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -182,6 +185,7 @@ def handle_debugger_errors(
     """
 
     def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -225,6 +229,7 @@ def handle_protocol_errors(
     """
 
     def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -257,23 +262,24 @@ def async_handle_adapter_errors(
     def decorator(
         func: Callable[..., Coroutine[Any, Any, Any]],
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
             except ConfigurationError:
                 if reraise:
                     raise
-                logger.exception(f"Configuration error in {operation or func.__name__}")
+                logger.exception("Configuration error in %s", operation or func.__name__)
                 return None
             except IPCError:
                 if reraise:
                     raise
-                logger.exception(f"IPC error in {operation or func.__name__}")
+                logger.exception("IPC error in %s", operation or func.__name__)
                 return None
             except ProtocolError:
                 if reraise:
                     raise
-                logger.exception(f"Protocol error in {operation or func.__name__}")
+                logger.exception("Protocol error in %s", operation or func.__name__)
                 return None
             except Exception as e:
                 error_msg = f"Error in adapter operation {operation or func.__name__}: {e!s}"
@@ -322,18 +328,19 @@ def async_handle_backend_errors(
     def decorator(
         func: Callable[..., CoroutineType[Any, Any, R]],
     ) -> Callable[..., CoroutineType[Any, Any, R]]:
+        @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> R:
             try:
                 return await func(*args, **kwargs)
             except BackendError:
                 if reraise:
                     raise
-                logger.exception(f"Backend error in {operation or func.__name__}")
+                logger.exception("Backend error in %s", operation or func.__name__)
                 return cast("R", None)
             except DapperTimeoutError:
                 if reraise:
                     raise
-                logger.exception(f"Timeout error in {operation or func.__name__}")
+                logger.exception("Timeout error in %s", operation or func.__name__)
                 return cast("R", None)
             except Exception as e:
                 error_msg = f"Error in backend operation {operation or func.__name__}: {e!s}"
@@ -370,6 +377,7 @@ def async_handle_debugger_errors(
     def decorator(
         func: Callable[..., Coroutine[Any, Any, Any]],
     ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
@@ -417,7 +425,7 @@ class ErrorContext:
         if exc_val is not None:
             if isinstance(exc_val, DapperError):
                 # Already a Dapper error - just log it
-                logger.exception(f"Dapper error in {self.operation}: {exc_val}")
+                logger.exception("Dapper error in %s: %s", self.operation, exc_val)
             elif isinstance(exc_val, Exception):
                 # Wrap the exception
                 wrapped_error = self.error_type(
@@ -425,7 +433,7 @@ class ErrorContext:
                     cause=exc_val,
                     details={"operation": self.operation, **self.context},
                 )
-                logger.exception(f"Wrapped error in {self.operation}: {wrapped_error}")
+                logger.exception("Wrapped error in %s: %s", self.operation, wrapped_error)
                 raise wrapped_error from exc_val
             else:
                 # Non-Exception BaseException, re-raise as-is

@@ -15,47 +15,10 @@ Generated from a full codebase review on 2026-02-14.
   - All DAP command handler logic in a single file.
   - Fix: Split by domain: `breakpoint_handlers.py`, `variable_handlers.py`, `stepping_handlers.py`, `source_handlers.py`, etc.
 
-- [x] **Remove dead code: `BackendFactory` and related classes**
-  - File: `dapper/adapter/backend_factory.py`
-  - `BackendFactory`, `BackendManager`, `InProcessStrategy`, and `ExternalProcessStrategy` are defined but never instantiated from production code.
-  - Fix: Delete the file or integrate the factory pattern into `server.py`.
-
-- [x] **Remove dead code: `CommandExecutor` / `AsyncCommandExecutor`**
-  - File: `dapper/adapter/base_backend.py` (~L422–546)
-  - Abstract classes that are never subclassed.
-  - Fix: Delete or implement.
-
-- [x] **Consolidate duplicated breakpoint recording logic**
-  - Files: `dapper/core/breakpoint_manager.py` (~L52) and `dapper/core/debugger_bdb.py` (~L329)
-  - `DebuggerBDB.record_breakpoint` duplicates `BreakpointManager.record_line_breakpoint` instead of delegating.
-  - Fix: Have `DebuggerBDB` delegate to `_bp_manager.record_line_breakpoint()`.
-
-- [x] **Consolidate duplicated `send_debug_message`**
-  - Files: `dapper/launcher/comm.py` and `dapper/shared/debug_shared.py`
-  - Near-identical implementations.
-  - Fix: Keep one canonical version and have the other delegate to it.
-
-- [x] **Unify dispatch tables across backends**
-  - Files: `dapper/adapter/inprocess_backend.py` (~L78) and `dapper/adapter/external_backend.py` (~L116)
-  - Nearly identical `_execute_command` dispatch tables.
-  - Fix: Move the shared dispatch logic to `BaseBackend`.
-
-- [x] **Clarify entry point confusion**
-  - Files: `dapper/__init__.py`, `dapper/__main__.py`, `dapper/adapter/__main__.py`
-  - `python -m dapper.adapter` starts the DAP adapter; `python -m dapper` starts the debuggee launcher.
-  - Fix: Created `dapper/adapter/__main__.py` for the adapter entry point;
-    updated all docs, README, and testing scripts to use `python -m dapper.adapter`
-    for the adapter. Docstrings in `__init__.py` and `__main__.py` updated.
-
-- [x] **Reduce compatibility property sprawl in `DebuggerBDB`**
+- [ ] **Reduce compatibility property sprawl in `DebuggerBDB`**
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
   - 50+ lines of compatibility properties proxying attributes to delegates. Defeats the purpose of component extraction.
   - Fix: Update callers to access delegate objects directly.
-  - Done: Removed ~180 lines of proxy properties from DebuggerBDB. Updated all
-    production callers (`command_handlers.py`, `debug_shared.py`) and
-    `inprocess_debugger.py` to access delegates directly. Updated
-    `DebuggerLike` protocol with delegate object declarations. Updated all
-    test files to use delegate access patterns.
 
 ---
 
@@ -105,26 +68,6 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Code Quality
 
-- [ ] **Decorators missing `@functools.wraps`**
-  - File: `dapper/errors/error_patterns.py`
-  - All wrapper functions (`handle_adapter_errors`, `handle_backend_errors`, etc.) lose `__name__`, `__doc__`, and break introspection.
-  - Fix: Add `@functools.wraps(func)` to each inner wrapper.
-
-- [ ] **f-strings in logging calls (eager evaluation)**
-  - Files: `dapper/adapter/backend_factory.py`, `dapper/adapter/lifecycle.py`, `dapper/errors/error_patterns.py`, `dapper/_frame_eval/frame_eval_main.py`, and others.
-  - f-strings are evaluated unconditionally even when the log level filters them out.
-  - Fix: Use `%s`-style lazy formatting: `logger.info("Registered: %s", name)`.
-
-- [x] **Broad `except Exception: pass` blocks**
-  - Files: `dapper/core/debugger_bdb.py` (~L75), `dapper/ipc/ipc_context.py` (~L130), `dapper/adapter/server.py` (~L431)
-  - Silently swallow errors, hiding real bugs during development.
-  - Fix: Log the exception at minimum. Narrow the exception type where possible.
-
-- [ ] **Unconditional `import pytest` in production code**
-  - File: `dapper/utils/dev_tools.py` (~L8)
-  - Crashes when dapper is installed without dev dependencies.
-  - Fix: Move to a lazy import inside the functions that use it, or guard with `try/except ImportError`.
-
 - [ ] **Missing type hints on public methods**
   - Files:
     - `dapper/core/debugger_bdb.py` — `record_breakpoint`, `clear_break_meta_for_file`, `set_custom_breakpoint`, `clear_custom_breakpoint` (all params untyped)
@@ -136,11 +79,6 @@ Generated from a full codebase review on 2026-02-14.
   - File: `dapper/protocol/debugger_protocol.py`
   - Includes private attributes like `_data_watches`, `_frame_eval_enabled`, `_mock_user_line`. Nearly impossible to create test doubles.
   - Fix: Split into smaller sub-protocols. Remove private attributes from the public Protocol.
-
-- [ ] **Outdated frame eval Python version list**
-  - File: `dapper/_frame_eval/frame_eval_main.py` (~L39)
-  - `COMPATIBLE_PYTHON_VERSIONS` only lists 3.6–3.10, but `.so` files exist for 3.13.
-  - Fix: Update the version list.
 
 - [ ] **`CodeType` constructor fragile across Python versions**
   - File: `dapper/_frame_eval/modify_bytecode.py` (~L440)
@@ -172,14 +110,6 @@ Generated from a full codebase review on 2026-02-14.
   - `__new__` returns the same instance forever. Tests can't clean up state between runs.
   - Fix: Add a `reset()` classmethod that reinitializes all mutable state.
 
-- [ ] **`_detect_has_data_breakpoint` has dead `found` variable**
-  - File: `dapper/shared/debug_shared.py` (~L410)
-  - `found = False` is declared but never set to `True`; early returns handle all positive cases.
-  - Fix: Remove the `found` variable and add `return False` at the end directly.
-
-- [ ] **Typo: `surpressed` → `suppressed`**
-  - File: `dapper/ipc/ipc_context.py` (~L63)
-
 - [ ] **Typo: `DAPPER_SKIP_JS_TESTS_IN_CONFT` → `CONFTEST`**
   - File: `dapper/utils/dev_tools.py` (~L87)
 
@@ -192,11 +122,6 @@ Generated from a full codebase review on 2026-02-14.
   - File: `dapper/ipc/ipc_context.py` (~L290)
   - Checks `_reader_thread.is_alive()` then creates a new thread without locking. Two concurrent callers could both create threads.
   - Fix: Add a lock around the check-and-create.
-
-- [ ] **`print()` used instead of `logger` in production code**
-  - File: `dapper/_frame_eval/cache_manager.py` (~L901)
-  - `configure_caches` uses `print()` for debug output.
-  - Fix: Replace with `logger.debug()` or `logger.info()`.
 
 - [ ] **Frame eval `types.py` stubs are runtime-callable but raise**
   - File: `dapper/_frame_eval/types.py`
@@ -239,14 +164,11 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 
 | Category           | Total | Done | Remaining |
 |--------------------|-------|------|-----------|
-| Critical Bugs      | 6     | 6    | 0         |
-| High-Priority Bugs | 7     | 7    | 0         |
-| Security           | 3     | 3    | 0         |
-| Architecture       | 9     | 6    | 3         |
+| Architecture       | 3     | 0    | 3         |
 | Performance        | 8     | 0    | 8         |
-| Code Quality       | 20    | 1    | 19        |
+| Code Quality       | 19    | 6    | 13        |
 | Test Coverage      | 5     | 0    | 5         |
 | Windows Support    | 1     | 0    | 1         |
-| **Total**          | **59**| **23**| **36**   |
+| **Total**          | **36**| **6**| **30**   |
 
-**Next up:** Architecture improvements (9 items).
+**Next up:** Code quality improvements (13 items).

@@ -32,7 +32,16 @@ class FrameEvalManager:
     """
 
     # Module constants
-    COMPATIBLE_PYTHON_VERSIONS: ClassVar[list[str]] = ["3.6", "3.7", "3.8", "3.9", "3.10"]
+    COMPATIBLE_PYTHON_VERSIONS: ClassVar[list[str]] = [
+        "3.6",
+        "3.7",
+        "3.8",
+        "3.9",
+        "3.10",
+        "3.11",
+        "3.12",
+        "3.13",
+    ]
     SUPPORTED_PLATFORMS: ClassVar[list[str]] = ["Windows", "Linux", "Darwin"]
     SUPPORTED_ARCHITECTURES: ClassVar[list[str]] = ["64bit", "32bit"]
     INCOMPATIBLE_DEBUGGERS: ClassVar[list[str]] = ["pydevd", "pdb", "ipdb"]
@@ -128,7 +137,7 @@ class FrameEvalManager:
 
             self._logger.debug("Updated frame evaluation config: %s", valid_updates)
         except Exception as e:
-            self._logger.warning(f"Failed to update configuration: {e}")
+            self._logger.warning("Failed to update configuration: %s", e)
             return False
         else:
             return True
@@ -168,7 +177,7 @@ class FrameEvalManager:
                     self._logger.warning(error_msg)
                     return False
         except Exception as e:
-            self._logger.warning(f"Configuration validation failed: {e}")
+            self._logger.warning("Configuration validation failed: %s", e)
             return False
         else:
             return True
@@ -266,7 +275,7 @@ class FrameEvalManager:
         try:
             frame_eval_config = FrameEvalConfig.from_dict(config)
         except Exception as e:
-            self._logger.warning(f"Invalid configuration: {e}")
+            self._logger.warning("Invalid configuration: %s", e)
             return False
 
         # Validate the configuration

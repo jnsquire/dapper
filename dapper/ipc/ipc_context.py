@@ -60,32 +60,32 @@ class IPCContext:
 
         Mirrors previous PyDebugger._cleanup_ipc_resources implementation.
         """
-        surpressed = contextlib.suppress(Exception)
+        suppressed = contextlib.suppress(Exception)
 
         # Close r/w files
         for f in (self.rfile, self.wfile):
-            with surpressed:
+            with suppressed:
                 if f is not None:
                     f.close()
 
         # Close sockets / listeners
-        with surpressed:
+        with suppressed:
             if self.sock is not None:
                 self.sock.close()
-        with surpressed:
+        with suppressed:
             if self.listen_sock is not None:
                 self.listen_sock.close()
 
         # Unlink unix path
-        with surpressed:
+        with suppressed:
             if self.unix_path:
                 self.unix_path.unlink()
 
         # Close pipe endpoints
-        with surpressed:
+        with suppressed:
             if self.pipe_conn is not None:
                 self.pipe_conn.close()
-        with surpressed:
+        with suppressed:
             if self.pipe_listener is not None:
                 # Handle both sync and async close methods
                 if asyncio.iscoroutinefunction(self.pipe_listener.close):

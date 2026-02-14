@@ -437,7 +437,6 @@ def _detect_has_data_breakpoint(n: Any, debugger: DebuggerLike | None, fr: Any |
     if debugger is None:
         return False
     name_str = str(n)
-    found = False
 
     # DebuggerBDB style: data_watch_names (set/list) and data_watch_meta (dict)
     dw_names = (
@@ -478,7 +477,7 @@ def _detect_has_data_breakpoint(n: Any, debugger: DebuggerLike | None, fr: Any |
                 if isinstance(did, str) and (f":var:{name_str}" in did or name_str in did):
                     return True
 
-    return found
+    return False
 
 
 def _make_variable_object_impl(

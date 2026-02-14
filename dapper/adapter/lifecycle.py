@@ -135,7 +135,7 @@ class LifecycleManager:
             elif new_state != BackendLifecycleState.ERROR:
                 self._error_info = None
 
-            logger.debug(f"{self._backend_name}: {old_state.value} -> {new_state.value}")
+            logger.debug("%s: %s -> %s", self._backend_name, old_state.value, new_state.value)
 
     def add_cleanup_callback(self, callback: Callable[[], None]) -> None:
         """Add a cleanup callback to be called during termination.
@@ -148,14 +148,16 @@ class LifecycleManager:
     async def cleanup(self) -> None:
         """Execute all registered cleanup callbacks."""
         logger.debug(
-            f"{self._backend_name}: Running {len(self._cleanup_callbacks)} cleanup callbacks"
+            "%s: Running %d cleanup callbacks",
+            self._backend_name,
+            len(self._cleanup_callbacks),
         )
 
         for callback in self._cleanup_callbacks:
             try:
                 callback()
             except Exception:  # noqa: PERF203
-                logger.exception(f"{self._backend_name}: Cleanup callback failed")
+                logger.exception("%s: Cleanup callback failed", self._backend_name)
 
         self._cleanup_callbacks.clear()
 

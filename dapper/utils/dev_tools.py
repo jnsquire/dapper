@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 
-import pytest
+
 
 
 class JSTestsFailedError(RuntimeError):
@@ -96,6 +96,11 @@ def run_tests(argv: list[str] | None = None) -> None:
         sep = argv.index("--")
         js_args = argv[sep + 1 :] if sep + 1 < len(argv) else []
         argv = argv[:sep]
+
+    try:
+        import pytest
+    except ModuleNotFoundError as exc:
+        raise SystemExit("pytest is required to run tests; install dev dependencies") from exc
 
     rc = pytest.main(argv)
     if rc != 0:

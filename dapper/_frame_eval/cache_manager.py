@@ -898,4 +898,4 @@ def configure_caches(
     # Update breakpoint cache with new parameters
     caches.update_breakpoint_cache(max_entries=breakpoint_max_size)
 
-    print(f"Cache reconfigured: {old_stats} -> new parameters")
+    logger.info("Cache reconfigured: %s -> new parameters", old_stats)
