@@ -3,17 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from typing import TYPE_CHECKING
-from typing import Any
-from typing import ClassVar
 from typing import Protocol
 
+from dapper.core.breakpoint_manager import BreakpointManager
+from dapper.core.data_breakpoint_state import DataBreakpointState
+from dapper.core.exception_handler import ExceptionHandler
+from dapper.core.stepping_controller import SteppingController
+from dapper.core.thread_tracker import ThreadTracker
+from dapper.core.variable_manager import VariableManager
 from dapper.ipc.connections.base import ConnectionBase
 
 if TYPE_CHECKING:
     from types import FrameType
 
-    from dapper.protocol.debugger_protocol import DebuggerLike
-    from dapper.protocol.debugger_protocol import ExceptionInfo
 
 
 # Expose names for import convenience in tests
@@ -103,28 +105,19 @@ class MockConnection(ConnectionBase):
 
 
 class FakeDebugger:
-    # match the DebuggerLike ClassVar
-    custom_breakpoints: ClassVar[dict[str, Any]] = {}
     """Lightweight Fake debugger implementing the DebuggerLike protocol surface
     used by many unit tests. This doesn't attempt to emulate bdb fully — just
     the attributes and behaviours that command handlers and tests expect.
     """
 
     def __init__(self, raise_on_set: bool = False):
-        # Basic bookkeeping
-        self.next_var_ref: int = 1000
-        # The real DebuggerLike expects var_refs to map to VarRef shapes; annotate
-        # more precisely for static checks.
-        self.var_refs: dict[int, DebuggerLike.VarRef] = {}
-        self.frame_id_to_frame: dict[int, object] = {}
-        self.frames_by_thread: dict[int, list] = {}
-        self.threads: dict[int, str] = {}
-        self.current_exception_info: dict[int, ExceptionInfo] = {}
-        self._data_watches: dict[str, object] = {}
-        self._frame_watches: dict[int, list[str]] = {}
-        # current_frame is a test-only attribute; expose a real stdlib FrameType
-        self._current_frame: FrameType | None = None
-        self.stepping = False
+        # --- Delegate objects (ground truth for state) ---
+        self.stepping_controller = SteppingController()
+        self.exception_handler = ExceptionHandler()
+        self.var_manager = VariableManager()
+        self.thread_tracker = ThreadTracker()
+        self.data_bp_state = DataBreakpointState()
+        self.bp_manager = BreakpointManager()
 
         # record calls for test assertions
         self.set_calls: list[tuple[str, str]] = []
@@ -133,18 +126,6 @@ class FakeDebugger:
         # data breakpoint bookkeeping
         self.data_breakpoints: list[dict[str, object]] | None = None
         self.raise_on_set = raise_on_set
-        self.stop_on_entry = False
-        self.data_watch_names: set[str] | list[str] | None = None
-        self.data_watch_meta: dict[str, list[dict[str, object]]] | None = None
-
-        # breakpoint / function bookkeeping
-        self.function_breakpoints: list[str] = []
-        self.function_breakpoint_meta: dict[str, dict] = {}
-        self.exception_breakpoints_raised = False
-        self.exception_breakpoints_uncaught = False
-
-        # stopped thread tracking
-        self.stopped_thread_ids: set[int] = set()
 
         # breakpoint structures and frame-eval helpers
         self.breakpoints: dict[str, list[dict[str, object]]] = {}
@@ -153,6 +134,155 @@ class FakeDebugger:
 
         # simple flags & state for test convenience
         self.process = None
+
+    # --- Convenience properties for backward-compat with test code ---
+    # Tests may read/write dbg.stepping, dbg.threads, etc. These thin
+    # proxies forward to the appropriate delegate so both old and new
+    # access patterns work.
+
+    @property
+    def stepping(self) -> bool:
+        return self.stepping_controller.stepping
+
+    @stepping.setter
+    def stepping(self, value: bool) -> None:
+        self.stepping_controller.stepping = value
+
+    @property
+    def stop_on_entry(self) -> bool:
+        return self.stepping_controller.stop_on_entry
+
+    @stop_on_entry.setter
+    def stop_on_entry(self, value: bool) -> None:
+        self.stepping_controller.stop_on_entry = value
+
+    @property
+    def next_var_ref(self) -> int:
+        return self.var_manager.next_var_ref
+
+    @next_var_ref.setter
+    def next_var_ref(self, value: int) -> None:
+        self.var_manager.next_var_ref = value
+
+    @property
+    def var_refs(self) -> dict:
+        return self.var_manager.var_refs
+
+    @var_refs.setter
+    def var_refs(self, value: dict) -> None:
+        self.var_manager.var_refs = value
+
+    @property
+    def frame_id_to_frame(self) -> dict:
+        return self.thread_tracker.frame_id_to_frame
+
+    @frame_id_to_frame.setter
+    def frame_id_to_frame(self, value: dict) -> None:
+        self.thread_tracker.frame_id_to_frame = value
+
+    @property
+    def frames_by_thread(self) -> dict:
+        return self.thread_tracker.frames_by_thread
+
+    @frames_by_thread.setter
+    def frames_by_thread(self, value: dict) -> None:
+        self.thread_tracker.frames_by_thread = value
+
+    @property
+    def threads(self) -> dict:
+        return self.thread_tracker.threads
+
+    @threads.setter
+    def threads(self, value: dict) -> None:
+        self.thread_tracker.threads = value
+
+    @property
+    def current_exception_info(self) -> dict:
+        return self.exception_handler.exception_info_by_thread
+
+    @current_exception_info.setter
+    def current_exception_info(self, value: dict) -> None:
+        self.exception_handler.exception_info_by_thread = value
+
+    @property
+    def exception_breakpoints_raised(self) -> bool:
+        return self.exception_handler.config.break_on_raised
+
+    @exception_breakpoints_raised.setter
+    def exception_breakpoints_raised(self, value: bool) -> None:
+        self.exception_handler.config.break_on_raised = value
+
+    @property
+    def exception_breakpoints_uncaught(self) -> bool:
+        return self.exception_handler.config.break_on_uncaught
+
+    @exception_breakpoints_uncaught.setter
+    def exception_breakpoints_uncaught(self, value: bool) -> None:
+        self.exception_handler.config.break_on_uncaught = value
+
+    @property
+    def stopped_thread_ids(self) -> set:
+        return self.thread_tracker.stopped_thread_ids
+
+    @stopped_thread_ids.setter
+    def stopped_thread_ids(self, value: set) -> None:
+        self.thread_tracker.stopped_thread_ids = value
+
+    @property
+    def _data_watches(self) -> dict:
+        return self.data_bp_state.data_watches
+
+    @_data_watches.setter
+    def _data_watches(self, value: dict) -> None:
+        self.data_bp_state.data_watches = value
+
+    @property
+    def _frame_watches(self) -> dict:
+        return self.data_bp_state.frame_watches
+
+    @_frame_watches.setter
+    def _frame_watches(self, value: dict) -> None:
+        self.data_bp_state.frame_watches = value
+
+    @property
+    def data_watch_names(self) -> set | list | None:
+        return self.data_bp_state.watch_names or None
+
+    @data_watch_names.setter
+    def data_watch_names(self, value: set | list | None) -> None:
+        if value is None:
+            self.data_bp_state.watch_names = set()
+        elif isinstance(value, set):
+            self.data_bp_state.watch_names = value
+        else:
+            self.data_bp_state.watch_names = set(value)
+
+    @property
+    def data_watch_meta(self) -> dict | None:
+        return self.data_bp_state.watch_meta or None
+
+    @data_watch_meta.setter
+    def data_watch_meta(self, value: dict | None) -> None:
+        if value is None:
+            self.data_bp_state.watch_meta = {}
+        else:
+            self.data_bp_state.watch_meta = value
+
+    @property
+    def function_breakpoints(self) -> list:
+        return self.bp_manager.function_names
+
+    @function_breakpoints.setter
+    def function_breakpoints(self, value: list) -> None:
+        self.bp_manager.function_names = value
+
+    @property
+    def function_breakpoint_meta(self) -> dict:
+        return self.bp_manager.function_meta
+
+    @function_breakpoint_meta.setter
+    def function_breakpoint_meta(self, value: dict) -> None:
+        self.bp_manager.function_meta = value
 
     # --- Breakpoint API ---
     def set_break(
@@ -176,12 +306,13 @@ class FakeDebugger:
         log_message: object | None,
     ) -> None:
         # store metadata for tests
-        meta = self.function_breakpoint_meta.setdefault(path, {})
-        meta[line] = {
-            "condition": condition,
-            "hitCondition": hit_condition,
-            "logMessage": log_message,
-        }
+        self.bp_manager.record_line_breakpoint(
+            path,
+            line,
+            condition=condition,
+            hit_condition=hit_condition,
+            log_message=log_message,
+        )
 
     def clear_breaks_for_file(self, path: str) -> None:
         self.breakpoints.pop(path, None)
@@ -194,11 +325,10 @@ class FakeDebugger:
         return None
 
     def clear_break_meta_for_file(self, path: str) -> None:
-        self.function_breakpoint_meta.pop(path, None)
+        self.bp_manager.clear_line_meta_for_file(path)
 
     def clear_all_function_breakpoints(self) -> None:
-        self.function_breakpoints.clear()
-        self.function_breakpoint_meta.clear()
+        self.bp_manager.clear_function_breakpoints()
 
     # --- Execution controls ---
     def set_continue(self) -> None:
@@ -240,12 +370,11 @@ class FakeDebugger:
     @property
     def current_frame(self) -> FrameType | None:
         """Test shim: current execution frame (optional)."""
-        return self._current_frame
+        return self.stepping_controller.current_frame
 
     @current_frame.setter
     def current_frame(self, value: FrameType | None) -> None:
-        # Expect a real stdlib FrameType in tests
-        self._current_frame = value
+        self.stepping_controller.current_frame = value
 
     def make_variable_object(
         self,
@@ -272,22 +401,17 @@ class FakeDebugger:
         if getattr(self, "raise_on_set", False):
             raise RuntimeError("failed")
         # store a simple entry
-        self._data_watches[data_id] = {"accessType": access_type}
+        self.data_bp_state.data_watches[data_id] = {"accessType": access_type}
 
     def register_data_watches(
         self, names: list[str], metas: list[tuple[str, dict]] | None = None
     ) -> None:
         self.register_calls.append((list(names), list(metas or [])))
-        self.data_watch_names = set(names)
-        if metas:
-            self.data_watch_meta = {n: [] for n in names}
-            for name, meta in metas:
-                if name in self.data_watch_meta:
-                    self.data_watch_meta[name].append(meta)
+        self.data_bp_state.register_watches(names, metas)
 
     def clear_all_data_breakpoints(self) -> None:
-        self._data_watches.clear()
-        self._frame_watches.clear()
+        self.data_bp_state.data_watches.clear()
+        self.data_bp_state.frame_watches.clear()
 
 
 def make_real_frame(

@@ -9,6 +9,7 @@ Tests the completions implementation across:
 from __future__ import annotations
 
 import os as os_module
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -33,7 +34,9 @@ class FakeDebugger:
     """Minimal debugger mock for testing."""
 
     def __init__(self) -> None:
-        self.frame_id_to_frame: dict[int, FakeFrame] = {}
+        self.thread_tracker = SimpleNamespace(
+            frame_id_to_frame={},
+        )
 
 
 def labels_from_targets(targets: Sequence[Any]) -> list[str]:
@@ -242,7 +245,7 @@ class TestCompletionsAPI:
 
     def test_completions_with_frame(self) -> None:
         frame = FakeFrame(locals_={"my_var": 42})
-        self.fake.frame_id_to_frame[1] = frame
+        self.fake.thread_tracker.frame_id_to_frame[1] = frame
 
         result = self.ip.completions("my_", column=4, frame_id=1)
 
@@ -259,7 +262,7 @@ class TestCompletionsAPI:
 
     def test_completions_multiline_text(self) -> None:
         frame = FakeFrame(locals_={"x": 1, "y": 2})
-        self.fake.frame_id_to_frame[1] = frame
+        self.fake.thread_tracker.frame_id_to_frame[1] = frame
 
         # Multi-line text, cursor on line 2
         text = "line1\nx"
@@ -270,7 +273,7 @@ class TestCompletionsAPI:
 
     def test_completions_empty_prefix(self) -> None:
         frame = FakeFrame(locals_={"a": 1, "b": 2})
-        self.fake.frame_id_to_frame[1] = frame
+        self.fake.thread_tracker.frame_id_to_frame[1] = frame
 
         result = self.ip.completions("", column=1, frame_id=1)
 

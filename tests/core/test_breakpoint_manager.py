@@ -315,31 +315,31 @@ class TestDebuggerBDBIntegration:
     def test_compatibility_properties_line_meta(self):
         """Test that breakpoint_meta property works."""
         dbg = DebuggerBDB()
-        dbg.breakpoint_meta[("/test.py", 10)] = {"hit": 0}
+        dbg.bp_manager.line_meta[("/test.py", 10)] = {"hit": 0}
 
-        assert dbg._bp_manager.line_meta[("/test.py", 10)]["hit"] == 0
+        assert dbg.bp_manager.line_meta[("/test.py", 10)]["hit"] == 0
 
     def test_compatibility_properties_function_breakpoints(self):
-        """Test that function_breakpoints property works."""
+        """Test that function breakpoints work through delegate."""
         dbg = DebuggerBDB()
-        dbg.function_breakpoints = ["main", "helper"]
+        dbg.bp_manager.function_names = ["main", "helper"]
 
-        assert "main" in dbg._bp_manager.function_names
-        assert "helper" in dbg._bp_manager.function_names
+        assert "main" in dbg.bp_manager.function_names
+        assert "helper" in dbg.bp_manager.function_names
 
     def test_compatibility_properties_function_meta(self):
-        """Test that function_breakpoint_meta property works."""
+        """Test that function_breakpoint_meta works through delegate."""
         dbg = DebuggerBDB()
-        dbg.function_breakpoint_meta["main"] = {"condition": "x > 0"}
+        dbg.bp_manager.function_meta["main"] = {"condition": "x > 0"}
 
-        assert dbg._bp_manager.function_meta["main"]["condition"] == "x > 0"
+        assert dbg.bp_manager.function_meta["main"]["condition"] == "x > 0"
 
     def test_compatibility_properties_custom_breakpoints(self):
         """Test that custom_breakpoints property works."""
         dbg = DebuggerBDB()
-        dbg.custom_breakpoints["/test.py"] = {10: None}
+        dbg.bp_manager.custom["/test.py"] = {10: None}
 
-        assert dbg._bp_manager.custom["/test.py"][10] is None
+        assert dbg.bp_manager.custom["/test.py"][10] is None
 
     def test_record_breakpoint_method(self):
         """Test that record_breakpoint method works."""
@@ -352,7 +352,7 @@ class TestDebuggerBDBIntegration:
             log_message="Value: {x}",
         )
 
-        meta = dbg.breakpoint_meta.get(("/test.py", 10))
+        meta = dbg.bp_manager.line_meta.get(("/test.py", 10))
         assert meta is not None
         assert meta["condition"] == "x > 5"
         assert meta["hitCondition"] == ">= 3"
@@ -367,17 +367,17 @@ class TestDebuggerBDBIntegration:
 
         dbg.clear_break_meta_for_file("/a.py")
 
-        assert ("/a.py", 10) not in dbg.breakpoint_meta
-        assert ("/a.py", 20) not in dbg.breakpoint_meta
-        assert ("/b.py", 30) in dbg.breakpoint_meta
+        assert ("/a.py", 10) not in dbg.bp_manager.line_meta
+        assert ("/a.py", 20) not in dbg.bp_manager.line_meta
+        assert ("/b.py", 30) in dbg.bp_manager.line_meta
 
     def test_set_custom_breakpoint_method(self):
         """Test that set_custom_breakpoint method works."""
         dbg = DebuggerBDB()
         dbg.set_custom_breakpoint("/test.py", 10, condition="x > 0")
 
-        assert "/test.py" in dbg.custom_breakpoints
-        assert 10 in dbg.custom_breakpoints["/test.py"]
+        assert "/test.py" in dbg.bp_manager.custom
+        assert 10 in dbg.bp_manager.custom["/test.py"]
 
     def test_clear_custom_breakpoint_method(self):
         """Test that clear_custom_breakpoint method works."""
@@ -385,7 +385,7 @@ class TestDebuggerBDBIntegration:
         dbg.set_custom_breakpoint("/test.py", 10)
         dbg.clear_custom_breakpoint("/test.py", 10)
 
-        assert "/test.py" not in dbg.custom_breakpoints or 10 not in dbg.custom_breakpoints.get(
+        assert "/test.py" not in dbg.bp_manager.custom or 10 not in dbg.bp_manager.custom.get(
             "/test.py", {}
         )
 
@@ -397,15 +397,15 @@ class TestDebuggerBDBIntegration:
 
         dbg.clear_all_custom_breakpoints()
 
-        assert len(dbg.custom_breakpoints) == 0
+        assert len(dbg.bp_manager.custom) == 0
 
     def test_clear_all_function_breakpoints_method(self):
         """Test that clear_all_function_breakpoints method works."""
         dbg = DebuggerBDB()
-        dbg.function_breakpoints = ["main"]
-        dbg.function_breakpoint_meta["main"] = {"condition": "x"}
+        dbg.bp_manager.function_names = ["main"]
+        dbg.bp_manager.function_meta["main"] = {"condition": "x"}
 
         dbg.clear_all_function_breakpoints()
 
-        assert len(dbg.function_breakpoints) == 0
-        assert len(dbg.function_breakpoint_meta) == 0
+        assert len(dbg.bp_manager.function_names) == 0
+        assert len(dbg.bp_manager.function_meta) == 0

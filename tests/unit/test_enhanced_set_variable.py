@@ -27,9 +27,9 @@ class TestEnhancedSetVariable(unittest.TestCase):
         """Set up test fixtures"""
         # Create mock debugger
         self.mock_debugger = Mock()
-        self.mock_debugger.var_refs = {}
-        self.mock_debugger.frame_id_to_frame = {}
-        self.mock_debugger.next_var_ref = 1000
+        self.mock_debugger.var_manager.var_refs = {}
+        self.mock_debugger.thread_tracker.frame_id_to_frame = {}
+        self.mock_debugger.var_manager.next_var_ref = 1000
 
         # Mock frame
         self.mock_frame = Mock()
@@ -135,7 +135,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         # Set up object reference
         test_dict = {"key": "value"}
         var_ref = 2001
-        self.mock_debugger.var_refs[var_ref] = ("object", test_dict)
+        self.mock_debugger.var_manager.var_refs[var_ref] = ("object", test_dict)
 
         arguments = {
             "variablesReference": var_ref,
@@ -157,8 +157,8 @@ class TestEnhancedSetVariable(unittest.TestCase):
         frame_id = 1
         var_ref = 1001
         self.mock_frame.f_locals = {"a": 5, "b": 10}
-        self.mock_debugger.var_refs[var_ref] = (frame_id, "locals")
-        self.mock_debugger.frame_id_to_frame[frame_id] = self.mock_frame
+        self.mock_debugger.var_manager.var_refs[var_ref] = (frame_id, "locals")
+        self.mock_debugger.thread_tracker.frame_id_to_frame[frame_id] = self.mock_frame
 
         result = _set_scope_variable(self.mock_frame, "locals", "result", "a * b")
 

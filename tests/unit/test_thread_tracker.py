@@ -327,33 +327,33 @@ class TestIntegrationWithDebuggerBDB:
     def test_debugger_uses_thread_tracker(self):
         """Test that DebuggerBDB uses ThreadTracker internally."""
         dbg = DebuggerBDB()
-        assert hasattr(dbg, "_thread_tracker")
-        assert isinstance(dbg._thread_tracker, ThreadTracker)
+        assert hasattr(dbg, "thread_tracker")
+        assert isinstance(dbg.thread_tracker, ThreadTracker)
 
     def test_compatibility_properties(self):
-        """Test that compatibility properties work."""
+        """Test that delegate access works."""
         dbg = DebuggerBDB()
 
         # Test threads
-        dbg.threads[123] = "Test"
-        assert dbg._thread_tracker.threads[123] == "Test"
+        dbg.thread_tracker.threads[123] = "Test"
+        assert dbg.thread_tracker.threads[123] == "Test"
 
         # Test stopped_thread_ids
-        dbg.stopped_thread_ids.add(456)
-        assert 456 in dbg._thread_tracker.stopped_thread_ids
+        dbg.thread_tracker.stopped_thread_ids.add(456)
+        assert 456 in dbg.thread_tracker.stopped_thread_ids
 
         # Test frames_by_thread
-        dbg.frames_by_thread[123] = [{"id": 1}]
-        assert dbg._thread_tracker.frames_by_thread[123] == [{"id": 1}]
+        dbg.thread_tracker.frames_by_thread[123] = [{"id": 1}]
+        assert dbg.thread_tracker.frames_by_thread[123] == [{"id": 1}]
 
-        # Test next_frame_id
-        dbg.next_frame_id = 10
-        assert dbg._thread_tracker.next_frame_id == 10
+        # Test next_frame_id (use delegate directly - proxy was removed)
+        dbg.thread_tracker.next_frame_id = 10
+        assert dbg.thread_tracker.next_frame_id == 10
 
         # Test frame_id_to_frame
         mock_frame = object()
-        dbg.frame_id_to_frame[1] = mock_frame
-        assert dbg._thread_tracker.frame_id_to_frame[1] is mock_frame
+        dbg.thread_tracker.frame_id_to_frame[1] = mock_frame
+        assert dbg.thread_tracker.frame_id_to_frame[1] is mock_frame
 
     def test_get_stack_frames_uses_tracker(self):
         """Test that _get_stack_frames uses the thread tracker."""
@@ -369,4 +369,4 @@ class TestIntegrationWithDebuggerBDB:
         assert stack_frames[0]["name"] == "test_func"
         assert stack_frames[0]["line"] == 42
         # Verify frame was registered
-        assert dbg.frame_id_to_frame[stack_frames[0]["id"]] is frame
+        assert dbg.thread_tracker.frame_id_to_frame[stack_frames[0]["id"]] is frame

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 from typing import Callable
-from typing import ClassVar
 from typing import Literal
 from typing import Protocol
 from typing import TypedDict
@@ -52,8 +51,19 @@ class ExceptionInfo(TypedDict):
 
 @runtime_checkable
 class DebuggerLike(Protocol):
-    # Common attributes consumed by handlers/launcher/tests
-    next_var_ref: int
+    # --------------- Delegate objects ---------------
+    # Production callers (command_handlers, debug_shared) access state
+    # through these delegate objects rather than via flat attributes.
+    stepping_controller: Any  # SteppingController
+    exception_handler: Any  # ExceptionHandler
+    var_manager: Any  # VariableManager
+    thread_tracker: Any  # ThreadTracker
+    data_bp_state: Any  # DataBreakpointState
+    bp_manager: Any  # BreakpointManager
+
+    # --------------- Flat attributes ---------------
+    # These remain on the protocol because some implementations (e.g.
+    # PyDebugger in server.py) use them directly without delegates.
     # Variable reference bookkeeping can store several shapes:
     # - ("object", value) for allocated object references
     # - (frame_id, "locals"|"globals") for scope-backed refs
@@ -153,9 +163,6 @@ class DebuggerLike(Protocol):
     # Optional methods for frame evaluation
     def user_line(self, frame: Any) -> Any | None: ...
     def set_trace(self, frame: Any = None) -> None: ...
-
-    # Optional attributes for frame evaluation
-    custom_breakpoints: ClassVar[dict[str, Any]]
 
     # Private attributes used by the integration (optional)
     _frame_eval_enabled: bool

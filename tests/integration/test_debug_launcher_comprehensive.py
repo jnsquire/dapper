@@ -13,6 +13,8 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
+from unittest.mock import MagicMock
+from unittest.mock import PropertyMock
 
 import pytest
 
@@ -311,34 +313,16 @@ def test_handle_set_exception_breakpoints_exception_handling():
     # Create a debugger that will fail when setting exception flags
     class FailingDebugger(DummyDebugger):
         def __init__(self, *args, **kwargs):
-            # Set a flag to track initialization
-            self._initialized = False
-            # Initialize the parent class first
             super().__init__(*args, **kwargs)
-            # Now set up our internal state for the exception flags
-            self._exception_breakpoints_raised = False
-            self._exception_breakpoints_uncaught = False
-            # Mark initialization as complete
-            self._initialized = True
+            # Replace exception_handler.config with a mock that raises on set
+            mock_config = MagicMock()
 
-        def __setattr__(self, name, value):
-            # Allow setting attributes during initialization
-            if not getattr(self, "_initialized", False):
-                return object.__setattr__(self, name, value)
-
-            # Intercept attribute setting for exception breakpoint flags
-            if name in ("exception_breakpoints_raised", "exception_breakpoints_uncaught"):
-                # Store the value in the internal attribute
-                object.__setattr__(self, f"_{name}", value)
-                # But still raise an error to simulate the failure
+            def raise_on_set(_):
                 raise AttributeError("Cannot set attribute")
-            return object.__setattr__(self, name, value)
 
-        def __getattribute__(self, name):
-            # Provide access to the internal values for our exception flags
-            if name in ("exception_breakpoints_raised", "exception_breakpoints_uncaught"):
-                return object.__getattribute__(self, f"_{name}")
-            return object.__getattribute__(self, name)
+            type(mock_config).break_on_raised = PropertyMock(side_effect=raise_on_set)
+            type(mock_config).break_on_uncaught = PropertyMock(side_effect=raise_on_set)
+            self.exception_handler.config = mock_config
 
     failing_dbg = FailingDebugger()
     s.debugger = failing_dbg

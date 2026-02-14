@@ -188,11 +188,7 @@ def _get_thread_ident() -> int:
 def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
     """Ensure the debugger reports a stepping state."""
     try:
-        dbg.stepping = True
-    except Exception:
-        pass
-    try:
-        object.__setattr__(dbg, "stepping", True)
+        dbg.stepping_controller.stepping = True
     except Exception:
         pass
 
@@ -275,7 +271,7 @@ def _resolve_variables_for_reference(dbg: DebuggerLike | None, frame_info: Any) 
     if isinstance(kind, int) and payload in ("locals", "globals"):
         frame_id = kind
         scope = payload
-        frame = getattr(dbg, "frame_id_to_frame", {}).get(frame_id)
+        frame = getattr(dbg.thread_tracker, "frame_id_to_frame", {}).get(frame_id)
         if not frame:
             return []
 
@@ -583,9 +579,9 @@ def _handle_set_function_breakpoints_impl(
             hit_condition = bp.get("hitCondition")
             log_message = bp.get("logMessage")
 
-            dbg.function_breakpoints.append(name)
+            dbg.bp_manager.function_names.append(name)
             try:
-                fbm = dbg.function_breakpoint_meta
+                fbm = dbg.bp_manager.function_meta
             except AttributeError:
                 fbm = None
             if isinstance(fbm, dict):
@@ -597,7 +593,7 @@ def _handle_set_function_breakpoints_impl(
                 fbm[name] = mb
 
         results: list[dict[str, Any]] = []
-        fb_list = getattr(dbg, "function_breakpoints", [])
+        fb_list = getattr(dbg.bp_manager, "function_names", [])
         for bp in bps:
             name = bp.get("name")
             verified = False
@@ -629,8 +625,8 @@ def _handle_set_exception_breakpoints_impl(
 
     verified_all: bool = True
     try:
-        dbg.exception_breakpoints_raised = "raised" in filters
-        dbg.exception_breakpoints_uncaught = "uncaught" in filters
+        dbg.exception_handler.config.break_on_raised = "raised" in filters
+        dbg.exception_handler.config.break_on_uncaught = "uncaught" in filters
     except (AttributeError, TypeError, ValueError):
         verified_all = False
 
@@ -644,9 +640,9 @@ def _handle_continue_impl(dbg: DebuggerLike, arguments: ContinueArguments | dict
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
-    if dbg and thread_id in dbg.stopped_thread_ids:
-        dbg.stopped_thread_ids.remove(thread_id)
-        if not dbg.stopped_thread_ids:
+    if dbg and thread_id in dbg.thread_tracker.stopped_thread_ids:
+        dbg.thread_tracker.stopped_thread_ids.remove(thread_id)
+        if not dbg.thread_tracker.stopped_thread_ids:
             dbg.set_continue()
 
 
@@ -657,8 +653,8 @@ def _handle_next_impl(dbg: DebuggerLike, arguments: NextArguments | dict[str, An
 
     if dbg and thread_id == _get_thread_ident():
         _set_dbg_stepping_flag(dbg)
-        if dbg.current_frame is not None:
-            dbg.set_next(dbg.current_frame)
+        if dbg.stepping_controller.current_frame is not None:
+            dbg.set_next(dbg.stepping_controller.current_frame)
 
 
 def _handle_step_in_impl(dbg: DebuggerLike, arguments: StepInArguments | dict[str, Any] | None):
@@ -678,8 +674,8 @@ def _handle_step_out_impl(dbg: DebuggerLike, arguments: StepOutArguments | dict[
 
     if dbg and thread_id == _get_thread_ident():
         _set_dbg_stepping_flag(dbg)
-        if dbg.current_frame is not None:
-            dbg.set_return(dbg.current_frame)
+        if dbg.stepping_controller.current_frame is not None:
+            dbg.set_return(dbg.stepping_controller.current_frame)
 
 
 def _handle_pause_impl(_dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None):
@@ -702,11 +698,11 @@ def _handle_stack_trace_impl(
     frames = None
     if (
         dbg
-        and hasattr(dbg, "frames_by_thread")
+        and hasattr(dbg, "thread_tracker")
         and isinstance(thread_id, int)
-        and thread_id in getattr(dbg, "frames_by_thread", {})
+        and thread_id in getattr(dbg.thread_tracker, "frames_by_thread", {})
     ):
-        frames = dbg.frames_by_thread[thread_id]
+        frames = dbg.thread_tracker.frames_by_thread[thread_id]
     else:
         if dbg:
             stack = getattr(dbg, "stack", None)
@@ -750,8 +746,8 @@ def _handle_stack_trace_impl(
 def _handle_threads_impl(dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
     """Handle threads command implementation."""
     threads = []
-    if dbg and getattr(dbg, "threads", None):
-        for tid, t in dbg.threads.items():
+    if dbg and getattr(dbg.thread_tracker, "threads", None):
+        for tid, t in dbg.thread_tracker.threads.items():
             name = t if isinstance(t, str) else getattr(t, "name", f"Thread-{tid}")
             threads.append({"id": tid, "name": name})
 
@@ -768,8 +764,8 @@ def _handle_scopes_impl(dbg: DebuggerLike, arguments: ScopesArguments | dict[str
     scopes = []
     if frame_id is not None:
         frame = None
-        if dbg and getattr(dbg, "frame_id_to_frame", None):
-            frame = dbg.frame_id_to_frame.get(frame_id)
+        if dbg and getattr(dbg.thread_tracker, "frame_id_to_frame", None):
+            frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
         elif dbg and getattr(dbg, "stack", None):
             try:
                 stack = getattr(dbg, "stack", None)
@@ -809,14 +805,14 @@ def _handle_variables_impl(
     if not (
         dbg
         and isinstance(variables_reference, int)
-        and variables_reference in getattr(dbg, "var_refs", {})
+        and variables_reference in getattr(dbg.var_manager, "var_refs", {})
     ):
         _safe_send_debug_message(
             "variables", variablesReference=variables_reference, variables=variables
         )
         return None
 
-    frame_info = dbg.var_refs[variables_reference]
+    frame_info = dbg.var_manager.var_refs[variables_reference]
     variables = _resolve_variables_for_reference(dbg, frame_info)
 
     _safe_send_debug_message(
@@ -838,10 +834,10 @@ def _handle_set_variable_impl(
     if not (dbg and isinstance(variables_reference, int) and name and value is not None):
         return _error_response("Invalid arguments")
 
-    if variables_reference not in getattr(dbg, "var_refs", {}):
+    if variables_reference not in getattr(dbg.var_manager, "var_refs", {}):
         return _error_response("Invalid variable reference")
 
-    frame_info = dbg.var_refs[variables_reference]
+    frame_info = dbg.var_manager.var_refs[variables_reference]
 
     try:
         if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
@@ -855,7 +851,7 @@ def _handle_set_variable_impl(
                 assert isinstance(first, int)
                 frame_id: int = first
                 scope: str = second
-                frame = getattr(dbg, "frame_id_to_frame", {}).get(frame_id)
+                frame = getattr(dbg.thread_tracker, "frame_id_to_frame", {}).get(frame_id)
                 if frame:
                     return _set_scope_variable(frame, scope, name, value)
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -885,9 +881,9 @@ def _handle_evaluate_impl(dbg: DebuggerLike, arguments: EvaluateArguments | dict
                     result = repr(value)
                 except Exception as e:
                     result = _format_evaluation_error(e)
-            elif hasattr(dbg, "current_frame") and dbg.current_frame:
+            elif hasattr(dbg, "stepping_controller") and dbg.stepping_controller.current_frame:
                 try:
-                    value = evaluate_with_policy(expression, dbg.current_frame)
+                    value = evaluate_with_policy(expression, dbg.stepping_controller.current_frame)
                     result = repr(value)
                 except Exception as e:
                     result = _format_evaluation_error(e)
@@ -1370,12 +1366,12 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
     if not dbg:
         _safe_send_debug_message("error", message="Debugger not initialized")
         return
-    if thread_id not in dbg.current_exception_info:
+    if thread_id not in dbg.exception_handler.exception_info_by_thread:
         _safe_send_debug_message(
             "error", message=f"No exception info available for thread {thread_id}"
         )
         return
-    exception_info = dbg.current_exception_info[thread_id]
+    exception_info = dbg.exception_handler.exception_info_by_thread[thread_id]
     _safe_send_debug_message(
         "exceptionInfo",
         exceptionId=exception_info["exceptionId"],

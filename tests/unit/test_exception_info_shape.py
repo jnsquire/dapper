@@ -30,7 +30,7 @@ def _raise_and_capture() -> tuple[type[BaseException] | None, BaseException | No
 def test_user_exception_populates_exception_info_shape():
     dbg = DebuggerBDB()
     # Force immediate break-on-exception behavior
-    dbg.exception_breakpoints_raised = True
+    dbg.exception_handler.config.break_on_raised = True
 
     exc_type, exc_value, exc_tb = _raise_and_capture()
     assert exc_type is not None
@@ -43,15 +43,15 @@ def test_user_exception_populates_exception_info_shape():
 
     # Sanity: no info yet for current thread
     tid = threading.get_ident()
-    assert tid not in dbg.current_exception_info
+    assert tid not in dbg.exception_handler.exception_info_by_thread
 
     # Call the handler as the runtime would
     # Pass a concrete exc_info tuple (non-optional) to satisfy the signature
     dbg.user_exception(frame, (exc_type, exc_value, tb))
 
     # After handling, structured info should be present for current thread
-    assert tid in dbg.current_exception_info
-    info = dbg.current_exception_info[tid]
+    assert tid in dbg.exception_handler.exception_info_by_thread
+    info = dbg.exception_handler.exception_info_by_thread[tid]
 
     # Top-level keys
     assert isinstance(info, dict)

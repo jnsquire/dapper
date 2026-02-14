@@ -343,9 +343,9 @@ class InProcessBackend(BaseBackend):
             inproc_debugger = getattr(self._bridge, "_inproc", None)
             if inproc_debugger:
                 debugger = getattr(inproc_debugger, "debugger", None)
-                if debugger and hasattr(debugger, "current_exception_info"):
-                    # Use the public property to access exception info
-                    exception_info_map = debugger.current_exception_info
+                if debugger and hasattr(debugger, "exception_handler"):
+                    # Access exception info through the delegate directly
+                    exception_info_map = debugger.exception_handler.exception_info_by_thread
                     exception_info = exception_info_map.get(thread_id)
                     if exception_info:
                         return {

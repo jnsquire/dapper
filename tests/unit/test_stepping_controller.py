@@ -197,39 +197,39 @@ class TestIntegrationWithDebuggerBDB:
     def test_debugger_uses_stepping_controller(self):
         """Test that DebuggerBDB uses SteppingController internally."""
         dbg = DebuggerBDB()
-        assert hasattr(dbg, "_stepping_controller")
-        assert isinstance(dbg._stepping_controller, SteppingController)
+        assert hasattr(dbg, "stepping_controller")
+        assert isinstance(dbg.stepping_controller, SteppingController)
 
     def test_stepping_compatibility_property(self):
-        """Test stepping compatibility property works."""
+        """Test stepping works through delegate."""
         dbg = DebuggerBDB()
 
-        dbg.stepping = True
-        assert dbg._stepping_controller.stepping is True
+        dbg.stepping_controller.stepping = True
+        assert dbg.stepping_controller.stepping is True
 
-        dbg._stepping_controller.stepping = False
-        assert dbg.stepping is False
+        dbg.stepping_controller.stepping = False
+        assert dbg.stepping_controller.stepping is False
 
     def test_stop_on_entry_compatibility_property(self):
-        """Test stop_on_entry compatibility property works."""
+        """Test stop_on_entry works through delegate."""
         dbg = DebuggerBDB()
 
-        dbg.stop_on_entry = True
-        assert dbg._stepping_controller.stop_on_entry is True
+        dbg.stepping_controller.stop_on_entry = True
+        assert dbg.stepping_controller.stop_on_entry is True
 
-        dbg._stepping_controller.stop_on_entry = False
-        assert dbg.stop_on_entry is False
+        dbg.stepping_controller.stop_on_entry = False
+        assert dbg.stepping_controller.stop_on_entry is False
 
     def test_current_frame_compatibility_property(self):
-        """Test current_frame compatibility property works."""
+        """Test current_frame works through delegate."""
         dbg = DebuggerBDB()
 
         frame = SimpleNamespace(f_lineno=42)
-        dbg.current_frame = frame
-        assert dbg._stepping_controller.current_frame is frame
+        dbg.stepping_controller.current_frame = frame
+        assert dbg.stepping_controller.current_frame is frame
 
-        dbg._stepping_controller.current_frame = None
-        assert dbg.current_frame is None
+        dbg.stepping_controller.current_frame = None
+        assert dbg.stepping_controller.current_frame is None
 
     def test_user_line_uses_controller(self):
         """Test that user_line uses the stepping controller."""
@@ -239,7 +239,7 @@ class TestIntegrationWithDebuggerBDB:
             messages.append((event, kwargs))
 
         dbg = DebuggerBDB(send_message=capture_message)
-        dbg.stepping = True
+        dbg.stepping_controller.stepping = True
 
         # Create mock frame
         code = SimpleNamespace(co_filename="test.py", co_name="test_func")
@@ -254,7 +254,7 @@ class TestIntegrationWithDebuggerBDB:
         assert kwargs["reason"] == "step"
 
         # Stepping should be consumed
-        assert dbg.stepping is False
+        assert dbg.stepping_controller.stepping is False
 
     def test_user_line_entry_reason(self):
         """Test that user_line reports 'entry' reason correctly."""
@@ -264,7 +264,7 @@ class TestIntegrationWithDebuggerBDB:
             messages.append((event, kwargs))
 
         dbg = DebuggerBDB(send_message=capture_message)
-        dbg.stop_on_entry = True
+        dbg.stepping_controller.stop_on_entry = True
 
         # Create mock frame
         code = SimpleNamespace(co_filename="test.py", co_name="test_func")
@@ -279,4 +279,4 @@ class TestIntegrationWithDebuggerBDB:
         assert kwargs["reason"] == "entry"
 
         # stop_on_entry should be consumed
-        assert dbg.stop_on_entry is False
+        assert dbg.stepping_controller.stop_on_entry is False

@@ -227,7 +227,7 @@ def configure_debugger(stop_on_entry: bool) -> DebuggerBDB:
         process_commands=state.process_queued_commands_launcher,
     )
     if stop_on_entry:
-        dbg.stop_on_entry = True
+        dbg.stepping_controller.stop_on_entry = True
     state.debugger = cast("Any", dbg)
     return dbg
 

@@ -391,9 +391,9 @@ def _allocate_var_ref(v: Any, debugger: DebuggerLike | None) -> int:
     if not (hasattr(v, "__dict__") or isinstance(v, (dict, list, tuple))):
         return 0
     try:
-        ref = debugger.next_var_ref
-        debugger.next_var_ref = ref + 1
-        debugger.var_refs[ref] = ("object", v)
+        ref = debugger.var_manager.next_var_ref
+        debugger.var_manager.next_var_ref = ref + 1
+        debugger.var_manager.var_refs[ref] = ("object", v)
     except Exception:
         return 0
     else:
@@ -440,22 +440,22 @@ def _detect_has_data_breakpoint(n: Any, debugger: DebuggerLike | None, fr: Any |
     found = False
 
     # DebuggerBDB style: data_watch_names (set/list) and data_watch_meta (dict)
-    dw_names = getattr(debugger, "data_watch_names", None)
+    dw_names = getattr(debugger.data_bp_state, "watch_names", None) if hasattr(debugger, "data_bp_state") else None
     if isinstance(dw_names, (set, list)) and name_str in dw_names:
         return True
-    dw_meta = getattr(debugger, "data_watch_meta", None)
+    dw_meta = getattr(debugger.data_bp_state, "watch_meta", None) if hasattr(debugger, "data_bp_state") else None
     if isinstance(dw_meta, dict) and name_str in dw_meta:
         return True
 
     # PyDebugger/server style: _data_watches dict with dataId-like keys
-    data_watches = getattr(debugger, "_data_watches", None)
+    data_watches = getattr(debugger.data_bp_state, "data_watches", None) if hasattr(debugger, "data_bp_state") else None
     if isinstance(data_watches, dict):
         for k in list(data_watches.keys()):
             if isinstance(k, str) and (f":var:{name_str}" in k or name_str in k):
                 return True
 
     # Frame-based mapping: _frame_watches (only check when frame supplied)
-    frame_watches = getattr(debugger, "_frame_watches", None)
+    frame_watches = getattr(debugger.data_bp_state, "frame_watches", None) if hasattr(debugger, "data_bp_state") else None
     if fr is not None and isinstance(frame_watches, dict):
         for data_ids in frame_watches.values():
             for did in data_ids:

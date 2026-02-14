@@ -8,11 +8,9 @@ from __future__ import annotations
 import logging
 import sys
 import types
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # 1. TCP connection warns on non-loopback binding
@@ -175,7 +173,7 @@ class TestEvalPolicyEnforcement:
 class TestModuleSourcePathValidation:
     """_handle_module_source validates paths before serving."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def handler(self):
         """Create a minimal request handler instance."""
         from dapper.adapter.request_handlers import RequestHandler
@@ -201,7 +199,7 @@ class TestModuleSourcePathValidation:
         h._make_response = make_response
         return h
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_rejects_non_python_file(self, handler, monkeypatch, tmp_path):
         """Requesting a module whose __file__ is not .py/.pyw is rejected."""
         # Create a fake .so file
@@ -220,7 +218,7 @@ class TestModuleSourcePathValidation:
         finally:
             monkeypatch.delitem(sys.modules, "fake_so_mod", raising=False)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_accepts_python_file(self, handler, monkeypatch, tmp_path):
         """Requesting a module whose __file__ is a .py file works."""
         fake_py = tmp_path / "good_module.py"
@@ -238,7 +236,7 @@ class TestModuleSourcePathValidation:
         finally:
             monkeypatch.delitem(sys.modules, "good_test_mod", raising=False)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_rejects_nonexistent_path(self, handler, monkeypatch):
         """Requesting a module whose __file__ doesn't exist is rejected."""
         fake_mod = types.ModuleType("ghost_mod")
@@ -253,7 +251,7 @@ class TestModuleSourcePathValidation:
         finally:
             monkeypatch.delitem(sys.modules, "ghost_mod", raising=False)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_rejects_symlink_to_sensitive_file(
         self, handler, monkeypatch, tmp_path
     ):

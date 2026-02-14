@@ -47,10 +47,15 @@ Generated from a full codebase review on 2026-02-14.
     updated all docs, README, and testing scripts to use `python -m dapper.adapter`
     for the adapter. Docstrings in `__init__.py` and `__main__.py` updated.
 
-- [ ] **Reduce compatibility property sprawl in `DebuggerBDB`**
+- [x] **Reduce compatibility property sprawl in `DebuggerBDB`**
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
   - 50+ lines of compatibility properties proxying attributes to delegates. Defeats the purpose of component extraction.
   - Fix: Update callers to access delegate objects directly.
+  - Done: Removed ~180 lines of proxy properties from DebuggerBDB. Updated all
+    production callers (`command_handlers.py`, `debug_shared.py`) and
+    `inprocess_debugger.py` to access delegates directly. Updated
+    `DebuggerLike` protocol with delegate object declarations. Updated all
+    test files to use delegate access patterns.
 
 ---
 

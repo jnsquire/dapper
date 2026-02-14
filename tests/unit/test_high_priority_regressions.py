@@ -262,7 +262,8 @@ class TestLifecycleAutoTransition:
     """operation_context auto-transitions from UNINITIALIZED to READY."""
 
     def test_operation_context_auto_transitions(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState, LifecycleManager
+        from dapper.adapter.lifecycle import BackendLifecycleState
+        from dapper.adapter.lifecycle import LifecycleManager
 
         async def _run():
             mgr = LifecycleManager("test")
@@ -278,7 +279,8 @@ class TestLifecycleAutoTransition:
         asyncio.run(_run())
 
     def test_operation_context_still_works_when_ready(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState, LifecycleManager
+        from dapper.adapter.lifecycle import BackendLifecycleState
+        from dapper.adapter.lifecycle import LifecycleManager
 
         async def _run():
             mgr = LifecycleManager("test")
@@ -294,7 +296,8 @@ class TestLifecycleAutoTransition:
         asyncio.run(_run())
 
     def test_operation_context_fails_from_terminated(self):
-        from dapper.adapter.lifecycle import BackendLifecycleState, LifecycleManager
+        from dapper.adapter.lifecycle import BackendLifecycleState
+        from dapper.adapter.lifecycle import LifecycleManager
 
         async def _run():
             mgr = LifecycleManager("test")
@@ -318,7 +321,8 @@ class TestTransportFactoryResourceRetention:
 
     def test_unix_connection_retains_socket(self, monkeypatch):
         """_create_unix_connection attaches the socket to the connection."""
-        from dapper.ipc.transport_factory import TransportConfig, TransportFactory
+        from dapper.ipc.transport_factory import TransportConfig
+        from dapper.ipc.transport_factory import TransportFactory
 
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)
@@ -334,7 +338,8 @@ class TestTransportFactoryResourceRetention:
 
     def test_tcp_connection_retains_socket(self, monkeypatch):
         """_create_tcp_connection attaches the socket to the connection."""
-        from dapper.ipc.transport_factory import TransportConfig, TransportFactory
+        from dapper.ipc.transport_factory import TransportConfig
+        from dapper.ipc.transport_factory import TransportFactory
 
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)

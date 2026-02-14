@@ -138,17 +138,17 @@ class InProcessDebugger:
                 log_message = bp.get("logMessage")
 
                 try:
-                    self.debugger.function_breakpoints.append(name)
+                    self.debugger.bp_manager.function_names.append(name)
                 except Exception:
                     # If attribute missing or wrong type, try to set fresh list
                     try:
-                        self.debugger.function_breakpoints = [name]  # type: ignore[attr-defined]
+                        self.debugger.bp_manager.function_names = [name]
                     except Exception:
                         pass
 
                 # The debugger is expected to expose a dict for
                 # function_breakpoint_meta; update it directly.
-                fbm = self.debugger.function_breakpoint_meta
+                fbm = self.debugger.bp_manager.function_meta
                 meta = fbm.get(name, {})
                 meta.setdefault("hit", 0)
                 meta["condition"] = condition
@@ -159,7 +159,7 @@ class InProcessDebugger:
             # Build per-breakpoint verification results by checking whether
             # the debugger's function_breakpoints list contains the name.
             results: list[FunctionBreakpoint] = []
-            fb_list = getattr(self.debugger, "function_breakpoints", [])
+            fb_list = self.debugger.bp_manager.function_names
             for bp in breakpoints:
                 name = bp.get("name")
                 verified = False
@@ -176,8 +176,8 @@ class InProcessDebugger:
             # Set boolean flags if present, fallback to dict otherwise
             verified_all = True
             try:
-                self.debugger.exception_breakpoints_raised = "raised" in filters
-                self.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+                self.debugger.exception_handler.config.break_on_raised = "raised" in filters
+                self.debugger.exception_handler.config.break_on_uncaught = "uncaught" in filters
             except Exception:
                 # If setting flags fails, mark all as unverified
                 verified_all = False
@@ -186,12 +186,12 @@ class InProcessDebugger:
     def continue_(self, thread_id: int) -> ContinueResponseBody:
         with self.command_lock:
             dbg = self.debugger
-            if thread_id in dbg.stopped_thread_ids:
+            if thread_id in dbg.thread_tracker.stopped_thread_ids:
                 try:
-                    dbg.stopped_thread_ids.remove(thread_id)
+                    dbg.thread_tracker.stopped_thread_ids.remove(thread_id)
                 except Exception:
                     pass
-            if not dbg.stopped_thread_ids:
+            if not dbg.thread_tracker.stopped_thread_ids:
                 dbg.set_continue()
             return cast("ContinueResponseBody", {"allThreadsContinued": True})
 
@@ -199,25 +199,25 @@ class InProcessDebugger:
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
-                dbg.stepping = True
-                if dbg.current_frame is not None:
-                    dbg.set_next(dbg.current_frame)
+                dbg.stepping_controller.stepping = True
+                if dbg.stepping_controller.current_frame is not None:
+                    dbg.set_next(dbg.stepping_controller.current_frame)
 
     def step_in(self, thread_id: int, target_id: int | None = None) -> None:  # noqa: ARG002
         # target_id is accepted for DAP compatibility but not yet implemented.
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
-                dbg.stepping = True
+                dbg.stepping_controller.stepping = True
                 dbg.set_step()
 
     def step_out(self, thread_id: int) -> None:
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
-                dbg.stepping = True
-                if dbg.current_frame is not None:
-                    dbg.set_return(dbg.current_frame)
+                dbg.stepping_controller.stepping = True
+                if dbg.stepping_controller.current_frame is not None:
+                    dbg.set_return(dbg.stepping_controller.current_frame)
 
     # Variables/Stack/Evaluate
     # These follow the launcher semantics, but return dicts directly.
@@ -226,10 +226,10 @@ class InProcessDebugger:
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> StackTraceResponseBody:
         dbg = self.debugger
-        if thread_id not in getattr(dbg, "frames_by_thread", {}):
+        if thread_id not in getattr(dbg, "thread_tracker", dbg).frames_by_thread:
             return cast("StackTraceResponseBody", {"stackFrames": [], "totalFrames": 0})
 
-        frames = dbg.frames_by_thread[thread_id]
+        frames = dbg.thread_tracker.frames_by_thread[thread_id]
         total_frames = len(frames)
         if levels > 0:
             end_frame = min(start_frame + levels, total_frames)
@@ -254,14 +254,14 @@ class InProcessDebugger:
     ) -> VariablesResponseBody:
         dbg = self.debugger
         var_ref = variables_reference
-        if var_ref not in dbg.var_refs:
+        if var_ref not in dbg.var_manager.var_refs:
             return {"variables": []}
 
-        frame_info = dbg.var_refs[var_ref]
+        frame_info = dbg.var_manager.var_refs[var_ref]
         # scope ref is a tuple of (frame_id, scope)
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = dbg.frame_id_to_frame.get(frame_id)
+            frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
             variables: list[Variable] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
@@ -278,16 +278,16 @@ class InProcessDebugger:
     ) -> SetVariableResponseBody | dict[str, Any]:
         dbg = self.debugger
         var_ref = variables_reference
-        if var_ref not in dbg.var_refs:
+        if var_ref not in dbg.var_manager.var_refs:
             return {
                 "success": False,
                 "message": f"Invalid variable reference: {var_ref}",
             }
 
-        frame_info = dbg.var_refs[var_ref]
+        frame_info = dbg.var_manager.var_refs[var_ref]
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = dbg.frame_id_to_frame.get(frame_id)
+            frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
             if not frame:
                 return {"success": False, "message": "Frame not found"}
             try:
@@ -309,7 +309,7 @@ class InProcessDebugger:
         self, expression: str, frame_id: int | None = None, _context: str | None = None
     ) -> EvaluateResponseBody:
         dbg = self.debugger
-        frame = dbg.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
         if not frame:
             return {
                 "result": f"<evaluation of '{expression}' not available>",
@@ -360,7 +360,7 @@ class InProcessDebugger:
 
         # Get frame context
         dbg = self.debugger
-        frame = dbg.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+        frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
 
         # Extract the relevant line and prefix
         lines = text.split("\n")

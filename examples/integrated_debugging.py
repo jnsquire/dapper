@@ -112,8 +112,9 @@ class IntegratedDebugger(DebuggerBDB):
 
     def clear_custom_breakpoint(self, filename: str, line: int):
         """Clear a specific breakpoint"""
-        if filename in self.custom_breakpoints and line in self.custom_breakpoints[filename]:
-            del self.custom_breakpoints[filename][line]
+        custom = self.bp_manager.custom
+        if filename in custom and line in custom[filename]:
+            del custom[filename][line]
             logger.info(f"Cleared breakpoint at {filename}:{line}")
 
             # Also clear from BDB
@@ -121,7 +122,7 @@ class IntegratedDebugger(DebuggerBDB):
 
     def clear_all_custom_breakpoints(self):
         """Clear all custom breakpoints"""
-        self.custom_breakpoints.clear()
+        self.bp_manager.custom.clear()
         logger.info("Cleared all custom breakpoints")
 
         # Also clear from BDB
@@ -184,12 +185,12 @@ class IntegratedDebugger(DebuggerBDB):
             return
 
         # Check if we're at a custom breakpoint
+        custom = self.bp_manager.custom
         if (
-            hasattr(self, "custom_breakpoints")
-            and filename in self.custom_breakpoints
-            and line in self.custom_breakpoints[filename]
+            filename in custom
+            and line in custom[filename]
         ):
-            condition = self.custom_breakpoints[filename][line]
+            condition = custom[filename][line]
             if condition:
                 # Evaluate the condition in the current frame
                 try:

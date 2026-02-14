@@ -7,10 +7,10 @@ and passes now. The test names reference the checklist item they cover.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import socket
 import tempfile
 import threading
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -33,7 +33,6 @@ from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.launcher_ipc import SocketConnector
 from tests.mocks import make_real_frame
-
 
 # ---------------------------------------------------------------------------
 # 1. Config manager — `global` declaration was missing
@@ -259,8 +258,8 @@ class TestHandleRegularBreakpointReturnValue:
             dbg.set_break(test_file, 4)
 
             # Make the resolver return STOP
-            dbg._breakpoint_resolver = MagicMock()
-            dbg._breakpoint_resolver.resolve.return_value = ResolveResult(
+            dbg.breakpoint_resolver = MagicMock()
+            dbg.breakpoint_resolver.resolve.return_value = ResolveResult(
                 action=ResolveAction.STOP
             )
 
@@ -294,8 +293,8 @@ class TestHandleRegularBreakpointReturnValue:
         try:
             dbg.set_break(test_file, 4)
 
-            dbg._breakpoint_resolver = MagicMock()
-            dbg._breakpoint_resolver.resolve.return_value = ResolveResult(
+            dbg.breakpoint_resolver = MagicMock()
+            dbg.breakpoint_resolver.resolve.return_value = ResolveResult(
                 action=ResolveAction.CONTINUE
             )
             dbg.set_continue = MagicMock()
@@ -358,7 +357,6 @@ class TestExternalBackendDispatchNoRecursion:
         async def spy_send(command: dict[str, Any], **kwargs: Any) -> None:
             send_calls.append(command)
             # Don't actually send — just record the call
-            return None
 
         backend._send_command = spy_send  # type: ignore[assignment]
 
@@ -398,7 +396,6 @@ class TestExternalBackendDispatchNoRecursion:
 
         async def spy_send(command: dict[str, Any], **kwargs: Any) -> None:
             send_calls.append(command)
-            return None
 
         backend._send_command = spy_send  # type: ignore[assignment]
 

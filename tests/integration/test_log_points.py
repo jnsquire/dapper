@@ -231,9 +231,9 @@ for i in range(10):
                 )
 
                 # Manually set the hit count in metadata
-                meta = self.debugger.breakpoint_meta.get((test_file, 3), {})
+                meta = self.debugger.bp_manager.line_meta.get((test_file, 3), {})
                 meta["hit"] = hit_count
-                self.debugger.breakpoint_meta[(test_file, 3)] = meta
+                self.debugger.bp_manager.line_meta[(test_file, 3)] = meta
 
                 self.debugger.user_line(frame)
 
@@ -291,8 +291,8 @@ class TestFunctionLogPoints(unittest.TestCase):
         """Test log points on function breakpoints"""
         # Set up function breakpoint with log message
         function_name = "test_function"
-        self.debugger.function_breakpoints = [function_name]
-        self.debugger.function_breakpoint_meta = {
+        self.debugger.bp_manager.function_names = [function_name]
+        self.debugger.bp_manager.function_meta = {
             function_name: {
                 "hit": 0,
                 "condition": None,

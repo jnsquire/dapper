@@ -14,7 +14,6 @@ import pytest
 
 # Import the module to test
 from dapper.launcher import debug_launcher as dl
-from dapper.protocol.debugger_protocol import DebuggerLike
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared.debug_shared import SessionState
@@ -95,7 +94,7 @@ class TestDebugLauncherBasic:
     def test_configure_debugger(self, mock_debugger_class: MagicMock) -> None:
         """Test debugger configuration."""
         # Setup
-        mock_debugger = MagicMock(spec=DebuggerLike)
+        mock_debugger = MagicMock()
         mock_debugger_class.return_value = mock_debugger
 
         # Save original state
@@ -127,7 +126,7 @@ class TestDebugLauncherBasic:
     def test_handle_initialize(self) -> None:
         """Test initialize command handling."""
         # Setup
-        dbg = MagicMock(spec=DebuggerLike)
+        dbg = MagicMock()
 
         # Execute with a request that includes a request ID
         request = {"type": "request", "command": "initialize", "seq": 1, "arguments": {}}
@@ -170,7 +169,7 @@ class TestBreakpointHandling:
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
         """Test setting breakpoints."""
         # Setup
-        dbg = MagicMock(spec=DebuggerLike)
+        dbg = MagicMock()
         dbg.set_break.return_value = True  # Simulate successful breakpoint set
 
         # Test data
@@ -228,12 +227,12 @@ class TestVariableHandling:
     def test_handle_variables(self, mock_send: MagicMock) -> None:
         """Test variable inspection."""
         # Setup
-        dbg = MagicMock(spec=DebuggerLike)
+        dbg = MagicMock()
         mock_frame = make_real_frame({"x": 42, "y": "test"})
 
         # Set up debugger mock
-        dbg.var_refs = {1: (0, "locals")}  # (frame_id, scope)
-        dbg.frame_id_to_frame = {0: mock_frame}
+        dbg.var_manager.var_refs = {1: (0, "locals")}  # (frame_id, scope)
+        dbg.thread_tracker.frame_id_to_frame = {0: mock_frame}
 
         # Mock make_variable_object to return a simple variable object
         def mock_make_var(
@@ -280,9 +279,9 @@ class TestExpressionEvaluation:
     def test_handle_evaluate(self, mock_send: MagicMock) -> None:
         """Test expression evaluation."""
         # Setup
-        dl.state.debugger = MagicMock(spec=DebuggerLike)
+        dl.state.debugger = MagicMock()
         mock_frame = make_real_frame({"x": 10, "y": 20})
-        dl.state.debugger.current_frame = mock_frame
+        dl.state.debugger.stepping_controller.current_frame = mock_frame
 
         # Test arguments
         args = {"expression": "x + y", "context": "watch"}
@@ -312,19 +311,19 @@ class TestControlFlow:
     def test_handle_continue(self) -> None:
         """Test continue command."""
         # Setup
-        mock_dbg = MagicMock(spec=DebuggerLike)
-        mock_dbg.stopped_thread_ids = {1}  # Simulate a stopped thread
+        mock_dbg = MagicMock()
+        mock_dbg.thread_tracker.stopped_thread_ids = {1}  # Simulate a stopped thread
 
         # Execute with matching thread ID
         handlers.handle_continue(mock_dbg, {"threadId": 1})
 
         # Verify thread was removed from stopped_thread_ids and set_continue was called
-        assert 1 not in mock_dbg.stopped_thread_ids
+        assert 1 not in mock_dbg.thread_tracker.stopped_thread_ids
         mock_dbg.set_continue.assert_called_once()
 
         # Test with non-matching thread ID
         mock_dbg.reset_mock()
-        mock_dbg.stopped_thread_ids = {2}  # Different thread ID
+        mock_dbg.thread_tracker.stopped_thread_ids = {2}  # Different thread ID
 
         handlers.handle_continue(mock_dbg, {"threadId": 1})
         mock_dbg.set_continue.assert_not_called()
@@ -332,9 +331,9 @@ class TestControlFlow:
     def test_handle_step_over(self) -> None:
         """Test step over command."""
         # Setup
-        mock_dbg = MagicMock(spec=DebuggerLike)
+        mock_dbg = MagicMock()
         mock_frame = make_real_frame({})
-        mock_dbg.current_frame = mock_frame
+        mock_dbg.stepping_controller.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
         with patch("dapper.shared.command_handlers.threading") as mock_threading:
@@ -344,7 +343,7 @@ class TestControlFlow:
             handlers.handle_next(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_next was called
-            assert mock_dbg.stepping is True
+            assert mock_dbg.stepping_controller.stepping is True
             mock_dbg.set_next.assert_called_once_with(mock_frame)
 
             # Test with non-matching thread ID
@@ -355,7 +354,7 @@ class TestControlFlow:
     def test_handle_step_in(self) -> None:
         """Test step into command."""
         # Setup
-        mock_dbg = MagicMock(spec=DebuggerLike)
+        mock_dbg = MagicMock()
 
         # Mock threading.get_ident to return a specific thread ID
         with patch("dapper.shared.command_handlers.threading") as mock_threading:
@@ -365,7 +364,7 @@ class TestControlFlow:
             handlers.handle_step_in(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_step was called
-            assert mock_dbg.stepping is True
+            assert mock_dbg.stepping_controller.stepping is True
             mock_dbg.set_step.assert_called_once()
 
             # Test with non-matching thread ID
@@ -376,9 +375,9 @@ class TestControlFlow:
     def test_handle_step_out(self) -> None:
         """Test step out command."""
         # Setup
-        mock_dbg = MagicMock(spec=DebuggerLike)
+        mock_dbg = MagicMock()
         mock_frame = make_real_frame({})
-        mock_dbg.current_frame = mock_frame
+        mock_dbg.stepping_controller.current_frame = mock_frame
 
         # Mock threading.get_ident to return a specific thread ID
         with patch("dapper.shared.command_handlers.threading") as mock_threading:
@@ -388,7 +387,7 @@ class TestControlFlow:
             handlers.handle_step_out(mock_dbg, {"threadId": 1})
 
             # Verify stepping was set and set_return was called
-            assert mock_dbg.stepping is True
+            assert mock_dbg.stepping_controller.stepping is True
             mock_dbg.set_return.assert_called_once_with(mock_frame)
 
             # Test with non-matching thread ID
@@ -412,8 +411,8 @@ class TestExceptionBreakpoints:
         assert body.get("breakpoints") == []
 
         # Verify debugger attributes were set to False for empty filters
-        assert mock_dbg.exception_breakpoints_raised is False
-        assert mock_dbg.exception_breakpoints_uncaught is False
+        assert mock_dbg.exception_handler.config.break_on_raised is False
+        assert mock_dbg.exception_handler.config.break_on_uncaught is False
 
     def test_handle_set_exception_breakpoints_raised(self):
         """Test with 'raised' filter."""
@@ -430,8 +429,8 @@ class TestExceptionBreakpoints:
         assert breakpoints[0]["verified"] is True
 
         # Verify debugger attributes were set correctly
-        assert mock_dbg.exception_breakpoints_raised is True
-        assert mock_dbg.exception_breakpoints_uncaught is False
+        assert mock_dbg.exception_handler.config.break_on_raised is True
+        assert mock_dbg.exception_handler.config.break_on_uncaught is False
 
     def test_handle_set_exception_breakpoints_uncaught(self):
         """Test with 'uncaught' filter."""
@@ -448,8 +447,8 @@ class TestExceptionBreakpoints:
         assert breakpoints[0]["verified"] is True
 
         # Verify debugger attributes were set correctly
-        assert mock_dbg.exception_breakpoints_raised is False
-        assert mock_dbg.exception_breakpoints_uncaught is True
+        assert mock_dbg.exception_handler.config.break_on_raised is False
+        assert mock_dbg.exception_handler.config.break_on_uncaught is True
 
     def test_handle_set_exception_breakpoints_both_filters(self):
         """Test with both 'raised' and 'uncaught' filters."""
@@ -468,8 +467,8 @@ class TestExceptionBreakpoints:
         assert all(bp["verified"] for bp in breakpoints)
 
         # Verify debugger attributes were set correctly
-        assert mock_dbg.exception_breakpoints_raised is True
-        assert mock_dbg.exception_breakpoints_uncaught is True
+        assert mock_dbg.exception_handler.config.break_on_raised is True
+        assert mock_dbg.exception_handler.config.break_on_uncaught is True
 
     def test_handle_set_exception_breakpoints_invalid_filters(self):
         """Test with invalid filter types."""
@@ -501,7 +500,9 @@ class TestExceptionBreakpoints:
             raise AttributeError("Test error")
 
         # Use side_effect to raise an exception when the attribute is set
-        type(mock_dbg).exception_breakpoints_raised = PropertyMock(side_effect=raise_on_set_raised)
+        mock_config = MagicMock()
+        mock_dbg.exception_handler.config = mock_config
+        type(mock_config).break_on_raised = PropertyMock(side_effect=raise_on_set_raised)
 
         # The debugger should still be called with the filter
         response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})

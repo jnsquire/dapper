@@ -260,25 +260,25 @@ class TestIntegrationWithDebuggerBDB:
     def test_debugger_uses_exception_handler(self):
         """Test that DebuggerBDB uses ExceptionHandler internally."""
         dbg = DebuggerBDB()
-        assert hasattr(dbg, "_exception_handler")
-        assert isinstance(dbg._exception_handler, ExceptionHandler)
+        assert hasattr(dbg, "exception_handler")
+        assert isinstance(dbg.exception_handler, ExceptionHandler)
 
     def test_compatibility_properties(self):
-        """Test that compatibility properties work."""
+        """Test that delegate access works."""
         dbg = DebuggerBDB()
 
         # Test exception_breakpoints_raised
-        dbg.exception_breakpoints_raised = True
-        assert dbg._exception_handler.config.break_on_raised is True
+        dbg.exception_handler.config.break_on_raised = True
+        assert dbg.exception_handler.config.break_on_raised is True
 
         # Test exception_breakpoints_uncaught
-        dbg.exception_breakpoints_uncaught = True
-        assert dbg._exception_handler.config.break_on_uncaught is True
+        dbg.exception_handler.config.break_on_uncaught = True
+        assert dbg.exception_handler.config.break_on_uncaught is True
 
         # Test current_exception_info (using type ignore for test dict)
         info = {"exceptionId": "Test"}  # type: ignore[typeddict-item]
-        dbg.current_exception_info[123] = info  # type: ignore[assignment]
-        assert dbg._exception_handler.exception_info_by_thread[123] == info
+        dbg.exception_handler.exception_info_by_thread[123] = info  # type: ignore[assignment]
+        assert dbg.exception_handler.exception_info_by_thread[123] == info
 
     def test_user_exception_uses_handler(self):
         """Test that user_exception uses the exception handler."""
@@ -288,7 +288,7 @@ class TestIntegrationWithDebuggerBDB:
             messages.append((event, kwargs))
 
         dbg = DebuggerBDB(send_message=capture_message)
-        dbg.exception_breakpoints_raised = True
+        dbg.exception_handler.config.break_on_raised = True
 
         # Create mock frame
         code = SimpleNamespace(co_filename="test.py", co_name="test_func")
