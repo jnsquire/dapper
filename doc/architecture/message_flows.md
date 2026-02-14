@@ -6,7 +6,7 @@ This document shows common DAP (Debug Adapter Protocol) message flows as Mermaid
 
 A typical "launch" where an editor (DAP client) requests the adapter to launch the debuggee and initializes a debug session.
 
-![Launch flow](images/launch.svg)
+![Launch flow](../reference/images/launch.svg)
 
 ```mermaid
 sequenceDiagram
@@ -32,7 +32,7 @@ sequenceDiagram
 
 When the adapter attaches to an existing process (attach mode).
 
-![Attach flow](images/attach.svg)
+![Attach flow](../reference/images/attach.svg)
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +56,7 @@ sequenceDiagram
 
 Illustrates setting a breakpoint then the debuggee hitting it and the client requesting a stack trace.
 
-![Breakpoint flow](images/breakpoint.svg)
+![Breakpoint flow](../reference/images/breakpoint.svg)
 
 ```mermaid
 sequenceDiagram
@@ -85,7 +85,7 @@ sequenceDiagram
 
 This diagram shows the full session lifecycle: initialization, launch/attach, configuration, event flow, inspection (threads/stack/scopes/variables), stepping and disconnect.
 
-![Session flow](images/session.svg)
+![Session flow](../reference/images/session.svg)
 
 ```mermaid
 sequenceDiagram

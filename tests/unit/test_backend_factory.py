@@ -44,6 +44,7 @@ class TestInProcessStrategy:
         strategy = InProcessStrategy()
         config = DapperConfig(mode="launch", in_process=True)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         def mock_on_stopped(event: dict) -> None:
             pass
@@ -71,6 +72,7 @@ class TestInProcessStrategy:
         assert backend.is_available() is True
 
         loop.close()
+        asyncio.set_event_loop(None)
 
     def test_create_backend_wrong_config(self) -> None:
         """Test backend creation with wrong configuration."""
@@ -107,6 +109,7 @@ class TestExternalProcessStrategy:
         strategy = ExternalProcessStrategy()
         config = DapperConfig(mode="launch", in_process=False)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         # Mock required dependencies
         mock_ipc = object()
@@ -131,6 +134,7 @@ class TestExternalProcessStrategy:
         assert backend.__class__.__name__ == "ExternalProcessBackend"
 
         loop.close()
+        asyncio.set_event_loop(None)
 
     def test_create_backend_missing_kwargs(self) -> None:
         """Test backend creation with missing required kwargs."""
@@ -209,6 +213,7 @@ class TestBackendFactory:
         factory = BackendFactory()
         config = DapperConfig(mode="launch", in_process=True)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         backend = factory.create_backend(config, loop)
 
@@ -216,12 +221,14 @@ class TestBackendFactory:
         assert backend.__class__.__name__ == "InProcessBackend"
 
         loop.close()
+        asyncio.set_event_loop(None)
 
     def test_create_backend_external(self) -> None:
         """Test creating external process backend."""
         factory = BackendFactory()
         config = DapperConfig(mode="launch", in_process=False)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         # Mock required dependencies
         mock_ipc = object()
@@ -246,6 +253,7 @@ class TestBackendFactory:
         assert backend.__class__.__name__ == "ExternalProcessBackend"
 
         loop.close()
+        asyncio.set_event_loop(None)
 
     def test_create_backend_no_strategy(self) -> None:
         """Test creating backend with no supporting strategy."""
@@ -311,6 +319,7 @@ class TestGlobalFunctions:
         """Test global create_backend function."""
         config = DapperConfig(mode="launch", in_process=True)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         backend = create_backend(config, loop)
 
@@ -318,6 +327,7 @@ class TestGlobalFunctions:
         assert backend.__class__.__name__ == "InProcessBackend"
 
         loop.close()
+        asyncio.set_event_loop(None)
 
     def test_register_backend_strategy_global(self) -> None:
         """Test global register_backend_strategy function."""
