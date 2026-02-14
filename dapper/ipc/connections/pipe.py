@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+from multiprocessing import connection as mp_conn
 import os
 from pathlib import Path
 import sys
@@ -34,6 +36,10 @@ class NamedPipeServerConnection(ConnectionBase):
         self.pipe_file: Any | None = None
         # Whether DBGP frames are exchanged in binary mode (header+payload)
         self.use_binary = False
+        # Windows named-pipe endpoints managed via multiprocessing.connection
+        self.listener: mp_conn.Listener | None = None
+        self.client: mp_conn.Connection | None = None
+        self._pipe_conn: mp_conn.Connection | None = None
 
     def _get_pipe_path(self, name: str) -> str:
         return rf"\\.\pipe\{name}" if sys.platform == "win32" else f"/tmp/{name}"
@@ -43,14 +49,15 @@ class NamedPipeServerConnection(ConnectionBase):
         self._awaiting_connection_event = asyncio.Event()
 
         if sys.platform == "win32":
-            # FIXME On Windows, named pipes work differently - we need to use the proactor event loop
-            # For now, we'll create a dummy server since the actual pipe handling is done differently
-            # The real Windows named pipe implementation would use overlapped I/O
-            logger.warning(
-                "Windows named pipe server creation not fully implemented - using fallback"
-            )
-            self.server = None
-            # Set up a mock connection state for compatibility
+            loop = asyncio.get_running_loop()
+
+            if self.client is not None:
+                self._pipe_conn = self.client
+            else:
+                if self.listener is None:
+                    self.listener = mp_conn.Listener(address=self.pipe_path, family="AF_PIPE")
+                self._pipe_conn = await loop.run_in_executor(None, self.listener.accept)
+
             self._is_connected = True
             if self._awaiting_connection_event:
                 self._awaiting_connection_event.set()
@@ -98,6 +105,21 @@ class NamedPipeServerConnection(ConnectionBase):
             self._awaiting_connection_event = None
 
     async def close(self) -> None:
+        if self._pipe_conn is not None:
+            with contextlib.suppress(Exception):
+                self._pipe_conn.close()
+            self._pipe_conn = None
+
+        if self.client is not None:
+            with contextlib.suppress(Exception):
+                self.client.close()
+            self.client = None
+
+        if self.listener is not None:
+            with contextlib.suppress(Exception):
+                self.listener.close()
+            self.listener = None
+
         if self.writer:
             self.writer.close()
             await self.writer.wait_closed()
@@ -118,7 +140,47 @@ class NamedPipeServerConnection(ConnectionBase):
         self._is_connected = False
         logger.info("Named pipe connection closed")
 
-    async def read_message(self) -> dict[str, Any] | None:
+    async def read_message(self) -> dict[str, Any] | None:  # noqa: PLR0911,PLR0912
+        if sys.platform == "win32" and self._pipe_conn is not None:
+            loop = asyncio.get_running_loop()
+
+            def _recv_for_dap() -> object | None:
+                try:
+                    return self._pipe_conn.recv_bytes()
+                except (EOFError, OSError):
+                    return None
+                except Exception:
+                    try:
+                        return self._pipe_conn.recv()
+                    except (EOFError, OSError):
+                        return None
+
+            incoming = await loop.run_in_executor(None, _recv_for_dap)
+            if incoming is None:
+                return None
+
+            if isinstance(incoming, dict):
+                return incoming
+
+            if isinstance(incoming, (bytes, bytearray)):
+                payload = bytes(incoming)
+            else:
+                payload = str(incoming).encode("utf-8")
+
+            if payload.startswith(b"Content-Length:"):
+                header_end = payload.find(b"\r\n\r\n")
+                if header_end != -1:
+                    content = payload[header_end + 4 :]
+                    if not content:
+                        return None
+                    message = json.loads(content.decode("utf-8"))
+                    traffic_logger.debug("Received message: %s", message)
+                    return message
+
+            message = json.loads(payload.decode("utf-8"))
+            traffic_logger.debug("Received message: %s", message)
+            return message
+
         if not self.reader:
             msg = "No active connection"
             raise RuntimeError(msg)
@@ -155,12 +217,55 @@ class NamedPipeServerConnection(ConnectionBase):
         traffic_logger.debug("Received message: %s", message)
         return message
 
-    async def read_dbgp_message(self) -> str | None:
+    async def read_dbgp_message(self) -> str | None:  # noqa: PLR0911,PLR0912
         """Read a DBGP-style message from the named pipe connection.
 
         For binary listeners, the pipe receives raw frames via the file-like
         interface; for text mode the implementation reads DBGP-prefixed strings.
         """
+        if sys.platform == "win32" and self._pipe_conn is not None:
+            loop = asyncio.get_running_loop()
+
+            def _recv_for_dbgp() -> object | None:
+                try:
+                    return self._pipe_conn.recv_bytes()
+                except (EOFError, OSError):
+                    return None
+                except Exception:
+                    try:
+                        return self._pipe_conn.recv()
+                    except (EOFError, OSError):
+                        return None
+
+            incoming = await loop.run_in_executor(None, _recv_for_dbgp)
+            if incoming is None:
+                return None
+
+            if isinstance(incoming, str):
+                text = incoming.strip()
+                return text[5:].strip() if text.startswith("DBGP:") else text
+
+            if isinstance(incoming, (bytes, bytearray)):
+                line = bytes(incoming)
+            else:
+                line = str(incoming).encode("utf-8")
+
+            if len(line) >= HEADER_SIZE and line[:2] == b"DP":
+                try:
+                    kind, length = unpack_header(line[:HEADER_SIZE])
+                    if kind in (1, 2):
+                        payload = line[HEADER_SIZE : HEADER_SIZE + length]
+                        return payload.decode("utf-8")
+                except Exception:
+                    pass
+
+            with contextlib.suppress(Exception):
+                decoded = line.decode("utf-8").strip()
+                if decoded.startswith("DBGP:"):
+                    return decoded[5:].strip()
+                return decoded
+            return None
+
         # For the pipe implementation we expose similar behaviour as the
         # TCP connection. The implementation varies by platform and internal
         # state; use the existing reader when available.
@@ -204,6 +309,15 @@ class NamedPipeServerConnection(ConnectionBase):
 
     async def write_dbgp_message(self, message: str) -> None:
         """Write a DBGP-style message (text line or binary framed) to client."""
+        if sys.platform == "win32" and self._pipe_conn is not None:
+            loop = asyncio.get_running_loop()
+            if self.use_binary:
+                payload = pack_frame(2, message.encode("utf-8"))
+                await loop.run_in_executor(None, self._pipe_conn.send_bytes, payload)
+            else:
+                await loop.run_in_executor(None, self._pipe_conn.send, f"DBGP: {message}")
+            return
+
         if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
             raise RuntimeError("No active connection")
 
@@ -231,6 +345,15 @@ class NamedPipeServerConnection(ConnectionBase):
 
     async def write_message(self, message: dict[str, Any]) -> None:
         """Write a DAP message to the named pipe connection."""
+        if sys.platform == "win32" and self._pipe_conn is not None:
+            loop = asyncio.get_running_loop()
+            content = json.dumps(message).encode("utf-8")
+            header = f"Content-Length: {len(content)}\r\n\r\n".encode()
+            payload = header + content
+            await loop.run_in_executor(None, self._pipe_conn.send_bytes, payload)
+            logger.debug("Sent message: %s", message)
+            return
+
         if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
             raise RuntimeError("No active connection")
 

@@ -145,7 +145,12 @@ def pytest_sessionfinish(session, exitstatus):
     # Mark args as used to satisfy linters (plugin requires specific arg names)
     del session, exitstatus
     # Allow the `run_tests` runner to suppress running JS tests inside pytest
-    if str(os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT", "0")).lower() in ("1", "true", "yes"):
+    skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFTEST")
+    if skip_in_conftest is None:
+        # Backward compatibility for historical typo.
+        skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT", "0")
+
+    if str(skip_in_conftest).lower() in ("1", "true", "yes"):
         return
     try:
         run_js_tests()

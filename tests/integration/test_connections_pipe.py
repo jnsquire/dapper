@@ -8,6 +8,8 @@ from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
 
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Non-Windows pipe tests")
+
 
 class DummyReader:
     def __init__(self, lines, content=b""):

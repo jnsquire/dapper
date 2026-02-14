@@ -358,25 +358,29 @@ class SelectiveTraceDispatcher:
         """
         with self._lock:
             self._dispatch_stats["total_calls"] += 1
+            trace_func = self.debugger_trace_func
 
-            # Quick check for debugger availability
-            if self.debugger_trace_func is None:
-                return None
+        # Quick check for debugger availability
+        if trace_func is None:
+            return None
 
-            # Handle None frame gracefully
-            if frame is None:
-                return None
+        # Handle None frame gracefully
+        if frame is None:
+            return None
 
-            # Analyze frame to determine if tracing is needed
-            decision = self.analyzer.should_trace_frame(frame)
+        # Analyze frame to determine if tracing is needed
+        decision = self.analyzer.should_trace_frame(frame)
 
-            if not decision["should_trace"]:
+        if not decision["should_trace"]:
+            with self._lock:
                 self._dispatch_stats["skipped_calls"] += 1
-                return None
+            return None
 
-            # Frame should be traced, call the actual debugger
+        # Frame should be traced, call the actual debugger.
+        # Keep lock scope narrow: callback may be slow/user-controlled.
+        with self._lock:
             self._dispatch_stats["dispatched_calls"] += 1
-            return self.debugger_trace_func(frame, event, arg)
+        return trace_func(frame, event, arg)
 
     def update_breakpoints(self, filename: str, breakpoints: Iterable[int]) -> None:
         """Update breakpoint information."""

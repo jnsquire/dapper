@@ -119,3 +119,49 @@ def test_connect_pipe_attaches_and_enables():
     finally:
         if listener:
             listener.close()
+
+
+def test_start_reader_concurrent_callers_create_single_thread(monkeypatch):
+    real_thread = threading.Thread
+
+    class BlockingFakeThread:
+        created = 0
+        started = 0
+        start_entered = threading.Event()
+        allow_start = threading.Event()
+
+        def __init__(self, _target=None, _args=(), _daemon=None, _name=None):
+            type(self).created += 1
+            self._alive = False
+
+        def is_alive(self):
+            return self._alive
+
+        def start(self):
+            type(self).started += 1
+            type(self).start_entered.set()
+            type(self).allow_start.wait(timeout=1.0)
+            self._alive = True
+
+    monkeypatch.setattr("dapper.ipc.ipc_context.threading.Thread", BlockingFakeThread)
+
+    ctx = IPCContext()
+
+    def _noop(_msg: str) -> None:
+        return None
+
+    caller1 = real_thread(target=ctx.start_reader, args=(_noop,))
+    caller1.start()
+
+    assert BlockingFakeThread.start_entered.wait(timeout=1.0)
+
+    caller2 = real_thread(target=ctx.start_reader, args=(_noop,))
+    caller2.start()
+
+    BlockingFakeThread.allow_start.set()
+
+    caller1.join(timeout=1.0)
+    caller2.join(timeout=1.0)
+
+    assert BlockingFakeThread.created == 1
+    assert BlockingFakeThread.started == 1

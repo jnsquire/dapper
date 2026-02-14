@@ -396,7 +396,7 @@ __dapper_breakpoint_wrapper_{line}()
             return 3
         return 1
 
-    def _rebuild_code_object(
+    def _rebuild_code_object(  # noqa: PLR0912
         self, original_code: CodeType, new_instructions: list[dis.Instruction]
     ) -> CodeType:
         """Rebuild a code object with new instructions."""
@@ -410,6 +410,18 @@ __dapper_breakpoint_wrapper_{line}()
                 else:
                     # Handle negative arguments
                     bytecode.extend((instr.arg & 0xFFFF).to_bytes(2, "little"))
+
+        # Prefer the stable replace() API (available since Python 3.8).
+        # This avoids constructor-signature drift across Python versions.
+        if hasattr(original_code, "replace"):
+            try:
+                return original_code.replace(
+                    co_code=bytes(bytecode),
+                    co_stacksize=original_code.co_stacksize + 2,
+                )
+            except Exception:
+                # Fall back to legacy constructor path for compatibility.
+                pass
 
         # Extract constants and names
         constants = list(original_code.co_consts)

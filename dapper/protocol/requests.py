@@ -11,8 +11,6 @@ from typing import Any
 from typing import Literal
 from typing import TypedDict
 
-from dapper.protocol.debugger_protocol import ExceptionDetails
-
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
 

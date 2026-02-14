@@ -10,9 +10,13 @@ from __future__ import annotations
 import linecache
 from pathlib import Path
 import sys
+import time
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
+
+# How long the module-file cache remains valid before refresh (seconds)
+_MODULE_FILE_CACHE_DEBOUNCE = 0.25
 
 if TYPE_CHECKING:
     from dapper.protocol.requests import Module
@@ -33,6 +37,9 @@ class LoadedSourceTracker:
             program_path: Path to the main program being debugged
         """
         self._program_path = program_path
+        self._module_file_cache: list[tuple[str, Path, str]] = []
+        self._module_file_cache_at = 0.0
+        self._module_file_cache_count = -1
 
     @property
     def program_path(self) -> str | None:
@@ -119,23 +126,45 @@ class LoadedSourceTracker:
         Yields:
             Tuples of (module_name, resolved_path, origin_string)
         """
-        # Iterate over a snapshot to avoid 'dictionary changed size during iteration'
-        # if imports occur while scanning.
-        for module_name, module in list(sys.modules.items()):
-            if module is None:
-                continue
+        now = time.monotonic()
+        current_count = len(sys.modules)
+        cache_is_fresh = (now - self._module_file_cache_at) < _MODULE_FILE_CACHE_DEBOUNCE
+        if cache_is_fresh and current_count == self._module_file_cache_count:
+            yield from self._module_file_cache
+            return
+
+        modules: list[tuple[str, Path, str]] = []
+
+        # Iterate without creating a full snapshot to reduce allocations.
+        # If imports mutate sys.modules mid-iteration, retry once.
+        for _attempt in range(2):
+            modules.clear()
             try:
-                module_file = getattr(module, "__file__", None)
-                if not module_file:
-                    continue
-                path = self.resolve_path(module_file)
-                if path is None or not self.is_python_source_file(path):
-                    continue
-                package = getattr(module, "__package__", None)
-                origin = f"module:{package or module_name}"
-                yield module_name, path, origin
-            except Exception:
+                for module_name, module in sys.modules.items():
+                    if module is None:
+                        continue
+                    try:
+                        module_file = getattr(module, "__file__", None)
+                        if not module_file:
+                            continue
+                        path = self.resolve_path(module_file)
+                        if path is None or not self.is_python_source_file(path):
+                            continue
+                        package = getattr(module, "__package__", None)
+                        origin = f"module:{package or module_name}"
+                        modules.append((module_name, path, origin))
+                    except Exception:
+                        continue
+            except RuntimeError:
+                # sys.modules changed size during iteration
                 continue
+            else:
+                break
+
+        self._module_file_cache = modules.copy()
+        self._module_file_cache_at = now
+        self._module_file_cache_count = len(sys.modules)
+        yield from self._module_file_cache
 
     # ------------------------------------------------------------------
     # Main introspection methods

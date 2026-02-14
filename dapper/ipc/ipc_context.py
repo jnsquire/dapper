@@ -51,6 +51,11 @@ class IPCContext:
 
     # Reader thread management
     _reader_thread: threading.Thread | None = field(default=None, repr=False)
+    _reader_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        repr=False,
+        compare=False,
+    )
 
     # ------------------------------
     # Runtime helpers migrated from PyDebugger
@@ -315,18 +320,19 @@ class IPCContext:
                    (used after launch). If False, read from an already-connected
                    transport (used after attach).
         """
-        if self._reader_thread is not None and self._reader_thread.is_alive():
-            logger.warning("Reader thread already running")
-            return
+        with self._reader_lock:
+            if self._reader_thread is not None and self._reader_thread.is_alive():
+                logger.warning("Reader thread already running")
+                return
 
-        target = self.run_accept_and_read if accept else self.run_attached_reader
-        self._reader_thread = threading.Thread(
-            target=target,
-            args=(handle_debug_message,),
-            daemon=True,
-            name="IPCReaderThread",
-        )
-        self._reader_thread.start()
+            target = self.run_accept_and_read if accept else self.run_attached_reader
+            self._reader_thread = threading.Thread(
+                target=target,
+                args=(handle_debug_message,),
+                daemon=True,
+                name="IPCReaderThread",
+            )
+            self._reader_thread.start()
 
     def create_listener(
         self,

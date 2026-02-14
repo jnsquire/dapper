@@ -49,20 +49,10 @@ Generated from a full codebase review on 2026-02-14.
   - `[k for k in self.line_meta if k[0] == path]` iterates all breakpoint metadata.
   - Fix: Use a nested `dict[str, dict[int, ...]]` keyed by path for O(1) lookup.
 
-- [ ] **`iter_python_module_files` snapshots all of `sys.modules`**
-  - File: `dapper/adapter/source_tracker.py` (~L125)
-  - Creates a full copy of `sys.modules` (potentially thousands of entries) on every call.
-  - Fix: Cache or debounce.
-
 - [ ] **Non-thread-safe protocol sequence counter**
   - File: `dapper/protocol/protocol.py` (~L57)
   - `ProtocolFactory.seq_counter` is a plain integer with no locking. Concurrent message creation produces duplicate sequence numbers.
   - Fix: Use `itertools.count()` or `threading.Lock`.
-
-- [ ] **RLock held during entire trace dispatch**
-  - File: `dapper/_frame_eval/selective_tracer.py` (~L360)
-  - The lock is held while calling `self.debugger_trace_func(frame, event, arg)`, which can be arbitrarily slow.
-  - Fix: Narrow the critical section to only protect shared state, not the trace callback itself.
 
 ---
 
@@ -80,21 +70,6 @@ Generated from a full codebase review on 2026-02-14.
   - Includes private attributes like `_data_watches`, `_frame_eval_enabled`, `_mock_user_line`. Nearly impossible to create test doubles.
   - Fix: Split into smaller sub-protocols. Remove private attributes from the public Protocol.
 
-- [ ] **`CodeType` constructor fragile across Python versions**
-  - File: `dapper/_frame_eval/modify_bytecode.py` (~L440)
-  - Manual `CodeType(...)` construction handles 3.8/3.10/3.11 but will break on 3.12+ which changed the constructor signature.
-  - Fix: Use `code.replace()` (available since 3.8) where possible.
-
-- [ ] **Shadowed `FrameEvalConfig` name**
-  - File: `dapper/_frame_eval/debugger_integration.py` (~L44)
-  - A local `class FrameEvalConfig(TypedDict)` shadows the imported `FrameEvalConfig` dataclass from `dapper._frame_eval.config`. Different shapes and types.
-  - Fix: Rename the local TypedDict (e.g., `FrameEvalConfigDict`).
-
-- [ ] **Duplicate import of `ExceptionDetails`**
-  - File: `dapper/protocol/requests.py` (~L15, ~L22)
-  - Imported both at runtime and inside `TYPE_CHECKING`, shadowing itself.
-  - Fix: Remove the runtime import if only used for type annotations, or remove the `TYPE_CHECKING` import.
-
 - [ ] **`_handle_pause_impl` is a no-op**
   - File: `dapper/shared/command_handlers.py` (~L682)
   - Reads `threadId` but does nothing. Pause is never actually implemented.
@@ -110,18 +85,10 @@ Generated from a full codebase review on 2026-02-14.
   - `__new__` returns the same instance forever. Tests can't clean up state between runs.
   - Fix: Add a `reset()` classmethod that reinitializes all mutable state.
 
-- [ ] **Typo: `DAPPER_SKIP_JS_TESTS_IN_CONFT` → `CONFTEST`**
-  - File: `dapper/utils/dev_tools.py` (~L87)
-
 - [ ] **`handle_restart` calls `os.execv` without cleanup**
   - File: `dapper/shared/command_handlers.py` (~L1296)
   - IPC handles, threads, and file descriptors all leak.
   - Fix: Perform cleanup before `exec`, or document the limitation.
-
-- [ ] **Race condition in `start_reader`**
-  - File: `dapper/ipc/ipc_context.py` (~L290)
-  - Checks `_reader_thread.is_alive()` then creates a new thread without locking. Two concurrent callers could both create threads.
-  - Fix: Add a lock around the check-and-create.
 
 - [ ] **Frame eval `types.py` stubs are runtime-callable but raise**
   - File: `dapper/_frame_eval/types.py`
@@ -151,24 +118,14 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 
 ---
 
-## Windows Support
-
-- [ ] **Named pipe support incomplete on Windows**
-  - File: `dapper/ipc/connections/pipe.py` (~L46)
-  - FIXME: `On Windows, named pipes work differently - we need to use the proactor event loop`. Code creates a mock connected state on Windows.
-  - Fix: Implement Windows named pipe support using the proactor event loop, or document the limitation.
-
----
-
 ## Summary
 
-| Category           | Total | Done | Remaining |
-|--------------------|-------|------|-----------|
-| Architecture       | 3     | 0    | 3         |
-| Performance        | 8     | 0    | 8         |
-| Code Quality       | 19    | 6    | 13        |
-| Test Coverage      | 5     | 0    | 5         |
-| Windows Support    | 1     | 0    | 1         |
-| **Total**          | **36**| **6**| **30**   |
+| Category           | Open Items |
+|--------------------|------------|
+| Architecture       | 3          |
+| Performance        | 6          |
+| Code Quality       | 8          |
+| Test Coverage      | 5          |
+| **Total**          | **22**     |
 
-**Next up:** Code quality improvements (13 items).
+**Next up:** Code quality improvements (8 items).

@@ -12,8 +12,20 @@ import runpy
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from types import ModuleType
 
+pytest: ModuleType | None = None
+
+try:
+    import pytest as _pytest  # noqa: PT013
+except ModuleNotFoundError:
+    pass
+else:
+    # populate module-level symbol for tests that monkeypatch `dev_tools.pytest`
+    pytest = _pytest
 
 
 class JSTestsFailedError(RuntimeError):
@@ -75,6 +87,15 @@ if __name__ == "__main__":
     update_docs()
 
 
+def _ensure_pytest_module() -> ModuleType:
+    # Prefer the module-level `pytest` if it was set during import; otherwise
+    # fail early — we keep imports at module-level to allow test-time
+    # monkeypatching of `dapper.utils.dev_tools.pytest`.
+    if pytest is not None:
+        return pytest
+    raise SystemExit("pytest is required to run tests; install dev dependencies")
+
+
 def run_tests(argv: list[str] | None = None) -> None:
     """Run pytest programmatically.
 
@@ -84,7 +105,7 @@ def run_tests(argv: list[str] | None = None) -> None:
     """
     # Run pytest with the current working directory as root
     # Prevent pytest conftest hook from running JS tests as run_tests will run them below
-    os.environ.setdefault("DAPPER_SKIP_JS_TESTS_IN_CONFT", "1")
+    os.environ.setdefault("DAPPER_SKIP_JS_TESTS_IN_CONFTEST", "1")
     if argv is None:
         argv = list(sys.argv[1:])
 
@@ -97,12 +118,9 @@ def run_tests(argv: list[str] | None = None) -> None:
         js_args = argv[sep + 1 :] if sep + 1 < len(argv) else []
         argv = argv[:sep]
 
-    try:
-        import pytest
-    except ModuleNotFoundError as exc:
-        raise SystemExit("pytest is required to run tests; install dev dependencies") from exc
+    pytest_module = _ensure_pytest_module()
 
-    rc = pytest.main(argv)
+    rc = pytest_module.main(argv)
     if rc != 0:
         raise SystemExit(rc)
     # Run JS tests after pytest completes

@@ -42,7 +42,7 @@ debugger_bdb_available = importlib.util.find_spec("dapper.core.debugger_bdb") is
 server_available = importlib.util.find_spec("dapper.adapter.server") is not None
 
 
-class FrameEvalConfig(TypedDict):
+class FrameEvalConfigDict(TypedDict):
     """Configuration for frame evaluation integration."""
 
     enabled: bool
@@ -53,10 +53,14 @@ class FrameEvalConfig(TypedDict):
     fallback_on_error: bool
 
 
+# Backward-compatibility alias for external imports/tests.
+FrameEvalConfig = FrameEvalConfigDict
+
+
 class IntegrationStatistics(TypedDict):
     """Statistics for frame evaluation integration."""
 
-    config: FrameEvalConfig
+    config: FrameEvalConfigDict
     integration_stats: dict[str, int]
     performance_data: dict[str, Any]
     trace_manager_stats: dict[str, Any]
@@ -72,7 +76,7 @@ class DebuggerFrameEvalBridge:
     """
 
     def __init__(self):
-        self.config: FrameEvalConfig = {
+        self.config: FrameEvalConfigDict = {
             "enabled": True,
             "selective_tracing": True,
             "bytecode_optimization": True,

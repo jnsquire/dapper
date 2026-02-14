@@ -15,6 +15,7 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 # Local application imports
+from dapper._frame_eval import modify_bytecode as modify_bytecode_mod
 from dapper._frame_eval.modify_bytecode import BytecodeModifier
 from dapper._frame_eval.modify_bytecode import clear_bytecode_cache
 from dapper._frame_eval.modify_bytecode import get_bytecode_info
@@ -256,6 +257,28 @@ def test_breakpoint_injection(
     )
     assert success
     assert modified_code is not None
+
+
+def test_rebuild_code_object_prefers_replace(
+    bytecode_modifier: BytecodeModifier,
+    original_code: types.CodeType,
+    monkeypatch,
+) -> None:
+    """Ensure modern runtimes use code.replace() instead of CodeType(...)."""
+    if not hasattr(original_code, "replace"):
+        pytest.skip("code.replace() unavailable on this Python runtime")
+
+    instructions = list(dis.get_instructions(original_code))
+    real_code_type = type(original_code)
+
+    def fail_if_called(*_args, **_kwargs):
+        msg = "Legacy CodeType constructor path should not be used when replace() exists"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", fail_if_called)
+
+    rebuilt = bytecode_modifier._rebuild_code_object(original_code, instructions)
+    assert isinstance(rebuilt, real_code_type)
 
 
 def test_optimization_toggle(
