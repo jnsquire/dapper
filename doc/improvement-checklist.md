@@ -5,7 +5,7 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Architecture
 
-- [ ] **Decompose `PyDebugger` god-class**
+- [x] **Decompose `PyDebugger` god-class** ✅
   - File: `dapper/adapter/server.py` — 1533 lines
   - ~30+ public methods handling launching, IPC, breakpoints, stack traces, variables, events, and shutdown.
   - Fix: Extract into focused managers (e.g., `LaunchManager`, `EventRouter`, `StateManager`, `BreakpointRouter`).
@@ -40,7 +40,18 @@ Generated from a full codebase review on 2026-02-14.
     - ✅ Extracted execution-control and termination lifecycle helpers into dedicated `_PyDebuggerExecutionManager` in `dapper/adapter/server.py` (`continue/step/pause`, thread listing, exception info, configuration-done, disconnect/terminate/restart, raw command send).
     - ✅ Reduced `PyDebugger` wrapper/alias surface by inlining direct manager/event-router delegation for event handling and pending-response resolution; retained minimal private compatibility alias for launch monkey-patching/tests.
     - ✅ Moved `DebugAdapterServer` to `dapper/adapter/server_core.py` and preserved import compatibility via re-export in `dapper/adapter/server.py`.
-    - 🔜 Next chunk: move manager classes (`_PyDebuggerEventRouter`, `_PyDebuggerLifecycleManager`, `_PyDebuggerStateManager`, `_PyDebuggerRuntimeManager`, `_PyDebuggerExecutionManager`) into `dapper/adapter/debugger/` modules.
+    - ✅ Moved manager classes into dedicated modules under `dapper/adapter/debugger/`:
+      - `event_router.py`: `_PyDebuggerEventRouter`
+      - `lifecycle.py`: `_PyDebuggerLifecycleManager`
+      - `state.py`: `_PyDebuggerStateManager`
+      - `runtime.py`: `_PyDebuggerRuntimeManager`
+      - `execution.py`: `_PyDebuggerExecutionManager`
+    - ✅ Introduced focused session façade in `dapper/adapter/debugger/session.py` (`_PyDebuggerSessionFacade`) and wired `PyDebugger` pending-command lifecycle through it (`_get_next_command_id`, pending-command map compatibility accessors, response resolution, shutdown failure propagation).
+    - ✅ Moved additional mutable session containers (`threads`, `var_refs`, `breakpoints`, `current_stack_frames`) behind `session.py` with compatibility properties on `PyDebugger` to preserve test-facing attribute access.
+    - ✅ Migrated remaining session-owned mutable containers (`function_breakpoints`, data-watch containers, thread-exit bookkeeping) behind `session.py` with compatibility properties to preserve current direct access patterns.
+    - ✅ Reduced direct container mutation in hot paths by routing key mutation sites through focused session-facade helper methods (`event_router`, `state`, `execution`, data-breakpoint registration, and shutdown state clearing).
+    - ✅ Consolidated remaining high-value direct container reads behind session-facade query helpers where it improved clarity (notably thread iteration for execution/thread-list reporting), while intentionally keeping straightforward direct compatibility reads in low-risk paths.
+    - ✅ Closeout: decomposition now lands on a thin `PyDebugger` orchestration facade backed by dedicated manager modules + a focused session facade, with compatibility accessors retained for test/runtime stability.
 
 - [x] **Reduce compatibility property sprawl in `DebuggerBDB`** ✅
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
@@ -206,10 +217,10 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 
 | Category           | Open Items |
 |--------------------|------------|
-| Architecture       | 3          |
+| Architecture       | 1          |
 | Performance        | 4          |
 | Code Quality       | 1          |
 | Test Coverage      | 5          |
-| **Total**          | **13**     |
+| **Total**          | **11**     |
 
 **Next up:** Performance improvements (4 items).
