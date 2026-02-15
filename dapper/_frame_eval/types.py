@@ -9,12 +9,13 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Union
 
 if TYPE_CHECKING:
     from types import CodeType
     from types import FrameType
 
-FrameStats = dict[str, int | float | bool]
+FrameStats = dict[str, Union[int, float, bool]]
 BreakpointLines = set[int]
 
 

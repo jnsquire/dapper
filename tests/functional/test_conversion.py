@@ -2,44 +2,44 @@
 Test for the _convert_string_to_value function in debug_launcher.py
 """
 
-from dapper.shared.command_handlers import _convert_string_to_value
+from dapper.shared.value_conversion import convert_value_with_context
 
 
 def test_convert_string_to_value():
     """Test the string to value conversion function"""
 
     # Test None
-    assert _convert_string_to_value("None") is None
-    assert _convert_string_to_value("none") is None
+    assert convert_value_with_context("None") is None
+    assert convert_value_with_context("none") is None
 
     # Test booleans
-    assert _convert_string_to_value("True") is True
-    assert _convert_string_to_value("true") is True
-    assert _convert_string_to_value("False") is False
-    assert _convert_string_to_value("false") is False
+    assert convert_value_with_context("True") is True
+    assert convert_value_with_context("true") is True
+    assert convert_value_with_context("False") is False
+    assert convert_value_with_context("false") is False
 
     # Test integers
-    assert _convert_string_to_value("42") == 42
-    assert _convert_string_to_value("-10") == -10
+    assert convert_value_with_context("42") == 42
+    assert convert_value_with_context("-10") == -10
 
     # Test floats
-    assert _convert_string_to_value("3.14") == 3.14
-    assert _convert_string_to_value("-2.5") == -2.5
+    assert convert_value_with_context("3.14") == 3.14
+    assert convert_value_with_context("-2.5") == -2.5
 
     # Test strings
-    assert _convert_string_to_value("'hello'") == "hello"
-    assert _convert_string_to_value('"world"') == "world"
+    assert convert_value_with_context("'hello'") == "hello"
+    assert convert_value_with_context('"world"') == "world"
 
     # Test lists
-    assert _convert_string_to_value("[1, 2, 3]") == [1, 2, 3]
-    assert _convert_string_to_value("['a', 'b']") == ["a", "b"]
+    assert convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
+    assert convert_value_with_context("['a', 'b']") == ["a", "b"]
 
     # Test dicts
-    assert _convert_string_to_value("{'a': 1}") == {"a": 1}
+    assert convert_value_with_context("{'a': 1}") == {"a": 1}
 
     # Test plain strings (fallback)
-    assert _convert_string_to_value("plain_text") == "plain_text"
-    assert _convert_string_to_value("invalid[syntax") == "invalid[syntax"
+    assert convert_value_with_context("plain_text") == "plain_text"
+    assert convert_value_with_context("invalid[syntax") == "invalid[syntax"
 
     # All tests passed - no print needed
 

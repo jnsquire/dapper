@@ -19,9 +19,16 @@ from unittest.mock import PropertyMock
 import pytest
 
 from dapper.launcher import debug_launcher
+from dapper.shared import breakpoint_handlers
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers as handlers
-from dapper.shared import command_handlers as shared_handlers
 from dapper.shared import debug_shared
+from dapper.shared import lifecycle_handlers
+from dapper.shared import stack_handlers
+from dapper.shared import stepping_handlers
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
+from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
@@ -77,6 +84,92 @@ class MockFrame:
         return f"<MockFrame {self.f_code.co_name} at {self.f_code.co_filename}:{self.f_lineno}>"
 
 
+_CONVERSION_FAILED = object()
+
+
+def _try_convert(value_str: str, frame: Any | None = None, parent_obj: Any | None = None) -> Any:
+    try:
+        return convert_value_with_context(value_str, frame, parent_obj)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        return _CONVERSION_FAILED
+
+
+def _set_object_member_direct(parent_obj: Any, name: str, value_str: str) -> dict[str, Any]:
+    return command_handler_helpers.set_object_member(
+        parent_obj,
+        name,
+        value_str,
+        try_custom_convert=_try_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+        error_response_fn=handlers._error_response,
+        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=lambda: debug_shared.state.debugger,
+        make_variable_fn=_make_variable,
+        logger=handlers.logger,
+    )
+
+
+def _set_scope_variable_direct(
+    frame: Any,
+    scope: str,
+    name: str,
+    value_str: str,
+) -> dict[str, Any]:
+    return command_handler_helpers.set_scope_variable(
+        frame,
+        scope,
+        name,
+        value_str,
+        try_custom_convert=_try_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        evaluate_with_policy_fn=handlers.evaluate_with_policy,
+        convert_value_with_context_fn=convert_value_with_context,
+        logger=handlers.logger,
+        error_response_fn=handlers._error_response,
+        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=lambda: debug_shared.state.debugger,
+        make_variable_fn=_make_variable,
+    )
+
+
+def _make_variable(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[str, Any]:
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
+    )
+
+
+def _resolve_variables_for_reference(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
+    return variable_command_runtime.resolve_variables_for_reference_runtime(
+        dbg,
+        frame_info,
+        resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
+        extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
+        make_variable_fn=_make_variable,
+        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+    )
+
+
+def _handle_set_variable(dbg: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+    return variable_handlers.handle_set_variable_impl(
+        dbg,
+        arguments,
+        error_response=handlers._error_response,
+        set_object_member=_set_object_member_direct,
+        set_scope_variable=_set_scope_variable_direct,
+        logger=handlers.logger,
+        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+    )
+
+
 def setup_function(_func):
     """Reset singleton session state for each test.
 
@@ -112,7 +205,12 @@ def test_handle_set_breakpoints_success():
         ],
     }
 
-    result = handlers.handle_set_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_breakpoints_impl(
+        dbg,
+        arguments,
+        handlers._safe_send_debug_message,
+        handlers.logger,
+    )
 
     assert result is not None
     assert result["success"] is True
@@ -156,7 +254,12 @@ def test_handle_set_breakpoints_failure(monkeypatch):
 
     arguments = {"source": {"path": "/test/file.py"}, "breakpoints": [{"line": 10}]}
 
-    result = handlers.handle_set_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_breakpoints_impl(
+        dbg,
+        arguments,
+        handlers._safe_send_debug_message,
+        handlers.logger,
+    )
 
     assert result is not None
     assert result["success"] is True
@@ -179,7 +282,12 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
 
     arguments = {"source": {"path": "/test/file.py"}, "breakpoints": [{"line": 10}]}
 
-    result = handlers.handle_set_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_breakpoints_impl(
+        dbg,
+        arguments,
+        handlers._safe_send_debug_message,
+        handlers.logger,
+    )
 
     assert result is not None
     assert result["success"] is True
@@ -208,7 +316,7 @@ def test_handle_set_function_breakpoints():
         },
     )
 
-    result = handlers.handle_set_function_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_function_breakpoints_impl(dbg, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -245,7 +353,7 @@ def test_handle_set_function_breakpoints_empty():
 
     arguments: SetFunctionBreakpointsArguments = {"breakpoints": []}
 
-    result = handlers.handle_set_function_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_function_breakpoints_impl(dbg, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -262,7 +370,7 @@ def test_handle_set_exception_breakpoints():
     # Test with raised and uncaught filters
     arguments = {"filters": ["raised", "uncaught"]}
 
-    result = handlers.handle_set_exception_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -280,7 +388,7 @@ def test_handle_set_exception_breakpoints():
 
     # Test with only raised filter
     arguments = {"filters": ["raised"]}
-    result = handlers.handle_set_exception_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
 
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is False
@@ -295,7 +403,7 @@ def test_handle_set_exception_breakpoints_invalid_filters():
     # Test with non-list filters
     arguments = {"filters": "invalid"}
 
-    result = handlers.handle_set_exception_breakpoints(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -330,7 +438,7 @@ def test_handle_set_exception_breakpoints_exception_handling():
     # Test with one filter that will cause an exception
     arguments = {"filters": ["raised"]}
 
-    result = handlers.handle_set_exception_breakpoints(failing_dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(failing_dbg, arguments)
 
     # Verify the response structure
     assert result is not None
@@ -349,7 +457,10 @@ def test_handle_set_exception_breakpoints_exception_handling():
     assert breakpoints[0]["verified"] is False
 
     # Also test with an empty filters list to ensure it handles that case
-    empty_result = handlers.handle_set_exception_breakpoints(failing_dbg, {"filters": []})
+    empty_result = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+        failing_dbg,
+        {"filters": []},
+    )
     assert empty_result is not None
     assert empty_result["success"] is True
     assert "body" in empty_result
@@ -370,7 +481,7 @@ def test_handle_continue():
 
     arguments = {"threadId": thread_id}
 
-    handlers.handle_continue(dbg, arguments)
+    stepping_handlers.handle_continue_impl(dbg, arguments)
 
     assert thread_id not in dbg.stopped_thread_ids
     assert dbg._continued is True
@@ -388,14 +499,14 @@ def test_handle_continue_multiple_threads():
     dbg.stopped_thread_ids.update([thread_id1, thread_id2])
 
     # Continue one thread
-    handlers.handle_continue(dbg, {"threadId": thread_id1})
+    stepping_handlers.handle_continue_impl(dbg, {"threadId": thread_id1})
 
     assert thread_id1 not in dbg.stopped_thread_ids
     assert thread_id2 in dbg.stopped_thread_ids
     assert dbg._continued is False  # Should not continue yet
 
     # Continue second thread
-    handlers.handle_continue(dbg, {"threadId": thread_id2})
+    stepping_handlers.handle_continue_impl(dbg, {"threadId": thread_id2})
 
     assert thread_id2 not in dbg.stopped_thread_ids
     assert dbg._continued is True  # Should continue now
@@ -415,7 +526,12 @@ def test_handle_step_commands():
     current_thread_id = threading.get_ident()
 
     # Test step in
-    handlers.handle_step_in(dbg, {"threadId": current_thread_id})
+    stepping_handlers.handle_step_in_impl(
+        dbg,
+        {"threadId": current_thread_id},
+        handlers._get_thread_ident,
+        handlers._set_dbg_stepping_flag,
+    )
     assert dbg.stepping is True
     assert dbg._step is True
 
@@ -424,7 +540,12 @@ def test_handle_step_commands():
     dbg._step = False
 
     # Test step over (next)
-    handlers.handle_next(dbg, {"threadId": current_thread_id})
+    stepping_handlers.handle_next_impl(
+        dbg,
+        {"threadId": current_thread_id},
+        handlers._get_thread_ident,
+        handlers._set_dbg_stepping_flag,
+    )
     assert dbg.stepping is True
     assert dbg._next is frame
 
@@ -433,7 +554,12 @@ def test_handle_step_commands():
     dbg._next = None
 
     # Test step out
-    handlers.handle_step_out(dbg, {"threadId": current_thread_id})
+    stepping_handlers.handle_step_out_impl(
+        dbg,
+        {"threadId": current_thread_id},
+        handlers._get_thread_ident,
+        handlers._set_dbg_stepping_flag,
+    )
     assert dbg.stepping is True
     assert dbg._return is frame
 
@@ -445,7 +571,13 @@ def test_handle_pause():
     s.debugger = dbg
 
     # Pause the remote thread id and verify bookkeeping + stopped event
-    handlers.handle_pause(dbg, {"threadId": 123})
+    stepping_handlers.handle_pause_impl(
+        dbg,
+        {"threadId": 123},
+        handlers._get_thread_ident,
+        handlers._safe_send_debug_message,
+        handlers.logger,
+    )
 
     assert 123 in dbg.stopped_thread_ids
 
@@ -465,10 +597,20 @@ def test_handle_stack_trace():
     dbg.frames_by_thread[thread_id] = [frame1, frame2, frame3]
 
     # Test full stack trace
-    handlers.handle_stack_trace(dbg, {"threadId": thread_id})
+    stack_handlers.handle_stack_trace_impl(
+        dbg,
+        {"threadId": thread_id},
+        get_thread_ident=handlers._get_thread_ident,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+    )
 
     # Test with startFrame and levels
-    handlers.handle_stack_trace(dbg, {"threadId": thread_id, "startFrame": 1, "levels": 2})
+    stack_handlers.handle_stack_trace_impl(
+        dbg,
+        {"threadId": thread_id, "startFrame": 1, "levels": 2},
+        get_thread_ident=handlers._get_thread_ident,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+    )
 
 
 def test_handle_stack_trace_pagination():
@@ -483,7 +625,12 @@ def test_handle_stack_trace_pagination():
     dbg.frames_by_thread[thread_id] = frames
 
     # Test pagination
-    handlers.handle_stack_trace(dbg, {"threadId": thread_id, "startFrame": 2, "levels": 3})
+    stack_handlers.handle_stack_trace_impl(
+        dbg,
+        {"threadId": thread_id, "startFrame": 2, "levels": 3},
+        get_thread_ident=handlers._get_thread_ident,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+    )
 
 
 def test_handle_variables_cached_list():
@@ -500,7 +647,12 @@ def test_handle_variables_cached_list():
     ]
     dbg.var_refs[var_ref] = cached_vars
 
-    handlers.handle_variables(dbg, {"variablesReference": var_ref})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": var_ref},
+        handlers._safe_send_debug_message,
+        _resolve_variables_for_reference,
+    )
     # Should not raise exception and should send message
 
 
@@ -515,7 +667,12 @@ def test_handle_variables_object_reference():
     test_obj = {"key1": "value1", "key2": 42}
     dbg.var_refs[var_ref] = ("object", test_obj)
 
-    handlers.handle_variables(dbg, {"variablesReference": var_ref})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": var_ref},
+        handlers._safe_send_debug_message,
+        _resolve_variables_for_reference,
+    )
     # Should not raise exception and should send message
 
 
@@ -535,7 +692,12 @@ def test_handle_variables_scope_reference():
     var_ref = 102
     dbg.var_refs[var_ref] = (frame_id, "locals")
 
-    handlers.handle_variables(dbg, {"variablesReference": var_ref})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": var_ref},
+        handlers._safe_send_debug_message,
+        _resolve_variables_for_reference,
+    )
     # Should not raise exception and should send message
 
 
@@ -546,14 +708,24 @@ def test_handle_variables_invalid_reference():
     s.debugger = dbg
 
     # Test with non-existent reference
-    handlers.handle_variables(dbg, {"variablesReference": 999})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": 999},
+        handlers._safe_send_debug_message,
+        _resolve_variables_for_reference,
+    )
     # Should not raise exception
 
     # Test with invalid reference type
     var_ref = 103
     dbg.var_refs[var_ref] = "invalid_type"
 
-    handlers.handle_variables(dbg, {"variablesReference": var_ref})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": var_ref},
+        handlers._safe_send_debug_message,
+        _resolve_variables_for_reference,
+    )
     # Should not raise exception
 
 
@@ -568,7 +740,7 @@ def test_handle_set_variable_object_member():
     test_obj = {"existing_key": "old_value"}
     dbg.var_refs[var_ref] = ("object", test_obj)
 
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "existing_key", "value": "new_value"}
     )
 
@@ -588,7 +760,7 @@ def test_handle_set_variable_list_member():
     test_list = ["item0", "item1", "item2"]
     dbg.var_refs[var_ref] = ("object", test_list)
 
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "1", "value": "new_item"}
     )
 
@@ -609,7 +781,7 @@ def test_handle_set_variable_list_invalid_index():
     dbg.var_refs[var_ref] = ("object", test_list)
 
     # Test invalid index
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "invalid", "value": "new_item"}
     )
 
@@ -618,7 +790,7 @@ def test_handle_set_variable_list_invalid_index():
     assert "Invalid list index" in result["message"]
 
     # Test out of range index
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "5", "value": "new_item"}
     )
 
@@ -638,7 +810,7 @@ def test_handle_set_variable_tuple():
     test_tuple = ("item0", "item1")
     dbg.var_refs[var_ref] = ("object", test_tuple)
 
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "0", "value": "new_item"}
     )
 
@@ -661,7 +833,7 @@ def test_handle_set_variable_scope_variable():
     var_ref = 108
     dbg.var_refs[var_ref] = (frame_id, "locals")
 
-    result = handlers.handle_set_variable(
+    result = _handle_set_variable(
         dbg, {"variablesReference": var_ref, "name": "y", "value": "new_value"}
     )
 
@@ -676,9 +848,7 @@ def test_handle_set_variable_invalid_reference():
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    result = handlers.handle_set_variable(
-        dbg, {"variablesReference": 999, "name": "x", "value": "value"}
-    )
+    result = _handle_set_variable(dbg, {"variablesReference": 999, "name": "x", "value": "value"})
 
     assert result is not None
     assert result["success"] is False
@@ -697,16 +867,33 @@ def test_handle_evaluate():
     dbg.frame_id_to_frame[frame_id] = frame
 
     # Test simple expression
-    handlers.handle_evaluate(dbg, {"expression": "x + y", "frameId": frame_id, "context": "watch"})
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "x + y", "frameId": frame_id, "context": "watch"},
+        evaluate_with_policy=handlers.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+        logger=handlers.logger,
+    )
 
     # Test expression that creates variable reference
-    handlers.handle_evaluate(
-        dbg, {"expression": "{'a': 1}", "frameId": frame_id, "context": "watch"}
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "{'a': 1}", "frameId": frame_id, "context": "watch"},
+        evaluate_with_policy=handlers.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+        logger=handlers.logger,
     )
 
     # Test expression with error
-    handlers.handle_evaluate(
-        dbg, {"expression": "undefined_var", "frameId": frame_id, "context": "watch"}
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "undefined_var", "frameId": frame_id, "context": "watch"},
+        evaluate_with_policy=handlers.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+        logger=handlers.logger,
     )
 
 
@@ -716,7 +903,14 @@ def test_handle_evaluate_no_frame():
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    handlers.handle_evaluate(dbg, {"expression": "1 + 1", "context": "watch"})
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "1 + 1", "context": "watch"},
+        evaluate_with_policy=handlers.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=handlers._safe_send_debug_message,
+        logger=handlers.logger,
+    )
     # Should not raise exception
 
 
@@ -732,13 +926,17 @@ def test_handle_evaluate_invalid_expression():
 
     # Test with non-string expression
     try:
-        handlers.handle_evaluate(
+        variable_handlers.handle_evaluate_impl(
             dbg,
             {
                 "expression": 123,  # Not a string
                 "frameId": frame_id,
                 "context": "watch",
             },
+            evaluate_with_policy=handlers.evaluate_with_policy,
+            format_evaluation_error=variable_handlers.format_evaluation_error,
+            safe_send_debug_message=handlers._safe_send_debug_message,
+            logger=handlers.logger,
         )
         raise AssertionError("Should have raised TypeError")
     except TypeError:
@@ -761,16 +959,16 @@ def test_handle_exception_info():
     }
     dbg.current_exception_info[thread_id] = exception_info
 
-    handlers.handle_exception_info(dbg, {"threadId": thread_id})
+    lifecycle_handlers.handle_exception_info_impl(dbg, {"threadId": thread_id}, handlers.logger)
     # Should send exception info message
 
     # Test with missing threadId
-    handlers.handle_exception_info(dbg, {})
+    lifecycle_handlers.handle_exception_info_impl(dbg, {}, handlers.logger)
     # Should send error message
 
     # Test with no debugger
     s.debugger = None
-    handlers.handle_exception_info(dbg, {"threadId": thread_id})
+    lifecycle_handlers.handle_exception_info_impl(dbg, {"threadId": thread_id}, handlers.logger)
     # Should send error message
 
 
@@ -780,7 +978,7 @@ def test_handle_configuration_done():
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    handlers.handle_configuration_done(dbg, {})
+    lifecycle_handlers.handle_configuration_done_impl()
     # Should not raise exception and return None (no-op)
 
 
@@ -801,7 +999,10 @@ def test_handle_terminate():
     debug_shared.state.set_exit_func(fake_exit)
     try:
         with pytest.raises(SystemExit):
-            handlers.handle_terminate(dbg, {})
+            lifecycle_handlers.handle_terminate_impl(
+                safe_send_debug_message=handlers._safe_send_debug_message,
+                state=debug_shared.state,
+            )
 
         assert s.is_terminated is True
     finally:
@@ -851,7 +1052,11 @@ def test_handle_restart():
     debug_shared.state.set_exec_func(fake_exec)
     try:
         with pytest.raises(SystemExit) as excinfo:
-            handlers.handle_restart(dbg, {})
+            lifecycle_handlers.handle_restart_impl(
+                safe_send_debug_message=handlers._safe_send_debug_message,
+                state=debug_shared.state,
+                logger=handlers.logger,
+            )
 
         # The exit code should be a tuple with our test data
         exit_code = excinfo.value.code
@@ -874,7 +1079,7 @@ def test_handle_threads_with_data():
     # Add thread data
     dbg.threads = {1: "MainThread", 2: "WorkerThread"}
 
-    result = handlers.handle_threads(dbg, {})
+    result = stack_handlers.handle_threads_impl(dbg, {}, handlers._safe_send_debug_message)
 
     assert result is not None
     assert result["success"] is True
@@ -927,11 +1132,11 @@ def test_handle_debug_command_exception():
     s.debugger = dbg
 
     # Mock a handler to raise exception
-    def failing_handler(_dbg, _args):
+    def failing_handler():
         raise ValueError("Test handler error")
 
-    original_handler = handlers.handle_initialize
-    handlers.handle_initialize = failing_handler
+    original_handler = lifecycle_handlers.handle_initialize_impl
+    lifecycle_handlers.handle_initialize_impl = failing_handler
 
     try:
         # Test that exception handling doesn't crash
@@ -940,52 +1145,52 @@ def test_handle_debug_command_exception():
         pass  # Expected to be handled internally
 
     # Restore original handler
-    handlers.handle_initialize = original_handler
+    lifecycle_handlers.handle_initialize_impl = original_handler
 
 
 def test_convert_value_with_context():
     """Test the _convert_value_with_context function."""
     # Test special values
-    assert shared_handlers._convert_value_with_context("None") is None
-    assert shared_handlers._convert_value_with_context("True") is True
-    assert shared_handlers._convert_value_with_context("False") is False
+    assert convert_value_with_context("None") is None
+    assert convert_value_with_context("True") is True
+    assert convert_value_with_context("False") is False
 
     # Test literal evaluation
-    assert shared_handlers._convert_value_with_context("42") == 42
-    assert shared_handlers._convert_value_with_context("3.14") == 3.14
-    assert shared_handlers._convert_value_with_context("'hello'") == "hello"
-    assert shared_handlers._convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
+    assert convert_value_with_context("42") == 42
+    assert convert_value_with_context("3.14") == 3.14
+    assert convert_value_with_context("'hello'") == "hello"
+    assert convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
 
     # Test with frame context
     frame = MockFrame(_locals={"x": 10}, _globals={"PI": 3.14159})
 
-    result = shared_handlers._convert_value_with_context("x * 2", frame)
+    result = convert_value_with_context("x * 2", frame)
     assert result == 20
 
-    result = shared_handlers._convert_value_with_context("PI", frame)
+    result = convert_value_with_context("PI", frame)
     assert result == 3.14159
 
     # Test with parent object for type inference
     parent_list = [1, 2, 3]
-    result = shared_handlers._convert_value_with_context("42", None, parent_list)
+    result = convert_value_with_context("42", None, parent_list)
     assert result == 42  # Should convert to int to match list element type
 
     parent_dict = {"key": "value"}
-    result = shared_handlers._convert_value_with_context("new", None, parent_dict)
+    result = convert_value_with_context("new", None, parent_dict)
     assert result == "new"  # Should convert to str to match dict value type
 
     # Test fallback to string
-    result = shared_handlers._convert_value_with_context("invalid python code")
+    result = convert_value_with_context("invalid python code")
     assert result == "invalid python code"
 
 
 def test_convert_string_to_value():
     """Test the legacy _convert_string_to_value function."""
-    # This should delegate to _convert_value_with_context
-    result = shared_handlers._convert_string_to_value("42")
+    # This should align with convert_value_with_context behavior
+    result = convert_value_with_context("42")
     assert result == 42
 
-    result = shared_handlers._convert_string_to_value("hello")
+    result = convert_value_with_context("hello")
     assert result == "hello"
 
 
@@ -995,7 +1200,12 @@ def test_extract_variables():
 
     # Test with dict
     test_dict = {"a": 1, "b": "hello"}
-    handlers.extract_variables(None, variables, test_dict)
+    command_handler_helpers.extract_variables(
+        None,
+        variables,
+        test_dict,
+        make_variable_fn=_make_variable,
+    )
     assert len(variables) == 2
     assert any(v["name"] == "a" and v["value"] == "1" for v in variables)
     assert any(v["name"] == "b" and v["value"] == "'hello'" for v in variables)
@@ -1003,7 +1213,12 @@ def test_extract_variables():
     # Test with list
     variables = []
     test_list = ["item1", "item2"]
-    handlers.extract_variables(None, variables, test_list)
+    command_handler_helpers.extract_variables(
+        None,
+        variables,
+        test_list,
+        make_variable_fn=_make_variable,
+    )
     assert len(variables) == 2
     assert any(v["name"] == "0" for v in variables)
     assert any(v["name"] == "1" for v in variables)
@@ -1011,7 +1226,12 @@ def test_extract_variables():
     # Test with object
     variables = []
     test_obj = MockFrame()
-    handlers.extract_variables(None, variables, test_obj)
+    command_handler_helpers.extract_variables(
+        None,
+        variables,
+        test_obj,
+        make_variable_fn=_make_variable,
+    )
     # Should extract public attributes (non-underscore)
     assert len(variables) > 0
 

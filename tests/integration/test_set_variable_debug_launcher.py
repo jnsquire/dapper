@@ -8,11 +8,36 @@ import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from dapper.shared.command_handlers import _convert_string_to_value
-from dapper.shared.command_handlers import handle_set_variable
+from dapper.shared import command_handler_helpers
+from dapper.shared import command_handlers
+from dapper.shared import debug_shared
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
 
 # Import the specific functions we want to test
 from dapper.shared.debug_shared import make_variable_object
+from dapper.shared.value_conversion import convert_value_with_context
+
+_CONVERSION_FAILED = object()
+
+
+def _try_convert(value_str, frame=None, parent_obj=None):
+    try:
+        return convert_value_with_context(value_str, frame, parent_obj)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        return _CONVERSION_FAILED
+
+
+def _make_variable_for_tests(dbg, name, value, frame):
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
+    )
 
 
 class TestSetVariable(unittest.TestCase):
@@ -34,19 +59,64 @@ class TestSetVariable(unittest.TestCase):
         # Create mock state
         self.mock_state = SimpleNamespace(debugger=self.mock_debugger, is_terminated=False)
 
+    def _set_object_member_direct(self, parent_obj, name, value):
+        return command_handler_helpers.set_object_member(
+            parent_obj,
+            name,
+            value,
+            try_custom_convert=_try_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            convert_value_with_context_fn=convert_value_with_context,
+            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+            error_response_fn=command_handlers._error_response,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: self.mock_debugger,
+            make_variable_fn=_make_variable_for_tests,
+            logger=command_handlers.logger,
+        )
+
+    def _set_scope_variable_direct(self, frame, scope, name, value):
+        return command_handler_helpers.set_scope_variable(
+            frame,
+            scope,
+            name,
+            value,
+            try_custom_convert=_try_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            evaluate_with_policy_fn=command_handlers.evaluate_with_policy,
+            convert_value_with_context_fn=convert_value_with_context,
+            logger=command_handlers.logger,
+            error_response_fn=command_handlers._error_response,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: self.mock_debugger,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
+    def _handle_set_variable(self, arguments):
+        return variable_handlers.handle_set_variable_impl(
+            self.mock_debugger,
+            arguments,
+            error_response=command_handlers._error_response,
+            set_object_member=self._set_object_member_direct,
+            set_scope_variable=self._set_scope_variable_direct,
+            logger=command_handlers.logger,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            var_ref_tuple_size=command_handlers.VAR_REF_TUPLE_SIZE,
+        )
+
     def test_convert_string_to_value(self):
         """Test string to value conversion"""
         # Test basic types
-        assert _convert_string_to_value("None") is None
-        assert _convert_string_to_value("none") is None
-        assert _convert_string_to_value("True") is True
-        assert _convert_string_to_value("true") is True
-        assert _convert_string_to_value("False") is False
-        assert _convert_string_to_value("false") is False
-        assert _convert_string_to_value("42") == 42
-        assert _convert_string_to_value("3.14") == 3.14
-        assert _convert_string_to_value("'hello'") == "hello"
-        assert _convert_string_to_value("[1, 2, 3]") == [1, 2, 3]
+        assert convert_value_with_context("None") is None
+        assert convert_value_with_context("none") is None
+        assert convert_value_with_context("True") is True
+        assert convert_value_with_context("true") is True
+        assert convert_value_with_context("False") is False
+        assert convert_value_with_context("false") is False
+        assert convert_value_with_context("42") == 42
+        assert convert_value_with_context("3.14") == 3.14
+        assert convert_value_with_context("'hello'") == "hello"
+        assert convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
 
     @patch("dapper.launcher.debug_launcher.state")
     def test_create_variable_object_simple(self, mock_state):
@@ -75,7 +145,7 @@ class TestSetVariable(unittest.TestCase):
         # Test arguments
         arguments = {"variablesReference": var_ref, "name": "x", "value": "99"}
 
-        result = handle_set_variable(self.mock_debugger, arguments)
+        result = self._handle_set_variable(arguments)
 
         # Verify result
         assert result["success"]
@@ -106,7 +176,7 @@ class TestSetVariable(unittest.TestCase):
         }
 
         # Call handler (pass debugger as first arg)
-        result = handle_set_variable(self.mock_debugger, arguments)
+        result = self._handle_set_variable(arguments)
 
         # Verify result
         assert result["success"]
@@ -126,7 +196,7 @@ class TestSetVariable(unittest.TestCase):
         arguments = {"variablesReference": 9999, "name": "x", "value": "42"}
 
         # Call handler (pass debugger as first arg)
-        result = handle_set_variable(self.mock_debugger, arguments)
+        result = self._handle_set_variable(arguments)
 
         # Verify error result
         assert not result["success"]

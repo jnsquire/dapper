@@ -4,10 +4,85 @@ import sys
 import types
 
 from dapper.launcher import comm as launcher_comm
+from dapper.shared import breakpoint_handlers
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
+from dapper.shared import source_handlers
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
+from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
+
+_CONVERSION_FAILED = object()
+
+
+def _try_test_convert(value_str, frame=None, parent_obj=None):
+    try:
+        return convert_value_with_context(value_str, frame, parent_obj)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        return _CONVERSION_FAILED
+
+
+def _make_variable_for_tests(dbg, name, value, frame):
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
+    )
+
+
+def _invoke_set_variable_via_domain(dbg, arguments):
+    def _set_object_member_direct(parent_obj, name, value):
+        return command_handler_helpers.set_object_member(
+            parent_obj,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            convert_value_with_context_fn=convert_value_with_context,
+            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+            error_response_fn=handlers._error_response,
+            conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: handlers.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+            logger=handlers.logger,
+        )
+
+    def _set_scope_variable_direct(frame, scope, name, value):
+        return command_handler_helpers.set_scope_variable(
+            frame,
+            scope,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            evaluate_with_policy_fn=handlers.evaluate_with_policy,
+            convert_value_with_context_fn=convert_value_with_context,
+            logger=handlers.logger,
+            error_response_fn=handlers._error_response,
+            conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: handlers.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
+    result = variable_handlers.handle_set_variable_impl(
+        dbg,
+        arguments,
+        error_response=handlers._error_response,
+        set_object_member=_set_object_member_direct,
+        set_scope_variable=_set_scope_variable_direct,
+        logger=handlers.logger,
+        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+    )
+    if result:
+        handlers._safe_send_debug_message("setVariable", **result)
 
 
 def capture_send(monkeypatch):
@@ -30,11 +105,14 @@ def test_set_breakpoints_and_state(monkeypatch):
     debug_shared.state.debugger = dbg
     messages = capture_send(monkeypatch)
 
-    handlers._cmd_set_breakpoints(
+    breakpoint_handlers.handle_set_breakpoints_impl(
+        dbg,
         {
             "source": {"path": "./somefile.py"},
             "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
-        }
+        },
+        handlers._safe_send_debug_message,
+        handlers.logger,
     )
 
     assert "./somefile.py" in dbg.cleared
@@ -57,7 +135,7 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg.frame_id_to_frame[42] = frame
     dbg.var_refs[1] = (42, "locals")
 
-    handlers._cmd_set_variable({"variablesReference": 1, "name": "a", "value": "2"})
+    _invoke_set_variable_via_domain(dbg, {"variablesReference": 1, "name": "a", "value": "2"})
     assert frame.f_locals["a"] == 2
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
@@ -69,16 +147,16 @@ def test_set_variable_on_object(monkeypatch):
 
     obj = {"x": 1}
     dbg.var_refs[2] = ("object", obj)
-    handlers._cmd_set_variable({"variablesReference": 2, "name": "x", "value": "3"})
+    _invoke_set_variable_via_domain(dbg, {"variablesReference": 2, "name": "x", "value": "3"})
     assert obj["x"] == 3
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
 
 def test_convert_value_with_context_basic():
-    assert handlers._convert_value_with_context("  123 ") == 123
-    assert handlers._convert_value_with_context("None") is None
-    assert handlers._convert_value_with_context("true") is True
-    assert handlers._convert_value_with_context("'abc'") == "abc"
+    assert convert_value_with_context("  123 ") == 123
+    assert convert_value_with_context("None") is None
+    assert convert_value_with_context("true") is True
+    assert convert_value_with_context("'abc'") == "abc"
 
 
 def test_loaded_sources_collect(monkeypatch, tmp_path):
@@ -96,7 +174,7 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     messages = capture_send(monkeypatch)
 
-    handlers._cmd_loaded_sources({})
+    source_handlers.handle_loaded_sources(debug_shared.state, handlers._safe_send_debug_message)
 
     resp = [m for m in messages if m[0] == "response"]
     assert resp

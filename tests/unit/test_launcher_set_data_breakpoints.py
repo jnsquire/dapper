@@ -1,9 +1,10 @@
+import logging
 from typing import TYPE_CHECKING
 from typing import cast
 from unittest.mock import MagicMock
 
 from dapper.core.debugger_bdb import DebuggerBDB
-from dapper.shared.command_handlers import _handle_set_data_breakpoints_impl
+from dapper.shared.variable_handlers import handle_set_data_breakpoints_impl
 from tests.mocks import FakeDebugger
 from tests.mocks import make_real_frame
 
@@ -20,7 +21,9 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
         ]
     }
 
-    result = _handle_set_data_breakpoints_impl(cast("DebuggerLike", dbg), args)
+    result = handle_set_data_breakpoints_impl(
+        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+    )
 
     # handler returns success and body.breakpoint values
     assert result["success"] is True
@@ -46,7 +49,9 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
         ]
     }
 
-    result = _handle_set_data_breakpoints_impl(cast("DebuggerLike", dbg), args)
+    result = handle_set_data_breakpoints_impl(
+        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+    )
 
     # set_data_breakpoint attempted and raised, but register still called
     assert ("frame:10:var:a", "write") in dbg.set_calls
@@ -67,7 +72,9 @@ def test_handler_with_real_debugger_triggers_on_change():
 
     args = {"breakpoints": [{"dataId": "frame:100:var:x", "accessType": "write"}]}
 
-    res = _handle_set_data_breakpoints_impl(cast("DebuggerLike", dbg), args)
+    res = handle_set_data_breakpoints_impl(
+        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+    )
     assert res["success"] is True
 
     # simulate first line (baseline) then changed value

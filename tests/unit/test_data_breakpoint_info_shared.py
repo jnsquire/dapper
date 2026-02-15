@@ -2,7 +2,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
-from dapper.shared.command_handlers import _handle_data_breakpoint_info_impl
+from dapper.shared.command_handlers import _TRUNC_SUFFIX
+from dapper.shared.command_handlers import MAX_VALUE_REPR_LEN
+from dapper.shared.variable_handlers import handle_data_breakpoint_info_impl
 from tests.mocks import FakeDebugger
 from tests.mocks import make_real_frame
 
@@ -20,7 +22,12 @@ def test_data_breakpoint_info_enriched_with_frame_locals():
     dbg = FakeDebugger()
     dbg.current_frame = make_frame({"x": 123})
 
-    res = _handle_data_breakpoint_info_impl(cast("DebuggerLike", dbg), {"name": "x", "frameId": 1})
+    res = handle_data_breakpoint_info_impl(
+        cast("DebuggerLike", dbg),
+        {"name": "x", "frameId": 1},
+        max_value_repr_len=MAX_VALUE_REPR_LEN,
+        trunc_suffix=_TRUNC_SUFFIX,
+    )
     assert res["success"] is True
     body = res["body"]
     assert body["dataId"] == "x"
@@ -34,7 +41,12 @@ def test_data_breakpoint_info_no_local():
     dbg = FakeDebugger()
     dbg.current_frame = make_frame({"y": 1})
 
-    res = _handle_data_breakpoint_info_impl(cast("DebuggerLike", dbg), {"name": "x", "frameId": 1})
+    res = handle_data_breakpoint_info_impl(
+        cast("DebuggerLike", dbg),
+        {"name": "x", "frameId": 1},
+        max_value_repr_len=MAX_VALUE_REPR_LEN,
+        trunc_suffix=_TRUNC_SUFFIX,
+    )
     assert res["success"] is True
     body = res["body"]
     assert body["dataId"] == "x"

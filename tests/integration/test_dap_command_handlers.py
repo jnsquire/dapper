@@ -9,9 +9,17 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from dapper.shared import breakpoint_handlers
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
 from dapper.shared import command_handlers as dch
 from dapper.shared import debug_shared
+from dapper.shared import lifecycle_handlers
+from dapper.shared import source_handlers
+from dapper.shared import stepping_handlers
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
+from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
@@ -24,38 +32,139 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetFunctionBreakpointsArguments
 
 
+_CONVERSION_FAILED = object()
+
+
+def _try_test_convert(
+    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+) -> Any:
+    try:
+        return convert_value_with_context(value_str, frame, parent_obj)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        return _CONVERSION_FAILED
+
+
+def _make_variable_for_tests(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[str, Any]:
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=dch.SIMPLE_FN_ARGCOUNT,
+    )
+
+
+def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
+    return variable_command_runtime.resolve_variables_for_reference_runtime(
+        dbg,
+        frame_info,
+        resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
+        extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
+        make_variable_fn=_make_variable_for_tests,
+        var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
+    )
+
+
+def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None:
+    def _set_object_member_direct(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
+        return command_handler_helpers.set_object_member(
+            parent_obj,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            convert_value_with_context_fn=convert_value_with_context,
+            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+            error_response_fn=dch._error_response,
+            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: dch.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+            logger=dch.logger,
+        )
+
+    def _set_scope_variable_direct(
+        frame: Any, scope: str, name: str, value: str
+    ) -> dict[str, Any]:
+        return command_handler_helpers.set_scope_variable(
+            frame,
+            scope,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            evaluate_with_policy_fn=dch.evaluate_with_policy,
+            convert_value_with_context_fn=convert_value_with_context,
+            logger=dch.logger,
+            error_response_fn=dch._error_response,
+            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: dch.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
+    result = variable_handlers.handle_set_variable_impl(
+        dbg,
+        arguments,
+        error_response=dch._error_response,
+        set_object_member=_set_object_member_direct,
+        set_scope_variable=_set_scope_variable_direct,
+        logger=dch.logger,
+        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
+    )
+    if result:
+        dch._safe_send_debug_message("setVariable", **result)
+
+
 def test_convert_value_with_context_literal_and_bool_and_none():
-    assert dch._convert_value_with_context("None") is None
-    assert dch._convert_value_with_context("true") is True
-    assert dch._convert_value_with_context("False") is False
-    assert dch._convert_value_with_context("123") == 123
+    assert convert_value_with_context("None") is None
+    assert convert_value_with_context("true") is True
+    assert convert_value_with_context("False") is False
+    assert convert_value_with_context("123") == 123
 
 
 def test_convert_value_with_context_eval_with_frame():
     frame = SimpleNamespace(f_globals={"x": 5}, f_locals={})
-    assert dch._convert_value_with_context("x + 1", frame) == 6
+    assert convert_value_with_context("x + 1", frame) == 6
 
 
 def test_set_object_member_dict_list_tuple_and_attribute():
+    def _set_object_member_direct(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
+        return command_handler_helpers.set_object_member(
+            parent_obj,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            convert_value_with_context_fn=convert_value_with_context,
+            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+            error_response_fn=dch._error_response,
+            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: dch.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+            logger=dch.logger,
+        )
+
     # dict
     d = {"a": 1}
-    res = dch._set_object_member(d, "a", "2")
+    res = _set_object_member_direct(d, "a", "2")
     assert res["success"] is True
     assert d["a"] == 2
 
     # list
     lst = [1, 2, 3]
-    res = dch._set_object_member(lst, "1", "5")
+    res = _set_object_member_direct(lst, "1", "5")
     assert res["success"] is True
     assert lst[1] == 5
 
     # list invalid index
-    res = dch._set_object_member(lst, "x", "5")
+    res = _set_object_member_direct(lst, "x", "5")
     assert res["success"] is False
 
     # tuple immutability
     tpl = (1, 2)
-    res = dch._set_object_member(tpl, "0", "9")
+    res = _set_object_member_direct(tpl, "0", "9")
     assert res["success"] is False
 
     # attribute on object
@@ -63,22 +172,41 @@ def test_set_object_member_dict_list_tuple_and_attribute():
         z: Any
 
     o = DummyObj()
-    res = dch._set_object_member(o, "z", "7")
+    res = _set_object_member_direct(o, "z", "7")
     assert res["success"] is True
     assert o.z == 7
 
 
 def test_set_scope_variable_locals_and_globals():
+    def _set_scope_variable_direct(
+        frame: Any, scope: str, name: str, value: str
+    ) -> dict[str, Any]:
+        return command_handler_helpers.set_scope_variable(
+            frame,
+            scope,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            evaluate_with_policy_fn=dch.evaluate_with_policy,
+            convert_value_with_context_fn=convert_value_with_context,
+            logger=dch.logger,
+            error_response_fn=dch._error_response,
+            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: dch.state.debugger,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
     frame = SimpleNamespace(f_locals={}, f_globals={})
-    r = dch._set_scope_variable(frame, "locals", "n", "10")
+    r = _set_scope_variable_direct(frame, "locals", "n", "10")
     assert r["success"] is True
     assert frame.f_locals["n"] == 10
 
-    r = dch._set_scope_variable(frame, "globals", "g", "20")
+    r = _set_scope_variable_direct(frame, "globals", "g", "20")
     assert r["success"] is True
     assert frame.f_globals["g"] == 20
 
-    r = dch._set_scope_variable(frame, "weird", "x", "1")
+    r = _set_scope_variable_direct(frame, "weird", "x", "1")
     assert r["success"] is False
 
 
@@ -96,18 +224,29 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
 
     # setBreakpoints
     args = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
-    dch._cmd_set_breakpoints(cast("SetBreakpointsArguments", args))
+    breakpoint_handlers.handle_set_breakpoints_impl(
+        dbg,
+        cast("SetBreakpointsArguments", args),
+        dch._safe_send_debug_message,
+        dch.logger,
+    )
     assert ("file.py", 10, None) in dbg.breaks
 
     # setFunctionBreakpoints
     args = {"breakpoints": [{"name": "foo", "condition": "c", "hitCondition": 1}]}
-    dch._cmd_set_function_breakpoints(cast("SetFunctionBreakpointsArguments", args))
+    breakpoint_handlers.handle_set_function_breakpoints_impl(
+        dbg,
+        cast("SetFunctionBreakpointsArguments", args),
+    )
     assert "foo" in dbg.function_breakpoints
     assert dbg.function_breakpoint_meta.get("foo", {}).get("condition") == "c"
 
     # setExceptionBreakpoints
     args = {"filters": ["raised", "uncaught"]}
-    dch._cmd_set_exception_breakpoints(cast("SetExceptionBreakpointsArguments", args))
+    breakpoint_handlers.handle_set_exception_breakpoints_impl(
+        dbg,
+        cast("SetExceptionBreakpointsArguments", args),
+    )
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is True
 
@@ -125,17 +264,23 @@ def test_continue_next_step_out(monkeypatch):
 
     monkeypatch.setattr(dch, "send_debug_message", _no_op)
 
-    dch._cmd_continue({"threadId": tid})
+    stepping_handlers.handle_continue_impl(dbg, {"threadId": tid})
     assert tid not in dbg.stopped_thread_ids
     assert dbg._continued is True
 
-    dch._cmd_next({"threadId": tid})
+    stepping_handlers.handle_next_impl(
+        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+    )
     assert dbg.stepping is True
 
-    dch._cmd_step_in({"threadId": tid})
+    stepping_handlers.handle_step_in_impl(
+        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+    )
     assert getattr(dbg, "_step", True) is True
 
-    dch._cmd_step_out({"threadId": tid})
+    stepping_handlers.handle_step_out_impl(
+        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+    )
     assert getattr(dbg, "_return", None) is not None
 
 
@@ -152,7 +297,13 @@ def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
 
     # Call the handler
-    dch._cmd_pause({"threadId": tid})
+    stepping_handlers.handle_pause_impl(
+        dbg,
+        {"threadId": tid},
+        dch._get_thread_ident,
+        dch._safe_send_debug_message,
+        dch.logger,
+    )
 
     # Thread should be marked stopped and a stopped event emitted
     assert tid in dbg.stopped_thread_ids
@@ -169,14 +320,24 @@ def test_variables_and_set_variable(monkeypatch):
     dbg.var_refs[7] = (1, "locals")
     monkeypatch.setattr(dch.state, "debugger", dbg)
 
-    # stub make_variable_object to predictable output
-    def fake_make_variable_object(_name, value):
+    # stub variable factory to predictable output
+    def fake_make_variable(_dbg, _name, value, _frame):
         return cast(
             "Variable",
             {"value": str(value), "type": type(value).__name__, "variablesReference": 0},
         )
 
-    monkeypatch.setattr(dch, "make_variable_object", fake_make_variable_object)
+    def _resolve_with_fake_make_variable(
+        runtime_dbg: Any, frame_info: Any
+    ) -> list[dict[str, Any]]:
+        return variable_command_runtime.resolve_variables_for_reference_runtime(
+            runtime_dbg,
+            frame_info,
+            resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
+            extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
+            make_variable_fn=fake_make_variable,
+            var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
+        )
 
     calls = []
 
@@ -186,13 +347,18 @@ def test_variables_and_set_variable(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch._cmd_variables({"variablesReference": 7})
+    variable_handlers.handle_variables_impl(
+        dbg,
+        {"variablesReference": 7},
+        dch._safe_send_debug_message,
+        _resolve_with_fake_make_variable,
+    )
     assert calls
     assert calls[-1][0] == "variables"
 
     # setVariable invalid ref
     calls.clear()
-    dch._cmd_set_variable({"variablesReference": 999, "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(dbg, {"variablesReference": 999, "name": "x", "value": "1"})
     assert calls
     assert calls[-1][0] == "setVariable"
 
@@ -209,7 +375,7 @@ def test_set_variable_bad_args_failure_payload(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch._cmd_set_variable({"variablesReference": "bad", "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(dbg, {"variablesReference": "bad", "name": "x", "value": "1"})
 
     assert calls
     event, payload = calls[-1]
@@ -231,7 +397,7 @@ def test_set_variable_missing_frame_failure_payload(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch._cmd_set_variable({"variablesReference": 10, "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(dbg, {"variablesReference": 10, "name": "x", "value": "1"})
 
     assert calls
     event, payload = calls[-1]
@@ -253,7 +419,10 @@ def test_set_variable_conversion_failure_payload(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch._cmd_set_variable({"variablesReference": 11, "name": "x", "value": object()})
+    _invoke_set_variable_via_domain(
+        dbg,
+        {"variablesReference": 11, "name": "x", "value": object()},
+    )
 
     assert calls
     event, payload = calls[-1]
@@ -272,13 +441,13 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
     sys.modules["__test_mymod__"] = m
 
     seen = set()
-    sources = dch._collect_module_sources(seen)
+    sources = source_handlers._collect_module_sources(seen)
     assert any(s.get("path") and s.get("origin") for s in sources)
 
     # linecache: ensure cache has the file name
     linecache.cache[str(p)] = (1, None, [], str(p))
     seen2 = set()
-    line_sources = dch._collect_linecache_sources(seen2)
+    line_sources = source_handlers._collect_linecache_sources(seen2)
     assert any(s.get("path") for s in line_sources)
 
     # handle_source by path
@@ -293,7 +462,7 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder2)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder2)
-    dch._cmd_source({"path": str(p)})
+    source_handlers.handle_source({"path": str(p)}, dch.state, dch._safe_send_debug_message)
     assert calls
     assert calls[-1][0] == "response"
 
@@ -313,12 +482,26 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder3)
 
     # successful eval
-    dch._cmd_evaluate({"expression": "y + 3", "frameId": 1})
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "y + 3", "frameId": 1},
+        evaluate_with_policy=dch.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=dch._safe_send_debug_message,
+        logger=dch.logger,
+    )
     assert calls
     assert calls[-1][0] == "evaluate"
 
     # eval error
-    dch._cmd_evaluate({"expression": "unknown_var", "frameId": 1})
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "unknown_var", "frameId": 1},
+        evaluate_with_policy=dch.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=dch._safe_send_debug_message,
+        logger=dch.logger,
+    )
     assert calls
     assert calls[-1][0] == "evaluate"
 
@@ -337,7 +520,14 @@ def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
     monkeypatch.setattr(dch, "send_debug_message", recorder)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
 
-    dch._cmd_evaluate({"expression": "__import__('os').system('id')", "frameId": 1})
+    variable_handlers.handle_evaluate_impl(
+        dbg,
+        {"expression": "__import__('os').system('id')", "frameId": 1},
+        evaluate_with_policy=dch.evaluate_with_policy,
+        format_evaluation_error=variable_handlers.format_evaluation_error,
+        safe_send_debug_message=dch._safe_send_debug_message,
+        logger=dch.logger,
+    )
     assert calls
     event, payload = calls[-1]
     assert event == "evaluate"
@@ -354,14 +544,22 @@ def test_handle_exception_info_variants(monkeypatch):
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder4)
 
     # missing threadId
-    dch._cmd_exception_info(cast("ExceptionInfoArguments", {}))
+    lifecycle_handlers.cmd_exception_info(
+        cast("ExceptionInfoArguments", {}),
+        state=dch.state,
+        safe_send_debug_message=dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "error"
 
     # debugger not initialized
     monkeypatch.setattr(dch.state, "debugger", None)
     calls.clear()
-    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 1}))
+    lifecycle_handlers.cmd_exception_info(
+        cast("ExceptionInfoArguments", {"threadId": 1}),
+        state=dch.state,
+        safe_send_debug_message=dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "error"
 
@@ -369,7 +567,11 @@ def test_handle_exception_info_variants(monkeypatch):
     dbg = DummyDebugger()
     monkeypatch.setattr(dch.state, "debugger", dbg)
     calls.clear()
-    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 2}))
+    lifecycle_handlers.cmd_exception_info(
+        cast("ExceptionInfoArguments", {"threadId": 2}),
+        state=dch.state,
+        safe_send_debug_message=dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "error"
 
@@ -381,7 +583,11 @@ def test_handle_exception_info_variants(monkeypatch):
         "details": {},
     }
     calls.clear()
-    dch._cmd_exception_info(cast("ExceptionInfoArguments", {"threadId": 3}))
+    lifecycle_handlers.cmd_exception_info(
+        cast("ExceptionInfoArguments", {"threadId": 3}),
+        state=dch.state,
+        safe_send_debug_message=dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "exceptionInfo"
 
@@ -462,13 +668,15 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder5)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder5)
-    dch._cmd_loaded_sources({})
+    source_handlers.handle_loaded_sources(dch.state, dch._safe_send_debug_message)
     assert calls
     assert calls[-1][0] == "response"
 
     # modules with paging
     calls.clear()
-    dch._cmd_modules({"startModule": 0, "moduleCount": 1})
+    source_handlers.handle_modules(
+        {"startModule": 0, "moduleCount": 1}, dch._safe_send_debug_message
+    )
     assert calls
     assert calls[-1][0] == "response"
 
@@ -489,7 +697,7 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder6)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder6)
-    dch._cmd_source({"path": str(p)})
+    source_handlers.handle_source({"path": str(p)}, dch.state, dch._safe_send_debug_message)
     assert calls
     assert calls[-1][0] == "response"
 
@@ -497,6 +705,10 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
     monkeypatch.setattr(dch.state, "get_source_meta", lambda _ref: {"path": str(p)})
     monkeypatch.setattr(dch.state, "get_source_content_by_ref", lambda _ref: "print(2)")
     calls.clear()
-    dch._cmd_source({"source": {"sourceReference": 1}})
+    source_handlers.handle_source(
+        {"source": {"sourceReference": 1}},
+        dch.state,
+        dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "response"

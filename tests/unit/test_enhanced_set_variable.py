@@ -14,10 +14,33 @@ import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from dapper.shared.command_handlers import _convert_value_with_context
-from dapper.shared.command_handlers import _set_object_member
-from dapper.shared.command_handlers import _set_scope_variable
-from dapper.shared.command_handlers import handle_set_variable
+from dapper.shared import command_handler_helpers
+from dapper.shared import command_handlers
+from dapper.shared import debug_shared
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
+from dapper.shared.value_conversion import convert_value_with_context
+
+_CONVERSION_FAILED = object()
+
+
+def _try_test_convert(value_str, frame=None, parent_obj=None):
+    try:
+        return convert_value_with_context(value_str, frame, parent_obj)
+    except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+        return _CONVERSION_FAILED
+
+
+def _make_variable_for_tests(dbg, name, value, frame):
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
+    )
 
 
 class TestEnhancedSetVariable(unittest.TestCase):
@@ -36,6 +59,39 @@ class TestEnhancedSetVariable(unittest.TestCase):
         self.mock_frame.f_locals = {"x": 10, "items": [1, 2, 3]}
         self.mock_frame.f_globals = {"config": {"debug": True}}
 
+    def _set_object_member_direct(self, parent_obj, name, value):
+        return command_handler_helpers.set_object_member(
+            parent_obj,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            convert_value_with_context_fn=convert_value_with_context,
+            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+            error_response_fn=command_handlers._error_response,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: None,
+            make_variable_fn=_make_variable_for_tests,
+            logger=command_handlers.logger,
+        )
+
+    def _set_scope_variable_direct(self, frame, scope, name, value):
+        return command_handler_helpers.set_scope_variable(
+            frame,
+            scope,
+            name,
+            value,
+            try_custom_convert=_try_test_convert,
+            conversion_failed_sentinel=_CONVERSION_FAILED,
+            evaluate_with_policy_fn=command_handlers.evaluate_with_policy,
+            convert_value_with_context_fn=convert_value_with_context,
+            logger=command_handlers.logger,
+            error_response_fn=command_handlers._error_response,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: None,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
     def test_convert_value_with_context_expressions(self):
         """Test value conversion with frame context for expressions"""
         # Mock frame for expression evaluation
@@ -44,11 +100,11 @@ class TestEnhancedSetVariable(unittest.TestCase):
         frame.f_globals = {"math": __import__("math")}
 
         # Test simple expression
-        result = _convert_value_with_context("a + b", frame)
+        result = convert_value_with_context("a + b", frame)
         assert result == 15
 
         # Test with global access
-        result = _convert_value_with_context("math.pi", frame)
+        result = convert_value_with_context("math.pi", frame)
         assert type(result) is float
         assert abs(result - 3.14159) < 0.001
 
@@ -56,13 +112,13 @@ class TestEnhancedSetVariable(unittest.TestCase):
         """Test type inference based on parent object"""
         # Test list with numeric types
         parent_list = [1, 2, 3]
-        result = _convert_value_with_context("42", None, parent_list)
+        result = convert_value_with_context("42", None, parent_list)
         assert result == 42
         assert isinstance(result, int)
 
         # Test dict with string values
         parent_dict = {"key1": "value1", "key2": "value2"}
-        result = _convert_value_with_context("new_value", None, parent_dict)
+        result = convert_value_with_context("new_value", None, parent_dict)
         assert result == "new_value"
         assert isinstance(result, str)
 
@@ -72,7 +128,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         mock_state.debugger = self.mock_debugger
 
         test_dict = {"key1": "value1", "key2": "value2"}
-        result = _set_object_member(test_dict, "key3", "'new_value'")
+        result = self._set_object_member_direct(test_dict, "key3", "'new_value'")
 
         assert result["success"]
         assert test_dict["key3"] == "new_value"
@@ -84,7 +140,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         mock_state.debugger = self.mock_debugger
 
         test_list = [1, 2, 3]
-        result = _set_object_member(test_list, "1", "99")
+        result = self._set_object_member_direct(test_list, "1", "99")
 
         assert result["success"]
         assert test_list[1] == 99
@@ -96,7 +152,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         mock_state.debugger = self.mock_debugger
 
         test_list = [1, 2, 3]
-        result = _set_object_member(test_list, "10", "99")
+        result = self._set_object_member_direct(test_list, "10", "99")
 
         assert not result["success"]
         assert "out of range" in result["message"]
@@ -111,7 +167,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
                 self.attr1 = "original"
 
         test_obj = TestClass()
-        result = _set_object_member(test_obj, "attr1", "'modified'")
+        result = self._set_object_member_direct(test_obj, "attr1", "'modified'")
 
         assert result["success"]
         assert test_obj.attr1 == "modified"
@@ -122,7 +178,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         mock_state.debugger = self.mock_debugger
 
         test_tuple = (1, 2, 3)
-        result = _set_object_member(test_tuple, "0", "99")
+        result = self._set_object_member_direct(test_tuple, "0", "99")
 
         assert not result["success"]
         assert "immutable" in result["message"]
@@ -143,7 +199,16 @@ class TestEnhancedSetVariable(unittest.TestCase):
             "value": "'new_value'",
         }
 
-        result = handle_set_variable(self.mock_debugger, arguments)
+        result = variable_handlers.handle_set_variable_impl(
+            self.mock_debugger,
+            arguments,
+            error_response=command_handlers._error_response,
+            set_object_member=self._set_object_member_direct,
+            set_scope_variable=self._set_scope_variable_direct,
+            logger=command_handlers.logger,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            var_ref_tuple_size=command_handlers.VAR_REF_TUPLE_SIZE,
+        )
 
         assert result["success"]
         assert test_dict["new_key"] == "new_value"
@@ -160,7 +225,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         self.mock_debugger.var_manager.var_refs[var_ref] = (frame_id, "locals")
         self.mock_debugger.thread_tracker.frame_id_to_frame[frame_id] = self.mock_frame
 
-        result = _set_scope_variable(self.mock_frame, "locals", "result", "a * b")
+        result = self._set_scope_variable_direct(self.mock_frame, "locals", "result", "a * b")
 
         assert result["success"]
         assert self.mock_frame.f_locals["result"] == 50

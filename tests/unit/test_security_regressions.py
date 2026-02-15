@@ -17,7 +17,10 @@ from dapper.core.breakpoint_resolver import BreakpointResolver
 from dapper.core.debug_utils import format_log_message
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc.connections.tcp import TCPServerConnection
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
+from dapper.shared import debug_shared
+from dapper.shared import variable_command_runtime
 from dapper.shared.value_conversion import evaluate_with_policy
 
 # ---------------------------------------------------------------------------
@@ -81,6 +84,18 @@ def _make_frame(local_vars: dict | None = None, global_vars: dict | None = None)
     return frame
 
 
+def _make_variable_for_tests(dbg, name, value, frame):
+    return variable_command_runtime.make_variable_runtime(
+        dbg,
+        name,
+        value,
+        frame,
+        make_variable_helper=command_handler_helpers.make_variable,
+        fallback_make_variable=debug_shared.make_variable_object,
+        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
+    )
+
+
 class TestEvalPolicyEnforcement:
     """All eval() call sites go through the policy checker."""
 
@@ -128,26 +143,32 @@ class TestEvalPolicyEnforcement:
         result = format_log_message("{__import__('os')}", frame)
         assert result == "<error>"
 
-    def test_command_handler_set_scope_blocks_eval_of_import(self, monkeypatch):
+    def test_command_handler_set_scope_blocks_eval_of_import(self):
         frame = _make_frame({"x": 1})
 
-        # Patch _try_custom_convert to return the sentinel so we exercise the eval path
+        # Use a conversion function that returns the sentinel so we exercise the eval path
+        conversion_failed_sentinel = object()
+
         def _fail_convert(*_args, **_kwargs):
-            return command_handlers._CONVERSION_FAILED
+            return conversion_failed_sentinel
 
-        monkeypatch.setattr(
-            command_handlers,
-            "_try_custom_convert",
-            _fail_convert,
-        )
-        # Also patch the fallback converter to fail, isolating the policy check
-        monkeypatch.setattr(
-            command_handlers,
-            "_convert_value_with_context",
-            MagicMock(side_effect=ValueError("fail")),
-        )
+        failing_convert_value_with_context = MagicMock(side_effect=ValueError("fail"))
 
-        result = command_handlers._set_scope_variable(frame, "locals", "x", "__import__('os')")
+        result = command_handler_helpers.set_scope_variable(
+            frame,
+            "locals",
+            "x",
+            "__import__('os')",
+            try_custom_convert=_fail_convert,
+            conversion_failed_sentinel=conversion_failed_sentinel,
+            evaluate_with_policy_fn=evaluate_with_policy,
+            convert_value_with_context_fn=failing_convert_value_with_context,
+            logger=command_handlers.logger,
+            error_response_fn=command_handlers._error_response,
+            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+            get_state_debugger=lambda: None,
+            make_variable_fn=_make_variable_for_tests,
+        )
         # Policy blocks it via ValueError; fallback also fails → error
         assert result.get("success") is not True
 

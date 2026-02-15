@@ -24,6 +24,7 @@ import threading
 from typing import IO
 from typing import TYPE_CHECKING
 from typing import Callable
+from typing import Union
 
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.reader_helpers import read_binary_stream
@@ -52,8 +53,8 @@ else:
     PipeListenerLike = object
     PathLike = object
 
-ReaderLike = IO[str] | IO[bytes] | SyncConnectionAdapter
-WriterLike = IO[str] | IO[bytes]
+ReaderLike = Union[IO[str], IO[bytes], SyncConnectionAdapter]
+WriterLike = Union[IO[str], IO[bytes]]
 
 
 @dataclass

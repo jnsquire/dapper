@@ -14,8 +14,14 @@ import pytest
 
 # Import the module to test
 from dapper.launcher import debug_launcher as dl
+from dapper.shared import breakpoint_handlers
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
+from dapper.shared import lifecycle_handlers
+from dapper.shared import stepping_handlers
+from dapper.shared import variable_command_runtime
+from dapper.shared import variable_handlers
 from dapper.shared.debug_shared import SessionState
 from tests.mocks import make_real_frame
 
@@ -121,14 +127,8 @@ class TestDebugLauncherBasic:
 
     def test_handle_initialize(self) -> None:
         """Test initialize command handling."""
-        # Setup
-        dbg = MagicMock()
-
-        # Execute with a request that includes a request ID
-        request = {"type": "request", "command": "initialize", "seq": 1, "arguments": {}}
-
         # Call the function and get the response
-        response = handlers.handle_initialize(dbg, request)
+        response = lifecycle_handlers.handle_initialize_impl()
 
         # Verify the response structure
         assert isinstance(response, dict), "Response should be a dictionary"
@@ -170,12 +170,14 @@ class TestBreakpointHandling:
         line1, line2 = 10, 20
 
         # Execute
-        response = handlers.handle_set_breakpoints(
+        response = breakpoint_handlers.handle_set_breakpoints_impl(
             dbg,
             {
                 "source": {"path": path},
                 "breakpoints": [{"line": line1}, {"line": line2, "condition": "x > 5"}],
             },
+            handlers._safe_send_debug_message,
+            handlers.logger,
         )
 
         # Verify breakpoints were set
@@ -239,7 +241,31 @@ class TestVariableHandling:
         }
 
         # Execute
-        handlers.handle_variables(dbg, args)
+        variable_handlers.handle_variables_impl(
+            dbg,
+            args,
+            handlers._safe_send_debug_message,
+            lambda runtime_dbg, frame_info: (
+                variable_command_runtime.resolve_variables_for_reference_runtime(
+                    runtime_dbg,
+                    frame_info,
+                    resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
+                    extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
+                    make_variable_fn=lambda helper_dbg, name, value, frame: (
+                        variable_command_runtime.make_variable_runtime(
+                            helper_dbg,
+                            name,
+                            value,
+                            frame,
+                            make_variable_helper=command_handler_helpers.make_variable,
+                            fallback_make_variable=debug_shared.make_variable_object,
+                            simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
+                        )
+                    ),
+                    var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+                )
+            ),
+        )
 
         # Verify send_debug_message was called with the expected arguments
         assert mock_send.called, "send_debug_message was not called"
@@ -277,7 +303,14 @@ class TestExpressionEvaluation:
         args = {"expression": "x + y", "context": "watch"}
 
         # Execute
-        handlers.handle_evaluate(dl.state.debugger, args)
+        variable_handlers.handle_evaluate_impl(
+            dl.state.debugger,
+            args,
+            evaluate_with_policy=handlers.evaluate_with_policy,
+            format_evaluation_error=variable_handlers.format_evaluation_error,
+            safe_send_debug_message=handlers._safe_send_debug_message,
+            logger=handlers.logger,
+        )
 
         # Verify the expression was evaluated and result sent
         assert mock_send.called
@@ -302,7 +335,7 @@ class TestControlFlow:
         mock_dbg.thread_tracker.stopped_thread_ids = {1}  # Simulate a stopped thread
 
         # Execute with matching thread ID
-        handlers.handle_continue(mock_dbg, {"threadId": 1})
+        stepping_handlers.handle_continue_impl(mock_dbg, {"threadId": 1})
 
         # Verify thread was removed from stopped_thread_ids and set_continue was called
         assert 1 not in mock_dbg.thread_tracker.stopped_thread_ids
@@ -312,7 +345,7 @@ class TestControlFlow:
         mock_dbg.reset_mock()
         mock_dbg.thread_tracker.stopped_thread_ids = {2}  # Different thread ID
 
-        handlers.handle_continue(mock_dbg, {"threadId": 1})
+        stepping_handlers.handle_continue_impl(mock_dbg, {"threadId": 1})
         mock_dbg.set_continue.assert_not_called()
 
     def test_handle_step_over(self) -> None:
@@ -327,7 +360,12 @@ class TestControlFlow:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            handlers.handle_next(mock_dbg, {"threadId": 1})
+            stepping_handlers.handle_next_impl(
+                mock_dbg,
+                {"threadId": 1},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
 
             # Verify stepping was set and set_next was called
             assert mock_dbg.stepping_controller.stepping is True
@@ -335,7 +373,12 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            handlers.handle_next(mock_dbg, {"threadId": 2})
+            stepping_handlers.handle_next_impl(
+                mock_dbg,
+                {"threadId": 2},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
             mock_dbg.set_next.assert_not_called()
 
     def test_handle_step_in(self) -> None:
@@ -348,7 +391,12 @@ class TestControlFlow:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            handlers.handle_step_in(mock_dbg, {"threadId": 1})
+            stepping_handlers.handle_step_in_impl(
+                mock_dbg,
+                {"threadId": 1},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
 
             # Verify stepping was set and set_step was called
             assert mock_dbg.stepping_controller.stepping is True
@@ -356,7 +404,12 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            handlers.handle_step_in(mock_dbg, {"threadId": 2})
+            stepping_handlers.handle_step_in_impl(
+                mock_dbg,
+                {"threadId": 2},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
             mock_dbg.set_step.assert_not_called()
 
     def test_handle_step_out(self) -> None:
@@ -371,7 +424,12 @@ class TestControlFlow:
             mock_threading.get_ident.return_value = 1
 
             # Execute with matching thread ID
-            handlers.handle_step_out(mock_dbg, {"threadId": 1})
+            stepping_handlers.handle_step_out_impl(
+                mock_dbg,
+                {"threadId": 1},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
 
             # Verify stepping was set and set_return was called
             assert mock_dbg.stepping_controller.stepping is True
@@ -379,7 +437,12 @@ class TestControlFlow:
 
             # Test with non-matching thread ID
             mock_dbg.reset_mock()
-            handlers.handle_step_out(mock_dbg, {"threadId": 2})
+            stepping_handlers.handle_step_out_impl(
+                mock_dbg,
+                {"threadId": 2},
+                handlers._get_thread_ident,
+                handlers._set_dbg_stepping_flag,
+            )
             mock_dbg.set_return.assert_not_called()
 
 
@@ -389,7 +452,9 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_empty(self):
         """Test with empty filters list."""
         mock_dbg = MagicMock()
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": []})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg, {"filters": []}
+        )
 
         assert response is not None
         assert response["success"] is True
@@ -404,7 +469,10 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_raised(self):
         """Test with 'raised' filter."""
         mock_dbg = MagicMock()
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg,
+            {"filters": ["raised"]},
+        )
 
         assert response is not None
         assert response["success"] is True
@@ -422,7 +490,10 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_uncaught(self):
         """Test with 'uncaught' filter."""
         mock_dbg = MagicMock()
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["uncaught"]})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg,
+            {"filters": ["uncaught"]},
+        )
 
         assert response is not None
         assert response["success"] is True
@@ -440,7 +511,7 @@ class TestExceptionBreakpoints:
     def test_handle_set_exception_breakpoints_both_filters(self):
         """Test with both 'raised' and 'uncaught' filters."""
         mock_dbg = MagicMock()
-        response = handlers.handle_set_exception_breakpoints(
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
             mock_dbg, {"filters": ["raised", "uncaught"]}
         )
 
@@ -462,14 +533,20 @@ class TestExceptionBreakpoints:
         mock_dbg = MagicMock()
 
         # Test with non-list filters
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": "invalid"})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg,
+            {"filters": "invalid"},
+        )
         assert response is not None
         body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
         assert body.get("breakpoints") == []
 
         # Test with non-string elements
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": [123, None]})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg,
+            {"filters": [123, None]},
+        )
         assert response is not None
         body = cast("dict[str, Any]", response.get("body"))
         assert body is not None
@@ -492,7 +569,10 @@ class TestExceptionBreakpoints:
         type(mock_config).break_on_raised = PropertyMock(side_effect=raise_on_set_raised)
 
         # The debugger should still be called with the filter
-        response = handlers.handle_set_exception_breakpoints(mock_dbg, {"filters": ["raised"]})
+        response = breakpoint_handlers.handle_set_exception_breakpoints_impl(
+            mock_dbg,
+            {"filters": ["raised"]},
+        )
 
         assert response is not None
         # The response should still be successful
