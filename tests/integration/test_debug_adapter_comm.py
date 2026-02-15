@@ -108,7 +108,7 @@ def test_receive_debug_commands_requires_ipc():
         ipc_receiver.receive_debug_commands(session=session)
 
 
-def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
+def test_receive_debug_commands_malformed_json_ipc():
     session = debug_shared.DebugSession()
     session.is_terminated = False
     session.ipc_enabled = True
@@ -125,10 +125,7 @@ def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
         called.append((event_type, kwargs))
         session.is_terminated = True
 
-    # patch the module-level send_debug_message used in receive_debug_commands
-    monkeypatch.setattr(ipc_receiver, "send_debug_message", fake_send)
-
-    ipc_receiver.receive_debug_commands(session=session)
+    ipc_receiver.receive_debug_commands(session=session, error_sender=fake_send)
 
     assert called, "send_debug_message was not called for malformed JSON"
     ev, kw = called[0]

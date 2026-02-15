@@ -18,8 +18,8 @@ class _DummyThread:
 
 
 def test_start_command_receiver_idempotent(monkeypatch):
-    # Start from a clean session state for deterministic behavior
-    state = ds.SessionState.reset()
+    # Use an explicit debug session for deterministic behavior
+    state = ds.DebugSession()
 
     # Provide dummy module with receive_debug_commands
     mod = types.ModuleType("dapper.ipc.ipc_receiver")
@@ -54,8 +54,8 @@ def test_start_command_receiver_idempotent(monkeypatch):
 
 
 def test_start_command_receiver_failure_logged(monkeypatch, caplog):
-    # Ensure a clean session state before exercising startup failure paths
-    state = ds.SessionState.reset()
+    # Use an explicit debug session before exercising startup failure paths
+    state = ds.DebugSession()
 
     # Mock module
     mod = types.ModuleType("dapper.ipc.ipc_receiver")

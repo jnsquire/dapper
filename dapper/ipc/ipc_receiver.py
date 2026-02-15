@@ -13,6 +13,7 @@ import logging
 from queue import Empty
 import traceback
 from typing import Any
+from typing import Callable
 
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import COMMAND_HANDLERS
@@ -31,10 +32,25 @@ def _active_session(session: debug_shared.DebugSession | None = None) -> debug_s
     return session if session is not None else debug_shared.get_active_session()
 
 
-def _send_error(message: str, session: debug_shared.DebugSession) -> None:
+ErrorSender = Callable[..., Any]
+
+
+def _resolve_error_sender(error_sender: ErrorSender | None) -> ErrorSender:
+    """Return the explicit sender hook or fallback sender."""
+    if error_sender is not None:
+        return error_sender
+    return send_debug_message
+
+
+def _send_error(
+    message: str,
+    session: debug_shared.DebugSession,
+    *,
+    error_sender: ErrorSender | None = None,
+) -> None:
     """Emit an error event using the provided active session context."""
     with debug_shared.use_session(session):
-        send_debug_message("error", message=message)
+        _resolve_error_sender(error_sender)("error", message=message)
 
 
 class DapMappingProvider:
@@ -84,7 +100,11 @@ def _ensure_mapping_provider(session: debug_shared.DebugSession) -> None:
     session.register_command_provider(DapMappingProvider(COMMAND_HANDLERS), priority=100)
 
 
-def receive_debug_commands(session: debug_shared.DebugSession | None = None) -> None:
+def receive_debug_commands(
+    session: debug_shared.DebugSession | None = None,
+    *,
+    error_sender: ErrorSender | None = None,
+) -> None:
     """
     Continuously reads debug commands from the IPC channel, parses them,
     and dispatches them for processing until termination is requested.
@@ -111,7 +131,11 @@ def receive_debug_commands(session: debug_shared.DebugSession | None = None) -> 
                 command = json.loads(command_json)
                 active_session.command_queue.put(command)
             except Exception as e:
-                _send_error(f"Error receiving command: {e!s}", active_session)
+                _send_error(
+                    f"Error receiving command: {e!s}",
+                    active_session,
+                    error_sender=error_sender,
+                )
                 traceback.print_exc()
 
 

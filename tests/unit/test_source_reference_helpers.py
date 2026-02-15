@@ -17,26 +17,17 @@ class MockWFile(io.BytesIO):
 
 @pytest.fixture(autouse=True)
 def _setup_ipc_for_tests():
-    """Enable IPC with mock file so any background threads don't fail."""
-    orig_enabled = ds.state.ipc_enabled
-    orig_wfile = ds.state.ipc_wfile
-    orig_rfile = ds.state.ipc_rfile
-
-    # Start from a clean session state for deterministic behaviour
-    ds.SessionState.reset()
-
-    ds.state.ipc_enabled = True
-    ds.state.ipc_wfile = MockWFile()
-    ds.state.ipc_rfile = io.StringIO("")  # Empty reader to cause immediate exit
-    yield
-    # Restore prior environment to avoid surprising other tests
-    ds.state.ipc_enabled = orig_enabled
-    ds.state.ipc_wfile = orig_wfile
-    ds.state.ipc_rfile = orig_rfile
+    """Enable IPC on an explicit session so background paths stay isolated."""
+    session = ds.DebugSession()
+    session.ipc_enabled = True
+    session.ipc_wfile = MockWFile()
+    session.ipc_rfile = io.StringIO("")  # Empty reader to cause immediate exit
+    with ds.use_session(session):
+        yield session
 
 
 def test_source_reference_round_trip(tmp_path):
-    state = ds.state
+    state = ds.get_active_session()
     p = tmp_path / "sample.py"
     p.write_text("print('hi')\n", encoding="utf-8")
 
@@ -56,6 +47,6 @@ def test_source_reference_round_trip(tmp_path):
 
 
 def test_get_source_content_missing():
-    state = ds.state
+    state = ds.get_active_session()
     missing = state.get_source_content_by_path(str(Path("does_not_exist_file_xyz.py")))
     assert missing is None

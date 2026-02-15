@@ -12,46 +12,44 @@ if TYPE_CHECKING:
 
 
 def test_set_data_breakpoints_command_registers_and_triggers():
-    # Arrange - put a real DebuggerBDB into the shared session state
+    # Arrange - put a real DebuggerBDB into an explicit debug session
     mock_send = MagicMock()
     dbg = DebuggerBDB(send_message=mock_send)
-    state = debug_shared.state
-    # Assign a concrete DebuggerBDB into the session state; cast to the
+    session = debug_shared.DebugSession()
+    # Assign a concrete DebuggerBDB into the session; cast to the
     # DebuggerLike protocol to satisfy static type checkers used by the
     # test suite while still using the real debugger instance at runtime.
-    state.debugger = cast("DebuggerLike", dbg)
+    session.debugger = cast("DebuggerLike", dbg)
 
-    # Act - send the setDataBreakpoints command via standard command dispatcher
-    cmd = {
-        "command": "setDataBreakpoints",
-        "arguments": {"breakpoints": [{"dataId": "frame:999:var:q", "accessType": "write"}]},
-    }
-    command_handlers.handle_debug_command(cmd)
+    with debug_shared.use_session(session):
+        # Act - send the setDataBreakpoints command via standard command dispatcher
+        cmd = {
+            "command": "setDataBreakpoints",
+            "arguments": {"breakpoints": [{"dataId": "frame:999:var:q", "accessType": "write"}]},
+        }
+        command_handlers.handle_debug_command(cmd)
 
-    # Simulate program running with change
-    frame1 = make_real_frame({"q": 1})
+        # Simulate program running with change
+        frame1 = make_real_frame({"q": 1})
 
-    dbg.botframe = frame1
-    dbg.user_line(frame1)
+        dbg.botframe = frame1
+        dbg.user_line(frame1)
 
-    # no stopped event yet
-    reasons = [
-        c.kwargs.get("reason")
-        for c in mock_send.call_args_list
-        if c.args and c.args[0] == "stopped"
-    ]
-    assert "data breakpoint" not in reasons
+        # no stopped event yet
+        reasons = [
+            c.kwargs.get("reason")
+            for c in mock_send.call_args_list
+            if c.args and c.args[0] == "stopped"
+        ]
+        assert "data breakpoint" not in reasons
 
-    frame2 = make_real_frame({"q": 2})
+        frame2 = make_real_frame({"q": 2})
 
-    dbg.user_line(frame2)
+        dbg.user_line(frame2)
 
-    reasons = [
-        c.kwargs.get("reason")
-        for c in mock_send.call_args_list
-        if c.args and c.args[0] == "stopped"
-    ]
-    assert "data breakpoint" in reasons
-
-    # Cleanup
-    state.debugger = None
+        reasons = [
+            c.kwargs.get("reason")
+            for c in mock_send.call_args_list
+            if c.args and c.args[0] == "stopped"
+        ]
+        assert "data breakpoint" in reasons

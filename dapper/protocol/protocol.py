@@ -7,8 +7,8 @@ messages, including parsing, validation, and construction of messages.
 
 from __future__ import annotations
 
-import json
 import itertools
+import json
 import logging
 import threading
 from typing import TYPE_CHECKING

@@ -11,7 +11,7 @@ from typing import Any
 from typing import Protocol
 
 if TYPE_CHECKING:
-    from dapper.shared.debug_shared import SessionState
+    from dapper.shared.debug_shared import DebugSession
 
 
 Payload = dict[str, Any]
@@ -79,7 +79,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[Payload]:
 
 def _collect_main_program_source(
     seen_paths: set[str],
-    state: SessionState,
+    state: DebugSession,
 ) -> list[dict[str, Any]]:
     """Collect the main program source if available."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
@@ -103,7 +103,7 @@ def _collect_main_program_source(
 
 
 def handle_loaded_sources(
-    state: SessionState,
+    state: DebugSession,
     safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle loadedSources request to return all loaded source files."""
@@ -131,7 +131,7 @@ def handle_loaded_sources(
 
 def handle_source(
     arguments: Payload | None,
-    state: SessionState,
+    state: DebugSession,
     safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle source request to return source content."""
@@ -184,7 +184,7 @@ def handle_source(
 
 def handle_legacy_source(
     arguments: Payload | None,
-    state: SessionState,
+    state: DebugSession,
     safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> Payload:
     """Handle source command for legacy (dbg, arguments) call shape."""

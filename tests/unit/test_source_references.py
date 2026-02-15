@@ -29,7 +29,7 @@ def setup_ipc_for_tests():
 
 
 def _call_loaded_sources_and_find_ref(session) -> tuple[int, str]:
-    # Call the handler which will populate state.source_references
+    # Call the handler which will populate session.source_references
     handle_loaded_sources(session, lambda *_args, **_kwargs: True)
     # Find any reference that points to a real file
     for ref, meta in session.source_references.items():
@@ -47,7 +47,7 @@ def test_loaded_sources_exports_source_reference_and_source_handler_returns_cont
     # Request the source by reference
     response_args: dict[str, Any] = {"source": {"sourceReference": ref}}
     # The handler will call send_debug_message; to keep this unit test simple,
-    # we call handle_source and then retrieve the content via state helper.
+    # we call handle_source and then retrieve the content via session helper.
     handle_source(response_args, session, lambda *_args, **_kwargs: True)
     content = session.get_source_content_by_ref(ref)
     assert content is not None
@@ -84,7 +84,7 @@ def test_loaded_sources_to_source_roundtrip_returns_file_contents(setup_ipc_for_
     # Call the source handler as a client would
     handle_source({"source": {"sourceReference": ref}}, session, lambda *_args, **_kwargs: True)
 
-    # The handler stores nothing new beyond what state already had; verify
+    # The handler stores nothing new beyond what session already had; verify
     # that reading the file directly matches what the handler would have returned
     disk_text = Path(path).read_text(encoding="utf-8", errors="ignore")
     content = session.get_source_content_by_ref(ref)

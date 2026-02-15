@@ -174,12 +174,9 @@ def _handle_set_variable(dbg: Any, arguments: dict[str, Any]) -> dict[str, Any]:
 def _isolated_active_session():
     """Run each test with an isolated explicit DebugSession.
 
-    This keeps legacy `debug_shared.state` references in this module working
-    while avoiding cross-test mutation of the default module-level session.
+    This avoids cross-test mutation of the default module-level session.
     """
-    original_state = debug_shared.state
     session = debug_shared.DebugSession()
-    debug_shared.state = session
     with debug_shared.use_session(session):
         session.debugger = None
         session.is_terminated = False
@@ -188,7 +185,6 @@ def _isolated_active_session():
         session.ipc_wfile = MockWFile()
         session.command_queue = queue.Queue()
         yield session
-    debug_shared.state = original_state
 
 
 def _session() -> debug_shared.DebugSession:

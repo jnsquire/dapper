@@ -13,15 +13,22 @@ import dapper.shared.debug_shared as ds
 
 
 @pytest.fixture
-def isolated_registry():
+def use_debug_session():
+    """Provide an explicit debug session for each test."""
+    session = ds.DebugSession()
+    with ds.use_session(session):
+        yield session
+
+
+@pytest.fixture
+def isolated_registry(use_debug_session):
     """Isolate the provider registry for each test and restore afterward."""
-    old = list(ds.state._providers)
-    # Start from a clean session state to ensure deterministic registry
-    ds.SessionState.reset()
+    old = list(use_debug_session._providers)
+    use_debug_session._providers = []
     try:
         yield
     finally:
-        ds.state._providers = old
+        use_debug_session._providers = old
 
 
 @pytest.fixture
@@ -63,24 +70,24 @@ class SupportedProvider:
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_unknown_command_with_id_sends_response_error(capture_messages):
-    ds.state.dispatch_debug_command({"id": 1, "command": "nope", "arguments": {}})
+def test_unknown_command_with_id_sends_response_error(capture_messages, use_debug_session):
+    use_debug_session.dispatch_debug_command({"id": 1, "command": "nope", "arguments": {}})
     assert capture_messages == [
         ("response", {"id": 1, "success": False, "message": "Unknown command: nope"})
     ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_unknown_command_no_id_sends_error_event(capture_messages):
-    ds.state.dispatch_debug_command({"command": "nope", "arguments": {}})
+def test_unknown_command_no_id_sends_error_event(capture_messages, use_debug_session):
+    use_debug_session.dispatch_debug_command({"command": "nope", "arguments": {}})
     assert capture_messages == [("error", {"message": "Unknown command: nope"})]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_provider_success_response_sent_with_id(capture_messages):
+def test_provider_success_response_sent_with_id(capture_messages, use_debug_session):
     prov = AlwaysProvider(result={"success": True, "body": {"ok": 1}})
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"id": 42, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 42, "command": "ping", "arguments": {}})
     assert len(capture_messages) == 1
     event, payload = capture_messages[0]
     assert event == "response"
@@ -90,18 +97,18 @@ def test_provider_success_response_sent_with_id(capture_messages):
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_provider_return_none_no_synthesized_response(capture_messages):
+def test_provider_return_none_no_synthesized_response(capture_messages, use_debug_session):
     prov = AlwaysProvider(result=None)
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"id": 5, "command": "nop", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 5, "command": "nop", "arguments": {}})
     assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_provider_exception_paths_with_id(capture_messages):
+def test_provider_exception_paths_with_id(capture_messages, use_debug_session):
     prov = AlwaysProvider(raise_exc=ValueError("boom"))
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"id": 7, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 7, "command": "ping", "arguments": {}})
     assert len(capture_messages) == 1
     event, payload = capture_messages[0]
     assert event == "response"
@@ -111,10 +118,10 @@ def test_provider_exception_paths_with_id(capture_messages):
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_provider_exception_paths_without_id(capture_messages):
+def test_provider_exception_paths_without_id(capture_messages, use_debug_session):
     prov = AlwaysProvider(raise_exc=RuntimeError("oops"))
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"command": "ping", "arguments": {}})
     assert len(capture_messages) == 1
     event, payload = capture_messages[0]
     assert event == "error"
@@ -122,17 +129,17 @@ def test_provider_exception_paths_without_id(capture_messages):
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_priority_ordering_uses_highest_priority_first(capture_messages):
+def test_priority_ordering_uses_highest_priority_first(capture_messages, use_debug_session):
     low = AlwaysProvider(name="low", result={"success": True, "body": {"who": "low"}})
     high = AlwaysProvider(name="high", result={"success": True, "body": {"who": "high"}})
-    ds.state.register_command_provider(low, priority=0)
-    ds.state.register_command_provider(high, priority=10)
-    ds.state.dispatch_debug_command({"id": 99, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(low, priority=0)
+    use_debug_session.register_command_provider(high, priority=10)
+    use_debug_session.dispatch_debug_command({"id": 99, "command": "ping", "arguments": {}})
     assert capture_messages == [("response", {"id": 99, "success": True, "body": {"who": "high"}})]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages):
+def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages, use_debug_session):
     class CantHandle:
         def can_handle(self, command: str) -> bool:  # noqa: ARG002
             return False
@@ -141,16 +148,16 @@ def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages):
             return {"success": True, "body": {"who": "cant"}}
 
     second = AlwaysProvider(result={"success": True, "body": {"who": "second"}})
-    ds.state.register_command_provider(CantHandle(), priority=10)
-    ds.state.register_command_provider(second, priority=0)
-    ds.state.dispatch_debug_command({"id": 123, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(CantHandle(), priority=10)
+    use_debug_session.register_command_provider(second, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 123, "command": "ping", "arguments": {}})
     assert capture_messages == [
         ("response", {"id": 123, "success": True, "body": {"who": "second"}})
     ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_can_handle_exception_is_ignored_and_unknown_emitted(capture_messages):
+def test_can_handle_exception_is_ignored_and_unknown_emitted(capture_messages, use_debug_session):
     class BadCan:
         def can_handle(self, command: str) -> bool:  # noqa: ARG002
             msg = "nope"
@@ -159,28 +166,28 @@ def test_can_handle_exception_is_ignored_and_unknown_emitted(capture_messages):
         def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
             return {"success": True}
 
-    ds.state.register_command_provider(BadCan(), priority=0)
+    use_debug_session.register_command_provider(BadCan(), priority=0)
     # If a provider's can_handle raises, the exception propagates; ensure the
     # behavior is explicit in the test by asserting the error is raised and
     # that no messages were emitted.
     with pytest.raises(RuntimeError):
-        ds.state.dispatch_debug_command({"id": 321, "command": "xyz", "arguments": {}})
+        use_debug_session.dispatch_debug_command({"id": 321, "command": "xyz", "arguments": {}})
     assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_unregister_removes_provider(capture_messages):
+def test_unregister_removes_provider(capture_messages, use_debug_session):
     prov = AlwaysProvider(result={"success": True})
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.unregister_command_provider(prov)
-    ds.state.dispatch_debug_command({"id": 1, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.unregister_command_provider(prov)
+    use_debug_session.dispatch_debug_command({"id": 1, "command": "ping", "arguments": {}})
     assert capture_messages == [
         ("response", {"id": 1, "success": False, "message": "Unknown command: ping"})
     ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_can_handle_overrides_supported_commands(capture_messages):
+def test_can_handle_overrides_supported_commands(capture_messages, use_debug_session):
     class Both:
         def supported_commands(self):
             return {"ping"}
@@ -192,39 +199,39 @@ def test_can_handle_overrides_supported_commands(capture_messages):
             return {"success": True}
 
     fallback = AlwaysProvider(result={"success": True, "body": {"who": "fallback"}})
-    ds.state.register_command_provider(Both(), priority=10)
-    ds.state.register_command_provider(fallback, priority=0)
-    ds.state.dispatch_debug_command({"id": 2, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(Both(), priority=10)
+    use_debug_session.register_command_provider(fallback, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 2, "command": "ping", "arguments": {}})
     assert capture_messages == [
         ("response", {"id": 2, "success": True, "body": {"who": "fallback"}})
     ]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_response_without_success_key_is_ignored(capture_messages):
+def test_response_without_success_key_is_ignored(capture_messages, use_debug_session):
     prov = AlwaysProvider(result={"message": "hi"})
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"id": 3, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 3, "command": "ping", "arguments": {}})
     assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_success_without_id_emits_no_response(capture_messages):
+def test_success_without_id_emits_no_response(capture_messages, use_debug_session):
     prov = AlwaysProvider(result={"success": True})
-    ds.state.register_command_provider(prov, priority=0)
-    ds.state.dispatch_debug_command({"command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(prov, priority=0)
+    use_debug_session.dispatch_debug_command({"command": "ping", "arguments": {}})
     assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_mutation_during_dispatch_uses_snapshot(capture_messages):
+def test_mutation_during_dispatch_uses_snapshot(capture_messages, use_debug_session):
     class Mutating:
         def __init__(self, ref: Mutating | None):
             self._ref: Mutating | None = ref
 
         def can_handle(self, command: str) -> bool:  # noqa: ARG002
             if self._ref is not None:
-                ds.state.unregister_command_provider(self._ref)
+                use_debug_session.unregister_command_provider(self._ref)
             return True
 
         def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
@@ -232,19 +239,21 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages):
 
     m = Mutating(None)
     m._ref = m
-    ds.state.register_command_provider(m, priority=0)
-    ds.state.dispatch_debug_command({"id": 4, "command": "ping", "arguments": {}})
+    use_debug_session.register_command_provider(m, priority=0)
+    use_debug_session.dispatch_debug_command({"id": 4, "command": "ping", "arguments": {}})
     assert capture_messages == [("response", {"id": 4, "success": True})]
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_pipe_and_socket_dispatch_initialize_emit_same_payload(capture_messages, monkeypatch):
+def test_pipe_and_socket_dispatch_initialize_emit_same_payload(
+    capture_messages, monkeypatch, use_debug_session
+):
     def capture_send(event_type: str, **kwargs):
         capture_messages.append((event_type, kwargs))
 
     monkeypatch.setattr(ch, "send_debug_message", capture_send)
 
-    ds.state.register_command_provider(
+    use_debug_session.register_command_provider(
         cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100
     )
 
@@ -254,7 +263,7 @@ def test_pipe_and_socket_dispatch_initialize_emit_same_payload(capture_messages,
     pipe_messages = list(capture_messages)
 
     capture_messages.clear()
-    ds.state.dispatch_debug_command(command)
+    use_debug_session.dispatch_debug_command(command)
     socket_messages = list(capture_messages)
 
     assert pipe_messages

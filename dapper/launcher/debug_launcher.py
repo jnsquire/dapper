@@ -235,8 +235,6 @@ def start_command_listener(session: Any | None = None) -> threading.Thread:
     thread.start()
     return thread
 
-    # launcher-specific processing function moved into SessionState
-
 
 def configure_debugger(stop_on_entry: bool, session: Any | None = None) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""

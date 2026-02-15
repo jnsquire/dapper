@@ -16,12 +16,19 @@ class _PipeConn:
         self.sent.append(frame)
 
 
-def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch):
+@pytest.fixture
+def use_debug_session():
+    session = ds.DebugSession()
+    with ds.use_session(session):
+        yield session
+
+
+def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch, use_debug_session):
     """Test that send_debug_message emits to listeners but requires IPC."""
     # IPC disabled should still emit to listeners before raising
-    ds.state.ipc_enabled = False
+    use_debug_session.ipc_enabled = False
     captured = []
-    ds.state.on_debug_message.add_listener(
+    use_debug_session.on_debug_message.add_listener(
         lambda event_type, **kw: captured.append((event_type, kw))
     )
 
@@ -40,12 +47,12 @@ def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch):
     assert captured == [("response", {"id": 1, "success": True})]
 
 
-def test_send_debug_message_binary_ipc():
+def test_send_debug_message_binary_ipc(use_debug_session):
     pipe = _PipeConn()
-    ds.state.ipc_enabled = True
-    ds.state.ipc_binary = True
-    ds.state.ipc_pipe_conn = pipe
-    ds.state.ipc_wfile = None  # prefer pipe
+    use_debug_session.ipc_enabled = True
+    use_debug_session.ipc_binary = True
+    use_debug_session.ipc_pipe_conn = pipe
+    use_debug_session.ipc_wfile = None  # prefer pipe
 
     ds.send_debug_message("event", kind="test", value=5)
 
@@ -61,6 +68,3 @@ def test_send_debug_message_binary_ipc():
     assert data["event"] == "event"
     assert data["kind"] == "test"
     assert data["value"] == 5
-
-    # Reset session state for deterministic teardown
-    ds.SessionState.reset()

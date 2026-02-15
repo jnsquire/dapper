@@ -283,7 +283,7 @@ async def test_stack_trace(handler, mock_server):
 async def test_handle_source_prefers_debugger_helper_and_falls_back(
     handler, mock_server, monkeypatch, tmp_path, use_debug_session
 ):
-    """RequestHandler._handle_source should prefer debugger helper then fallback to state."""
+    """RequestHandler._handle_source should prefer debugger helper then fallback to session."""
     # prepare a temp file path
     p = tmp_path / "f.py"
     p.write_text("print(42)\n")
@@ -301,7 +301,7 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(
     assert res["success"] is True
     assert res["body"]["content"] == "dbg-content"
 
-    # Case B: debugger helper absent -> fallback to debug_shared.state
+    # Case B: debugger helper absent -> fallback to active session helper
     delattr(mock_server.debugger, "get_source_content_by_path")
 
     def state_getter(_path):

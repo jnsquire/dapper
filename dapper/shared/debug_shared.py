@@ -65,7 +65,7 @@ class SourceReferenceMetaBase(TypedDict):
 class SourceReferenceMeta(SourceReferenceMetaBase, total=False):
     """Optional fields for a sourceReference entry.
 
-    Values of SessionState.source_references map to this shape.
+    Values of DebugSession.source_references map to this shape.
     - path: required absolute or relative file system path
     - name: optional display name for the source
     """
@@ -491,29 +491,8 @@ class DebugSession:
         return self.sources.get_source_content_by_path(path)
 
 
-class SessionState(DebugSession):
-    """Compatibility facade around the default composed debug session.
-
-    `SessionState` instances are regular `DebugSession` objects. The module-level
-    `state` object is the default shared session used by legacy call sites.
-    """
-
-    _reset_lock = threading.RLock()
-
-    @classmethod
-    def reset(cls) -> DebugSession:
-        """Reinitialize all mutable default-session state and return it."""
-        with cls._reset_lock:
-            current_state = globals().get("state")
-            if not isinstance(current_state, DebugSession):
-                current_state = cls()
-                globals()["state"] = current_state
-            current_state._initialize_mutable_state()
-            return current_state
-
-
 # Module-level singleton instance used throughout the codebase
-state = SessionState()
+state = DebugSession()
 
 # Context-local active session for injection-friendly call paths.
 _active_session: contextvars.ContextVar[DebugSession | None] = contextvars.ContextVar(
@@ -536,20 +515,6 @@ def use_session(session: DebugSession) -> Iterator[DebugSession]:
         yield session
     finally:
         _active_session.reset(token)
-
-
-class SessionProxy:
-    """Attribute proxy to the context-local active session."""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_active_session(), name)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        setattr(get_active_session(), name, value)
-
-
-# Use in modules that need session injection while preserving legacy `state.*` call shape.
-active_state = SessionProxy()
 
 
 def send_debug_message(event_type: str, **kwargs) -> None:
