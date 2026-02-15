@@ -30,6 +30,7 @@ class SyncConnectionAdapter:
         self._conn = conn
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._loop_ready = threading.Event()
         self._start_loop()
 
     def _start_loop(self) -> None:
@@ -37,14 +38,15 @@ class SyncConnectionAdapter:
             loop = asyncio.new_event_loop()
             self._loop = loop
             asyncio.set_event_loop(loop)
+            self._loop_ready.set()
             loop.run_forever()
 
         self._thread = threading.Thread(target=_run, daemon=True, name="SyncConnAdapterLoop")
         self._thread.start()
 
-        # Wait for loop to appear
-        while self._loop is None:
-            pass
+        # Wait for loop to appear without busy-waiting.
+        if not self._loop_ready.wait(timeout=1.0):
+            raise RuntimeError("Timed out waiting for adapter event loop to start")
 
     def _run_coro(self, coro: Any) -> Any:
         if not self._loop:

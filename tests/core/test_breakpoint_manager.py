@@ -146,6 +146,23 @@ class TestLineBreakpoints:
         assert mgr.get_line_meta("/a.py", 20) is None
         assert mgr.get_line_meta("/b.py", 30) is not None
 
+    def test_clear_line_meta_for_file_clears_path_index(self):
+        """Test path index remains consistent after clearing file metadata."""
+        mgr = BreakpointManager()
+        mgr.record_line_breakpoint("/a.py", 11)
+        mgr.record_line_breakpoint("/a.py", 12)
+        mgr.record_line_breakpoint("/b.py", 21)
+
+        assert "/a.py" in mgr._line_meta_by_path
+        assert 11 in mgr._line_meta_by_path["/a.py"]
+
+        mgr.clear_line_meta_for_file("/a.py")
+
+        assert "/a.py" not in mgr._line_meta_by_path
+        assert "/b.py" in mgr._line_meta_by_path
+        assert mgr.get_line_meta("/a.py", 11) is None
+        assert mgr.get_line_meta("/b.py", 21) is not None
+
     def test_increment_hit_count(self):
         """Test incrementing hit count."""
         mgr = BreakpointManager()

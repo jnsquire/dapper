@@ -8,7 +8,9 @@ messages, including parsing, validation, and construction of messages.
 from __future__ import annotations
 
 import json
+import itertools
 import logging
+import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeVar
@@ -45,14 +47,14 @@ class ProtocolFactory:
     """
 
     def __init__(self, *, seq_start: int = 1) -> None:
-        self.seq_counter = seq_start
+        self._seq_counter = itertools.count(seq_start)
+        self._seq_lock = threading.Lock()
 
     # ---- Core constructors -------------------------------------------------
 
     def _next_seq(self) -> int:
-        seq = self.seq_counter
-        self.seq_counter += 1
-        return seq
+        with self._seq_lock:
+            return next(self._seq_counter)
 
     def create_request(
         self, command: str, arguments: dict[str, Any] | None = None

@@ -66,38 +66,7 @@ Generated from a full codebase review on 2026-02-14.
 
 ---
 
-## Performance
-
-- [ ] **Busy-wait spin loop for event loop readiness**
-  - File: `dapper/ipc/sync_adapter.py` (~L47)
-  - `while self._loop is None: pass` spins the CPU.
-  - Fix: Use `threading.Event` for synchronization.
-
-- [ ] **Cache key uses `id()` which can be reused after GC**
-  - File: `dapper/_frame_eval/modify_bytecode.py` (~L221)
-  - `_get_cache_key` uses `id(code_obj)`. After GC, a new object may reuse the same ID, returning stale cached bytecode.
-  - Fix: Use a stable key (e.g., `(code_obj.co_filename, code_obj.co_name, code_obj.co_firstlineno)`).
-
-- [ ] **`clear_line_meta_for_file` uses O(n) scan**
-  - File: `dapper/core/breakpoint_manager.py` (~L86)
-  - `[k for k in self.line_meta if k[0] == path]` iterates all breakpoint metadata.
-  - Fix: Use a nested `dict[str, dict[int, ...]]` keyed by path for O(1) lookup.
-
-- [ ] **Non-thread-safe protocol sequence counter**
-  - File: `dapper/protocol/protocol.py` (~L57)
-  - `ProtocolFactory.seq_counter` is a plain integer with no locking. Concurrent message creation produces duplicate sequence numbers.
-  - Fix: Use `itertools.count()` or `threading.Lock`.
-
----
-
 ## Code Quality
-
-
-- [x] **`DebuggerLike` Protocol has ~30+ required attributes** ✅
-  - File: `dapper/protocol/debugger_protocol.py`
-  - Status: Completed. `DebuggerLike` is now composed from focused capability protocols and no longer requires private/internal attributes.
-
-
 
 - [ ] **Add pluggable source-content hook with URI-aware path handling**
   - Files: `dapper/shared/debug_shared.py`, `dapper/shared/command_handlers.py`, `dapper/protocol/debugger_protocol.py` (optional typing-only additions)
@@ -167,9 +136,9 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 | Category           | Open Items |
 |--------------------|------------|
 | Architecture       | 1          |
-| Performance        | 4          |
+| Performance        | 0          |
 | Code Quality       | 1          |
 | Test Coverage      | 5          |
-| **Total**          | **11**     |
+| **Total**          | **7**      |
 
-**Next up:** Performance improvements (4 items).
+**Next up:** Code Quality source-provider improvements (1 item) and Test Coverage expansion (5 items).

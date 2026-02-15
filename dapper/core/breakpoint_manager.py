@@ -40,6 +40,7 @@ class BreakpointManager:
     """
 
     line_meta: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
+    _line_meta_by_path: dict[str, dict[int, dict[str, Any]]] = field(default_factory=dict)
     function_names: list[str] = field(default_factory=list)
     function_meta: dict[str, dict[str, Any]] = field(default_factory=dict)
     custom: dict[str, dict[int, str | None]] = field(default_factory=dict)
@@ -71,6 +72,9 @@ class BreakpointManager:
         meta["hitCondition"] = hit_condition
         meta["logMessage"] = log_message
         self.line_meta[key] = meta
+        if path not in self._line_meta_by_path:
+            self._line_meta_by_path[path] = {}
+        self._line_meta_by_path[path][int(line)] = meta
 
     def get_line_meta(self, path: str, line: int) -> dict[str, Any] | None:
         """Get metadata for a line breakpoint.
@@ -82,7 +86,17 @@ class BreakpointManager:
         Returns:
             The metadata dict, or None if not found.
         """
-        return self.line_meta.get((path, int(line)))
+        normalized_line = int(line)
+        path_meta = self._line_meta_by_path.get(path)
+        if path_meta is not None and normalized_line in path_meta:
+            return path_meta[normalized_line]
+
+        meta = self.line_meta.get((path, normalized_line))
+        if meta is not None:
+            if path not in self._line_meta_by_path:
+                self._line_meta_by_path[path] = {}
+            self._line_meta_by_path[path][normalized_line] = meta
+        return meta
 
     def clear_line_meta_for_file(self, path: str) -> None:
         """Clear all line breakpoint metadata for a file.
@@ -90,9 +104,15 @@ class BreakpointManager:
         Args:
             path: The file path to clear metadata for.
         """
+        path_meta = self._line_meta_by_path.pop(path, None)
+        if path_meta is not None:
+            for line in path_meta:
+                self.line_meta.pop((path, line), None)
+            return
+
         to_del = [k for k in self.line_meta if k[0] == path]
-        for k in to_del:
-            self.line_meta.pop(k, None)
+        for key in to_del:
+            self.line_meta.pop(key, None)
 
     def increment_hit_count(self, path: str, line: int) -> int:
         """Increment and return the hit count for a breakpoint.
@@ -104,8 +124,8 @@ class BreakpointManager:
         Returns:
             The new hit count.
         """
-        key = (path, int(line))
-        meta = self.line_meta.get(key)
+        normalized_line = int(line)
+        meta = self.get_line_meta(path, normalized_line)
         if meta is None:
             return 0
         meta["hit"] = meta.get("hit", 0) + 1
@@ -202,6 +222,7 @@ class BreakpointManager:
     def clear_all(self) -> None:
         """Clear all breakpoint state."""
         self.line_meta.clear()
+        self._line_meta_by_path.clear()
         self.function_names.clear()
         self.function_meta.clear()
         self.custom.clear()

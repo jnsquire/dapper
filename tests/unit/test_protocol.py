@@ -5,6 +5,7 @@ Pytest-style tests for the Debug Adapter Protocol message handling.
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
 from typing import cast
 
@@ -15,6 +16,7 @@ from dapper.protocol.messages import GenericRequest
 from dapper.protocol.messages import GenericResponse
 from dapper.protocol.messages import ProtocolMessage
 from dapper.protocol.protocol import ProtocolError
+from dapper.protocol.protocol import ProtocolFactory
 from dapper.protocol.protocol import ProtocolHandler
 
 # Use the protocol message types from dapper.protocol.messages
@@ -546,3 +548,28 @@ def test_sequence_counter_increment(handler):
 
     event = handler.create_event("stopped")
     assert event["seq"] == 4
+
+
+def test_protocol_factory_sequence_is_thread_safe() -> None:
+    """Concurrent sequence generation should produce unique values."""
+    factory = ProtocolFactory(seq_start=1)
+    collected: list[int] = []
+    collect_lock = threading.Lock()
+
+    def _worker() -> None:
+        local: list[int] = []
+        for _ in range(100):
+            request = factory.create_request("launch")
+            local.append(request["seq"])
+        with collect_lock:
+            collected.extend(local)
+
+    threads = [threading.Thread(target=_worker) for _ in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(collected) == 1000
+    assert len(set(collected)) == 1000
+    assert sorted(collected) == list(range(1, 1001))

@@ -40,6 +40,7 @@ def test_sync_connection_adapter_roundtrip_methods() -> None:
     conn = _FakeConn()
     adapter = SyncConnectionAdapter(conn)
     try:
+        assert adapter._loop_ready.is_set()
         assert adapter.accept() is None
         assert adapter.read_dbgp_message() == "dbgp"
         assert adapter.read_message() == {"ok": True}

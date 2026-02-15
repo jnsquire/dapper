@@ -250,9 +250,16 @@ __dapper_breakpoint_wrapper_{line}()
         except Exception:
             return code_obj
 
-    def _get_cache_key(self, code_obj: CodeType, breakpoint_lines: set[int]) -> str:
+    def _get_cache_key(
+        self, code_obj: CodeType, breakpoint_lines: set[int]
+    ) -> tuple[str, str, int, tuple[int, ...]]:
         """Generate a cache key for a code object and breakpoint set."""
-        return f"{id(code_obj)}_{hash(tuple(sorted(breakpoint_lines)))}"
+        return (
+            code_obj.co_filename,
+            code_obj.co_name,
+            code_obj.co_firstlineno,
+            tuple(sorted(breakpoint_lines)),
+        )
 
     def _find_injection_points(
         self, instructions: list[dis.Instruction], breakpoint_lines: set[int]

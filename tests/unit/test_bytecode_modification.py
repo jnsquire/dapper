@@ -247,6 +247,20 @@ def test_breakpoint_wrapper_creation(bytecode_modifier: BytecodeModifier) -> Non
     assert isinstance(wrapper_code, types.CodeType)
 
 
+def test_cache_key_is_stable_across_code_object_identity(
+    bytecode_modifier: BytecodeModifier,
+) -> None:
+    """Cache key should remain stable for equivalent code objects."""
+    src = "def sample():\n    value = 1\n    return value\n"
+    code_1 = compile(src, "<test_stable_cache_key>", "exec")
+    code_2 = compile(src, "<test_stable_cache_key>", "exec")
+
+    key_1 = bytecode_modifier._get_cache_key(code_1, {2})
+    key_2 = bytecode_modifier._get_cache_key(code_2, {2})
+
+    assert key_1 == key_2
+
+
 def test_breakpoint_injection(
     bytecode_modifier: BytecodeModifier, original_code: types.CodeType
 ) -> None:
