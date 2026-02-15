@@ -49,7 +49,7 @@ Legend
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
 - 🟡 Runtime watchpoints (trigger on write) — supported when the debugger registers watches (in-process already works; launcher/adapter now register watches so subprocess mode can use this). Read-access detection and broader integration work remain.
 
-Reference: see Architecture — [Breakpoints Controller](architecture/breakpoints_controller.md) for design notes and Phase 1 status.
+Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints_controller.md) for design notes and Phase 1 status.
 
 ---
 
@@ -133,7 +133,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
   - Supports stop-on-entry
  - ✅ **Hit Conditions**: Break after N hits (implemented via BreakpointResolver)
- - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](architecture/breakpoints_controller.md))
+ - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](../architecture/breakpoints_controller.md))
 - ✅ **Restart**: Restart the debugged program
  - ✅ **Set Function Breakpoints**: Set breakpoints on function names (adapter request handler implemented)
  - 🟡 **Function Breakpoint Conditions**: Conditions for function breakpoints (partial — resolver supports them; adapter/tests coverage varies)
@@ -146,16 +146,16 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 - ✅ **Step In**: Step into function calls
 ### Phase 1: Complete Basic Features (Current Priority)
 - Implement attach, restart (completed)
-- ✅ Expression evaluation with completions implemented. See [Frame Evaluation user guide](getting-started/frame-eval/index.md) and [implementation notes](architecture/frame-eval/implementation.md).
+- ✅ Expression evaluation with completions implemented. See [Frame Evaluation user guide](../getting-started/frame-eval/index.md) and [implementation notes](../architecture/frame-eval/implementation.md).
 - ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
 ### Phase 2: Enhanced Debugging Experience (in-progress)
-- Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](architecture/breakpoints_controller.md) for navigation helpers.
+- Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](../architecture/breakpoints_controller.md) for navigation helpers.
 - ✅ Add expression completions / auto-complete (implemented)
 - Improve variable presentation (presentation hints already present; expand coverage and UI semantics)
 ---
 ### Phase 3: Advanced Features (future)
 - Reverse debugging capabilities (not implemented)
- - Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain) — see [Breakpoints Controller](architecture/breakpoints_controller.md) and protocol `dataBreakpointInfo`/`setDataBreakpoints` handling.
+ - Data breakpoints and runtime watchpoints (bookkeeping requests implemented; runtime triggers / watchpoints remain) — see [Breakpoints Controller](../architecture/breakpoints_controller.md) and protocol `dataBreakpointInfo`/`setDataBreakpoints` handling.
 - Performance profiling integration (future work)
 - ✅ **Set Breakpoints**: Set/remove breakpoints in source files
   - Basic line breakpoints

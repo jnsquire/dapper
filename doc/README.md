@@ -16,7 +16,7 @@ A Debug Adapter Protocol implementation in Python.
 ### Debugger Features Overview
 
 For a detailed checklist of implemented and planned debugger features, see:
-- **[Debugger Features Checklist](CHECKLIST.md)** - Complete feature matrix with implementation status
+- **[Debugger Features Checklist](reference/checklist.md)** - Complete feature matrix with implementation status
 
 ### Frame Evaluation System
 

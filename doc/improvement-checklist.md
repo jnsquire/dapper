@@ -9,6 +9,26 @@ Generated from a full codebase review on 2026-02-14.
   - File: `dapper/adapter/server.py` — 1533 lines
   - ~30+ public methods handling launching, IPC, breakpoints, stack traces, variables, events, and shutdown.
   - Fix: Extract into focused managers (e.g., `LaunchManager`, `EventRouter`, `StateManager`, `BreakpointRouter`).
+  - **Natural split boundaries (current code layout):**
+    - Event loop + event routing: `_acquire_event_loop` and `_PyDebuggerEventRouter` (`dapper/adapter/server.py` ~L82–212)
+    - Launch/attach orchestration: `_PyDebuggerLifecycleManager` (`dapper/adapter/server.py` ~L214–372)
+    - Breakpoint/state inspection: `_PyDebuggerStateManager` (`dapper/adapter/server.py` ~L374–568)
+    - Runtime process/IPC/backend wiring inside `PyDebugger` (`dapper/adapter/server.py` ~L881–1109)
+    - Breakpoint/data-breakpoint domain logic inside `PyDebugger` (`dapper/adapter/server.py` ~L752–848, ~L1111–1222)
+    - Execution control + termination/shutdown inside `PyDebugger` (`dapper/adapter/server.py` ~L1224–1541)
+    - DAP transport server boundary: `DebugAdapterServer` (`dapper/adapter/server.py` ~L1543–1710)
+  - **Proposed extraction map:**
+    - `dapper/adapter/debugger/event_router.py`: `_PyDebuggerEventRouter` + debug-message parsing/dispatch
+    - `dapper/adapter/debugger/lifecycle.py`: `_PyDebuggerLifecycleManager` + launch/attach helpers
+    - `dapper/adapter/debugger/state.py`: `_PyDebuggerStateManager` + breakpoint normalization/event forwarding helpers
+    - `dapper/adapter/debugger/runtime.py`: process startup/output readers, IPC reader bootstrap, backend/bridge creation
+    - `dapper/adapter/debugger/session.py`: `PyDebugger` session state, pending-command futures, shutdown/cleanup
+    - `dapper/adapter/server_core.py`: `DebugAdapterServer` request loop + protocol send/response/event methods
+  - **Suggested extraction order (lowest risk first):**
+    1. Move `DebugAdapterServer` to `server_core.py` (clear API boundary, minimal debugger coupling)
+    2. Move event router + lifecycle/state managers to `adapter/debugger/` modules (already logically extracted)
+    3. Extract runtime process/IPC/backend plumbing from `PyDebugger`
+    4. Extract execution-control + shutdown helpers; leave `PyDebugger` as thin composition/orchestration facade
   - **Progress update (current branch):**
     - ✅ Extracted debug message/event handling into dedicated `_PyDebuggerEventRouter` in `dapper/adapter/server.py`.
     - ✅ Added explicit delegation methods on `PyDebugger` (`emit_event`, `resolve_pending_response`, `schedule_program_exit`, pending-command helpers) to reduce direct state coupling.
@@ -17,47 +37,6 @@ Generated from a full codebase review on 2026-02-14.
     - ✅ Extracted breakpoint/state-inspection operations into dedicated `_PyDebuggerStateManager` in `dapper/adapter/server.py` (`set_breakpoints`, `get_stack_trace`, `get_scopes`, `get_variables`, `set_variable`, `evaluate`).
     - ✅ Added bridge wrappers (`get_active_backend`, `get_inprocess_backend`, breakpoint processing/event helpers) to keep extracted components decoupled from private internals.
     - 🔜 Next chunk: move process/output/thread primitives (debuggee process startup, stream readers, termination orchestration) into a focused runtime manager.
-
-- [ ] **Split `command_handlers.py` into domain modules**
-  - File: `dapper/shared/command_handlers.py` — 1544 lines
-  - All DAP command handler logic in a single file.
-  - Fix: Split by domain: `breakpoint_handlers.py`, `variable_handlers.py`, `stepping_handlers.py`, `source_handlers.py`, etc.
-  - **Progress update (current branch):**
-    - ✅ Extracted source-domain logic into `dapper/shared/source_handlers.py` (`loadedSources`, `source`, `modules`, and source collection helpers).
-    - ✅ Extracted breakpoint-domain logic into `dapper/shared/breakpoint_handlers.py` (`setBreakpoints`, `setFunctionBreakpoints`, `setExceptionBreakpoints` implementations).
-    - ✅ Extracted stepping-domain logic into `dapper/shared/stepping_handlers.py` (`continue`, `next`, `stepIn`, `stepOut`, `pause` implementations).
-    - ✅ Extracted variable/evaluation domain logic into `dapper/shared/variable_handlers.py` (`variables`, `setVariable`, `evaluate`, `setDataBreakpoints`, `dataBreakpointInfo` implementations).
-    - ✅ Extracted stack/thread/scope domain logic into `dapper/shared/stack_handlers.py` (`stackTrace`, `threads`, `scopes` implementations).
-    - ✅ Extracted lifecycle/exception command logic into `dapper/shared/lifecycle_handlers.py` (`exceptionInfo`, `configurationDone`, `terminate`, `initialize`, `restart` implementations).
-    - ✅ Extracted remaining variable/conversion helper utilities into `dapper/shared/command_handler_helpers.py` and converted `dapper/shared/command_handlers.py` helper bodies to delegating wrappers.
-    - ✅ Migrated selected downstream tests to direct domain-module imports (`source_handlers` / `variable_handlers`) instead of `command_handlers` internals.
-    - ✅ Migrated source/exception integration test call sites to `source_handlers` / `lifecycle_handlers` and removed now-unused transitional source-collection wrappers from `command_handlers.py`.
-    - ✅ Migrated additional integration command-path tests (`setBreakpoints`, `setFunctionBreakpoints`, `setExceptionBreakpoints`, stepping/pause, variables/evaluate, loaded-sources) to direct domain handlers.
-    - ✅ Migrated remaining `_cmd_set_variable` integration assertions to direct `variable_handlers` calls with explicit response emission checks.
-    - ✅ Removed internal-only `_handle_*` transitional wrappers from `command_handlers.py`; public `handle_*` and registry `_cmd_*` now delegate directly to domain modules.
-    - ✅ Migrated all test imports off `command_handlers` conversion wrappers (`_convert_string_to_value`, `_convert_value_with_context`) to `value_conversion.convert_value_with_context`.
-    - ✅ Migrated `_set_object_member` / `_set_scope_variable` test and integration consumers to `command_handler_helpers` with explicit dependency injection and removed these wrappers from `command_handlers.py`.
-    - ✅ Removed remaining compatibility hooks (`_CONVERSION_FAILED`, `_try_custom_convert`, `extract_variables`) from `command_handlers.py` and migrated final tests to helper/value-conversion APIs.
-    - ✅ Removed dead compatibility aliases/wrappers (`make_variable_object`, `_convert_string_to_value`, `_extract_variables_from_mapping`) from `command_handlers.py`; variable extraction now delegates directly to `command_handler_helpers`.
-    - ✅ Kept compatibility surface in `dapper/shared/command_handlers.py` via delegating wrappers (`_cmd_loaded_sources`, `_cmd_source`, `_cmd_modules`, and legacy `handle_source`).
-    - ✅ Kept existing public/back-compat `handle_*` call signatures in `dapper/shared/command_handlers.py` while simplifying internals to direct domain delegation.
-    - ✅ Preserved command registry behavior and existing test imports while reducing monolith scope.
-    - ✅ Removed temporary conversion-override plumbing (`_convert_value_with_context_override`) after confirming no remaining test/runtime dependency.
-    - ✅ Removed legacy `handle_source` compatibility wrapper from `dapper/shared/command_handlers.py` and migrated remaining tests to `source_handlers.handle_legacy_source`.
-    - ✅ Removed legacy lifecycle `handle_*` wrapper exports from `dapper/shared/command_handlers.py` (`handle_initialize`, `handle_terminate`, `handle_configuration_done`, `handle_restart`, `handle_exception_info`) and switched registry handlers/tests to domain implementations.
-    - ✅ Removed stack-domain `handle_*` wrapper exports from `dapper/shared/command_handlers.py` (`handle_stack_trace`, `handle_threads`, `handle_scopes`) and migrated tests to `stack_handlers`.
-    - ✅ Removed stepping and breakpoint `handle_*` wrapper exports from `dapper/shared/command_handlers.py` (`handle_continue`, `handle_next`, `handle_step_in`, `handle_step_out`, `handle_pause`, `handle_set_breakpoints`, `handle_set_function_breakpoints`, `handle_set_exception_breakpoints`) and migrated tests to `stepping_handlers` / `breakpoint_handlers`.
-    - ✅ Removed remaining variable/evaluate/data-breakpoint `handle_*` wrapper exports from `dapper/shared/command_handlers.py` (`handle_variables`, `handle_set_variable`, `handle_evaluate`, `handle_set_data_breakpoints`, `handle_data_breakpoint_info`) and migrated tests to `variable_handlers` with explicit dependency injection where needed.
-    - ✅ Moved setVariable orchestration composition out of `dapper/shared/command_handlers.py` into `variable_handlers.handle_set_variable_command_impl`, leaving `command_handlers` as dispatch-only for this command.
-    - ✅ Extracted variable-command runtime glue into `dapper/shared/variable_command_runtime.py` and switched `command_handlers` to use this adapter for variable-resolution and setVariable dependency wiring.
-    - ✅ Removed remaining `command_handlers` shim helpers (`_make_variable`, `_resolve_variables_for_reference`) and migrated tests to runtime-adapter-backed helpers in domain-level test setup.
-    - ✅ Removed `_convert_value_with_context` helper from `dapper/shared/command_handlers.py`, switched setVariable dependency wiring to `value_conversion.convert_value_with_context`, and migrated remaining tests off the removed helper.
-    - ✅ Moved evaluation error formatting out of `dapper/shared/command_handlers.py` into `variable_handlers.format_evaluation_error` and migrated runtime/test call sites.
-    - ✅ Extracted `_safe_send_debug_message` transport-guard implementation out of `dapper/shared/command_handlers.py` into `command_handler_helpers.build_safe_send_debug_message` while preserving monkeypatch/test behavior via dynamic sender resolution.
-    - ✅ Moved `_error_response` implementation out of `dapper/shared/command_handlers.py` into `command_handler_helpers.error_response` while keeping `_error_response` alias compatibility for existing tests and call sites.
-    - ✅ Moved thread-id/stepping glue logic into `command_handler_helpers` (`get_thread_ident`, `set_dbg_stepping_flag`) while preserving compatibility aliases in `command_handlers.py` for existing tests and call sites.
-    - ✅ Final internal polish: removed redundant `_get_threading_module` indirection and switched setVariable dependency wiring to shared `command_handler_helpers.error_response` while preserving compatibility aliases used by tests.
-    - 🔜 Next chunk: optional cleanup is now mostly cosmetic (further alias collapse in `command_handlers.py`) since behavior lives in domain/helper modules.
 
 - [ ] **Reduce compatibility property sprawl in `DebuggerBDB`**
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
@@ -124,11 +103,6 @@ Generated from a full codebase review on 2026-02-14.
 ---
 
 ## Performance
-
-- [x] **`BreakpointCache._access_order` uses list with O(n) removal** ✅
-  - File: `dapper/_frame_eval/cache_manager.py`
-  - Fix: Replaced list-based LRU tracking with `OrderedDict`-backed access ordering and updated all read/write/eviction/clear/remove paths to O(1)-style key operations.
-  - Validation: previously failing frame-eval cache/tracer test cases now pass after the refactor cleanup.
 
 - [ ] **Busy-wait spin loop for event loop readiness**
   - File: `dapper/ipc/sync_adapter.py` (~L47)

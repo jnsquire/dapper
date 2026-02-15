@@ -83,8 +83,11 @@ def test_func_code_cache():
     info2 = MockFuncCodeInfo("ttl_test.py", has_breakpoints=False)
     set_func_code_info(code_obj, info2)
 
-    # Wait for expiration (sleep for 1.1s to exceed TTL of 1s)
-    time.sleep(1.1)
+    # Force expiration deterministically (avoid wall-clock timing flakiness)
+    cache._timestamps[code_obj] = cache._timestamps[code_obj] - (cache.ttl + 0.1)
+    cache._weak_map[code_obj]["timestamp"] = cache._weak_map[code_obj]["timestamp"] - (
+        cache.ttl + 0.1
+    )
 
     # Verify TTL expiration worked
     cached_info = get_func_code_info(code_obj)
