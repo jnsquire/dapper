@@ -176,12 +176,46 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 
 - [ ] **Increase IPC layer coverage**
   - `dapper/ipc/transport_factory.py`, `dapper/ipc/connections/`, `dapper/ipc/sync_adapter.py` are undertested.
+  - **Progress update (current branch):**
+    - ✅ Added focused unit coverage for `dapper/ipc/sync_adapter.py` in `tests/unit/test_sync_connection_adapter.py`.
+    - ✅ New tests cover synchronous adapter method passthrough, missing-loop error path, and close-path exception propagation behavior.
+    - ✅ Added launcher IPC edge-case tests in `tests/integration/test_launcher_ipc.py` for EOF/OSError read handling and socket-connect failure cleanup paths.
 
 - [ ] **Increase frame evaluation coverage**
   - `dapper/_frame_eval/modify_bytecode.py`, `dapper/_frame_eval/selective_tracer.py`, `dapper/_frame_eval/frame_tracing.py` need dedicated tests.
 
 - [ ] **Increase launcher coverage**
   - `dapper/launcher/debug_launcher.py`, `dapper/launcher/launcher_ipc.py` lack unit tests.
+  - **Progress update (current branch):**
+    - ✅ Expanded `dapper/launcher/launcher_ipc.py` branch coverage with new socket/pipe edge-case tests in `tests/integration/test_launcher_ipc.py`.
+    - ✅ Added focused unit tests for `dapper/launcher/debug_launcher.py` orchestration paths in `tests/unit/test_debug_launcher.py`:
+      - `setup_ipc_from_args` transport-routing branches (`pipe` vs socket transports)
+      - `_setup_ipc_pipe` non-Windows failure path
+      - `receive_debug_commands` routing (`ipc_pipe_conn` vs stream path)
+      - `start_command_listener` thread creation/start semantics
+      - `_recv_binary_from_pipe` command frame + EOF exit behavior
+      - `main()` no-debug path routing (`run_program` selected, `run_with_debugger` skipped)
+    - ✅ Added additional `dapper/launcher/debug_launcher.py` branch coverage in `tests/unit/test_debug_launcher.py`:
+      - `main()` debug-enabled path routing (`run_with_debugger` selected)
+      - `main()` IPC setup failure propagation (ensures early failure before listener/debugger startup)
+      - `_setup_ipc_socket` failure branches (`connector` returns `None` and connector raises)
+    - ✅ Added focused execution-path tests for `dapper/launcher/debug_launcher.py` in `tests/unit/test_debug_launcher.py`:
+      - `run_with_debugger` configures debugger when missing and reuses existing debugger when present
+      - `run_with_debugger` sets `sys.argv` and invokes debugger run command with expected launcher expression
+      - `run_program` sets `sys.argv`, inserts program directory into `sys.path` when absent, and avoids duplicate insertion when already present
+    - ✅ Added malformed command/frame branch tests for binary receivers in `tests/unit/test_debug_launcher.py`:
+      - `_recv_binary_from_pipe` bad-header error reporting + continue-to-exit behavior
+      - `_recv_binary_from_pipe` non-command frame-kind ignore path
+      - `_recv_binary_from_stream` bad-header recovery path followed by valid command processing
+    - ✅ Added CLI parse/validation edge-case coverage in `tests/unit/test_debug_launcher.py`:
+      - `--ipc` required-argument enforcement
+      - invalid `--ipc` choice rejection
+      - unix transport option parsing (`--ipc unix --ipc-path ...`)
+    - ✅ Added transport-argument combination edge-case coverage in `tests/unit/test_debug_launcher.py`:
+      - `_setup_ipc_pipe` success path behavior under Windows branch (state wiring)
+      - `_setup_ipc_pipe` and socket setup failure propagation for missing/invalid coordinates
+      - `_setup_ipc_socket` binary/text file-handle setup branches (`rb/wb` with buffering vs `r/w` text mode)
+    - 🔜 Next chunk: remaining launcher-path tests are mostly incremental (additional receive-loop edge timing and command error-shaping consistency).
 
 - [ ] **Increase branch coverage to ≥50%**
   - Error paths and edge cases are largely untested. Focus on conditional branches in `debugger_bdb.py`, `server.py`, and `command_handlers.py`.

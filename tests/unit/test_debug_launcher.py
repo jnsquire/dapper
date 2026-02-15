@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import json
 import sys
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -23,6 +26,7 @@ from dapper.shared import stepping_handlers
 from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.debug_shared import SessionState
+from dapper.ipc.ipc_binary import pack_frame
 from tests.mocks import make_real_frame
 
 
@@ -91,6 +95,42 @@ class TestDebugLauncherBasic:
         assert args.program == "script.py"
         assert args.arg == ["arg1", "arg2"]  # Changed from args.args to args.arg
         assert args.ipc_binary is True
+
+    def test_parse_args_requires_ipc(self) -> None:
+        """Test that --ipc is required by the launcher CLI."""
+        with patch.object(sys, "argv", ["debug_launcher.py", "--program", "script.py"]):
+            with pytest.raises(SystemExit):
+                dl.parse_args()
+
+    def test_parse_args_rejects_invalid_ipc_choice(self) -> None:
+        """Test invalid --ipc value is rejected by argparse choices."""
+        with patch.object(
+            sys,
+            "argv",
+            ["debug_launcher.py", "--program", "script.py", "--ipc", "invalid"],
+        ):
+            with pytest.raises(SystemExit):
+                dl.parse_args()
+
+    def test_parse_args_accepts_unix_transport_path(self) -> None:
+        """Test parsing unix transport-specific options."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "debug_launcher.py",
+                "--program",
+                "script.py",
+                "--ipc",
+                "unix",
+                "--ipc-path",
+                "/tmp/dapper.sock",
+            ],
+        ):
+            args = dl.parse_args()
+
+        assert args.ipc == "unix"
+        assert args.ipc_path == "/tmp/dapper.sock"
 
     @patch("dapper.launcher.debug_launcher.DebuggerBDB")
     def test_configure_debugger(self, mock_debugger_class: MagicMock) -> None:
@@ -587,6 +627,570 @@ class TestExceptionBreakpoints:
 
 class TestUtilityFunctions:
     """Tests for utility functions."""
+
+    def test_run_with_debugger_configures_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_dbg = MagicMock()
+        calls: list[tuple[bool, Any]] = []
+
+        def _configure(stop_on_entry: bool, session=None):
+            calls.append((stop_on_entry, session))
+            return fake_dbg
+
+        monkeypatch.setattr(dl, "configure_debugger", _configure)
+
+        session = SimpleNamespace(debugger=None)
+        dl.run_with_debugger("/tmp/demo.py", ["--a", "1"], session=session)
+
+        assert calls == [(False, session)]
+        assert sys.argv == ["/tmp/demo.py", "--a", "1"]
+        fake_dbg.run.assert_called_once_with("exec(Path('/tmp/demo.py').open().read())")
+
+    def test_run_with_debugger_uses_existing_debugger(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_dbg = MagicMock()
+        session = SimpleNamespace(debugger=fake_dbg)
+
+        configured: list[bool] = []
+
+        def _configure(_stop_on_entry: bool, session=None):
+            configured.append(True)
+            return session
+
+        monkeypatch.setattr(dl, "configure_debugger", _configure)
+
+        dl.run_with_debugger("/tmp/existing.py", ["--flag"], session=session)
+
+        assert configured == []
+        assert sys.argv == ["/tmp/existing.py", "--flag"]
+        fake_dbg.run.assert_called_once_with("exec(Path('/tmp/existing.py').open().read())")
+
+    def test_run_program_sets_argv_and_inserts_program_dir(self, tmp_path) -> None:
+        program_path = tmp_path / "prog.py"
+        program_path.write_text("x = 1\n", encoding="utf-8")
+
+        original_argv = list(sys.argv)
+        original_path = list(sys.path)
+        try:
+            if str(tmp_path) in sys.path:
+                sys.path.remove(str(tmp_path))
+
+            dl.run_program(str(program_path), ["--demo"]) 
+
+            assert sys.argv == [str(program_path), "--demo"]
+            assert sys.path[0] == str(tmp_path)
+        finally:
+            sys.argv = original_argv
+            sys.path[:] = original_path
+
+    def test_run_program_does_not_duplicate_program_dir(self, tmp_path) -> None:
+        program_path = tmp_path / "prog2.py"
+        program_path.write_text("y = 2\n", encoding="utf-8")
+
+        original_argv = list(sys.argv)
+        original_path = list(sys.path)
+        try:
+            sys.path.insert(0, str(tmp_path))
+            before_count = sys.path.count(str(tmp_path))
+
+            dl.run_program(str(program_path), [])
+
+            after_count = sys.path.count(str(tmp_path))
+            assert after_count == before_count
+            assert sys.argv == [str(program_path)]
+        finally:
+            sys.argv = original_argv
+            sys.path[:] = original_path
+
+    def test_setup_ipc_from_args_routes_to_pipe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[tuple[str, Any]] = []
+
+        def _pipe(ipc_pipe, session=None):
+            calls.append(("pipe", ipc_pipe, session))
+
+        def _socket(*_args, **_kwargs):
+            calls.append(("socket", None))
+
+        monkeypatch.setattr(dl, "_setup_ipc_pipe", _pipe)
+        monkeypatch.setattr(dl, "_setup_ipc_socket", _socket)
+
+        args = SimpleNamespace(
+            ipc="pipe",
+            ipc_pipe="mypipe",
+            ipc_host=None,
+            ipc_port=None,
+            ipc_path=None,
+            ipc_binary=True,
+        )
+        session = SimpleNamespace()
+        dl.setup_ipc_from_args(args, session=session)
+
+        assert calls == [("pipe", "mypipe", session)]
+
+    def test_setup_ipc_from_args_routes_to_socket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[tuple[str, Any]] = []
+
+        def _pipe(*_args, **_kwargs):
+            calls.append(("pipe", None))
+
+        def _socket(kind, host, port, path, ipc_binary, session=None):
+            calls.append(("socket", kind, host, port, path, ipc_binary, session))
+
+        monkeypatch.setattr(dl, "_setup_ipc_pipe", _pipe)
+        monkeypatch.setattr(dl, "_setup_ipc_socket", _socket)
+
+        args = SimpleNamespace(
+            ipc="tcp",
+            ipc_pipe=None,
+            ipc_host="127.0.0.1",
+            ipc_port=7777,
+            ipc_path=None,
+            ipc_binary=False,
+        )
+        session = SimpleNamespace()
+        dl.setup_ipc_from_args(args, session=session)
+
+        assert calls == [
+            ("socket", "tcp", "127.0.0.1", 7777, None, False, session),
+        ]
+
+    def test_setup_ipc_pipe_raises_on_non_windows(self) -> None:
+        with pytest.raises(RuntimeError, match="Pipe IPC requested"):
+            dl._setup_ipc_pipe("mypipe")
+
+    def test_receive_debug_commands_routes_pipe_and_stream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        class SessionWithPipe:
+            def __init__(self):
+                self.is_terminated = False
+                self.ipc_pipe_conn = object()
+                self.ipc_rfile = object()
+
+            def require_ipc(self):
+                calls.append("require")
+
+        def _pipe(conn, session=None):
+            _ = conn, session
+            calls.append("pipe")
+
+        def _stream(rfile, session=None):
+            _ = rfile, session
+            calls.append("stream")
+
+        monkeypatch.setattr(dl, "_recv_binary_from_pipe", _pipe)
+        monkeypatch.setattr(dl, "_recv_binary_from_stream", _stream)
+
+        with_pipe = SessionWithPipe()
+        dl.receive_debug_commands(session=with_pipe)
+
+        with_pipe.ipc_pipe_conn = None
+        dl.receive_debug_commands(session=with_pipe)
+
+        assert calls == ["require", "pipe", "require", "stream"]
+
+    def test_start_command_listener_starts_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        started: list[tuple[Any, tuple[Any, ...], bool]] = []
+
+        class FakeThread:
+            def __init__(self, target=None, args=(), daemon=None, name=None):
+                _ = name
+                self.target = target
+                self.args = args
+                self.daemon = daemon
+
+            def start(self):
+                started.append((self.target, self.args, bool(self.daemon)))
+
+        monkeypatch.setattr(dl.threading, "Thread", FakeThread)
+
+        session = SimpleNamespace()
+        thread = dl.start_command_listener(session=session)
+
+        assert isinstance(thread, FakeThread)
+        assert started == [(dl.receive_debug_commands, (session,), True)]
+
+    def test_recv_binary_from_pipe_handles_command_and_eof(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        command = {"command": "initialize", "arguments": {}}
+        frame = pack_frame(2, json.dumps(command).encode("utf-8"))
+
+        class FakeConn:
+            def __init__(self):
+                self.called = 0
+
+            def recv_bytes(self):
+                self.called += 1
+                if self.called == 1:
+                    return frame
+                raise EOFError
+
+        class FakeQueue:
+            def __init__(self):
+                self.items: list[dict[str, Any]] = []
+
+            def put(self, item):
+                self.items.append(item)
+
+        exit_codes: list[int] = []
+        handled: list[dict[str, Any]] = []
+
+        session = SimpleNamespace(
+            is_terminated=False,
+            command_queue=FakeQueue(),
+            exit_func=lambda code: exit_codes.append(code),
+        )
+
+        monkeypatch.setattr(
+            dl,
+            "handle_debug_command",
+            lambda command, session=None: handled.append(command),
+        )
+
+        dl._recv_binary_from_pipe(FakeConn(), session=session)
+
+        assert len(session.command_queue.items) == 1
+        assert session.command_queue.items[0]["command"] == "initialize"
+        assert len(handled) == 1
+        assert handled[0]["command"] == "initialize"
+        assert exit_codes == [0]
+
+    def test_recv_binary_from_pipe_bad_header_emits_error_and_continues(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bad_frame = b"badhdr00payload"
+
+        class FakeConn:
+            def __init__(self):
+                self.called = 0
+
+            def recv_bytes(self):
+                self.called += 1
+                if self.called == 1:
+                    return bad_frame
+                return b""
+
+        messages: list[str] = []
+        session = SimpleNamespace(
+            is_terminated=False,
+            exit_func=lambda code: messages.append(f"exit:{code}"),
+            ipc_enabled=True,
+            command_queue=SimpleNamespace(put=lambda _item: None),
+        )
+
+        monkeypatch.setattr(
+            dl,
+            "send_debug_message",
+            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message','')}")
+        )
+
+        dl._recv_binary_from_pipe(FakeConn(), session=session)
+
+        assert any(m.startswith("error:Bad frame header") for m in messages)
+        assert "exit:0" in messages
+
+    def test_recv_binary_from_pipe_ignores_non_command_kind(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        non_command_frame = pack_frame(1, b'{"command":"initialize"}')
+
+        class FakeConn:
+            def __init__(self):
+                self.called = 0
+
+            def recv_bytes(self):
+                self.called += 1
+                if self.called == 1:
+                    return non_command_frame
+                return b""
+
+        queue_items: list[dict[str, Any]] = []
+        handled: list[dict[str, Any]] = []
+        session = SimpleNamespace(
+            is_terminated=False,
+            command_queue=SimpleNamespace(put=lambda item: queue_items.append(item)),
+            exit_func=lambda _code: None,
+        )
+
+        monkeypatch.setattr(
+            dl,
+            "handle_debug_command",
+            lambda command, session=None: handled.append(command),
+        )
+
+        dl._recv_binary_from_pipe(FakeConn(), session=session)
+
+        assert queue_items == []
+        assert handled == []
+
+    def test_recv_binary_from_stream_bad_header_emits_error_and_continues(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        good_command = pack_frame(2, json.dumps({"command": "initialize"}).encode("utf-8"))
+        stream = io.BytesIO(b"badhdr00" + good_command + b"")
+
+        messages: list[str] = []
+        queued: list[dict[str, Any]] = []
+        handled: list[dict[str, Any]] = []
+        session = SimpleNamespace(
+            is_terminated=False,
+            command_queue=SimpleNamespace(put=lambda item: queued.append(item)),
+            exit_func=lambda code: messages.append(f"exit:{code}"),
+            ipc_enabled=True,
+        )
+
+        monkeypatch.setattr(
+            dl,
+            "send_debug_message",
+            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message','')}")
+        )
+        monkeypatch.setattr(
+            dl,
+            "handle_debug_command",
+            lambda command, session=None: handled.append(command),
+        )
+
+        dl._recv_binary_from_stream(stream, session=session)
+
+        assert any(m.startswith("error:Bad frame header") for m in messages)
+        assert len(queued) == 1
+        assert queued[0]["command"] == "initialize"
+        assert len(handled) == 1
+        assert "exit:0" in messages
+
+    def test_main_routes_to_run_program_when_no_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[str] = []
+
+        args = SimpleNamespace(
+            program="/tmp/demo.py",
+            arg=["--x"],
+            stop_on_entry=True,
+            no_debug=True,
+            ipc="tcp",
+            ipc_host="127.0.0.1",
+            ipc_port=4444,
+            ipc_path=None,
+            ipc_pipe=None,
+            ipc_binary=True,
+        )
+
+        monkeypatch.setattr(dl, "parse_args", lambda: args)
+        monkeypatch.setattr(dl, "setup_ipc_from_args", lambda parsed, session=None: calls.append("ipc"))
+        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
+        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
+        monkeypatch.setattr(dl, "run_program", lambda program, a: calls.append(f"run:{program}:{a}"))
+        monkeypatch.setattr(dl, "run_with_debugger", lambda *_args, **_kwargs: calls.append("debug"))
+
+        dl.main()
+
+        assert calls == ["ipc", "listener", "cfg", "run:/tmp/demo.py:['--x']"]
+
+    def test_main_routes_to_run_with_debugger_when_debug_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        args = SimpleNamespace(
+            program="/tmp/demo.py",
+            arg=["--x"],
+            stop_on_entry=False,
+            no_debug=False,
+            ipc="tcp",
+            ipc_host="127.0.0.1",
+            ipc_port=4444,
+            ipc_path=None,
+            ipc_pipe=None,
+            ipc_binary=True,
+        )
+
+        monkeypatch.setattr(dl, "parse_args", lambda: args)
+        monkeypatch.setattr(dl, "setup_ipc_from_args", lambda parsed, session=None: calls.append("ipc"))
+        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
+        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
+        monkeypatch.setattr(dl, "run_program", lambda *_args, **_kwargs: calls.append("run"))
+        monkeypatch.setattr(
+            dl,
+            "run_with_debugger",
+            lambda program, a, session=None: calls.append(f"debug:{program}:{a}"),
+        )
+
+        dl.main()
+
+        assert calls == ["ipc", "listener", "cfg", "debug:/tmp/demo.py:['--x']"]
+
+    def test_main_propagates_ipc_setup_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        args = SimpleNamespace(
+            program="/tmp/demo.py",
+            arg=[],
+            stop_on_entry=False,
+            no_debug=False,
+            ipc="tcp",
+            ipc_host="127.0.0.1",
+            ipc_port=4444,
+            ipc_path=None,
+            ipc_pipe=None,
+            ipc_binary=True,
+        )
+
+        calls: list[str] = []
+
+        monkeypatch.setattr(dl, "parse_args", lambda: args)
+
+        def _raise_setup(_args, session=None):
+            _ = session
+            msg = "ipc setup failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(dl, "setup_ipc_from_args", _raise_setup)
+        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
+        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
+
+        with pytest.raises(RuntimeError, match="ipc setup failed"):
+            dl.main()
+
+        assert calls == []
+
+    def test_setup_ipc_socket_raises_when_connector_returns_none(self) -> None:
+        connector = SimpleNamespace(
+            connect_unix=lambda _path: None,
+            connect_tcp=lambda _host, _port: None,
+        )
+
+        with pytest.raises(RuntimeError, match="failed to connect socket"):
+            dl._setup_ipc_socket(
+                "tcp",
+                "127.0.0.1",
+                1234,
+                None,
+                ipc_binary=False,
+                connector=connector,
+                session=SimpleNamespace(),
+            )
+
+    def test_setup_ipc_socket_raises_when_connector_throws(self) -> None:
+        def _raise_tcp(_host, _port):
+            msg = "connect boom"
+            raise OSError(msg)
+
+        connector = SimpleNamespace(
+            connect_unix=lambda _path: None,
+            connect_tcp=_raise_tcp,
+        )
+
+        with pytest.raises(RuntimeError, match="failed to connect socket"):
+            dl._setup_ipc_socket(
+                "tcp",
+                "127.0.0.1",
+                1234,
+                None,
+                ipc_binary=False,
+                connector=connector,
+                session=SimpleNamespace(),
+            )
+
+    def test_setup_ipc_pipe_success_on_windows_sets_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_conn = object()
+        session = SimpleNamespace(ipc_enabled=False, ipc_pipe_conn=None)
+
+        monkeypatch.setattr(dl.os, "name", "nt")
+        monkeypatch.setattr(dl._mpc, "Client", lambda address, family: fake_conn)
+
+        dl._setup_ipc_pipe("\\\\.\\pipe\\dapper", session=session)
+
+        assert session.ipc_enabled is True
+        assert session.ipc_pipe_conn is fake_conn
+
+    def test_setup_ipc_from_args_propagates_pipe_error(self) -> None:
+        args = SimpleNamespace(
+            ipc="pipe",
+            ipc_pipe=None,
+            ipc_host=None,
+            ipc_port=None,
+            ipc_path=None,
+            ipc_binary=True,
+        )
+        with pytest.raises(RuntimeError, match="Pipe IPC requested"):
+            dl.setup_ipc_from_args(args, session=SimpleNamespace())
+
+    def test_setup_ipc_from_args_propagates_socket_error(self) -> None:
+        args = SimpleNamespace(
+            ipc="tcp",
+            ipc_pipe=None,
+            ipc_host=None,
+            ipc_port=None,
+            ipc_path=None,
+            ipc_binary=True,
+        )
+        connector = SimpleNamespace(
+            connect_unix=lambda _path: None,
+            connect_tcp=lambda _host, _port: None,
+        )
+        with pytest.raises(RuntimeError, match="failed to connect socket"):
+            dl._setup_ipc_socket(
+                args.ipc,
+                args.ipc_host,
+                args.ipc_port,
+                args.ipc_path,
+                args.ipc_binary,
+                connector=connector,
+                session=SimpleNamespace(),
+            )
+
+    def test_setup_ipc_socket_binary_and_text_mode_file_setup(self) -> None:
+        class FakeSock:
+            def __init__(self):
+                self.calls: list[tuple[str, dict[str, Any]]] = []
+
+            def makefile(self, mode, **kwargs):
+                self.calls.append((mode, kwargs))
+                return object()
+
+        sock_bin = FakeSock()
+        connector_bin = SimpleNamespace(
+            connect_unix=lambda _path: None,
+            connect_tcp=lambda _host, _port: sock_bin,
+        )
+        session_bin = SimpleNamespace(ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False)
+
+        dl._setup_ipc_socket(
+            "tcp",
+            "127.0.0.1",
+            9999,
+            None,
+            ipc_binary=True,
+            connector=connector_bin,
+            session=session_bin,
+        )
+        assert session_bin.ipc_enabled is True
+        assert session_bin.ipc_binary is True
+        assert sock_bin.calls == [("rb", {"buffering": 0}), ("wb", {"buffering": 0})]
+
+        sock_txt = FakeSock()
+        connector_txt = SimpleNamespace(
+            connect_unix=lambda _path: None,
+            connect_tcp=lambda _host, _port: sock_txt,
+        )
+        session_txt = SimpleNamespace(ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False)
+
+        dl._setup_ipc_socket(
+            "tcp",
+            "127.0.0.1",
+            9999,
+            None,
+            ipc_binary=False,
+            connector=connector_txt,
+            session=session_txt,
+        )
+        assert session_txt.ipc_enabled is True
+        assert session_txt.ipc_binary is False
+        assert sock_txt.calls == [
+            ("r", {"encoding": "utf-8", "newline": ""}),
+            ("w", {"encoding": "utf-8", "newline": ""}),
+        ]
+
 
 
 # Type checking

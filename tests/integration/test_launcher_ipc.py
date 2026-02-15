@@ -92,6 +92,54 @@ def test_pipeio_readline_and_write():
     assert p.readline(5) == "hello"
 
 
+def test_pipeio_readline_eof_and_oserror():
+    class EOFConn:
+        def recv(self):
+            raise EOFError
+
+        def close(self):
+            pass
+
+    class OSErrorConn:
+        def recv(self):
+            raise OSError("read failed")
+
+        def close(self):
+            pass
+
+    assert launcher_ipc.PipeIO(cast("Any", EOFConn())).readline() == ""
+    assert launcher_ipc.PipeIO(cast("Any", OSErrorConn())).readline() == ""
+
+
+def test_socket_connector_tcp_uses_default_host_and_closes_on_connect_failure():
+    with patch("dapper.launcher.launcher_ipc.socket.socket") as socket_ctor:
+        mock_sock = MagicMock()
+        socket_ctor.return_value = mock_sock
+        mock_sock.connect.side_effect = OSError("connect failed")
+
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_tcp(None, 12345)
+
+        assert sock is None
+        mock_sock.connect.assert_called_once_with(("127.0.0.1", 12345))
+        mock_sock.close.assert_called_once()
+
+
+def test_socket_connector_unix_closes_on_connect_failure():
+    with patch("dapper.launcher.launcher_ipc.socket") as mock_socket:
+        mock_socket.AF_UNIX = getattr(socket, "AF_UNIX", 1)
+        mock_socket.SOCK_STREAM = socket.SOCK_STREAM
+        mock_sock = MagicMock()
+        mock_socket.socket.return_value = mock_sock
+        mock_sock.connect.side_effect = OSError("connect failed")
+
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_unix("/tmp/x")
+
+        assert sock is None
+        mock_sock.close.assert_called_once()
+
+
 def test_setup_ipc_socket_with_connector():
     """Test that we can inject a mock connector into _setup_ipc_socket."""
 
