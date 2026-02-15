@@ -23,6 +23,7 @@ from dapper.ipc.ipc_binary import read_exact
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.comm import send_debug_message
 from dapper.launcher.launcher_ipc import connector as default_connector
+from dapper.shared import debug_shared
 from dapper.shared.command_handlers import handle_debug_command
 from dapper.shared.debug_shared import state
 
@@ -35,69 +36,76 @@ logger = logging.getLogger(__name__)
 KIND_COMMAND = 2
 
 
-def _handle_command_bytes(payload: bytes) -> None:
+def _handle_command_bytes(payload: bytes, session: Any | None = None) -> None:
+    active_session = session if session is not None else state
     try:
         command = json.loads(payload.decode("utf-8"))
-        state.command_queue.put(command)
-        handle_debug_command(command)
+        active_session.command_queue.put(command)
+        handle_debug_command(command, session=active_session)
     except Exception as e:
-        send_debug_message("error", message=f"Error receiving command: {e!s}")
+        with debug_shared.use_session(active_session):
+            send_debug_message("error", message=f"Error receiving command: {e!s}")
         traceback.print_exc()
 
 
-def _recv_binary_from_pipe(conn: _mpc.Connection) -> None:
-    while not state.is_terminated:
+def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) -> None:
+    active_session = session if session is not None else state
+    while not active_session.is_terminated:
         try:
             data = conn.recv_bytes()
         except (EOFError, OSError):
-            state.exit_func(0)
+            active_session.exit_func(0)
             return
         if not data:
-            state.exit_func(0)
+            active_session.exit_func(0)
             return
         try:
             kind, length = unpack_header(data[:HEADER_SIZE])
         except Exception as e:
-            send_debug_message("error", message=f"Bad frame header: {e!s}")
+            with debug_shared.use_session(active_session):
+                send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
         payload = data[HEADER_SIZE : HEADER_SIZE + length]
         if kind == KIND_COMMAND:
-            _handle_command_bytes(payload)
+            _handle_command_bytes(payload, active_session)
 
 
-def _recv_binary_from_stream(rfile: Any) -> None:
-    while not state.is_terminated:
+def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
+    active_session = session if session is not None else state
+    while not active_session.is_terminated:
         header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
         if not header:
-            state.exit_func(0)
+            active_session.exit_func(0)
             return
         try:
             kind, length = unpack_header(header)
         except Exception as e:
-            send_debug_message("error", message=f"Bad frame header: {e!s}")
+            with debug_shared.use_session(active_session):
+                send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
         payload = read_exact(rfile, length)  # type: ignore[arg-type]
         if not payload:
-            state.exit_func(0)
+            active_session.exit_func(0)
             return
         if kind == KIND_COMMAND:
-            _handle_command_bytes(payload)
+            _handle_command_bytes(payload, active_session)
 
 
-def receive_debug_commands() -> None:
+def receive_debug_commands(session: Any | None = None) -> None:
     """
     Listen for commands from the debug adapter via IPC.
 
     IPC is mandatory; the launcher will not fall back to stdio.
     """
-    state.require_ipc()
+    active_session = session if session is not None else state
+    active_session.require_ipc()
 
     # Binary IPC path (default)
-    conn = state.ipc_pipe_conn
+    conn = active_session.ipc_pipe_conn
     if conn is not None:
-        _recv_binary_from_pipe(conn)
+        _recv_binary_from_pipe(conn, active_session)
     else:
-        _recv_binary_from_stream(state.ipc_rfile)
+        _recv_binary_from_stream(active_session.ipc_rfile, active_session)
 
 
 def parse_args():
@@ -146,7 +154,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def _setup_ipc_pipe(ipc_pipe: str | None) -> None:
+def _setup_ipc_pipe(ipc_pipe: str | None, session: Any | None = None) -> None:
     """Initialize Windows named pipe IPC.
 
     On success, populates state.ipc_* fields and enables IPC. On failure, raises.
@@ -155,8 +163,9 @@ def _setup_ipc_pipe(ipc_pipe: str | None) -> None:
         msg = "Pipe IPC requested but not on Windows or missing pipe name"
         raise RuntimeError(msg)
 
-    state.ipc_enabled = True
-    state.ipc_pipe_conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
+    active_session = session if session is not None else state
+    active_session.ipc_enabled = True
+    active_session.ipc_pipe_conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
 
 
 def _setup_ipc_socket(
@@ -166,6 +175,7 @@ def _setup_ipc_socket(
     path: str | None,
     ipc_binary: bool = False,
     connector: Any = None,
+    session: Any | None = None,
 ) -> None:
     """Initialize TCP/UNIX socket IPC and configure state.
 
@@ -187,87 +197,101 @@ def _setup_ipc_socket(
         msg = "failed to connect socket"
         raise RuntimeError(msg)
 
-    state.ipc_sock = sock
+    active_session = session if session is not None else state
+    active_session.ipc_sock = sock
     if ipc_binary:
         # binary sockets use buffering=0 for raw bytes
-        state.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
-        state.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
+        active_session.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+        active_session.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
     else:
-        state.ipc_rfile = cast("Any", sock.makefile("r", encoding="utf-8", newline=""))
-        state.ipc_wfile = cast("Any", sock.makefile("w", encoding="utf-8", newline=""))
-    state.ipc_enabled = True
+        active_session.ipc_rfile = cast("Any", sock.makefile("r", encoding="utf-8", newline=""))
+        active_session.ipc_wfile = cast("Any", sock.makefile("w", encoding="utf-8", newline=""))
+    active_session.ipc_enabled = True
     # record whether binary frames are used
-    state.ipc_binary = bool(ipc_binary)
+    active_session.ipc_binary = bool(ipc_binary)
 
 
-def setup_ipc_from_args(args: Any) -> None:
+def setup_ipc_from_args(args: Any, session: Any | None = None) -> None:
     """Initialize IPC based on parsed CLI args.
 
     IPC is mandatory; raises RuntimeError on failure.
     """
     if args.ipc == "pipe":
-        _setup_ipc_pipe(args.ipc_pipe)
+        _setup_ipc_pipe(args.ipc_pipe, session=session)
     else:
-        _setup_ipc_socket(args.ipc, args.ipc_host, args.ipc_port, args.ipc_path, args.ipc_binary)
+        _setup_ipc_socket(
+            args.ipc,
+            args.ipc_host,
+            args.ipc_port,
+            args.ipc_path,
+            args.ipc_binary,
+            session=session,
+        )
 
 
-def start_command_listener() -> threading.Thread:
+def start_command_listener(session: Any | None = None) -> threading.Thread:
     """Start the background thread that listens for incoming commands."""
-    thread = threading.Thread(target=receive_debug_commands, daemon=True)
+    active_session = session if session is not None else state
+    thread = threading.Thread(target=receive_debug_commands, args=(active_session,), daemon=True)
     thread.start()
     return thread
 
     # launcher-specific processing function moved into SessionState
 
 
-def configure_debugger(stop_on_entry: bool) -> DebuggerBDB:
+def configure_debugger(stop_on_entry: bool, session: Any | None = None) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""
+    active_session = session if session is not None else state
     dbg = DebuggerBDB(
         send_message=send_debug_message,
-        process_commands=state.process_queued_commands_launcher,
+        process_commands=active_session.process_queued_commands_launcher,
     )
     if stop_on_entry:
         dbg.stepping_controller.stop_on_entry = True
-    state.debugger = cast("Any", dbg)
+    active_session.debugger = cast("Any", dbg)
     return dbg
 
 
-def run_with_debugger(program_path: str, program_args: list[str]) -> None:
+def run_with_debugger(
+    program_path: str, program_args: list[str], session: Any | None = None
+) -> None:
     """Execute the target program under the debugger instance in state."""
     sys.argv = [program_path, *program_args]
-    dbg = state.debugger
+    active_session = session if session is not None else state
+    dbg = active_session.debugger
     if dbg is None:
-        dbg = configure_debugger(False)
+        dbg = configure_debugger(False, active_session)
     dbg.run(f"exec(Path('{program_path}').open().read())")
 
 
 def main():
     """Main entry point for the debug launcher"""
+    session = state
     # Parse arguments and set module state
     args = parse_args()
     program_path = args.program
     program_args = args.arg
-    state.stop_at_entry = args.stop_on_entry
-    state.no_debug = args.no_debug
+    session.stop_at_entry = args.stop_on_entry
+    session.no_debug = args.no_debug
 
     # Configure logging for debug messages
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
 
     # Establish IPC connection if requested
-    setup_ipc_from_args(args)
+    setup_ipc_from_args(args, session=session)
 
     # Start command listener thread (from IPC or stdin depending on state)
-    start_command_listener()
+    start_command_listener(session=session)
 
     # Create the debugger and store it on state
-    configure_debugger(state.stop_at_entry)
+    configure_debugger(session.stop_at_entry, session=session)
 
-    if state.no_debug:
+    if session.no_debug:
         # Just run the program without debugging
         run_program(program_path, program_args)
     else:
         # Run the program with debugging
-        run_with_debugger(program_path, program_args)
+        run_with_debugger(program_path, program_args, session=session)
 
 
 def run_program(program_path, args):

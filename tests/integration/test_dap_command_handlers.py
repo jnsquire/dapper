@@ -137,7 +137,7 @@ def test_continue_next_step_out(monkeypatch):
 
     dch._cmd_step_out({"threadId": tid})
     assert getattr(dbg, "_return", None) is not None
-+
+
 
 def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
     dbg = DummyDebugger()
@@ -156,7 +156,8 @@ def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
 
     # Thread should be marked stopped and a stopped event emitted
     assert tid in dbg.stopped_thread_ids
-    assert calls and calls[-1][0] == "stopped"
+    assert calls
+    assert calls[-1][0] == "stopped"
     assert calls[-1][1].get("threadId") == tid
     assert calls[-1][1].get("reason") == "pause"
 

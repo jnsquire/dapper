@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import itertools
 import json
 import logging
@@ -21,7 +22,7 @@ from dapper.ipc.ipc_binary import pack_frame  # lightweight util
 from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
-    import io
+    from collections.abc import Iterator
     from typing import Protocol
 
     from dapper.protocol.debugger_protocol import DebuggerLike
@@ -72,185 +73,153 @@ class SourceReferenceMeta(SourceReferenceMetaBase, total=False):
     name: str | None
 
 
-class SessionState:
-    """
-    Singleton holder for adapter state and helper methods.
-    Provides session-scoped management for sourceReferences via helper methods.
-    """
+def _default_exit_func() -> Callable[[int], Any]:
+    """Return the process-exit function appropriate for the environment."""
 
-    _instance = None
+    def _test_exit(code: int) -> None:  # pragma: no cover - test-time behavior
+        raise SystemExit(code)
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+        return _test_exit
+    return os._exit
 
-    def __init__(self):
-        # Avoid reinitializing on subsequent __new__ returns
-        if getattr(self, "_initialized", False):
-            return
-        # Debugger instance: use structural protocol so tests can provide
-        # simple dummy implementations that satisfy the expected surface.
-        self.debugger: DebuggerLike | None = None
-        self.stop_at_entry: bool = False
-        self.no_debug: bool = False
-        # Use a thread-safe FIFO queue for commands
-        self.command_queue: queue.Queue[Any] = queue.Queue()
-        self.is_terminated: bool = False
+
+class SessionTransport:
+    """IPC transport state + outbound send behavior for a debug session."""
+
+    def __init__(self) -> None:
         self.ipc_enabled: bool = False
-        # Whether IPC uses binary framing; default False
         self.ipc_binary: bool = False
         self.ipc_sock: Any | None = None
-        self.ipc_rfile: io.TextIOBase | None = None
-        self.ipc_wfile: io.TextIOBase | None = None
-        # Optional direct pipe connection object for binary send/recv on Windows
+        self.ipc_rfile: Any | None = None
+        self.ipc_wfile: Any | None = None
         self.ipc_pipe_conn: Any | None = None
-        # Thread running receive_debug_commands (managed by start_command_receiver)
-        self.command_thread: threading.Thread | None = None
-
-        # Event emitter for outgoing debug messages. Consumers can subscribe
-        # instead of monkeypatching the send_debug_message function.
         self.on_debug_message = EventEmitter()
 
-        # Command dispatch provider registry
-        self._providers: list[tuple[int, CommandProvider]] = []  # list of (priority, provider)
-        self._providers_lock = threading.RLock()
-
-        # Mapping of sourceReference -> metadata (path/name)
-        self.source_references: dict[int, SourceReferenceMeta] = {}
-        # Reverse mapping path -> ref id
-        self._path_to_ref: dict[str, int] = {}
-        # Session counter for allocating new ids
-        self.next_source_ref = itertools.count(1)
-
-        self._initialized = True
-
-        # ------------------------------------------------------------------
-        # Process-level hooks for termination and exec behavior
-        # ------------------------------------------------------------------
-        # These provide injectable hooks so tests can override process-level
-        # behavior (for example, to raise SystemExit rather than terminating
-        # the process). Defaults preserve prior behavior.
-        # - exit_func(code: int) -> Any: invoked when code wants to terminate
-        #   the process. Default: os._exit
-        # - exec_func(path: str, args: list[str]) -> Any: invoked to replace
-        #   the current process image. Default: os.execv
-        # In test environments (pytest) prefer raising SystemExit instead of
-        # calling os._exit so the test runner is not killed. Detect pytest by
-        # presence in sys.modules or by environment hints.
-        def _test_exit(code: int) -> None:  # pragma: no cover - test-time behavior
-            raise SystemExit(code)
-
-        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
-            self.exit_func = _test_exit
-        else:
-            self.exit_func = os._exit
-        self.exec_func = os.execv
-
     def require_ipc(self) -> None:
-        """Raise RuntimeError if IPC is not enabled.
-
-        Use this method to guard code paths that require IPC to be active.
-        """
         if not self.ipc_enabled:
             msg = "IPC is required but not enabled"
             raise RuntimeError(msg)
 
     def require_ipc_write_channel(self) -> None:
-        """Raise RuntimeError if IPC is enabled but no write channel is available.
-
-        Use this after require_ipc() when a write channel (pipe_conn or wfile) is needed.
-        """
         if self.ipc_pipe_conn is None and self.ipc_wfile is None:
             msg = "IPC enabled but no connection available"
             raise RuntimeError(msg)
 
-    def process_queued_commands_launcher(self) -> None:
-        """Process queued commands using the launcher handlers.
+    def send(self, event_type: str, **kwargs: Any) -> None:
+        """Send a debug message via IPC and emit to subscribers."""
+        message = {"event": event_type}
+        message.update(kwargs)
 
-        This method consumes commands from the internal command queue and
-        forwards them to the launcher-level `handle_debug_command` helper.
-        It dynamically imports the `dapper.launcher.handlers` module so we
-        avoid circular imports at module import time.
-        """
-        # Use non-blocking reads until the queue is empty. Avoid try/except in
-        # the loop to reduce overhead and satisfy linter suggestions.
-        while not self.command_queue.empty():
-            cmd = self.command_queue.get_nowait()
-            try:
-                # Deferred import to avoid circular imports at module import time
-                from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+        with contextlib.suppress(Exception):
+            self.on_debug_message.emit(event_type, **kwargs)
 
-                handle_debug_command(cmd)
-            except Exception:
-                # If anything goes wrong, fall back to the provider
-                # dispatch mechanism and continue processing.
-                self.dispatch_debug_command(cmd)
+        self.require_ipc()
+        self.require_ipc_write_channel()
 
-    def set_exit_func(self, fn: Callable[[int], Any]) -> None:
-        """Set a custom exit function for the session."""
-        self.exit_func = fn
+        payload = json.dumps(message).encode("utf-8")
+        frame = pack_frame(1, payload)
 
-    def set_exec_func(self, fn: Callable[[str, list[str]], Any]) -> None:
-        """Set a custom exec function for the session."""
-        self.exec_func = fn
+        conn = self.ipc_pipe_conn
+        if conn is not None:
+            conn.send_bytes(frame)
+            return
 
-    def start_command_receiver(self) -> None:
-        """Start the debug command receiving thread.
+        wfile = self.ipc_wfile
+        assert wfile is not None  # guaranteed by require_ipc_write_channel
+        wfile.write(frame)
+        with contextlib.suppress(Exception):
+            wfile.flush()
 
-        This is a safe, idempotent helper that defers the import to avoid
-        circular-import issues. Failures are logged rather than silently
-        ignored so misconfiguration is visible during startup.
-        """
+
+class SourceCatalog:
+    """Session-scoped sourceReference registry and file-content resolution."""
+
+    def __init__(self) -> None:
+        self.source_references: dict[int, SourceReferenceMeta] = {}
+        self._path_to_ref: dict[str, int] = {}
+        self.next_source_ref = itertools.count(1)
+
+    def get_ref_for_path(self, path: str) -> int | None:
+        return self._path_to_ref.get(path)
+
+    def get_path_to_ref_map(self) -> dict[str, int]:
+        return self._path_to_ref
+
+    def set_path_to_ref_map(self, value: dict[str, int]) -> None:
+        self._path_to_ref = value
+
+    def get_or_create_source_ref(self, path: str, name: str | None = None) -> int:
+        existing = self.get_ref_for_path(path)
+        if existing:
+            return existing
+        ref = next(self.next_source_ref)
         try:
-            # Defer import to avoid circular import at module import time
-            from dapper.ipc import ipc_receiver  # noqa: PLC0415
+            self.source_references[ref] = {"path": path, "name": name}
+        except Exception:
+            self.source_references[ref] = {"path": path}
+        self._path_to_ref[path] = ref
+        return ref
 
-            # Avoid starting more than once
-            if self.command_thread is not None:
-                logger.debug("command receiver already started")
-                return
+    def get_source_meta(self, ref: int) -> SourceReferenceMeta | None:
+        return self.source_references.get(ref)
 
-            self.command_thread = threading.Thread(
-                target=ipc_receiver.receive_debug_commands,
-                daemon=True,
-                name="dapper-recv-cmd",
-            )
-            self.command_thread.start()
-            logger.debug("Started receive_debug_commands thread")
-        except Exception as exc:  # pragma: no cover - best-effort startup
-            # Log at warning level so failures are visible during normal runs
-            logger.warning(
-                "Failed to start receive_debug_commands thread: %s",
-                exc,
-                exc_info=True,
-            )
+    def get_source_content_by_ref(self, ref: int) -> str | None:
+        meta = self.get_source_meta(ref)
+        if not meta:
+            return None
+        path = meta.get("path")
+        if not path:
+            return None
+        try:
+            return Path(path).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return None
 
-    # ------------------------------------------------------------------
-    # Command provider registration and dispatch
-    # ------------------------------------------------------------------
+    @staticmethod
+    def get_source_content_by_path(path: str) -> str | None:
+        try:
+            return Path(path).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return None
+
+
+class ProcessControl:
+    """Process lifecycle hooks used by terminate/restart flows."""
+
+    def __init__(self) -> None:
+        self.exit_func: Callable[[int], Any] = _default_exit_func()
+        self.exec_func: Callable[[str, list[str]], Any] = os.execv
+
+
+class CommandDispatcher:
+    """Provider-based command dispatch with session-aware error responses."""
+
+    def __init__(self) -> None:
+        self._providers: list[tuple[int, CommandProvider]] = []
+        self._providers_lock = threading.RLock()
+
     def register_command_provider(self, provider: CommandProvider, *, priority: int = 0) -> None:
-        """Register a provider that can handle debug commands.
-
-        Providers are consulted in descending priority order. The provider
-        must implement:
-          - can_handle(command: str) -> bool
-          - handle(session, command: str, arguments: dict[str, Any], full_command: dict[str, Any]) -> dict | None
-        Returning a dict with a "success" key asks SessionState to send a
-        response using the incoming command's id (if present). Returning None
-        implies the provider has sent any events/responses itself.
-        """
         with self._providers_lock:
             self._providers.append((int(priority), provider))
-            # Highest priority first
             self._providers.sort(key=lambda p: p[0], reverse=True)
+
+    def get_providers(self) -> list[tuple[int, CommandProvider]]:
+        with self._providers_lock:
+            return list(self._providers)
+
+    def set_providers(self, value: list[tuple[int, CommandProvider]]) -> None:
+        with self._providers_lock:
+            self._providers = list(value)
+
+    def get_providers_lock(self) -> threading.RLock:
+        return self._providers_lock
 
     def unregister_command_provider(self, provider: CommandProvider) -> None:
         with self._providers_lock:
             self._providers = [(pri, p) for (pri, p) in self._providers if p is not provider]
 
-    def dispatch_debug_command(self, command: dict[str, Any]) -> None:
-        """Dispatch a debug command to the first capable registered provider."""
+    def dispatch_debug_command(self, session: DebugSession, command: dict[str, Any]) -> None:
         name = str(command.get("command", "")) if isinstance(command, dict) else ""
         arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
         arguments = arguments or {}
@@ -262,7 +231,7 @@ class SessionState:
                 continue
 
             try:
-                result = provider.handle(self, name, arguments, command)
+                result = provider.handle(session, name, arguments, command)
             except Exception as exc:  # pragma: no cover - defensive
                 self._send_error_for_exception(command, name, exc)
                 return
@@ -300,77 +269,298 @@ class SessionState:
         else:
             send_debug_message("error", message=msg)
 
+
+class DebugSession:
+    """Composed debug session containing focused state/services."""
+
+    def __init__(self) -> None:
+        self._initialize_mutable_state()
+
+    @staticmethod
+    def _default_exit_func() -> Callable[[int], Any]:
+        return _default_exit_func()
+
+    def _initialize_mutable_state(self) -> None:
+        self.debugger: DebuggerLike | None = None
+        self.stop_at_entry: bool = False
+        self.no_debug: bool = False
+        self.command_queue: queue.Queue[Any] = queue.Queue()
+        self.is_terminated: bool = False
+        self.command_thread: threading.Thread | None = None
+
+        self.transport = SessionTransport()
+        self.sources = SourceCatalog()
+        self.dispatcher = CommandDispatcher()
+        self.process_control = ProcessControl()
+
+    @property
+    def ipc_enabled(self) -> bool:
+        return self.transport.ipc_enabled
+
+    @ipc_enabled.setter
+    def ipc_enabled(self, value: bool) -> None:
+        self.transport.ipc_enabled = bool(value)
+
+    @property
+    def ipc_binary(self) -> bool:
+        return self.transport.ipc_binary
+
+    @ipc_binary.setter
+    def ipc_binary(self, value: bool) -> None:
+        self.transport.ipc_binary = bool(value)
+
+    @property
+    def ipc_sock(self) -> Any | None:
+        return self.transport.ipc_sock
+
+    @ipc_sock.setter
+    def ipc_sock(self, value: Any | None) -> None:
+        self.transport.ipc_sock = value
+
+    @property
+    def ipc_rfile(self) -> Any | None:
+        return self.transport.ipc_rfile
+
+    @ipc_rfile.setter
+    def ipc_rfile(self, value: Any | None) -> None:
+        self.transport.ipc_rfile = value
+
+    @property
+    def ipc_wfile(self) -> Any | None:
+        return self.transport.ipc_wfile
+
+    @ipc_wfile.setter
+    def ipc_wfile(self, value: Any | None) -> None:
+        self.transport.ipc_wfile = value
+
+    @property
+    def ipc_pipe_conn(self) -> Any | None:
+        return self.transport.ipc_pipe_conn
+
+    @ipc_pipe_conn.setter
+    def ipc_pipe_conn(self, value: Any | None) -> None:
+        self.transport.ipc_pipe_conn = value
+
+    @property
+    def on_debug_message(self) -> EventEmitter:
+        return self.transport.on_debug_message
+
+    @property
+    def source_references(self) -> dict[int, SourceReferenceMeta]:
+        return self.sources.source_references
+
+    @source_references.setter
+    def source_references(self, value: dict[int, SourceReferenceMeta]) -> None:
+        self.sources.source_references = value
+
+    @property
+    def _path_to_ref(self) -> dict[str, int]:
+        return self.sources.get_path_to_ref_map()
+
+    @_path_to_ref.setter
+    def _path_to_ref(self, value: dict[str, int]) -> None:
+        self.sources.set_path_to_ref_map(value)
+
+    @property
+    def next_source_ref(self) -> Any:
+        return self.sources.next_source_ref
+
+    @next_source_ref.setter
+    def next_source_ref(self, value: Any) -> None:
+        self.sources.next_source_ref = value
+
+    @property
+    def exit_func(self) -> Callable[[int], Any]:
+        return self.process_control.exit_func
+
+    @exit_func.setter
+    def exit_func(self, fn: Callable[[int], Any]) -> None:
+        self.process_control.exit_func = fn
+
+    @property
+    def exec_func(self) -> Callable[[str, list[str]], Any]:
+        return self.process_control.exec_func
+
+    @exec_func.setter
+    def exec_func(self, fn: Callable[[str, list[str]], Any]) -> None:
+        self.process_control.exec_func = fn
+
+    @property
+    def _providers(self) -> list[tuple[int, CommandProvider]]:
+        return self.dispatcher.get_providers()
+
+    @_providers.setter
+    def _providers(self, value: list[tuple[int, CommandProvider]]) -> None:
+        self.dispatcher.set_providers(value)
+
+    @property
+    def _providers_lock(self) -> threading.RLock:
+        return self.dispatcher.get_providers_lock()
+
+    def get_command_providers(self) -> list[tuple[int, CommandProvider]]:
+        return self.dispatcher.get_providers()
+
+    def require_ipc(self) -> None:
+        self.transport.require_ipc()
+
+    def require_ipc_write_channel(self) -> None:
+        self.transport.require_ipc_write_channel()
+
+    def process_queued_commands_launcher(self) -> None:
+        """Process queued commands using the launcher handlers.
+
+        This method consumes commands from the internal command queue and
+        forwards them to the launcher-level `handle_debug_command` helper.
+        It dynamically imports the `dapper.launcher.handlers` module so we
+        avoid circular imports at module import time.
+        """
+        # Use non-blocking reads until the queue is empty. Avoid try/except in
+        # the loop to reduce overhead and satisfy linter suggestions.
+        while not self.command_queue.empty():
+            cmd = self.command_queue.get_nowait()
+            try:
+                # Deferred import to avoid circular imports at module import time
+                from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+
+                handle_debug_command(cmd)
+            except Exception:
+                # If anything goes wrong, fall back to the provider
+                # dispatch mechanism and continue processing.
+                self.dispatch_debug_command(cmd)
+
+    def set_exit_func(self, fn: Callable[[int], Any]) -> None:
+        self.exit_func = fn
+
+    def set_exec_func(self, fn: Callable[[str, list[str]], Any]) -> None:
+        self.exec_func = fn
+
+    def start_command_receiver(self) -> None:
+        """Start the debug command receiving thread.
+
+        This is a safe, idempotent helper that defers the import to avoid
+        circular-import issues. Failures are logged rather than silently
+        ignored so misconfiguration is visible during startup.
+        """
+        try:
+            # Defer import to avoid circular import at module import time
+            from dapper.ipc import ipc_receiver  # noqa: PLC0415
+
+            # Avoid starting more than once
+            if self.command_thread is not None:
+                logger.debug("command receiver already started")
+                return
+
+            self.command_thread = threading.Thread(
+                target=ipc_receiver.receive_debug_commands,
+                daemon=True,
+                name="dapper-recv-cmd",
+            )
+            self.command_thread.start()
+            logger.debug("Started receive_debug_commands thread")
+        except Exception as exc:  # pragma: no cover - best-effort startup
+            # Log at warning level so failures are visible during normal runs
+            logger.warning(
+                "Failed to start receive_debug_commands thread: %s",
+                exc,
+                exc_info=True,
+            )
+
+    def register_command_provider(self, provider: CommandProvider, *, priority: int = 0) -> None:
+        self.dispatcher.register_command_provider(provider, priority=priority)
+
+    def unregister_command_provider(self, provider: CommandProvider) -> None:
+        self.dispatcher.unregister_command_provider(provider)
+
+    def dispatch_debug_command(self, command: dict[str, Any]) -> None:
+        self.dispatcher.dispatch_debug_command(self, command)
+
     # Source reference helpers
     def get_ref_for_path(self, path: str) -> int | None:
-        return self._path_to_ref.get(path)
+        return self.sources.get_ref_for_path(path)
 
     def get_or_create_source_ref(self, path: str, name: str | None = None) -> int:
-        existing = self.get_ref_for_path(path)
-        if existing:
-            return existing
-        ref = next(self.next_source_ref)
-        try:
-            self.source_references[ref] = {"path": path, "name": name}
-        except Exception:
-            self.source_references[ref] = {"path": path}
-        self._path_to_ref[path] = ref
-        return ref
+        return self.sources.get_or_create_source_ref(path, name)
 
     def get_source_meta(self, ref: int) -> SourceReferenceMeta | None:
-        return self.source_references.get(ref)
+        return self.sources.get_source_meta(ref)
 
     def get_source_content_by_ref(self, ref: int) -> str | None:
-        meta = self.get_source_meta(ref)
-        if not meta:
-            return None
-        path = meta.get("path")
-        if not path:
-            return None
-        try:
-            return Path(path).read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            return None
+        return self.sources.get_source_content_by_ref(ref)
 
     def get_source_content_by_path(self, path: str) -> str | None:
-        try:
-            return Path(path).read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            return None
+        return self.sources.get_source_content_by_path(path)
+
+
+class SessionState(DebugSession):
+    """Compatibility singleton facade over the composed DebugSession model."""
+
+    _instance = None
+    _reset_lock = threading.RLock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialize_mutable_state()
+        self._initialized = True
+
+    @classmethod
+    def reset(cls) -> SessionState:
+        """Reinitialize all mutable singleton state and return the instance."""
+        with cls._reset_lock:
+            instance = cls()
+            instance._initialize_mutable_state()
+            instance._initialized = True
+            return instance
 
 
 # Module-level singleton instance used throughout the codebase
 state = SessionState()
 
+# Context-local active session for injection-friendly call paths.
+_active_session: contextvars.ContextVar[DebugSession | None] = contextvars.ContextVar(
+    "dapper_active_session",
+    default=None,
+)
+
+
+def get_active_session() -> DebugSession:
+    """Return the context-local active session, falling back to global state."""
+    active = _active_session.get()
+    return active if active is not None else state
+
+
+@contextlib.contextmanager
+def use_session(session: DebugSession) -> Iterator[DebugSession]:
+    """Temporarily set the active session for the current context."""
+    token = _active_session.set(session)
+    try:
+        yield session
+    finally:
+        _active_session.reset(token)
+
+
+class SessionProxy:
+    """Attribute proxy to the context-local active session."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_active_session(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(get_active_session(), name, value)
+
+
+# Use in modules that need session injection while preserving legacy `state.*` call shape.
+active_state = SessionProxy()
+
 
 def send_debug_message(event_type: str, **kwargs) -> None:
-    """Send a debug message via IPC and emit to subscribers.
-    Binary framing is the default transport.
-    """
-    message = {"event": event_type}
-    message.update(kwargs)
-
-    # Emit to listeners first; listeners should never raise.
-    with contextlib.suppress(Exception):
-        state.on_debug_message.emit(event_type, **kwargs)
-
-    state.require_ipc()
-    state.require_ipc_write_channel()
-
-    # Binary IPC (default)
-    payload = json.dumps(message).encode("utf-8")
-    frame = pack_frame(1, payload)
-
-    # Prefer pipe conn if available
-    conn = state.ipc_pipe_conn
-    if conn is not None:
-        conn.send_bytes(frame)
-        return
-
-    wfile = state.ipc_wfile
-    assert wfile is not None  # guaranteed by require_ipc_write_channel
-    wfile.write(frame)  # type: ignore[arg-type]
-    with contextlib.suppress(Exception):
-        wfile.flush()  # type: ignore[call-arg]
+    """Send a debug message via the active session transport."""
+    get_active_session().transport.send(event_type, **kwargs)
 
 
 # Module-level helpers extracted from make_variable_object to reduce function size

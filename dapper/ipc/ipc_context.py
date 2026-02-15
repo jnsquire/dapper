@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from dataclasses import field
 import logging
 import threading
-from typing import Any
+from typing import IO
+from typing import TYPE_CHECKING
 from typing import Callable
 
 from dapper.ipc.ipc_binary import pack_frame
@@ -35,18 +36,37 @@ from dapper.ipc.transport_factory import TransportFactory
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from multiprocessing.connection import Connection
+    from multiprocessing.connection import Listener
+    from pathlib import Path
+    from socket import socket
+
+    SocketLike = socket | SyncConnectionAdapter
+    PipeConnectionLike = Connection | SyncConnectionAdapter
+    PipeListenerLike = Listener | SyncConnectionAdapter
+    PathLike = Path | str
+else:
+    SocketLike = object
+    PipeConnectionLike = object
+    PipeListenerLike = object
+    PathLike = object
+
+ReaderLike = IO[str] | IO[bytes] | SyncConnectionAdapter
+WriterLike = IO[str] | IO[bytes]
+
 
 @dataclass
 class IPCContext:
     enabled: bool = False
-    listen_sock: Any | None = None
-    sock: Any | None = None
-    rfile: Any | None = None
-    wfile: Any | None = None
-    pipe_listener: Any | None = None  # mp_conn.Listener | None
-    pipe_conn: Any | None = None  # mp_conn.Connection | None
-    connection_adapter: Any | None = None
-    unix_path: Any | None = None  # Path | None (kept Any to avoid runtime import)
+    listen_sock: SocketLike | None = None
+    sock: SocketLike | None = None
+    rfile: ReaderLike | None = None
+    wfile: WriterLike | None = None
+    pipe_listener: PipeListenerLike | None = None
+    pipe_conn: PipeConnectionLike | None = None
+    connection_adapter: SyncConnectionAdapter | None = None
+    unix_path: PathLike | None = None
     binary: bool = False
 
     # Reader thread management
@@ -196,7 +216,7 @@ class IPCContext:
     # ------------------------------------------------------------------
     # Configuration helpers (migrated from PyDebugger)
     # ------------------------------------------------------------------
-    def enable_pipe_connection(self, conn: Any, *, binary: bool = False) -> None:
+    def enable_pipe_connection(self, conn: PipeConnectionLike, *, binary: bool = False) -> None:
         """Enable IPC using an already-connected pipe connection.
 
         This centralizes the common assignments previously performed by
@@ -210,7 +230,7 @@ class IPCContext:
         self.binary = bool(binary)
         self.enabled = True
 
-    def enable_socket_from_connected(self, sock: Any, *, binary: bool = False) -> None:
+    def enable_socket_from_connected(self, sock: SocketLike, *, binary: bool = False) -> None:
         """Enable IPC using an already-connected socket.
 
         This will populate rfile/wfile appropriately for text or binary
@@ -231,17 +251,19 @@ class IPCContext:
         self.binary = bool(binary)
         self.enabled = True
 
-    def set_pipe_listener(self, listener: Any) -> None:
+    def set_pipe_listener(self, listener: PipeListenerLike) -> None:
         """Register a pipe listener that will accept a single connection later."""
         self.pipe_listener = listener
 
-    def set_listen_socket(self, listen_sock: Any, unix_path: Any | None = None) -> None:
+    def set_listen_socket(
+        self, listen_sock: SocketLike, unix_path: PathLike | None = None
+    ) -> None:
         """Register a listening socket that will accept a single connection later."""
         self.listen_sock = listen_sock
         if unix_path is not None:
             self.unix_path = unix_path
 
-    def _setup_socket_files(self, sock: Any, *, binary: bool = False) -> None:
+    def _setup_socket_files(self, sock: SocketLike, *, binary: bool = False) -> None:
         """Helper to attach file-like rfile/wfile objects for a socket.
 
         Centralises the creation of rfile/wfile used by both accept and
@@ -261,7 +283,7 @@ class IPCContext:
         """Set the binary flag on the IPC context without enabling or disabling."""
         self.binary = bool(binary)
 
-    def enable_wfile(self, wfile: Any, *, binary: bool = False) -> None:
+    def enable_wfile(self, wfile: WriterLike, *, binary: bool = False) -> None:
         """Enable IPC using an already-created writer file-like object.
 
         This is a small helper used by tests to simulate an outgoing text/binary

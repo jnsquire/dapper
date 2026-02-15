@@ -13,11 +13,13 @@ import logging
 from queue import Empty
 import traceback
 from typing import Any
-from typing import cast
 
+from dapper.shared import debug_shared
 from dapper.shared.command_handlers import COMMAND_HANDLERS
-from dapper.shared.debug_shared import send_debug_message
-from dapper.shared.debug_shared import state
+
+# Backward compatibility: tests and legacy callers import ipc_receiver.state.
+state = debug_shared.active_state
+send_debug_message = debug_shared.send_debug_message
 
 logger = logging.getLogger(__name__)
 
@@ -65,42 +67,52 @@ class DapMappingProvider:
         return result if isinstance(result, dict) and ("success" in result) else None
 
 
-# Register the mapping provider at a reasonable default priority.
-state.register_command_provider(cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100)
+def _ensure_mapping_provider(session: debug_shared.DebugSession) -> None:
+    for _priority, provider in list(session.get_command_providers()):
+        if isinstance(provider, DapMappingProvider):
+            return
+    session.register_command_provider(DapMappingProvider(COMMAND_HANDLERS), priority=100)
 
 
-def receive_debug_commands() -> None:
+def receive_debug_commands(session: debug_shared.DebugSession | None = None) -> None:
     """
     Continuously reads debug commands from the IPC channel, parses them,
     and dispatches them for processing until termination is requested.
 
     IPC is mandatory; raises RuntimeError if IPC is not enabled.
     """
-    state.require_ipc()
-    if state.ipc_rfile is None:
+    active_session = session if session is not None else debug_shared.get_active_session()
+    _ensure_mapping_provider(active_session)
+
+    active_session.require_ipc()
+    if active_session.ipc_rfile is None:
         msg = "IPC is enabled but no read channel is available."
         raise RuntimeError(msg)
 
-    reader = state.ipc_rfile
-    while not state.is_terminated:
+    reader = active_session.ipc_rfile
+    while not active_session.is_terminated:
         line = reader.readline()
         if not line:
-            state.exit_func(0)
+            active_session.exit_func(0)
         # Each line is a JSON command
         command_json = line.strip()
         if command_json:
             try:
                 command = json.loads(command_json)
-                state.command_queue.put(command)
+                active_session.command_queue.put(command)
             except Exception as e:
-                send_debug_message("error", message=f"Error receiving command: {e!s}")
+                with debug_shared.use_session(active_session):
+                    send_debug_message("error", message=f"Error receiving command: {e!s}")
                 traceback.print_exc()
 
 
-def process_queued_commands():
+def process_queued_commands(session: debug_shared.DebugSession | None = None):
+    active_session = session if session is not None else debug_shared.get_active_session()
+    _ensure_mapping_provider(active_session)
     while True:
         try:
-            cmd = state.command_queue.get_nowait()
-            state.dispatch_debug_command(cmd)
+            cmd = active_session.command_queue.get_nowait()
+            with debug_shared.use_session(active_session):
+                active_session.dispatch_debug_command(cmd)
         except Empty:  # noqa: PERF203
             break

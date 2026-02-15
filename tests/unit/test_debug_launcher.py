@@ -42,13 +42,9 @@ class TestDebugLauncherBasic:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
-        # Reset the shared state
+        # Reinitialize the test-specific SessionState instance and reattach it.
+        test_shared_state.reset()
         dl.state = test_shared_state
-        # Clear any existing breakpoints and var_refs
-        if hasattr(dl.state, "breakpoints"):
-            dl.state.breakpoints.clear()
-        if hasattr(dl.state, "var_refs"):
-            dl.state.var_refs.clear()
 
     def test_parse_args_basic(self) -> None:
         """Test basic argument parsing."""
@@ -159,11 +155,8 @@ class TestBreakpointHandling:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
+        test_shared_state.reset()
         dl.state = test_shared_state
-        if hasattr(dl.state, "breakpoints"):
-            dl.state.breakpoints.clear()
-        if hasattr(dl.state, "var_refs"):
-            dl.state.var_refs.clear()
 
     @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
@@ -217,11 +210,8 @@ class TestVariableHandling:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
+        test_shared_state.reset()
         dl.state = test_shared_state
-        if hasattr(dl.state, "breakpoints"):
-            dl.state.breakpoints.clear()
-        if hasattr(dl.state, "var_refs"):
-            dl.state.var_refs.clear()
 
     @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_variables(self, mock_send: MagicMock) -> None:
@@ -302,11 +292,8 @@ class TestControlFlow:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
+        test_shared_state.reset()
         dl.state = test_shared_state
-        if hasattr(dl.state, "breakpoints"):
-            dl.state.breakpoints.clear()
-        if hasattr(dl.state, "var_refs"):
-            dl.state.var_refs.clear()
 
     def test_handle_continue(self) -> None:
         """Test continue command."""

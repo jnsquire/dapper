@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import sys
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -102,29 +103,38 @@ async def test_inprocess_variables_bridge():
 async def test_inprocess_dispatch_map_reused_and_build_not_called() -> None:
     """Ensure InProcessBackend uses a reusable dispatch map and does not
     rebuild nested wrapper functions on every call."""
+
     class FakeBridge:
         def __init__(self):
             self._bp_called = False
 
-        def set_breakpoints(self, path, bps):
+        def set_breakpoints(self, _path, bps):
             self._bp_called = True
             return [{"verified": True, "line": bp.get("line")} for bp in bps]
 
     fake = FakeBridge()
     backend = InProcessBackend(fake)
 
-    assert hasattr(backend, "_dispatch_map") and isinstance(backend._dispatch_map, dict)
+    assert hasattr(backend, "_dispatch_map")
+    assert isinstance(backend._dispatch_map, dict)
     old_id = id(backend._dispatch_map)
 
     # Replace _build_dispatch_table with a sentinel to ensure it's not used
     def _bad_builder(_args: dict[str, Any]):
-        raise AssertionError("_build_dispatch_table should not be called when _dispatch_map is present")
+        raise AssertionError(
+            "_build_dispatch_table should not be called when _dispatch_map is present"
+        )
 
     backend._build_dispatch_table = _bad_builder  # type: ignore[assignment]
 
     # Call command twice
-    res1 = await backend._execute_command("set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 1}]})
-    res2 = await backend._execute_command("set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 2}]})
+    res1 = await backend._execute_command(
+        "set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 1}]}
+    )
+    res2 = await backend._execute_command(
+        "set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 2}]}
+    )
 
     assert id(backend._dispatch_map) == old_id
-    assert res1.get("breakpoints") and res2.get("breakpoints")
+    assert res1.get("breakpoints")
+    assert res2.get("breakpoints")

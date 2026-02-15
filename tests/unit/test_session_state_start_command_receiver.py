@@ -18,9 +18,8 @@ class _DummyThread:
 
 
 def test_start_command_receiver_idempotent(monkeypatch):
-    state = ds.state
-    # Reset command_thread for this test
-    state.command_thread = None
+    # Start from a clean session state for deterministic behavior
+    state = ds.SessionState.reset()
 
     # Provide dummy module with receive_debug_commands
     mod = types.ModuleType("dapper.ipc.ipc_receiver")
@@ -55,9 +54,8 @@ def test_start_command_receiver_idempotent(monkeypatch):
 
 
 def test_start_command_receiver_failure_logged(monkeypatch, caplog):
-    state = ds.state
-    # Reset command_thread for this test
-    state.command_thread = None
+    # Ensure a clean session state before exercising startup failure paths
+    state = ds.SessionState.reset()
 
     # Mock module
     mod = types.ModuleType("dapper.ipc.ipc_receiver")

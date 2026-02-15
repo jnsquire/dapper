@@ -14,12 +14,10 @@ import dapper.shared.debug_shared as ds
 
 @pytest.fixture
 def isolated_registry():
-    """
-
-
-    Isolate the provider registry for each test and restore afterward."""
+    """Isolate the provider registry for each test and restore afterward."""
     old = list(ds.state._providers)
-    ds.state._providers = []
+    # Start from a clean session state to ensure deterministic registry
+    ds.SessionState.reset()
     try:
         yield
     finally:

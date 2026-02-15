@@ -62,7 +62,5 @@ def test_send_debug_message_binary_ipc():
     assert data["kind"] == "test"
     assert data["value"] == 5
 
-    # Reset state mutations for other tests
-    ds.state.ipc_enabled = False
-    ds.state.ipc_binary = False
-    ds.state.ipc_pipe_conn = None
+    # Reset session state for deterministic teardown
+    ds.SessionState.reset()

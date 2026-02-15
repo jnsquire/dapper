@@ -21,10 +21,15 @@ def _setup_ipc_for_tests():
     orig_enabled = ds.state.ipc_enabled
     orig_wfile = ds.state.ipc_wfile
     orig_rfile = ds.state.ipc_rfile
+
+    # Start from a clean session state for deterministic behaviour
+    ds.SessionState.reset()
+
     ds.state.ipc_enabled = True
     ds.state.ipc_wfile = MockWFile()
     ds.state.ipc_rfile = io.StringIO("")  # Empty reader to cause immediate exit
     yield
+    # Restore prior environment to avoid surprising other tests
     ds.state.ipc_enabled = orig_enabled
     ds.state.ipc_wfile = orig_wfile
     ds.state.ipc_rfile = orig_rfile

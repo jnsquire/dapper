@@ -91,8 +91,8 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     monkeypatch.setitem(sys.modules, "mymod", fake_mod)
 
-    debug_shared.state.source_references.clear()
-    debug_shared.state._path_to_ref.clear()
+    # Ensure a clean session state for deterministic behaviour
+    debug_shared.SessionState.reset()
 
     messages = capture_send(monkeypatch)
 

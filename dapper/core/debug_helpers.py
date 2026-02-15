@@ -35,11 +35,11 @@ def get_code(obj: Any, name: str, default: types.CodeType | None = None) -> type
     return safe_getattr(obj, name, default, types.CodeType)
 
 
-def get_int(obj: Any, name: str, default: int | None = None):
+def get_int(obj: Any, name: str, default: int | None = None) -> int | None:
     return safe_getattr(obj, name, default, int)
 
 
-def get_str(obj: Any, name: str, default: str | None = None):
+def get_str(obj: Any, name: str, default: str | None = None) -> str | None:
     return safe_getattr(obj, name, default, str)
 
 

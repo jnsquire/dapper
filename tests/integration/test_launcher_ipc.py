@@ -13,11 +13,8 @@ from dapper.shared.debug_shared import state
 
 
 def teardown_function(_fn):
-    # reset state to avoid cross-test leakage
-    state.ipc_enabled = False
-    state.ipc_sock = None
-    state.ipc_rfile = None
-    state.ipc_wfile = None
+    # Reset full session state to avoid cross-test leakage
+    state.__class__.reset()
 
 
 def test_socket_connector_tcp_success():
@@ -120,11 +117,8 @@ def test_setup_ipc_socket_with_connector():
     )
     assert state.ipc_enabled is True
 
-    # reset
-    state.ipc_enabled = False
-    state.ipc_sock = None
-    state.ipc_rfile = None
-    state.ipc_wfile = None
+    # Reset IPC-related state before testing the TCP path
+    state.__class__.reset()
 
     # Test tcp path
     debug_launcher._setup_ipc_socket(

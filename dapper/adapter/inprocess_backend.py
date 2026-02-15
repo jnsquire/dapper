@@ -135,10 +135,14 @@ class InProcessBackend(BaseBackend):
         return {"variables": v}
 
     async def _handler_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
-        return dict(await self.set_variable(args["variables_reference"], args["name"], args["value"]))
+        return dict(
+            await self.set_variable(args["variables_reference"], args["name"], args["value"])
+        )
 
     async def _handler_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
-        return dict(await self.evaluate(args["expression"], args.get("frame_id"), args.get("context")))
+        return dict(
+            await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
+        )
 
     async def _handler_completions(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
@@ -168,15 +172,15 @@ class InProcessBackend(BaseBackend):
         expect `_build_dispatch_table` to return zero-arg callables. New
         callers should prefer `self._dispatch_map`.
         """
+
         # Reuse the class-level handlers by wrapping them into zero-arg
         # callables that capture the `args` dict. This keeps behavior
         # identical while eliminating repeated nested-function definitions
         # in hot paths where `_dispatch_map` is not used.
         def _wrap(h):
-            return (lambda: h(args))
+            return lambda: h(args)
 
         return {name: _wrap(handler) for name, handler in self._dispatch_map.items()}
-
 
     async def _execute_command(
         self,

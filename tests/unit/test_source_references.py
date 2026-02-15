@@ -23,6 +23,10 @@ def _setup_ipc_for_tests():
     """Enable IPC with mock file for tests."""
     orig_enabled = state.ipc_enabled
     orig_wfile = state.ipc_wfile
+
+    # Ensure a clean session state for deterministic behaviour
+    state.__class__.reset()
+
     state.ipc_enabled = True
     state.ipc_wfile = MockWFile()
     yield

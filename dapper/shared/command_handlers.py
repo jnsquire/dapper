@@ -29,9 +29,10 @@ from typing import cast
 
 from dapper.launcher.comm import send_debug_message
 from dapper.shared import debug_shared as _d_shared
-from dapper.shared.debug_shared import state
 from dapper.shared.value_conversion import convert_value_with_context
 from dapper.shared.value_conversion import evaluate_with_policy
+
+state = _d_shared.active_state
 
 logger = logging.getLogger(__name__)
 
@@ -113,35 +114,40 @@ def command_handler(command_name: str):
     return decorator
 
 
-def handle_debug_command(command: dict[str, Any]) -> None:
+def handle_debug_command(
+    command: dict[str, Any],
+    session: _d_shared.DebugSession | None = None,
+) -> None:
     """Handle debug commands using the COMMAND_HANDLERS registry.
 
     This is the main entry point for command dispatch. Both IPC pathways
     (pipe-based and socket-based) ultimately dispatch through this registry.
     """
-    cmd = command.get("command")
-    arguments = command.get("arguments", {})
-    # Ensure the command name is a string before looking up the handler
-    if not isinstance(cmd, str):
-        _safe_send_debug_message(
-            "response",
-            request_seq=command.get("seq"),
-            success=False,
-            message=f"Invalid command: {cmd!r}",
-        )
-        return
+    active_session = session if session is not None else _d_shared.get_active_session()
+    with _d_shared.use_session(active_session):
+        cmd = command.get("command")
+        arguments = command.get("arguments", {})
+        # Ensure the command name is a string before looking up the handler
+        if not isinstance(cmd, str):
+            _safe_send_debug_message(
+                "response",
+                request_seq=command.get("seq"),
+                success=False,
+                message=f"Invalid command: {cmd!r}",
+            )
+            return
 
-    # Look up the command handler in the mapping table and dispatch
-    handler_func = COMMAND_HANDLERS.get(cmd)
-    if handler_func is not None:
-        handler_func(arguments)
-    else:
-        _safe_send_debug_message(
-            "response",
-            request_seq=command.get("seq"),
-            success=False,
-            message=f"Unknown command: {cmd}",
-        )
+        # Look up the command handler in the mapping table and dispatch
+        handler_func = COMMAND_HANDLERS.get(cmd)
+        if handler_func is not None:
+            handler_func(arguments)
+        else:
+            _safe_send_debug_message(
+                "response",
+                request_seq=command.get("seq"),
+                success=False,
+                message=f"Unknown command: {cmd}",
+            )
 
 
 # =============================================================================
@@ -1290,7 +1296,9 @@ def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = No
     return {"success": True, "body": capabilities}
 
 
-def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
+def handle_restart(  # noqa: PLR0912, PLR0915
+    _dbg: DebuggerLike, _arguments: dict[str, Any] | None = None
+):
     """Handle restart command (inlined).
 
     Before replacing the process image, perform best-effort cleanup of

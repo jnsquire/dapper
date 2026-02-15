@@ -414,12 +414,15 @@ class TestExternalBackendDispatchNoRecursion:
         )
 
         # Ensure prebuilt dispatch_map exists
-        assert hasattr(backend, "_dispatch_map") and isinstance(backend._dispatch_map, dict)
+        assert hasattr(backend, "_dispatch_map")
+        assert isinstance(backend._dispatch_map, dict)
         old_id = id(backend._dispatch_map)
 
         # Replace _build_dispatch_table with a sentinel that would fail if called
         def _bad_builder(_args: dict[str, Any]):
-            raise AssertionError("_build_dispatch_table should not be called when _dispatch_map is present")
+            raise AssertionError(
+                "_build_dispatch_table should not be called when _dispatch_map is present"
+            )
 
         backend._build_dispatch_table = _bad_builder  # type: ignore[assignment]
 

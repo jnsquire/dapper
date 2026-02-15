@@ -107,7 +107,7 @@ def test_handle_source_reads_file(tmp_path: Path):
     assert "hello world" in res["body"]["content"]
 
 
-def test_handle_source_resolves_sourceReference_from_state(tmp_path: Path):
+def test_handle_source_resolves_source_reference_from_state(tmp_path: Path):
     # Create a temp file and register it in the session state
     p = tmp_path / "sample_ref.txt"
     p.write_text("hello reference", encoding="utf-8")

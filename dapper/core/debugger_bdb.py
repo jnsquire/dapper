@@ -108,7 +108,15 @@ class DebuggerBDB(bdb.Bdb):
         """
         self.data_bp_state.register_watches(names, metas)
 
-    def record_breakpoint(self, path, line, *, condition, hit_condition, log_message):
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: str | None,
+        hit_condition: str | None,
+        log_message: str | None,
+    ) -> None:
         """Record metadata for a line breakpoint.
 
         Delegates to BreakpointManager.record_line_breakpoint.
@@ -121,7 +129,7 @@ class DebuggerBDB(bdb.Bdb):
             log_message=log_message,
         )
 
-    def clear_break_meta_for_file(self, path):
+    def clear_break_meta_for_file(self, path: str) -> None:
         """Clear all breakpoint metadata for a file.
 
         Delegates to BreakpointManager.clear_line_meta_for_file.
@@ -311,14 +319,16 @@ class DebuggerBDB(bdb.Bdb):
         """Build stack frames for the given frame using the thread tracker."""
         return self.thread_tracker.build_stack_frames(frame)
 
-    def set_custom_breakpoint(self, filename, line, condition=None):
+    def set_custom_breakpoint(
+        self, filename: str, line: int, condition: str | None = None
+    ) -> None:
         custom = self.bp_manager.custom
         if filename not in custom:
             custom[filename] = {}
         custom[filename][line] = condition
         self.set_break(filename, line, cond=condition)
 
-    def clear_custom_breakpoint(self, filename, line):
+    def clear_custom_breakpoint(self, filename: str, line: int) -> None:
         custom = self.bp_manager.custom
         if filename in custom and line in custom[filename]:
             del custom[filename][line]

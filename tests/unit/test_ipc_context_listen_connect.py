@@ -130,7 +130,7 @@ def test_start_reader_concurrent_callers_create_single_thread(monkeypatch):
         start_entered = threading.Event()
         allow_start = threading.Event()
 
-        def __init__(self, target=None, args=(), daemon=None, name=None):
+        def __init__(self, _target=None, _args=(), _daemon=None, _name=None):
             type(self).created += 1
             self._alive = False
 
