@@ -8,12 +8,13 @@ import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 from unittest.mock import patch
 
 import pytest
+
+from dapper.ipc.ipc_binary import pack_frame
 
 # Import the module to test
 from dapper.launcher import debug_launcher as dl
@@ -26,7 +27,6 @@ from dapper.shared import stepping_handlers
 from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.debug_shared import SessionState
-from dapper.ipc.ipc_binary import pack_frame
 from tests.mocks import make_real_frame
 
 
@@ -98,19 +98,23 @@ class TestDebugLauncherBasic:
 
     def test_parse_args_requires_ipc(self) -> None:
         """Test that --ipc is required by the launcher CLI."""
-        with patch.object(sys, "argv", ["debug_launcher.py", "--program", "script.py"]):
-            with pytest.raises(SystemExit):
-                dl.parse_args()
+        with (
+            patch.object(sys, "argv", ["debug_launcher.py", "--program", "script.py"]),
+            pytest.raises(SystemExit),
+        ):
+            dl.parse_args()
 
     def test_parse_args_rejects_invalid_ipc_choice(self) -> None:
         """Test invalid --ipc value is rejected by argparse choices."""
-        with patch.object(
-            sys,
-            "argv",
-            ["debug_launcher.py", "--program", "script.py", "--ipc", "invalid"],
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["debug_launcher.py", "--program", "script.py", "--ipc", "invalid"],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                dl.parse_args()
+            dl.parse_args()
 
     def test_parse_args_accepts_unix_transport_path(self) -> None:
         """Test parsing unix transport-specific options."""
@@ -498,8 +502,8 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         assert body.get("breakpoints") == []
 
         # Verify debugger attributes were set to False for empty filters
@@ -516,8 +520,8 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
         assert len(breakpoints) == 1
@@ -537,8 +541,8 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
         assert len(breakpoints) == 1
@@ -557,8 +561,8 @@ class TestExceptionBreakpoints:
 
         assert response is not None
         assert response["success"] is True
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
         assert len(breakpoints) == 2
@@ -578,8 +582,8 @@ class TestExceptionBreakpoints:
             {"filters": "invalid"},
         )
         assert response is not None
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         assert body.get("breakpoints") == []
 
         # Test with non-string elements
@@ -588,8 +592,8 @@ class TestExceptionBreakpoints:
             {"filters": [123, None]},
         )
         assert response is not None
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
         assert len(breakpoints) == 2
@@ -618,8 +622,8 @@ class TestExceptionBreakpoints:
         # The response should still be successful
         assert response["success"] is True
         # But the breakpoint should be marked as not verified
-        body = cast("dict[str, Any]", response.get("body"))
-        assert body is not None
+        body = response.get("body")
+        assert isinstance(body, dict)
         breakpoints = body.get("breakpoints")
         assert breakpoints is not None
         assert len(breakpoints) == 1
@@ -628,7 +632,9 @@ class TestExceptionBreakpoints:
 class TestUtilityFunctions:
     """Tests for utility functions."""
 
-    def test_run_with_debugger_configures_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_with_debugger_configures_when_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         fake_dbg = MagicMock()
         calls: list[tuple[bool, Any]] = []
 
@@ -645,7 +651,9 @@ class TestUtilityFunctions:
         assert sys.argv == ["/tmp/demo.py", "--a", "1"]
         fake_dbg.run.assert_called_once_with("exec(Path('/tmp/demo.py').open().read())")
 
-    def test_run_with_debugger_uses_existing_debugger(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_with_debugger_uses_existing_debugger(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         fake_dbg = MagicMock()
         session = SimpleNamespace(debugger=fake_dbg)
 
@@ -673,7 +681,7 @@ class TestUtilityFunctions:
             if str(tmp_path) in sys.path:
                 sys.path.remove(str(tmp_path))
 
-            dl.run_program(str(program_path), ["--demo"]) 
+            dl.run_program(str(program_path), ["--demo"])
 
             assert sys.argv == [str(program_path), "--demo"]
             assert sys.path[0] == str(tmp_path)
@@ -836,16 +844,20 @@ class TestUtilityFunctions:
         exit_codes: list[int] = []
         handled: list[dict[str, Any]] = []
 
+        def _handle(command, session=None):
+            del session
+            handled.append(command)
+
         session = SimpleNamespace(
             is_terminated=False,
             command_queue=FakeQueue(),
-            exit_func=lambda code: exit_codes.append(code),
+            exit_func=exit_codes.append,
         )
 
         monkeypatch.setattr(
             dl,
             "handle_debug_command",
-            lambda command, session=None: handled.append(command),
+            _handle,
         )
 
         dl._recv_binary_from_pipe(FakeConn(), session=session)
@@ -872,17 +884,21 @@ class TestUtilityFunctions:
                 return b""
 
         messages: list[str] = []
+
+        def _ignore_item(_item):
+            return None
+
         session = SimpleNamespace(
             is_terminated=False,
             exit_func=lambda code: messages.append(f"exit:{code}"),
             ipc_enabled=True,
-            command_queue=SimpleNamespace(put=lambda _item: None),
+            command_queue=SimpleNamespace(put=_ignore_item),
         )
 
         monkeypatch.setattr(
             dl,
             "send_debug_message",
-            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message','')}")
+            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message', '')}"),
         )
 
         dl._recv_binary_from_pipe(FakeConn(), session=session)
@@ -907,16 +923,21 @@ class TestUtilityFunctions:
 
         queue_items: list[dict[str, Any]] = []
         handled: list[dict[str, Any]] = []
+
+        def _handle(command, session=None):
+            del session
+            handled.append(command)
+
         session = SimpleNamespace(
             is_terminated=False,
-            command_queue=SimpleNamespace(put=lambda item: queue_items.append(item)),
+            command_queue=SimpleNamespace(put=queue_items.append),
             exit_func=lambda _code: None,
         )
 
         monkeypatch.setattr(
             dl,
             "handle_debug_command",
-            lambda command, session=None: handled.append(command),
+            _handle,
         )
 
         dl._recv_binary_from_pipe(FakeConn(), session=session)
@@ -933,9 +954,14 @@ class TestUtilityFunctions:
         messages: list[str] = []
         queued: list[dict[str, Any]] = []
         handled: list[dict[str, Any]] = []
+
+        def _handle(command, session=None):
+            del session
+            handled.append(command)
+
         session = SimpleNamespace(
             is_terminated=False,
-            command_queue=SimpleNamespace(put=lambda item: queued.append(item)),
+            command_queue=SimpleNamespace(put=queued.append),
             exit_func=lambda code: messages.append(f"exit:{code}"),
             ipc_enabled=True,
         )
@@ -943,12 +969,12 @@ class TestUtilityFunctions:
         monkeypatch.setattr(
             dl,
             "send_debug_message",
-            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message','')}")
+            lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message', '')}"),
         )
         monkeypatch.setattr(
             dl,
             "handle_debug_command",
-            lambda command, session=None: handled.append(command),
+            _handle,
         )
 
         dl._recv_binary_from_stream(stream, session=session)
@@ -959,7 +985,9 @@ class TestUtilityFunctions:
         assert len(handled) == 1
         assert "exit:0" in messages
 
-    def test_main_routes_to_run_program_when_no_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_routes_to_run_program_when_no_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         calls: list[str] = []
 
         args = SimpleNamespace(
@@ -975,12 +1003,28 @@ class TestUtilityFunctions:
             ipc_binary=True,
         )
 
+        def _setup_ipc_from_args(parsed, session=None):
+            del parsed, session
+            calls.append("ipc")
+
+        def _start_command_listener(session=None):
+            del session
+            calls.append("listener")
+
+        def _configure_debugger(stop_on_entry, session=None):
+            del stop_on_entry, session
+            calls.append("cfg")
+
         monkeypatch.setattr(dl, "parse_args", lambda: args)
-        monkeypatch.setattr(dl, "setup_ipc_from_args", lambda parsed, session=None: calls.append("ipc"))
-        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
-        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
-        monkeypatch.setattr(dl, "run_program", lambda program, a: calls.append(f"run:{program}:{a}"))
-        monkeypatch.setattr(dl, "run_with_debugger", lambda *_args, **_kwargs: calls.append("debug"))
+        monkeypatch.setattr(dl, "setup_ipc_from_args", _setup_ipc_from_args)
+        monkeypatch.setattr(dl, "start_command_listener", _start_command_listener)
+        monkeypatch.setattr(dl, "configure_debugger", _configure_debugger)
+        monkeypatch.setattr(
+            dl, "run_program", lambda program, a: calls.append(f"run:{program}:{a}")
+        )
+        monkeypatch.setattr(
+            dl, "run_with_debugger", lambda *_args, **_kwargs: calls.append("debug")
+        )
 
         dl.main()
 
@@ -1004,16 +1048,28 @@ class TestUtilityFunctions:
             ipc_binary=True,
         )
 
+        def _setup_ipc_from_args(parsed, session=None):
+            del parsed, session
+            calls.append("ipc")
+
+        def _start_command_listener(session=None):
+            del session
+            calls.append("listener")
+
+        def _configure_debugger(stop_on_entry, session=None):
+            del stop_on_entry, session
+            calls.append("cfg")
+
+        def _run_with_debugger(program, a, session=None):
+            del session
+            calls.append(f"debug:{program}:{a}")
+
         monkeypatch.setattr(dl, "parse_args", lambda: args)
-        monkeypatch.setattr(dl, "setup_ipc_from_args", lambda parsed, session=None: calls.append("ipc"))
-        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
-        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
+        monkeypatch.setattr(dl, "setup_ipc_from_args", _setup_ipc_from_args)
+        monkeypatch.setattr(dl, "start_command_listener", _start_command_listener)
+        monkeypatch.setattr(dl, "configure_debugger", _configure_debugger)
         monkeypatch.setattr(dl, "run_program", lambda *_args, **_kwargs: calls.append("run"))
-        monkeypatch.setattr(
-            dl,
-            "run_with_debugger",
-            lambda program, a, session=None: calls.append(f"debug:{program}:{a}"),
-        )
+        monkeypatch.setattr(dl, "run_with_debugger", _run_with_debugger)
 
         dl.main()
 
@@ -1043,8 +1099,17 @@ class TestUtilityFunctions:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(dl, "setup_ipc_from_args", _raise_setup)
-        monkeypatch.setattr(dl, "start_command_listener", lambda session=None: calls.append("listener"))
-        monkeypatch.setattr(dl, "configure_debugger", lambda stop_on_entry, session=None: calls.append("cfg"))
+
+        def _start_command_listener(session=None):
+            del session
+            calls.append("listener")
+
+        def _configure_debugger(stop_on_entry, session=None):
+            del stop_on_entry, session
+            calls.append("cfg")
+
+        monkeypatch.setattr(dl, "start_command_listener", _start_command_listener)
+        monkeypatch.setattr(dl, "configure_debugger", _configure_debugger)
 
         with pytest.raises(RuntimeError, match="ipc setup failed"):
             dl.main()
@@ -1095,10 +1160,14 @@ class TestUtilityFunctions:
         fake_conn = object()
         session = SimpleNamespace(ipc_enabled=False, ipc_pipe_conn=None)
 
-        monkeypatch.setattr(dl.os, "name", "nt")
-        monkeypatch.setattr(dl._mpc, "Client", lambda address, family: fake_conn)
+        def _client_stub(address, family):
+            del address, family
+            return fake_conn
 
-        dl._setup_ipc_pipe("\\\\.\\pipe\\dapper", session=session)
+        monkeypatch.setattr(dl._mpc, "Client", _client_stub)
+
+        with patch.object(dl.os, "name", "nt"):
+            dl._setup_ipc_pipe("\\\\.\\pipe\\dapper", session=session)
 
         assert session.ipc_enabled is True
         assert session.ipc_pipe_conn is fake_conn
@@ -1153,7 +1222,9 @@ class TestUtilityFunctions:
             connect_unix=lambda _path: None,
             connect_tcp=lambda _host, _port: sock_bin,
         )
-        session_bin = SimpleNamespace(ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False)
+        session_bin = SimpleNamespace(
+            ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False
+        )
 
         dl._setup_ipc_socket(
             "tcp",
@@ -1173,7 +1244,9 @@ class TestUtilityFunctions:
             connect_unix=lambda _path: None,
             connect_tcp=lambda _host, _port: sock_txt,
         )
-        session_txt = SimpleNamespace(ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False)
+        session_txt = SimpleNamespace(
+            ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False
+        )
 
         dl._setup_ipc_socket(
             "tcp",
@@ -1190,7 +1263,6 @@ class TestUtilityFunctions:
             ("r", {"encoding": "utf-8", "newline": ""}),
             ("w", {"encoding": "utf-8", "newline": ""}),
         ]
-
 
 
 # Type checking

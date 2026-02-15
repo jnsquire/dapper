@@ -36,12 +36,16 @@ Generated from a full codebase review on 2026-02-14.
     - ✅ Added lifecycle bridge methods on `PyDebugger` (`start_ipc_reader`, backend/bridge creators, stop-event await, IPC mode toggle, launch helpers) so extracted components avoid direct private-state mutation.
     - ✅ Extracted breakpoint/state-inspection operations into dedicated `_PyDebuggerStateManager` in `dapper/adapter/server.py` (`set_breakpoints`, `get_stack_trace`, `get_scopes`, `get_variables`, `set_variable`, `evaluate`).
     - ✅ Added bridge wrappers (`get_active_backend`, `get_inprocess_backend`, breakpoint processing/event helpers) to keep extracted components decoupled from private internals.
-    - 🔜 Next chunk: move process/output/thread primitives (debuggee process startup, stream readers, termination orchestration) into a focused runtime manager.
+    - ✅ Extracted process/IPC/backend primitives into dedicated `_PyDebuggerRuntimeManager` in `dapper/adapter/server.py` (`start_ipc_reader`, backend/bridge creation, debuggee process startup, output stream forwarding).
+    - ✅ Extracted execution-control and termination lifecycle helpers into dedicated `_PyDebuggerExecutionManager` in `dapper/adapter/server.py` (`continue/step/pause`, thread listing, exception info, configuration-done, disconnect/terminate/restart, raw command send).
+    - ✅ Reduced `PyDebugger` wrapper/alias surface by inlining direct manager/event-router delegation for event handling and pending-response resolution; retained minimal private compatibility alias for launch monkey-patching/tests.
+    - ✅ Moved `DebugAdapterServer` to `dapper/adapter/server_core.py` and preserved import compatibility via re-export in `dapper/adapter/server.py`.
+    - 🔜 Next chunk: move manager classes (`_PyDebuggerEventRouter`, `_PyDebuggerLifecycleManager`, `_PyDebuggerStateManager`, `_PyDebuggerRuntimeManager`, `_PyDebuggerExecutionManager`) into `dapper/adapter/debugger/` modules.
 
-- [ ] **Reduce compatibility property sprawl in `DebuggerBDB`**
+- [x] **Reduce compatibility property sprawl in `DebuggerBDB`** ✅
   - File: `dapper/core/debugger_bdb.py` (~L100–310)
-  - 50+ lines of compatibility properties proxying attributes to delegates. Defeats the purpose of component extraction.
-  - Fix: Update callers to access delegate objects directly.
+  - Status: Completed. Production runtime paths now use delegate components directly (`stepping_controller`, `thread_tracker`, `exception_handler`, `var_manager`, `bp_manager`).
+  - Note: Compatibility-style properties intentionally remain only in test doubles (`tests/mocks.py`, `tests/dummy_debugger.py`).
 
 - [ ] **Replace global `SessionState` singleton with explicit session composition**
   - Files: `dapper/shared/debug_shared.py`, `dapper/shared/command_handlers.py`, `dapper/ipc/ipc_receiver.py`, `dapper/launcher/debug_launcher.py`
@@ -129,10 +133,9 @@ Generated from a full codebase review on 2026-02-14.
 ## Code Quality
 
 
-- [ ] **`DebuggerLike` Protocol has ~30+ required attributes**
+- [x] **`DebuggerLike` Protocol has ~30+ required attributes** ✅
   - File: `dapper/protocol/debugger_protocol.py`
-  - Includes private attributes like `_data_watches`, `_frame_eval_enabled`, `_mock_user_line`. Nearly impossible to create test doubles.
-  - Fix: Split into smaller sub-protocols. Remove private attributes from the public Protocol.
+  - Status: Completed. `DebuggerLike` is now composed from focused capability protocols and no longer requires private/internal attributes.
 
 
 
@@ -187,35 +190,9 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 - [ ] **Increase launcher coverage**
   - `dapper/launcher/debug_launcher.py`, `dapper/launcher/launcher_ipc.py` lack unit tests.
   - **Progress update (current branch):**
-    - ✅ Expanded `dapper/launcher/launcher_ipc.py` branch coverage with new socket/pipe edge-case tests in `tests/integration/test_launcher_ipc.py`.
-    - ✅ Added focused unit tests for `dapper/launcher/debug_launcher.py` orchestration paths in `tests/unit/test_debug_launcher.py`:
-      - `setup_ipc_from_args` transport-routing branches (`pipe` vs socket transports)
-      - `_setup_ipc_pipe` non-Windows failure path
-      - `receive_debug_commands` routing (`ipc_pipe_conn` vs stream path)
-      - `start_command_listener` thread creation/start semantics
-      - `_recv_binary_from_pipe` command frame + EOF exit behavior
-      - `main()` no-debug path routing (`run_program` selected, `run_with_debugger` skipped)
-    - ✅ Added additional `dapper/launcher/debug_launcher.py` branch coverage in `tests/unit/test_debug_launcher.py`:
-      - `main()` debug-enabled path routing (`run_with_debugger` selected)
-      - `main()` IPC setup failure propagation (ensures early failure before listener/debugger startup)
-      - `_setup_ipc_socket` failure branches (`connector` returns `None` and connector raises)
-    - ✅ Added focused execution-path tests for `dapper/launcher/debug_launcher.py` in `tests/unit/test_debug_launcher.py`:
-      - `run_with_debugger` configures debugger when missing and reuses existing debugger when present
-      - `run_with_debugger` sets `sys.argv` and invokes debugger run command with expected launcher expression
-      - `run_program` sets `sys.argv`, inserts program directory into `sys.path` when absent, and avoids duplicate insertion when already present
-    - ✅ Added malformed command/frame branch tests for binary receivers in `tests/unit/test_debug_launcher.py`:
-      - `_recv_binary_from_pipe` bad-header error reporting + continue-to-exit behavior
-      - `_recv_binary_from_pipe` non-command frame-kind ignore path
-      - `_recv_binary_from_stream` bad-header recovery path followed by valid command processing
-    - ✅ Added CLI parse/validation edge-case coverage in `tests/unit/test_debug_launcher.py`:
-      - `--ipc` required-argument enforcement
-      - invalid `--ipc` choice rejection
-      - unix transport option parsing (`--ipc unix --ipc-path ...`)
-    - ✅ Added transport-argument combination edge-case coverage in `tests/unit/test_debug_launcher.py`:
-      - `_setup_ipc_pipe` success path behavior under Windows branch (state wiring)
-      - `_setup_ipc_pipe` and socket setup failure propagation for missing/invalid coordinates
-      - `_setup_ipc_socket` binary/text file-handle setup branches (`rb/wb` with buffering vs `r/w` text mode)
-    - 🔜 Next chunk: remaining launcher-path tests are mostly incremental (additional receive-loop edge timing and command error-shaping consistency).
+    - ✅ Added broad launcher + IPC test coverage across orchestration, routing, parse/validation, error branches, and binary/text transport paths.
+    - ✅ New/expanded tests are concentrated in `tests/unit/test_debug_launcher.py`, `tests/integration/test_launcher_ipc.py`, and `tests/unit/test_sync_connection_adapter.py`.
+    - 🔜 Remaining: incremental edge-path coverage (receive-loop timing and command error-shaping consistency).
 
 - [ ] **Increase branch coverage to ≥50%**
   - Error paths and edge cases are largely untested. Focus on conditional branches in `debugger_bdb.py`, `server.py`, and `command_handlers.py`.
@@ -229,10 +206,10 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 
 | Category           | Open Items |
 |--------------------|------------|
-| Architecture       | 4          |
+| Architecture       | 3          |
 | Performance        | 4          |
-| Code Quality       | 2          |
+| Code Quality       | 1          |
 | Test Coverage      | 5          |
-| **Total**          | **15**     |
+| **Total**          | **13**     |
 
 **Next up:** Performance improvements (4 items).

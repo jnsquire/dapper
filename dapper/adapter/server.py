@@ -1,14 +1,17 @@
 """
-Implementation of the Debug Adapter Protocol Server and integrated Python debugger.
+Implementation of integrated Python debugger components.
 
-This module merges the DebugAdapterServer and PyDebugger to avoid circular
-dependencies and simplify interactions between the server and debugger.
+This module contains the debugger orchestration (`PyDebugger`) and helper
+managers used by the adapter server core.
 """
+
+# ruff: noqa: SLF001
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import inspect
 import json
 import logging
@@ -26,17 +29,14 @@ from dapper.adapter.external_backend import ExternalProcessBackend
 from dapper.adapter.inprocess_backend import InProcessBackend
 from dapper.adapter.inprocess_bridge import InProcessBridge
 from dapper.adapter.payload_extractor import extract_payload
-from dapper.adapter.request_handlers import RequestHandler
 from dapper.adapter.source_tracker import LoadedSourceTracker
 from dapper.adapter.types import BreakpointDict
 from dapper.adapter.types import BreakpointResponse
-from dapper.adapter.types import DAPRequest
 from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc import TransportConfig
 from dapper.ipc.ipc_manager import IPCManager
-from dapper.protocol.protocol import ProtocolHandler
 from dapper.protocol.structures import Source
 from dapper.protocol.structures import SourceBreakpoint
 from dapper.shared.command_handlers import MAX_VALUE_REPR_LEN
@@ -54,12 +54,10 @@ if TYPE_CHECKING:
 
     from dapper.adapter.types import CompletionsResponseBody
     from dapper.config import DapperConfig
-    from dapper.ipc.connections.base import ConnectionBase
     from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.capabilities import ExceptionOptions
     from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
     from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.messages import GenericRequest
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionDetails
@@ -279,17 +277,17 @@ class _PyDebuggerLifecycleManager:
         # Start the subprocess in a worker thread to avoid blocking.
         if self._debugger.is_test_mode_enabled():
             threading.Thread(
-                target=self._debugger.start_debuggee_process,
+                target=self._debugger._start_debuggee_process,
                 args=(debug_args,),
                 daemon=True,
             ).start()
         else:
             try:
                 await self._debugger.loop.run_in_executor(
-                    None, self._debugger.start_debuggee_process, debug_args
+                    None, self._debugger._start_debuggee_process, debug_args
                 )
             except Exception:
-                await asyncio.to_thread(self._debugger.start_debuggee_process, debug_args)
+                await asyncio.to_thread(self._debugger._start_debuggee_process, debug_args)
 
         # Accept the IPC connection from the launcher (IPC is mandatory)
         if self._debugger.ipc.is_enabled:
@@ -568,6 +566,274 @@ class _PyDebuggerStateManager:
         }
 
 
+class _PyDebuggerRuntimeManager:
+    """Handles IPC/process/backend runtime primitives for ``PyDebugger``."""
+
+    def __init__(self, debugger: PyDebugger):
+        self._debugger = debugger
+
+    def start_ipc_reader(self, *, accept: bool) -> None:
+        """Start IPC reader with message handling suitable for selected transport."""
+
+        def _handle_ipc_message(message: dict[str, Any]) -> None:
+            """Handle IPC message that may be already parsed (binary) or string."""
+            if isinstance(message, dict):
+                asyncio.run_coroutine_threadsafe(
+                    self._debugger.handle_debug_message(message), self._debugger.loop
+                )
+            else:
+                self._debugger._handle_debug_message(message)
+
+        self._debugger.ipc.start_reader(_handle_ipc_message, accept=accept)
+
+    def create_external_backend(self) -> None:
+        """Create and register the external-process backend."""
+        self._debugger._external_backend = ExternalProcessBackend(
+            ipc=self._debugger.ipc,
+            loop=self._debugger.loop,
+            get_process_state=self._debugger._get_process_state,
+            pending_commands=self._debugger._pending_commands,
+            lock=self._debugger.lock,
+            get_next_command_id=self._debugger._get_next_command_id,
+        )
+
+    def start_debuggee_process(self, debug_args: list[str]) -> None:
+        """Start the debuggee process and forward lifecycle/output events."""
+        try:
+            self._debugger.process = subprocess.Popen(
+                debug_args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+
+            stdout = cast("Any", self._debugger.process.stdout)
+            stderr = cast("Any", self._debugger.process.stderr)
+            threading.Thread(
+                target=self.read_output,
+                args=(stdout, "stdout"),
+                daemon=True,
+            ).start()
+            threading.Thread(
+                target=self.read_output,
+                args=(stderr, "stderr"),
+                daemon=True,
+            ).start()
+
+            exit_code = self._debugger.process.wait()
+
+            if not self._debugger.is_terminated:
+                self._debugger.is_terminated = True
+
+            self._debugger.spawn_threadsafe(
+                lambda c=exit_code: self._debugger._handle_program_exit(c)
+            )
+        except Exception:
+            logger.exception("Error starting debuggee")
+            self._debugger.is_terminated = True
+            self._debugger.spawn_threadsafe(lambda: self._debugger._handle_program_exit(1))
+
+    def read_output(self, stream, category: str) -> None:
+        """Read output from debuggee stdout/stderr and forward to DAP output events."""
+        try:
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+
+                self._debugger._emit_event("output", {"category": category, "output": line})
+        except Exception:
+            logger.exception("Error reading %s", category)
+
+    def create_inprocess_bridge(
+        self,
+        inproc: InProcessDebugger,
+        *,
+        on_stopped: Callable[[dict[str, Any]], None],
+        on_thread: Callable[[dict[str, Any]], None],
+        on_exited: Callable[[dict[str, Any]], None],
+        on_output: Callable[[str, str], None],
+    ) -> None:
+        """Create and register the in-process bridge."""
+        self._debugger._inproc_bridge = InProcessBridge(
+            inproc,
+            on_stopped=on_stopped,
+            on_thread=on_thread,
+            on_exited=on_exited,
+            on_output=on_output,
+        )
+
+    def create_inprocess_backend(self) -> None:
+        """Create and register the in-process backend."""
+        if self._debugger._inproc_bridge is None:
+            msg = "In-process bridge must be created before backend initialization"
+            raise RuntimeError(msg)
+        self._debugger._inproc_backend = InProcessBackend(self._debugger._inproc_bridge)
+
+
+class _PyDebuggerExecutionManager:
+    """Handles execution-control and lifecycle termination operations."""
+
+    def __init__(self, debugger: PyDebugger):
+        self._debugger = debugger
+
+    async def continue_execution(self, thread_id: int) -> ContinueResponseBody:
+        if not self._debugger.program_running or self._debugger.is_terminated:
+            return {"allThreadsContinued": False}
+
+        self._debugger.stopped_event.clear()
+
+        with self._debugger.lock:
+            if thread_id in self._debugger.threads:
+                self._debugger.threads[thread_id].is_stopped = False
+
+        if self._debugger._backend is not None:
+            return await self._debugger._backend.continue_(thread_id)
+
+        return {"allThreadsContinued": False}
+
+    async def next(self, thread_id: int) -> None:
+        if not self._debugger.program_running or self._debugger.is_terminated:
+            return
+
+        self._debugger.stopped_event.clear()
+
+        if self._debugger._backend is not None:
+            await self._debugger._backend.next_(thread_id)
+
+    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+        if not self._debugger.program_running or self._debugger.is_terminated:
+            return
+
+        self._debugger.stopped_event.clear()
+
+        if self._debugger._backend is not None:
+            await self._debugger._backend.step_in(thread_id, target_id)
+
+    async def step_out(self, thread_id: int) -> None:
+        if not self._debugger.program_running or self._debugger.is_terminated:
+            return
+
+        self._debugger.stopped_event.clear()
+
+        if self._debugger._backend is not None:
+            await self._debugger._backend.step_out(thread_id)
+
+    async def pause(self, thread_id: int) -> bool:
+        if not self._debugger.program_running or self._debugger.is_terminated:
+            return False
+
+        if self._debugger._backend is not None:
+            return await self._debugger._backend.pause(thread_id)
+        return False
+
+    async def get_threads(self) -> list[Thread]:
+        threads: list[Thread] = []
+        with self._debugger.lock:
+            for thread_id, thread in self._debugger.threads.items():
+                threads.append({"id": thread_id, "name": thread.name})
+        return threads
+
+    async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
+        if self._debugger._backend is not None:
+            return await self._debugger._backend.exception_info(thread_id)
+
+        exception_details: ExceptionDetails = {
+            "message": "Exception information not available",
+            "typeName": "Unknown",
+            "fullTypeName": "Unknown",
+            "source": "Unknown",
+            "stackTrace": ["Exception information not available"],
+        }
+
+        return {
+            "exceptionId": "Unknown",
+            "description": "Exception information not available",
+            "breakMode": "unhandled",
+            "details": exception_details,
+        }
+
+    async def configuration_done_request(self) -> None:
+        self._debugger.configuration_done.set()
+
+        if self._debugger._backend is not None:
+            await self._debugger._backend.configuration_done()
+
+    async def disconnect(self, terminate_debuggee: bool = False) -> None:
+        if self._debugger.program_running:
+            if terminate_debuggee and self._debugger.process:
+                try:
+                    await self.terminate()
+                    await asyncio.sleep(0.5)
+                    if self._debugger.process.poll() is None:
+                        self._debugger.process.kill()
+                except Exception:
+                    logger.exception("Error terminating debuggee")
+
+            self._debugger.program_running = False
+
+        await self._debugger.shutdown()
+
+    async def terminate(self) -> None:
+        if self._debugger._backend is not None:
+            await self._debugger._backend.terminate()
+
+        if self._debugger.in_process:
+            try:
+                self._debugger.is_terminated = True
+                self._debugger.program_running = False
+                await self._debugger.server.send_event("terminated")
+            except Exception:
+                logger.exception("in-process terminate failed")
+            return
+
+        if self._debugger.program_running and self._debugger.process:
+            try:
+                self._debugger.process.terminate()
+                self._debugger.is_terminated = True
+                self._debugger.program_running = False
+            except Exception:
+                logger.exception("Error terminating process")
+
+    async def restart(self) -> None:
+        try:
+            await self._debugger.server.send_event("terminated", {"restart": True})
+        except Exception:
+            logger.exception("failed to send terminated(restart=true) event")
+
+        try:
+            if self._debugger.program_running and self._debugger.process:
+                try:
+                    self._debugger.process.terminate()
+                except Exception:
+                    logger.debug("process.terminate() failed during restart")
+        except Exception:
+            logger.debug("error during restart termination path")
+
+        self._debugger.is_terminated = True
+        self._debugger.program_running = False
+
+        await self._debugger.shutdown()
+
+    async def send_command_to_debuggee(self, command: str) -> None:
+        if not self._debugger.process or self._debugger.is_terminated:
+            msg = "No debuggee process"
+            raise RuntimeError(msg)
+
+        try:
+            await asyncio.to_thread(
+                lambda: (
+                    self._debugger.process.stdin.write(f"{command}\n")
+                    if self._debugger.process and self._debugger.process.stdin
+                    else None
+                ),
+            )
+        except Exception:
+            logger.exception("Error sending command to debuggee")
+
+
 class PyDebugger:
     """
     Main debugger class that integrates with Python's built-in debugging tools
@@ -660,6 +926,10 @@ class PyDebugger:
         self._lifecycle_manager = _PyDebuggerLifecycleManager(self)
         # Breakpoint/state-inspection decomposition
         self._state_manager = _PyDebuggerStateManager(self)
+        # Runtime/process/IPC decomposition
+        self._runtime_manager = _PyDebuggerRuntimeManager(self)
+        # Execution-control/lifecycle decomposition
+        self._execution_manager = _PyDebuggerExecutionManager(self)
 
     @property
     def program_path(self) -> str | None:
@@ -859,10 +1129,6 @@ class PyDebugger:
         """Launch a new Python program for debugging using centralized configuration."""
         await self._lifecycle_manager.launch(config)
 
-    async def _launch_in_process(self) -> None:
-        """Initialize in-process debugging bridge and emit process event."""
-        await self._lifecycle_manager.launch_in_process()
-
     def _handle_inproc_output(self, category: str, output: str) -> None:
         """Forward output events from in-process debugger to the server."""
         try:
@@ -880,28 +1146,11 @@ class PyDebugger:
 
     def start_ipc_reader(self, *, accept: bool) -> None:
         """Start IPC reader with message handling suitable for selected transport."""
-
-        def _handle_ipc_message(message: dict[str, Any]) -> None:
-            """Handle IPC message that may be already parsed (binary) or string."""
-            if isinstance(message, dict):
-                # For binary IPC, the message is already parsed
-                asyncio.run_coroutine_threadsafe(self.handle_debug_message(message), self.loop)
-            else:
-                # For regular IPC, the message is a string
-                self._handle_debug_message(message)
-
-        self.ipc.start_reader(_handle_ipc_message, accept=accept)
+        self._runtime_manager.start_ipc_reader(accept=accept)
 
     def create_external_backend(self) -> None:
         """Create and register the external-process backend."""
-        self._external_backend = ExternalProcessBackend(
-            ipc=self.ipc,
-            loop=self.loop,
-            get_process_state=self._get_process_state,
-            pending_commands=self._pending_commands,
-            lock=self.lock,
-            get_next_command_id=self._get_next_command_id,
-        )
+        self._runtime_manager.create_external_backend()
 
     def get_active_backend(self) -> InProcessBackend | ExternalProcessBackend | None:
         """Return the currently active backend (in-process preferred)."""
@@ -921,62 +1170,13 @@ class PyDebugger:
         """Public wrapper for breakpoint-change event forwarding."""
         self._forward_breakpoint_events(storage_list)
 
-    def _start_debuggee_process(self, debug_args: list[str]) -> None:
-        """Start the debuggee process in a separate thread."""
-        try:
-            self.process = subprocess.Popen(
-                debug_args,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-            )
-
-            stdout = cast("Any", self.process.stdout)
-            stderr = cast("Any", self.process.stderr)
-            threading.Thread(
-                target=self._read_output,
-                args=(stdout, "stdout"),
-                daemon=True,
-            ).start()
-            threading.Thread(
-                target=self._read_output,
-                args=(stderr, "stderr"),
-                daemon=True,
-            ).start()
-
-            exit_code = self.process.wait()
-
-            if not self.is_terminated:
-                self.is_terminated = True
-
-            self.spawn_threadsafe(lambda c=exit_code: self._handle_program_exit(c))
-        except Exception:
-            logger.exception("Error starting debuggee")
-            self.is_terminated = True
-            self.spawn_threadsafe(lambda: self._handle_program_exit(1))
-
     def start_debuggee_process(self, debug_args: list[str]) -> None:
         """Public wrapper to start the debuggee process for lifecycle components."""
-        self._start_debuggee_process(debug_args)
+        self._runtime_manager.start_debuggee_process(debug_args)
 
-    def _read_output(self, stream, category: str) -> None:
-        """Read output from the debuggee's stdout/stderr streams.
-
-        Debug protocol messages are received via IPC, not stdout/stderr.
-        This method only forwards program output to the DAP client.
-        """
-        try:
-            while True:
-                line = stream.readline()
-                if not line:
-                    break
-
-                # Forward program output to DAP client
-                self._emit_event("output", {"category": category, "output": line})
-        except Exception:
-            logger.exception("Error reading %s", category)
+    def _start_debuggee_process(self, debug_args: list[str]) -> None:
+        """Compatibility alias for tests that patch the legacy private method."""
+        self.start_debuggee_process(debug_args)
 
     def schedule_program_exit(self, exit_code: int) -> None:
         """Schedule process-exit handling on the debugger event loop."""
@@ -1004,7 +1204,24 @@ class PyDebugger:
         self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
     ) -> None:
         """Resolve a pending response on the debugger loop."""
-        self._resolve_pending_response(future, data)
+        if future.done():
+            return
+
+        def _set_result() -> None:
+            if not future.done():
+                future.set_result(data)
+
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                _set_result()
+                return
+        except RuntimeError:
+            pass
+
+        try:
+            self.loop.call_soon_threadsafe(_set_result)
+        except Exception:
+            logger.debug("failed to schedule resolution on debugger loop")
 
     def emit_event(self, event_type: str, payload: dict[str, Any]) -> None:
         """Public event emission wrapper for extracted components."""
@@ -1012,15 +1229,15 @@ class PyDebugger:
 
     def handle_event_stopped(self, data: dict[str, Any]) -> None:
         """Public wrapper for stopped-event handling."""
-        self._handle_event_stopped(data)
+        self._event_router.handle_event_stopped(data)
 
     def handle_event_thread(self, data: dict[str, Any]) -> None:
         """Public wrapper for thread-event handling."""
-        self._handle_event_thread(data)
+        self._event_router.handle_event_thread(data)
 
     def handle_event_exited(self, data: dict[str, Any]) -> None:
         """Public wrapper for exited-event handling."""
-        self._handle_event_exited(data)
+        self._event_router.handle_event_exited(data)
 
     def handle_inprocess_output(self, category: str, output: str) -> None:
         """Public wrapper for in-process output forwarding."""
@@ -1036,7 +1253,7 @@ class PyDebugger:
         on_output: Callable[[str, str], None],
     ) -> None:
         """Create and register the in-process bridge."""
-        self._inproc_bridge = InProcessBridge(
+        self._runtime_manager.create_inprocess_bridge(
             inproc,
             on_stopped=on_stopped,
             on_thread=on_thread,
@@ -1046,58 +1263,11 @@ class PyDebugger:
 
     def create_inprocess_backend(self) -> None:
         """Create and register the in-process backend."""
-        if self._inproc_bridge is None:
-            msg = "In-process bridge must be created before backend initialization"
-            raise RuntimeError(msg)
-        self._inproc_backend = InProcessBackend(self._inproc_bridge)
-
-    def _handle_event_stopped(self, data: dict[str, Any]) -> None:
-        """Handle stopped event state updates."""
-        self._event_router.handle_event_stopped(data)
-
-    def _handle_event_thread(self, data: dict[str, Any]) -> None:
-        """Handle thread started/exited state updates."""
-        self._event_router.handle_event_thread(data)
-
-    def _handle_event_exited(self, data: dict[str, Any]) -> None:
-        """Handle debuggee exited event and schedule cleanup."""
-        self._event_router.handle_event_exited(data)
-
-    def _handle_event_stacktrace(self, data: dict[str, Any]) -> None:
-        """Cache stack trace data from the debuggee."""
-        self._event_router.handle_event_stacktrace(data)
-
-    def _handle_event_variables(self, data: dict[str, Any]) -> None:
-        """Cache variables payload from the debuggee."""
-        self._event_router.handle_event_variables(data)
+        self._runtime_manager.create_inprocess_backend()
 
     def _handle_debug_message(self, message: str) -> None:
         """Handle a debug protocol message from the debuggee."""
         self._event_router.handle_debug_message(message)
-
-    def _resolve_pending_response(
-        self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
-    ) -> None:
-        """Resolve a pending response future on the debugger's event loop."""
-        if future.done():
-            return
-
-        def _set_result() -> None:
-            if not future.done():
-                future.set_result(data)
-
-        # If already on the debugger loop, resolve directly
-        try:
-            if asyncio.get_running_loop() is self.loop:
-                _set_result()
-                return
-        except RuntimeError:
-            pass  # No running loop, use thread-safe scheduling
-
-        try:
-            self.loop.call_soon_threadsafe(_set_result)
-        except Exception:
-            logger.debug("failed to schedule resolution on debugger loop")
 
     async def _handle_program_exit(self, exit_code: int) -> None:
         """Handle the debuggee program exit"""
@@ -1223,29 +1393,11 @@ class PyDebugger:
 
     async def continue_execution(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution of the specified thread"""
-        if not self.program_running or self.is_terminated:
-            return {"allThreadsContinued": False}
-
-        self.stopped_event.clear()
-
-        with self.lock:
-            if thread_id in self.threads:
-                self.threads[thread_id].is_stopped = False
-
-        if self._backend is not None:
-            return await self._backend.continue_(thread_id)
-
-        return {"allThreadsContinued": False}
+        return await self._execution_manager.continue_execution(thread_id)
 
     async def next(self, thread_id: int) -> None:
         """Step over to the next line"""
-        if not self.program_running or self.is_terminated:
-            return
-
-        self.stopped_event.clear()
-
-        if self._backend is not None:
-            await self._backend.next_(thread_id)
+        await self._execution_manager.next(thread_id)
 
     async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
         """Step into a function.
@@ -1254,41 +1406,19 @@ class PyDebugger:
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target.
         """
-        if not self.program_running or self.is_terminated:
-            return
-
-        self.stopped_event.clear()
-
-        if self._backend is not None:
-            await self._backend.step_in(thread_id, target_id)
+        await self._execution_manager.step_in(thread_id, target_id)
 
     async def step_out(self, thread_id: int) -> None:
         """Step out of the current function"""
-        if not self.program_running or self.is_terminated:
-            return
-
-        self.stopped_event.clear()
-
-        if self._backend is not None:
-            await self._backend.step_out(thread_id)
+        await self._execution_manager.step_out(thread_id)
 
     async def pause(self, thread_id: int) -> bool:
         """Pause execution of the specified thread"""
-        if not self.program_running or self.is_terminated:
-            return False
-
-        if self._backend is not None:
-            return await self._backend.pause(thread_id)
-        return False
+        return await self._execution_manager.pause(thread_id)
 
     async def get_threads(self) -> list[Thread]:
         """Get all threads"""
-        threads: list[Thread] = []
-        with self.lock:
-            for thread_id, thread in self.threads.items():
-                threads.append({"id": thread_id, "name": thread.name})
-
-        return threads
+        return await self._execution_manager.get_threads()
 
     async def get_loaded_sources(self) -> list[Source]:
         """Get all loaded source files."""
@@ -1360,23 +1490,7 @@ class PyDebugger:
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread"""
-        if self._backend is not None:
-            return await self._backend.exception_info(thread_id)
-
-        exception_details: ExceptionDetails = {
-            "message": "Exception information not available",
-            "typeName": "Unknown",
-            "fullTypeName": "Unknown",
-            "source": "Unknown",
-            "stackTrace": ["Exception information not available"],
-        }
-
-        return {
-            "exceptionId": "Unknown",
-            "description": "Exception information not available",
-            "breakMode": "unhandled",
-            "details": exception_details,
-        }
+        return await self._execution_manager.exception_info(thread_id)
 
     async def get_exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread (convenience method)"""
@@ -1384,69 +1498,19 @@ class PyDebugger:
 
     async def configuration_done_request(self) -> None:
         """Signal that configuration is done and debugging can start"""
-        self.configuration_done.set()
-
-        if self._backend is not None:
-            await self._backend.configuration_done()
+        await self._execution_manager.configuration_done_request()
 
     async def disconnect(self, terminate_debuggee: bool = False) -> None:
         """Disconnect from the debuggee"""
-        if self.program_running:
-            if terminate_debuggee and self.process:
-                try:
-                    await self.terminate()
-                    await asyncio.sleep(0.5)
-                    if self.process.poll() is None:
-                        self.process.kill()
-                except Exception:
-                    logger.exception("Error terminating debuggee")
-
-            self.program_running = False
-
-        await self.shutdown()
+        await self._execution_manager.disconnect(terminate_debuggee)
 
     async def terminate(self) -> None:
         """Terminate the debuggee"""
-        if self._backend is not None:
-            await self._backend.terminate()
-
-        if self.in_process:
-            try:
-                self.is_terminated = True
-                self.program_running = False
-                await self.server.send_event("terminated")
-            except Exception:
-                logger.exception("in-process terminate failed")
-            return
-
-        if self.program_running and self.process:
-            try:
-                self.process.terminate()
-                self.is_terminated = True
-                self.program_running = False
-            except Exception:
-                logger.exception("Error terminating process")
+        await self._execution_manager.terminate()
 
     async def restart(self) -> None:
         """Request a session restart by signaling terminated(restart=true)."""
-        try:
-            await self.server.send_event("terminated", {"restart": True})
-        except Exception:
-            logger.exception("failed to send terminated(restart=true) event")
-
-        try:
-            if self.program_running and self.process:
-                try:
-                    self.process.terminate()
-                except Exception:
-                    logger.debug("process.terminate() failed during restart")
-        except Exception:
-            logger.debug("error during restart termination path")
-
-        self.is_terminated = True
-        self.program_running = False
-
-        await self.shutdown()
+        await self._execution_manager.restart()
 
     async def evaluate_expression(
         self, expression: str, frame_id: int, context: str = "hover"
@@ -1466,20 +1530,7 @@ class PyDebugger:
 
     async def send_command_to_debuggee(self, command: str) -> None:
         """Send a raw command string to the debuggee"""
-        if not self.process or self.is_terminated:
-            msg = "No debuggee process"
-            raise RuntimeError(msg)
-
-        try:
-            await asyncio.to_thread(
-                lambda: (
-                    self.process.stdin.write(f"{command}\n")
-                    if self.process and self.process.stdin
-                    else None
-                ),
-            )
-        except Exception:
-            logger.exception("Error sending command to debuggee")
+        await self._execution_manager.send_command_to_debuggee(command)
 
     async def shutdown(self) -> None:
         """Shut down the debugger and clean up resources."""
@@ -1540,170 +1591,17 @@ class PyDebugger:
         self.is_terminated = True
 
 
-class DebugAdapterServer:
-    """Server implementation that handles DAP protocol communication.
+if TYPE_CHECKING:
+    from dapper.adapter.request_handlers import RequestHandler
+    from dapper.adapter.server_core import DebugAdapterServer
 
-    This class provides the server interface expected by PyDebugger and handles
-    the Debug Adapter Protocol communication with the client.
-    """
+__all__ = ["DebugAdapterServer", "PyDebugger", "RequestHandler"]
 
-    def __init__(
-        self,
-        connection: ConnectionBase,
-        loop: asyncio.AbstractEventLoop | None = None,
-    ):
-        self.connection = connection
-        self.request_handler = RequestHandler(self)
-        # Prefer caller-supplied or running loop; create one only if needed.
-        self.loop, _ = _acquire_event_loop(loop)  # _owns unused here
-        self._debugger = PyDebugger(self, self.loop)
-        self.running = False
-        self.sequence_number = 0
-        self.protocol_handler = ProtocolHandler()
 
-    @property
-    def debugger(self) -> PyDebugger:
-        """Get the debugger instance."""
-        return self._debugger
-
-    def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
-        """Schedule a callback to be run on the server's event loop.
-
-        Args:
-            callback: The function to call on the server's event loop
-        """
-        if not self.loop.is_running():
-            logger.warning("Event loop is not running, cannot schedule callback")
-            return
-
-        def _wrapped() -> None:
-            try:
-                callback()
-            except Exception:
-                logger.exception("Error in spawn_threadsafe callback")
-
-        self.loop.call_soon_threadsafe(_wrapped)
-
-    @property
-    def next_seq(self) -> int:
-        """Get the next sequence number for messages"""
-        self.sequence_number += 1
-        return self.sequence_number
-
-    async def start(self) -> None:
-        """Start the debug adapter server"""
-        try:
-            await self.connection.accept()
-            self.running = True
-            await self._message_loop()
-        except Exception:
-            logger.exception("Error starting debug adapter")
-            raise
-        finally:
-            await self._cleanup()
-
-    async def stop(self) -> None:
-        """Stop the debug adapter server"""
-        logger.info("Stopping debug adapter server")
-        self.running = False
-        await self._cleanup()
-
-    async def _cleanup(self) -> None:
-        """Clean up resources"""
-        if self.debugger:
-            await self.debugger.shutdown()
-
-        if self.connection and self.connection.is_connected:
-            await self.connection.close()
-
-    async def _message_loop(self) -> None:
-        """Main message processing loop"""
-        logger.info("Starting message processing loop")
-        message: dict[str, Any] | None = None
-        while self.running and self.connection.is_connected:
-            try:
-                message = await self.connection.read_message()
-                if not message:
-                    logger.info("Client disconnected")
-                    break
-
-                await self._process_message(message)
-            except asyncio.CancelledError:
-                logger.info("Message loop cancelled")
-                break
-            except Exception as e:
-                logger.exception("Error processing message")
-                # Send error response if this was a request
-                if message is not None and ("type" in message and message["type"] == "request"):
-                    await self.send_error_response(message, str(e))
-
-        logger.info("Message loop ended")
-
-    async def _process_message(self, message: dict[str, Any]) -> None:
-        """Process an incoming DAP message"""
-        if "type" not in message:
-            logger.error("Invalid message, missing 'type': %s", message)
-            return
-
-        message_type = message["type"]
-
-        if message_type == "request":
-            await self._handle_request(message)
-        elif message_type == "response":
-            logger.warning("Received unexpected response: %s", message)
-        elif message_type == "event":
-            logger.warning("Received unexpected event: %s", message)
-        else:
-            logger.error("Unknown message type: %s", message_type)
-
-    async def _handle_request(self, request: dict[str, Any]) -> None:
-        """Handle an incoming DAP request"""
-        if "command" not in request:
-            logger.error("Invalid request, missing 'command': %s", request)
-            return
-
-        command = request["command"]
-        logger.info("Handling request: %s (seq: %s)", command, request.get("seq", "?"))
-
-        try:
-            response = await self.request_handler.handle_request(cast("DAPRequest", request))
-            if response:
-                await self.send_message(cast("dict[str, Any]", response))
-        except Exception as e:
-            logger.exception("Error handling request %s", command)
-            await self.send_error_response(request, str(e))
-
-    async def send_message(self, message: dict[str, Any]) -> None:
-        """Send a DAP message to the client"""
-        if not self.connection or not self.connection.is_connected:
-            logger.warning("Cannot send message: No active connection")
-            return
-
-        if "seq" not in message:
-            message["seq"] = self.next_seq
-
-        try:
-            await self.connection.write_message(message)
-        except Exception:
-            logger.exception("Error sending message")
-
-    async def send_response(
-        self, request: dict[str, Any], body: dict[str, Any] | None = None
-    ) -> None:
-        """Send a success response to a request"""
-        response = self.protocol_handler.create_response(
-            cast("GenericRequest", request), True, body
-        )
-        await self.send_message(cast("dict[str, Any]", response))
-
-    async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
-        """Send an error response to a request"""
-        response = self.protocol_handler.create_error_response(
-            cast("GenericRequest", request), error_message
-        )
-        await self.send_message(cast("dict[str, Any]", response))
-
-    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
-        """Send an event to the client"""
-        event = self.protocol_handler.create_event(event_name, body)
-        await self.send_message(cast("dict[str, Any]", event))
+def __getattr__(name: str):
+    if name == "DebugAdapterServer":
+        return importlib.import_module("dapper.adapter.server_core").DebugAdapterServer
+    if name == "RequestHandler":
+        return importlib.import_module("dapper.adapter.request_handlers").RequestHandler
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
