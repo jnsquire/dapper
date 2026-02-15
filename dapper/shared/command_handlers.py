@@ -676,10 +676,71 @@ def _handle_step_out_impl(dbg: DebuggerLike, arguments: StepOutArguments | dict[
             dbg.set_return(dbg.stepping_controller.current_frame)
 
 
-def _handle_pause_impl(_dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None):
-    """Handle pause command implementation."""
+def _handle_pause_impl(dbg: DebuggerLike, arguments: PauseArguments | dict[str, Any] | None):
+    """Handle pause command implementation.
+
+    Best-effort implementation:
+    - If the debugger exposes a `pause(thread_id)` API, call it.
+    - Otherwise mark the thread as stopped in the `ThreadTracker`, capture
+      a stack snapshot via `sys._current_frames()`, store DAP-style
+      stack frames and emit a `stopped` event with reason `pause`.
+    This keeps behavior consistent for out-of-process adapters that forward
+    pause requests to the debuggee.
+    """
+    import sys as _sys  # noqa: PLC0415
+
     arguments = arguments or {}
-    arguments.get("threadId")
+    thread_id = arguments.get("threadId")
+    try:
+        thread_id = int(thread_id) if thread_id is not None else _get_thread_ident()
+    except Exception:
+        return
+
+    # If the debugger object provides a dedicated pause API, prefer it.
+    try:
+        pause_fn = getattr(dbg, "pause", None)
+        if callable(pause_fn):
+            try:
+                pause_fn(thread_id)
+            except Exception:
+                # Ignore failures from backend-provided pause implementations
+                logger.debug("Debugger.pause(thread_id) failed", exc_info=True)
+    except Exception:
+        # Defensive: don't let handler crash on attribute access
+        pause_fn = None
+
+    # Best-effort cooperative pause for debuggers without pause()
+    try:
+        # Snapshot Python-level frame for the requested thread if available
+        _current_frames = getattr(_sys, "_current_frames", dict)
+        frame = _current_frames().get(thread_id)
+    except Exception:
+        frame = None
+
+    try:
+        if dbg:
+            # Mark thread stopped and store stack frames if we captured one
+            try:
+                dbg.thread_tracker.stopped_thread_ids.add(thread_id)
+            except Exception:
+                pass
+
+            if frame is not None:
+                try:
+                    stack_frames = dbg.thread_tracker.build_stack_frames(frame)
+                    dbg.thread_tracker.frames_by_thread[thread_id] = stack_frames
+                    dbg.stepping_controller.current_frame = frame
+                except Exception:
+                    logger.debug("Failed to build/store stack frames for pause", exc_info=True)
+
+            # Notify the client that the thread is stopped for 'pause'
+            _safe_send_debug_message(
+                "stopped", threadId=thread_id, reason="pause", allThreadsStopped=True
+            )
+    except Exception:
+        logger.exception("Error handling pause command")
+
+    return
 
 
 def _handle_stack_trace_impl(
@@ -1101,19 +1162,32 @@ def handle_scopes(dbg: DebuggerLike, arguments: ScopesArguments | dict[str, Any]
 
 
 def handle_source(_dbg: DebuggerLike, arguments: SourceArguments | dict[str, Any] | None):
-    """Handle source command (legacy signature)."""
+    """Handle source command (legacy signature).
+
+    Back-compat: accept a top-level `sourceReference` integer (old clients).
+    Prefer resolving via the session `state` helpers so `sourceReference`
+    returned by `loadedSources` can be used here.
+    """
     arguments = arguments or {}
     source_reference = arguments.get("sourceReference")
 
-    if source_reference:
-        content = ""
+    content = ""
+    # Resolve by reference first (if provided)
+    if source_reference is not None:
+        try:
+            ref_id = int(source_reference)
+        except Exception:
+            ref_id = None
+
+        if ref_id and ref_id > 0:
+            resolved = state.get_source_content_by_ref(ref_id)
+            if resolved is not None:
+                content = resolved
     else:
         path = arguments.get("path")
-        content = ""
         if path:
             try:
-                with Path(path).open(encoding="utf-8") as fh:
-                    content = fh.read()
+                content = Path(path).read_text(encoding="utf-8", errors="ignore")
             except (OSError, UnicodeError):
                 content = ""
 
@@ -1217,9 +1291,79 @@ def handle_initialize(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = No
 
 
 def handle_restart(_dbg: DebuggerLike, _arguments: dict[str, Any] | None = None):
-    """Handle restart command (inlined)."""
+    """Handle restart command (inlined).
+
+    Before replacing the process image, perform best-effort cleanup of
+    session resources so file descriptors and threads are not leaked.
+    We:
+    - notify the client (exited event)
+    - mark session terminated so background loops stop
+    - close IPC resources (pipe/socket file objects)
+    - attempt to join the command receiver thread (short timeout)
+    - then invoke the configured exec function
+    """
+    # Inform client first (so they receive the exited event while IPC is open)
     _safe_send_debug_message("exited", exitCode=0)
 
+    # Best-effort cleanup of session-level resources before exec
+    try:
+        state.is_terminated = True
+
+        # Close any active IPC endpoints
+        try:
+            if state.ipc_pipe_conn is not None:
+                try:
+                    state.ipc_pipe_conn.close()
+                except Exception:
+                    logger.debug("Failed to close ipc_pipe_conn during restart", exc_info=True)
+                finally:
+                    state.ipc_pipe_conn = None
+        except Exception:
+            logger.debug("Error while cleaning ipc_pipe_conn", exc_info=True)
+
+        try:
+            if state.ipc_wfile is not None:
+                try:
+                    state.ipc_wfile.close()
+                except Exception:
+                    logger.debug("Failed to close ipc_wfile during restart", exc_info=True)
+                finally:
+                    state.ipc_wfile = None
+        except Exception:
+            logger.debug("Error while cleaning ipc_wfile", exc_info=True)
+
+        try:
+            if getattr(state, "ipc_rfile", None) is not None:
+                try:
+                    state.ipc_rfile.close()
+                except Exception:
+                    logger.debug("Failed to close ipc_rfile during restart", exc_info=True)
+                finally:
+                    state.ipc_rfile = None
+        except Exception:
+            logger.debug("Error while cleaning ipc_rfile", exc_info=True)
+
+        # Clear IPC enabled flag
+        try:
+            state.ipc_enabled = False
+        except Exception:
+            pass
+
+        # Attempt to join the command receiver thread (short timeout)
+        try:
+            th = getattr(state, "command_thread", None)
+            if th is not None and getattr(th, "is_alive", lambda: False)():
+                try:
+                    th.join(timeout=0.1)
+                except Exception:
+                    logger.debug("Failed to join command_thread during restart", exc_info=True)
+            state.command_thread = None
+        except Exception:
+            logger.debug("Error while handling command_thread cleanup", exc_info=True)
+    except Exception:
+        logger.exception("Unexpected error during restart cleanup")
+
+    # Perform the exec replacement (configurable via state.exec_func for tests)
     python = sys.executable
     argv = sys.argv[1:]
     state.exec_func(python, [python, *argv])

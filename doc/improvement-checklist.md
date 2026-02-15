@@ -24,10 +24,10 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Performance
 
-- [ ] **Dispatch tables rebuilt on every `_execute_command` call**
-  - Files: `dapper/adapter/external_backend.py` (~L116), `dapper/adapter/inprocess_backend.py` (~L78)
-  - A fresh dict and multiple closures are created on every invocation.
-  - Fix: Move dispatch tables to class-level or `__init__`.
+- [x] **Dispatch tables rebuilt on every `_execute_command` call** ✅
+  - Files: `dapper/adapter/external_backend.py`, `dapper/adapter/inprocess_backend.py`
+  - Fix: Introduced an instance-level `self._dispatch_map` (built in `__init__`) and updated `BaseBackend._execute_command` to prefer it. Legacy `_build_dispatch_table` retained for back-compat.
+  - Tests: `tests/unit/test_critical_bug_regressions.py::test_dispatch_map_reused_and_build_not_called`, `tests/integration/test_inprocess_mode.py::test_inprocess_dispatch_map_reused_and_build_not_called`.
 
 - [ ] **`BreakpointCache._access_order` uses list with O(n) removal**
   - File: `dapper/_frame_eval/cache_manager.py` (~L659)
@@ -70,25 +70,45 @@ Generated from a full codebase review on 2026-02-14.
   - Includes private attributes like `_data_watches`, `_frame_eval_enabled`, `_mock_user_line`. Nearly impossible to create test doubles.
   - Fix: Split into smaller sub-protocols. Remove private attributes from the public Protocol.
 
-- [ ] **`_handle_pause_impl` is a no-op**
-  - File: `dapper/shared/command_handlers.py` (~L682)
-  - Reads `threadId` but does nothing. Pause is never actually implemented.
-  - Fix: Implement pause or raise `NotImplementedError`.
 
-- [ ] **`handle_source` ignores `sourceReference`**
-  - File: `dapper/shared/command_handlers.py` (~L1203)
-  - When `sourceReference` is provided, `content` is set to `""` — no source is actually fetched.
-  - Fix: Implement source lookup by reference.
+- [x] **`handle_source` ignores `sourceReference`** ✅
+  - File: `dapper/shared/command_handlers.py`
+  - Fix: Legacy `handle_source` now resolves `sourceReference` via `state.get_source_content_by_ref` and falls back to `path` lookup. Added integration test `test_handle_source_resolves_sourceReference_from_state`.
+
+- [ ] **Add pluggable source-content hook with URI-aware path handling**
+  - Files: `dapper/shared/debug_shared.py`, `dapper/shared/command_handlers.py`, `dapper/protocol/debugger_protocol.py` (optional typing-only additions)
+  - Goal: Allow callers to provide additional source content (remote/editor/generated) based on DAP `source.path` while preserving existing `sourceReference` behavior.
+  - Protocol note: DAP `Source.path` may be a filesystem path or URI; non-filesystem content can also be represented via `sourceReference`.
+  - **Implementation plan (detailed):**
+   1. **Define provider contract (PEP 544 style)**
+     - Add a small `Protocol`/callable type for providers: input `path_or_uri: str`, output `str | None`.
+     - Keep this in `debug_shared.py` (runtime registry) and optionally mirror as a typing-only helper in `debugger_protocol.py`.
+   2. **Add SessionState provider registry API**
+     - Add `register_source_provider(provider) -> int`, `unregister_source_provider(provider_id) -> bool`.
+     - Store providers in insertion order with stable IDs and guard with a lock (`threading.RLock`) for thread-safety.
+     - Ensure unregister is idempotent/safe when IDs are missing.
+   3. **Add URI normalization utility**
+     - Implement helper to detect URI vs path (`urllib.parse.urlparse`).
+     - Convert `file://` URIs to local paths for disk fallback (`urllib.request.url2pathname`).
+     - Preserve non-`file` URIs (e.g., `vscode-remote://`, `git:`) for provider resolution.
+   4. **Integrate lookup flow into source resolution**
+     - Update `SessionState.get_source_content_by_path` to: providers first → normalized disk fallback for local files.
+     - Update legacy `handle_source` to reuse state helpers and avoid duplicate path/URI logic.
+     - Keep precedence clear: explicit `sourceReference` lookup remains first, then path/URI provider fallback.
+   5. **Error handling + observability**
+     - Provider exceptions must be isolated (log + continue to next provider), never fail the whole request.
+     - Add debug-level logs for provider hits/misses to aid diagnostics.
+   6. **Test plan (unit + integration)**
+     - Unit tests for register/unregister lifecycle and thread-safe behavior.
+     - Unit tests for `file://` normalization and non-`file` URI pass-through.
+     - Integration tests for `handle_source` returning provider-backed content by URI/path.
+     - Regression tests to confirm existing `sourceReference` and local-path behavior remain unchanged.
 
 - [ ] **Singleton `SessionState` has no `reset()` method**
   - File: `dapper/shared/debug_shared.py` (~L76)
   - `__new__` returns the same instance forever. Tests can't clean up state between runs.
   - Fix: Add a `reset()` classmethod that reinitializes all mutable state.
 
-- [ ] **`handle_restart` calls `os.execv` without cleanup**
-  - File: `dapper/shared/command_handlers.py` (~L1296)
-  - IPC handles, threads, and file descriptors all leak.
-  - Fix: Perform cleanup before `exec`, or document the limitation.
 
 - [ ] **Frame eval `types.py` stubs are runtime-callable but raise**
   - File: `dapper/_frame_eval/types.py`
@@ -123,9 +143,9 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 | Category           | Open Items |
 |--------------------|------------|
 | Architecture       | 3          |
-| Performance        | 6          |
-| Code Quality       | 8          |
+| Performance        | 5          |
+| Code Quality       | 5          |
 | Test Coverage      | 5          |
-| **Total**          | **22**     |
+| **Total**          | **18**     |
 
-**Next up:** Code quality improvements (8 items).
+**Next up:** Code quality improvements (5 items).

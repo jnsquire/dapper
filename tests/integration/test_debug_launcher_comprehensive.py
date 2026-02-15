@@ -439,14 +439,15 @@ def test_handle_step_commands():
 
 
 def test_handle_pause():
-    """Test pause command handling (currently no-op)."""
+    """Test pause command handling — thread should be marked stopped."""
     s = debug_shared.state
     dbg = DummyDebugger()
     s.debugger = dbg
 
-    # Pause command should not raise exception even though it's not implemented
+    # Pause the remote thread id and verify bookkeeping + stopped event
     handlers.handle_pause(dbg, {"threadId": 123})
-    # No assertions needed - just verify no exception is raised
+
+    assert 123 in dbg.stopped_thread_ids
 
 
 def test_handle_stack_trace():
@@ -809,15 +810,41 @@ def test_handle_terminate():
 
 
 def test_handle_restart():
-    """Test restart command."""
+    """Test restart command and ensure session resources are cleaned up."""
     s = debug_shared.state
     dbg = DummyDebugger()
     s.debugger = dbg
+
+    # Ensure IPC is active at the start (setup_function already sets ipc_wfile)
+    assert s.ipc_wfile is not None
+
+    # Add a fake pipe_conn to validate it is closed during restart
+    class FakePipe:
+        def __init__(self):
+            self.closed = False
+            self.sent_bytes: list[bytes] = []
+            self.sent_values: list[object] = []
+
+        def send_bytes(self, payload: bytes) -> None:
+            self.sent_bytes.append(payload)
+
+        def send(self, value: object) -> None:
+            self.sent_values.append(value)
+
+        def close(self):
+            self.closed = True
+
+    fake_pipe = FakePipe()
+    s.ipc_pipe_conn = fake_pipe
 
     # Override exec behavior so we don't replace the test process.
     orig_exec = debug_shared.state.exec_func
 
     def fake_exec(path: str, args: list[str]):
+        # Verify cleanup has already occurred by the time exec is invoked
+        assert s.is_terminated is True
+        assert s.ipc_wfile is None
+        assert s.ipc_pipe_conn is None
         # Signal via exception so test can assert restart was attempted
         raise SystemExit(("exec_called", path, tuple(args)))
 
@@ -831,6 +858,9 @@ def test_handle_restart():
         assert isinstance(exit_code, tuple)
         assert len(exit_code) >= 1
         assert exit_code[0] == "exec_called"
+
+        # fake_pipe.close() should have been called and pipe cleared
+        assert fake_pipe.closed is True
     finally:
         debug_shared.state.set_exec_func(orig_exec)
 

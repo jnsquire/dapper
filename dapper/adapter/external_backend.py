@@ -71,6 +71,28 @@ class ExternalProcessBackend(BaseBackend):
         self._lifecycle.add_cleanup_callback(self._cleanup_ipc)
         self._lifecycle.add_cleanup_callback(self._cleanup_commands)
 
+        # Pre-built dispatch map to avoid reallocating the dispatch table
+        # on every _execute_command invocation. Handlers accept a single
+        # `args` dict and return an awaitable that yields a dict response.
+        self._dispatch_map = {
+            "set_breakpoints": self._dispatch_set_breakpoints,
+            "set_function_breakpoints": self._dispatch_set_function_breakpoints,
+            "set_exception_breakpoints": self._dispatch_set_exception_breakpoints,
+            "continue": self._dispatch_continue,
+            "next": self._dispatch_next,
+            "step_in": self._dispatch_step_in,
+            "step_out": self._dispatch_step_out,
+            "pause": self._dispatch_pause,
+            "get_stack_trace": self._dispatch_stack_trace,
+            "get_variables": self._dispatch_variables,
+            "set_variable": self._dispatch_set_variable,
+            "evaluate": self._dispatch_evaluate,
+            "completions": self._dispatch_completions,
+            "exception_info": self._dispatch_exception_info,
+            "configuration_done": self._dispatch_configuration_done,
+            "terminate": self._dispatch_terminate,
+        }
+
     def _cleanup_ipc(self) -> None:
         """Cleanup IPC connection."""
         try:

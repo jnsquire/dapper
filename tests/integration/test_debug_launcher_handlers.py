@@ -107,6 +107,20 @@ def test_handle_source_reads_file(tmp_path: Path):
     assert "hello world" in res["body"]["content"]
 
 
+def test_handle_source_resolves_sourceReference_from_state(tmp_path: Path):
+    # Create a temp file and register it in the session state
+    p = tmp_path / "sample_ref.txt"
+    p.write_text("hello reference", encoding="utf-8")
+
+    # Register a sourceReference for the path and ensure the legacy
+    # `handle_source` honours it.
+    ref = debug_shared.state.get_or_create_source_ref(str(p), p.name)
+
+    res = handlers.handle_source(DummyDebugger(), {"sourceReference": ref})
+    assert res["success"] is True
+    assert "hello reference" in res["body"]["content"]
+
+
 def test_set_data_breakpoints_and_info():
     s = debug_shared.state
     dbg = DummyDebugger()

@@ -99,6 +99,19 @@ class BaseBackend(DebuggerBackend, ABC):
         if args is None:
             args = {}
 
+        # Prefer an instance-level dispatch map (handlers accept `args`) to
+        # avoid rebuilding the full dispatch table on every call. Subclasses
+        # may populate `self._dispatch_map` in __init__ to provide stable
+        # handlers that accept a single `args` dict.
+        dispatch_map = getattr(self, "_dispatch_map", None)
+        if dispatch_map is not None:
+            handler = dispatch_map.get(command)
+            if handler is None:
+                msg = f"Unknown command: {command}"
+                raise ValueError(msg)
+            return await handler(args or {})
+
+        # Back-compat: fall back to per-call dispatch table builders (legacy)
         dispatch = self._build_dispatch_table(args)
         handler = dispatch.get(command)
         if handler is None:

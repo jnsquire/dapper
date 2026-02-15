@@ -395,3 +395,36 @@ class TestExternalBackendDispatchNoRecursion:
         assert len(send_calls) == 1
         assert send_calls[0]["command"] == "continue"
         assert result == {"allThreadsContinued": True}
+
+    @pytest.mark.asyncio
+    async def test_dispatch_map_reused_and_build_not_called(self) -> None:
+        """Ensure dispatch map is created once and _build_dispatch_table is not used."""
+        mock_ipc = MagicMock()
+        loop = asyncio.get_event_loop()
+        pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
+        lock = MagicMock()
+
+        backend = ExternalProcessBackend(
+            ipc=mock_ipc,
+            loop=loop,
+            get_process_state=lambda: (MagicMock(), False),
+            pending_commands=pending,
+            lock=lock,
+            get_next_command_id=MagicMock(return_value=1),
+        )
+
+        # Ensure prebuilt dispatch_map exists
+        assert hasattr(backend, "_dispatch_map") and isinstance(backend._dispatch_map, dict)
+        old_id = id(backend._dispatch_map)
+
+        # Replace _build_dispatch_table with a sentinel that would fail if called
+        def _bad_builder(_args: dict[str, Any]):
+            raise AssertionError("_build_dispatch_table should not be called when _dispatch_map is present")
+
+        backend._build_dispatch_table = _bad_builder  # type: ignore[assignment]
+
+        # Call the same command twice and ensure dispatch_map is reused
+        await backend._execute_command("set_breakpoints", {"path": "/x", "breakpoints": []})
+        await backend._execute_command("set_breakpoints", {"path": "/x", "breakpoints": []})
+
+        assert id(backend._dispatch_map) == old_id

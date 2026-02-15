@@ -45,6 +45,27 @@ class InProcessBackend(BaseBackend):
         # Register cleanup callback
         self._lifecycle.add_cleanup_callback(self._cleanup_bridge)
 
+        # Pre-built dispatch map to avoid rebuilding nested async wrappers on
+        # every command execution. Handlers accept an `args` dict.
+        self._dispatch_map = {
+            "set_breakpoints": self._handler_set_breakpoints,
+            "set_function_breakpoints": self._handler_set_function_breakpoints,
+            "set_exception_breakpoints": self._handler_set_exception_breakpoints,
+            "continue": self._handler_continue,
+            "next": self._handler_next,
+            "step_in": self._handler_step_in,
+            "step_out": self._handler_step_out,
+            "pause": self._handler_pause,
+            "get_stack_trace": self._handler_get_stack_trace,
+            "get_variables": self._handler_get_variables,
+            "set_variable": self._handler_set_variable,
+            "evaluate": self._handler_evaluate,
+            "completions": self._handler_completions,
+            "exception_info": self._handler_exception_info,
+            "configuration_done": self._handler_configuration_done,
+            "terminate": self._handler_terminate,
+        }
+
     def _cleanup_bridge(self) -> None:
         """Cleanup the bridge connection."""
         try:
@@ -62,109 +83,100 @@ class InProcessBackend(BaseBackend):
         """Check if the backend is available."""
         return self._lifecycle.is_available
 
+    # -------------------------
+    # Generic per-command handlers
+    # -------------------------
+
+    async def _handler_set_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        r = await self.set_breakpoints(args["path"], args["breakpoints"])
+        return {"breakpoints": r}
+
+    async def _handler_set_function_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        r = await self.set_function_breakpoints(args["breakpoints"])
+        return {"breakpoints": r}
+
+    async def _handler_set_exception_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+        r = await self.set_exception_breakpoints(args["filters"])
+        return {"breakpoints": r}
+
+    async def _handler_continue(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(await self.continue_(args["thread_id"]))
+
+    async def _handler_next(self, args: dict[str, Any]) -> dict[str, Any]:
+        await self.next_(args["thread_id"])
+        return {}
+
+    async def _handler_step_in(self, args: dict[str, Any]) -> dict[str, Any]:
+        await self.step_in(args["thread_id"])
+        return {}
+
+    async def _handler_step_out(self, args: dict[str, Any]) -> dict[str, Any]:
+        await self.step_out(args["thread_id"])
+        return {}
+
+    async def _handler_pause(self, args: dict[str, Any]) -> dict[str, Any]:
+        sent = await self.pause(args.get("thread_id", 1))
+        return {"sent": sent}
+
+    async def _handler_get_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            await self.get_stack_trace(
+                args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
+            )
+        )
+
+    async def _handler_get_variables(self, args: dict[str, Any]) -> dict[str, Any]:
+        v = await self.get_variables(
+            args["variables_reference"],
+            args.get("filter_type", ""),
+            args.get("start", 0),
+            args.get("count", 0),
+        )
+        return {"variables": v}
+
+    async def _handler_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(await self.set_variable(args["variables_reference"], args["name"], args["value"]))
+
+    async def _handler_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(await self.evaluate(args["expression"], args.get("frame_id"), args.get("context")))
+
+    async def _handler_completions(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            await self.completions(
+                args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
+            )
+        )
+
+    async def _handler_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(await self.exception_info(args["thread_id"]))
+
+    async def _handler_configuration_done(self, _args: dict[str, Any]) -> dict[str, Any]:
+        await self.configuration_done()
+        return {}
+
+    async def _handler_terminate(self, _args: dict[str, Any]) -> dict[str, Any]:
+        await self.terminate()
+        return {}
+
     def _build_dispatch_table(
         self,
         args: dict[str, Any],
     ) -> dict[str, Any]:
-        """Build dispatch table for in-process commands.
+        """Back-compat builder that delegates to the prebuilt handlers.
 
-        Each handler delegates to the corresponding bridge-backed method
-        on this backend instance.
+        Kept for backward compatibility with older subclasses/tests that
+        expect `_build_dispatch_table` to return zero-arg callables. New
+        callers should prefer `self._dispatch_map`.
         """
+        # Reuse the class-level handlers by wrapping them into zero-arg
+        # callables that capture the `args` dict. This keeps behavior
+        # identical while eliminating repeated nested-function definitions
+        # in hot paths where `_dispatch_map` is not used.
+        def _wrap(h):
+            return (lambda: h(args))
 
-        async def _bp() -> dict[str, Any]:
-            r = await self.set_breakpoints(args["path"], args["breakpoints"])
-            return {"breakpoints": r}
+        return {name: _wrap(handler) for name, handler in self._dispatch_map.items()}
 
-        async def _fbp() -> dict[str, Any]:
-            r = await self.set_function_breakpoints(args["breakpoints"])
-            return {"breakpoints": r}
-
-        async def _ebp() -> dict[str, Any]:
-            r = await self.set_exception_breakpoints(args["filters"])
-            return {"breakpoints": r}
-
-        async def _cont() -> dict[str, Any]:
-            return dict(await self.continue_(args["thread_id"]))
-
-        async def _next() -> dict[str, Any]:
-            await self.next_(args["thread_id"])
-            return {}
-
-        async def _step_in() -> dict[str, Any]:
-            await self.step_in(args["thread_id"])
-            return {}
-
-        async def _step_out() -> dict[str, Any]:
-            await self.step_out(args["thread_id"])
-            return {}
-
-        async def _pause() -> dict[str, Any]:
-            sent = await self.pause(args.get("thread_id", 1))
-            return {"sent": sent}
-
-        async def _stack() -> dict[str, Any]:
-            return dict(
-                await self.get_stack_trace(
-                    args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
-                )
-            )
-
-        async def _vars() -> dict[str, Any]:
-            v = await self.get_variables(
-                args["variables_reference"],
-                args.get("filter_type", ""),
-                args.get("start", 0),
-                args.get("count", 0),
-            )
-            return {"variables": v}
-
-        async def _set_var() -> dict[str, Any]:
-            return dict(
-                await self.set_variable(args["variables_reference"], args["name"], args["value"])
-            )
-
-        async def _eval() -> dict[str, Any]:
-            return dict(
-                await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
-            )
-
-        async def _compl() -> dict[str, Any]:
-            return dict(
-                await self.completions(
-                    args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
-                )
-            )
-
-        async def _exc_info() -> dict[str, Any]:
-            return dict(await self.exception_info(args["thread_id"]))
-
-        async def _cfg_done() -> dict[str, Any]:
-            await self.configuration_done()
-            return {}
-
-        async def _term() -> dict[str, Any]:
-            await self.terminate()
-            return {}
-
-        return {
-            "set_breakpoints": _bp,
-            "set_function_breakpoints": _fbp,
-            "set_exception_breakpoints": _ebp,
-            "continue": _cont,
-            "next": _next,
-            "step_in": _step_in,
-            "step_out": _step_out,
-            "pause": _pause,
-            "get_stack_trace": _stack,
-            "get_variables": _vars,
-            "set_variable": _set_var,
-            "evaluate": _eval,
-            "completions": _compl,
-            "exception_info": _exc_info,
-            "configuration_done": _cfg_done,
-            "terminate": _term,
-        }
 
     async def _execute_command(
         self,
