@@ -453,6 +453,14 @@ class DebuggerFrameEvalBridge:
     def reset_statistics(self) -> None:
         """Reset all integration statistics."""
         with self._lock:
+            self.config = {
+                "enabled": True,
+                "selective_tracing": True,
+                "bytecode_optimization": True,
+                "cache_enabled": True,
+                "performance_monitoring": True,
+                "fallback_on_error": True,
+            }
             self.integration_stats = {
                 "integrations_enabled": 0,
                 "breakpoints_optimized": 0,

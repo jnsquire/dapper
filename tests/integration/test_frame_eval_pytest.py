@@ -115,7 +115,7 @@ def test_breakpoint_cache():
 
     try:
         # Test with a fresh cache instance to avoid conflicts
-        cache = BreakpointCache(max_entries=10)
+        cache = BreakpointCache()
 
         test_breakpoints = {10, 20, 30}
 

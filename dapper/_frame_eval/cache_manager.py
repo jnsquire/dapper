@@ -611,7 +611,8 @@ class BreakpointCache:
         self._file_mtimes = {}
         self._lock = threading.RLock()
         # Keep track of access order for LRU
-        self._access_order = []
+        # Use OrderedDict for O(1) removals and ordered iteration (MRU at end)
+        self._access_order = OrderedDict()
 
     def get_breakpoints(self, filepath: str | os.PathLike) -> set[int] | None:
         """
@@ -638,9 +639,13 @@ class BreakpointCache:
                 )
                 if is_test_file or self._is_file_current(filepath_str):
                     # Update access time for LRU
+                    # Move to end (most-recently-used)
                     if filepath_str in self._access_order:
-                        self._access_order.remove(filepath_str)
-                    self._access_order.append(filepath_str)
+                        try:
+                            del self._access_order[filepath_str]
+                        except Exception:
+                            pass
+                    self._access_order[filepath_str] = True
                     # Return a copy to prevent modification of cached data
                     return set(self._cache[filepath_str])
                 # File modified, remove stale cache
@@ -674,11 +679,13 @@ class BreakpointCache:
             if len(self._cache) >= self.max_entries and self._access_order:
                 # Remove the least recently used file (first in access order)
                 while self._access_order:
-                    oldest_file = self._access_order[0]
+                    try:
+                        oldest_file, _ = self._access_order.popitem(last=False)
+                    except Exception:
+                        break
                     if oldest_file in self._cache:
                         self._remove_entry(oldest_file)
                         break
-                    self._access_order.pop(0)
 
             # Store the breakpoints
             self._cache[filepath_str] = set(lines)  # Create a copy to prevent modification
@@ -692,12 +699,15 @@ class BreakpointCache:
 
             # Update access time and LRU order
             if filepath_str in self._access_order:
-                self._access_order.remove(filepath_str)
-            self._access_order.append(filepath_str)
+                try:
+                    del self._access_order[filepath_str]
+                except Exception:
+                    pass
+            self._access_order[filepath_str] = True
 
             # Ensure we don't exceed max_entries
             while len(self._cache) > self.max_entries and self._access_order:
-                oldest = self._access_order[0]
+                oldest, _ = self._access_order.popitem(last=False)
                 self._remove_entry(oldest)
 
     def invalidate_file(self, filepath: str) -> None:
@@ -710,7 +720,7 @@ class BreakpointCache:
         with self._lock:
             self._cache.clear()
             self._file_mtimes.clear()
-            self._access_order = []
+            self._access_order.clear()
 
     def _is_file_current(self, filepath: str) -> bool:
         """Check if cached data is still current for the file."""
@@ -738,9 +748,12 @@ class BreakpointCache:
         with self._lock:
             # Remove the file from its current position in the access order
             if filepath in self._access_order:
-                self._access_order.remove(filepath)
+                try:
+                    del self._access_order[filepath]
+                except Exception:
+                    pass
             # Add it to the end (most recently used)
-            self._access_order.append(filepath)
+            self._access_order[filepath] = True
 
     def _remove_entry(self, filepath: str) -> None:
         """Remove an entry from the cache."""
@@ -748,7 +761,7 @@ class BreakpointCache:
             self._cache.pop(filepath, None)
             self._file_mtimes.pop(filepath, None)
             if filepath in self._access_order:
-                self._access_order.remove(filepath)
+                self._access_order.pop(filepath, None)
 
     def get_stats(self) -> BreakpointCacheStats:
         """Get breakpoint cache statistics."""

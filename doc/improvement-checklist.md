@@ -81,15 +81,10 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Performance
 
-- [x] **Dispatch tables rebuilt on every `_execute_command` call** ✅
-  - Files: `dapper/adapter/external_backend.py`, `dapper/adapter/inprocess_backend.py`
-  - Fix: Introduced an instance-level `self._dispatch_map` (built in `__init__`) and updated `BaseBackend._execute_command` to prefer it. Legacy `_build_dispatch_table` retained for back-compat.
-  - Tests: `tests/unit/test_critical_bug_regressions.py::test_dispatch_map_reused_and_build_not_called`, `tests/integration/test_inprocess_mode.py::test_inprocess_dispatch_map_reused_and_build_not_called`.
-
-- [ ] **`BreakpointCache._access_order` uses list with O(n) removal**
-  - File: `dapper/_frame_eval/cache_manager.py` (~L659)
-  - On every access, `.remove(filepath_str)` scans the full list.
-  - Fix: Use `OrderedDict` (already imported) instead of a list.
+- [x] **`BreakpointCache._access_order` uses list with O(n) removal** ✅
+  - File: `dapper/_frame_eval/cache_manager.py`
+  - Fix: Replaced list-based LRU tracking with `OrderedDict`-backed access ordering and updated all read/write/eviction/clear/remove paths to O(1)-style key operations.
+  - Validation: previously failing frame-eval cache/tracer test cases now pass after the refactor cleanup.
 
 - [ ] **Busy-wait spin loop for event loop readiness**
   - File: `dapper/ipc/sync_adapter.py` (~L47)
@@ -115,12 +110,6 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Code Quality
 
-- [x] **Missing type hints on public methods** ✅
-  - Files:
-    - `dapper/core/debugger_bdb.py` — annotated `record_breakpoint`, `clear_break_meta_for_file`, `set_custom_breakpoint`, `clear_custom_breakpoint`.
-    - `dapper/core/debug_helpers.py` — added return types for `get_int`, `get_str`.
-    - `dapper/ipc/ipc_context.py` — replaced broad `Any` IPC field typing with concrete socket/pipe/file aliases and typed method parameters.
-  - Validation: test suite passes after changes.
 
 - [ ] **`DebuggerLike` Protocol has ~30+ required attributes**
   - File: `dapper/protocol/debugger_protocol.py`
@@ -128,9 +117,6 @@ Generated from a full codebase review on 2026-02-14.
   - Fix: Split into smaller sub-protocols. Remove private attributes from the public Protocol.
 
 
-- [x] **`handle_source` ignores `sourceReference`** ✅
-  - File: `dapper/shared/command_handlers.py`
-  - Fix: Legacy `handle_source` now resolves `sourceReference` via `state.get_source_content_by_ref` and falls back to `path` lookup. Added integration test `test_handle_source_resolves_sourceReference_from_state`.
 
 - [ ] **Add pluggable source-content hook with URI-aware path handling**
   - Files: `dapper/shared/debug_shared.py`, `dapper/shared/command_handlers.py`, `dapper/protocol/debugger_protocol.py` (optional typing-only additions)
@@ -161,16 +147,8 @@ Generated from a full codebase review on 2026-02-14.
      - Integration tests for `handle_source` returning provider-backed content by URI/path.
      - Regression tests to confirm existing `sourceReference` and local-path behavior remain unchanged.
 
-- [x] **Singleton `SessionState` has no `reset()` method** ✅
-  - File: `dapper/shared/debug_shared.py`
-  - Fix: Added `SessionState.reset()` classmethod that reinitializes all mutable singleton fields in-place while preserving singleton identity.
-  - Tests: `tests/unit/test_session_state_reset.py`.
 
 
-- [x] **Frame eval `types.py` stubs are runtime-callable but raise** ✅
-  - Files: `dapper/_frame_eval/types.py`, `dapper/_frame_eval/types.pyi`
-  - Fix: Moved typing declarations to a new `.pyi` stub and replaced runtime ellipsis stubs with concrete implementations/wrappers (Cython-backed when available, safe Python fallback otherwise).
-  - Tests: `tests/unit/test_frame_eval_types_runtime.py`.
 
 ---
 
@@ -200,9 +178,9 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 | Category           | Open Items |
 |--------------------|------------|
 | Architecture       | 4          |
-| Performance        | 5          |
+| Performance        | 4          |
 | Code Quality       | 2          |
 | Test Coverage      | 5          |
-| **Total**          | **16**     |
+| **Total**          | **15**     |
 
-**Next up:** Code quality improvements (2 items).
+**Next up:** Performance improvements (4 items).
