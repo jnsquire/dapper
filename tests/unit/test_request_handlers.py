@@ -89,6 +89,13 @@ def handler(mock_server):
     return RequestHandler(mock_server)
 
 
+@pytest.fixture(autouse=True)
+def use_debug_session():
+    session = debug_shared.DebugSession()
+    with debug_shared.use_session(session):
+        yield session
+
+
 # ---------------------------------------------------------------------------
 # Execution Flow Handler Tests
 # ---------------------------------------------------------------------------
@@ -274,7 +281,7 @@ async def test_stack_trace(handler, mock_server):
 
 @pytest.mark.asyncio
 async def test_handle_source_prefers_debugger_helper_and_falls_back(
-    handler, mock_server, monkeypatch, tmp_path
+    handler, mock_server, monkeypatch, tmp_path, use_debug_session
 ):
     """RequestHandler._handle_source should prefer debugger helper then fallback to state."""
     # prepare a temp file path
@@ -300,7 +307,7 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(
     def state_getter(_path):
         return "state-content"
 
-    monkeypatch.setattr(debug_shared.state, "get_source_content_by_path", state_getter)
+    monkeypatch.setattr(use_debug_session, "get_source_content_by_path", state_getter)
 
     res2 = await handler._handle_source(req)
     assert res2["success"] is True

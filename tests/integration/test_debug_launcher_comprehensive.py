@@ -105,7 +105,7 @@ def _set_object_member_direct(parent_obj: Any, name: str, value_str: str) -> dic
         assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
         error_response_fn=handlers._error_response,
         conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-        get_state_debugger=lambda: debug_shared.state.debugger,
+        get_state_debugger=lambda: _session().debugger,
         make_variable_fn=_make_variable,
         logger=handlers.logger,
     )
@@ -129,7 +129,7 @@ def _set_scope_variable_direct(
         logger=handlers.logger,
         error_response_fn=handlers._error_response,
         conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-        get_state_debugger=lambda: debug_shared.state.debugger,
+        get_state_debugger=lambda: _session().debugger,
         make_variable_fn=_make_variable,
     )
 
@@ -170,23 +170,34 @@ def _handle_set_variable(dbg: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def setup_function(_func):
-    """Reset singleton session state for each test.
+@pytest.fixture(autouse=True)
+def _isolated_active_session():
+    """Run each test with an isolated explicit DebugSession.
 
-    IPC is now mandatory, so we enable it with a mock file by default.
+    This keeps legacy `debug_shared.state` references in this module working
+    while avoiding cross-test mutation of the default module-level session.
     """
-    s = debug_shared.state
-    s.debugger = None
-    s.is_terminated = False
-    s.ipc_enabled = True
-    s.ipc_rfile = None
-    s.ipc_wfile = MockWFile()  # Use mock file so IPC writes don't fail
-    s.command_queue = queue.Queue()
+    original_state = debug_shared.state
+    session = debug_shared.DebugSession()
+    debug_shared.state = session
+    with debug_shared.use_session(session):
+        session.debugger = None
+        session.is_terminated = False
+        session.ipc_enabled = True
+        session.ipc_rfile = None
+        session.ipc_wfile = MockWFile()
+        session.command_queue = queue.Queue()
+        yield session
+    debug_shared.state = original_state
+
+
+def _session() -> debug_shared.DebugSession:
+    return debug_shared.get_active_session()
 
 
 def test_handle_set_breakpoints_success():
     """Test successful breakpoint setting with various conditions."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -233,7 +244,7 @@ def test_handle_set_breakpoints_success():
 
 def test_handle_set_breakpoints_failure(monkeypatch):
     """Test breakpoint setting when debugger returns False."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -270,7 +281,7 @@ def test_handle_set_breakpoints_failure(monkeypatch):
 
 def test_handle_set_breakpoints_exception_handling(monkeypatch):
     """Test graceful handling when set_break raises an exception."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -298,7 +309,7 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
 
 def test_handle_set_function_breakpoints():
     """Test setting function breakpoints."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -343,7 +354,7 @@ def test_handle_set_function_breakpoints():
 
 def test_handle_set_function_breakpoints_empty():
     """Test setting function breakpoints with empty list."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -363,7 +374,7 @@ def test_handle_set_function_breakpoints_empty():
 
 def test_handle_set_exception_breakpoints():
     """Test setting exception breakpoints."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -396,7 +407,7 @@ def test_handle_set_exception_breakpoints():
 
 def test_handle_set_exception_breakpoints_invalid_filters():
     """Test exception breakpoints with invalid filter types."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -416,7 +427,7 @@ def test_handle_set_exception_breakpoints_invalid_filters():
 
 def test_handle_set_exception_breakpoints_exception_handling():
     """Test graceful handling when setting exception flags fails."""
-    s = debug_shared.state
+    s = _session()
 
     # Create a debugger that will fail when setting exception flags
     class FailingDebugger(DummyDebugger):
@@ -471,7 +482,7 @@ def test_handle_set_exception_breakpoints_exception_handling():
 
 def test_handle_continue():
     """Test continue command handling."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -489,7 +500,7 @@ def test_handle_continue():
 
 def test_handle_continue_multiple_threads():
     """Test continue with multiple stopped threads."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -514,7 +525,7 @@ def test_handle_continue_multiple_threads():
 
 def test_handle_step_commands():
     """Test step in/out/next commands."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -566,7 +577,7 @@ def test_handle_step_commands():
 
 def test_handle_pause():
     """Test pause command handling — thread should be marked stopped."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -584,7 +595,7 @@ def test_handle_pause():
 
 def test_handle_stack_trace():
     """Test stack trace command handling."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -615,7 +626,7 @@ def test_handle_stack_trace():
 
 def test_handle_stack_trace_pagination():
     """Test stack trace pagination with startFrame and levels."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -635,7 +646,7 @@ def test_handle_stack_trace_pagination():
 
 def test_handle_variables_cached_list():
     """Test variables command with cached list."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -658,7 +669,7 @@ def test_handle_variables_cached_list():
 
 def test_handle_variables_object_reference():
     """Test variables command with object reference."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -678,7 +689,7 @@ def test_handle_variables_object_reference():
 
 def test_handle_variables_scope_reference():
     """Test variables command with scope reference."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -703,7 +714,7 @@ def test_handle_variables_scope_reference():
 
 def test_handle_variables_invalid_reference():
     """Test variables command with invalid reference."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -731,7 +742,7 @@ def test_handle_variables_invalid_reference():
 
 def test_handle_set_variable_object_member():
     """Test setting variable on object."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -751,7 +762,7 @@ def test_handle_set_variable_object_member():
 
 def test_handle_set_variable_list_member():
     """Test setting variable in list."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -771,7 +782,7 @@ def test_handle_set_variable_list_member():
 
 def test_handle_set_variable_list_invalid_index():
     """Test setting variable with invalid list index."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -801,7 +812,7 @@ def test_handle_set_variable_list_invalid_index():
 
 def test_handle_set_variable_tuple():
     """Test setting variable on tuple (should fail)."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -821,7 +832,7 @@ def test_handle_set_variable_tuple():
 
 def test_handle_set_variable_scope_variable():
     """Test setting variable in frame scope."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -844,7 +855,7 @@ def test_handle_set_variable_scope_variable():
 
 def test_handle_set_variable_invalid_reference():
     """Test setting variable with invalid reference."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -857,7 +868,7 @@ def test_handle_set_variable_invalid_reference():
 
 def test_handle_evaluate():
     """Test evaluate command."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -899,7 +910,7 @@ def test_handle_evaluate():
 
 def test_handle_evaluate_no_frame():
     """Test evaluate command without frame."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -916,7 +927,7 @@ def test_handle_evaluate_no_frame():
 
 def test_handle_evaluate_invalid_expression():
     """Test evaluate command with invalid expression type."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -945,7 +956,7 @@ def test_handle_evaluate_invalid_expression():
 
 def test_handle_exception_info():
     """Test exception info command."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -974,7 +985,7 @@ def test_handle_exception_info():
 
 def test_handle_configuration_done():
     """Test configuration done command."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -984,35 +995,35 @@ def test_handle_configuration_done():
 
 def test_handle_terminate():
     """Test terminate command."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
     # Test that the command sets termination flag
     # Note: We can't test os._exit without actually exiting
     # Inject a test-friendly exit function so we don't kill the test runner.
-    orig_exit = debug_shared.state.exit_func
+    orig_exit = s.exit_func
 
     def fake_exit(code: int):
         raise SystemExit(code)
 
-    debug_shared.state.set_exit_func(fake_exit)
+    s.set_exit_func(fake_exit)
     try:
         with pytest.raises(SystemExit):
             lifecycle_handlers.handle_terminate_impl(
                 safe_send_debug_message=handlers._safe_send_debug_message,
-                state=debug_shared.state,
+                state=s,
             )
 
         assert s.is_terminated is True
     finally:
         # Restore original behavior
-        debug_shared.state.set_exit_func(orig_exit)
+        s.set_exit_func(orig_exit)
 
 
 def test_handle_restart():
     """Test restart command and ensure session resources are cleaned up."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -1039,7 +1050,7 @@ def test_handle_restart():
     s.ipc_pipe_conn = fake_pipe
 
     # Override exec behavior so we don't replace the test process.
-    orig_exec = debug_shared.state.exec_func
+    orig_exec = s.exec_func
 
     def fake_exec(path: str, args: list[str]):
         # Verify cleanup has already occurred by the time exec is invoked
@@ -1049,12 +1060,12 @@ def test_handle_restart():
         # Signal via exception so test can assert restart was attempted
         raise SystemExit(("exec_called", path, tuple(args)))
 
-    debug_shared.state.set_exec_func(fake_exec)
+    s.set_exec_func(fake_exec)
     try:
         with pytest.raises(SystemExit) as excinfo:
             lifecycle_handlers.handle_restart_impl(
                 safe_send_debug_message=handlers._safe_send_debug_message,
-                state=debug_shared.state,
+                state=s,
                 logger=handlers.logger,
             )
 
@@ -1067,12 +1078,12 @@ def test_handle_restart():
         # fake_pipe.close() should have been called and pipe cleared
         assert fake_pipe.closed is True
     finally:
-        debug_shared.state.set_exec_func(orig_exec)
+        s.set_exec_func(orig_exec)
 
 
 def test_handle_threads_with_data():
     """Test threads command with actual thread data."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -1094,7 +1105,7 @@ def test_handle_threads_with_data():
 
 def test_handle_debug_command_no_debugger():
     """Test debug command handling when debugger is not initialized."""
-    s = debug_shared.state
+    s = _session()
     s.debugger = None
 
     # Command should be queued without error
@@ -1105,7 +1116,7 @@ def test_handle_debug_command_no_debugger():
 
 def test_handle_debug_command_unsupported():
     """Test debug command handling for unsupported commands."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -1116,7 +1127,7 @@ def test_handle_debug_command_unsupported():
 
 def test_handle_debug_command_with_response():
     """Test debug command handling that returns a response."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -1127,7 +1138,7 @@ def test_handle_debug_command_with_response():
 
 def test_handle_debug_command_exception():
     """Test debug command handling when handler raises exception."""
-    s = debug_shared.state
+    s = _session()
     dbg = DummyDebugger()
     s.debugger = dbg
 
@@ -1238,7 +1249,7 @@ def test_extract_variables():
 
 def test_send_debug_message_requires_ipc():
     """Test send_debug_message requires IPC to be enabled."""
-    s = debug_shared.state
+    s = _session()
     s.ipc_enabled = False
 
     # Should raise RuntimeError when IPC is not enabled
@@ -1248,7 +1259,7 @@ def test_send_debug_message_requires_ipc():
 
 def test_send_debug_message_ipc_binary():
     """Test send_debug_message with binary IPC (the default mode)."""
-    s = debug_shared.state
+    s = _session()
     s.ipc_enabled = True
 
     # Need a bytes-capable mock file that satisfies TextIOBase
@@ -1282,7 +1293,7 @@ def test_send_debug_message_ipc_binary():
 
 def test_send_debug_message_ipc_pipe():
     """Test send_debug_message with IPC pipe connection."""
-    s = debug_shared.state
+    s = _session()
     s.ipc_enabled = True
     s.ipc_binary = True
 
@@ -1305,7 +1316,7 @@ def test_send_debug_message_ipc_pipe():
 
 def test_handle_command_bytes():
     """Test _handle_command_bytes function."""
-    s = debug_shared.state
+    s = _session()
 
     # Mock the queue
     class MockQueue(queue.Queue):

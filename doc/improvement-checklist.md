@@ -5,59 +5,6 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Architecture
 
-- [x] **Decompose `PyDebugger` god-class** ✅
-  - File: `dapper/adapter/server.py` — 1533 lines
-  - ~30+ public methods handling launching, IPC, breakpoints, stack traces, variables, events, and shutdown.
-  - Fix: Extract into focused managers (e.g., `LaunchManager`, `EventRouter`, `StateManager`, `BreakpointRouter`).
-  - **Natural split boundaries (current code layout):**
-    - Event loop + event routing: `_acquire_event_loop` and `_PyDebuggerEventRouter` (`dapper/adapter/server.py` ~L82–212)
-    - Launch/attach orchestration: `_PyDebuggerLifecycleManager` (`dapper/adapter/server.py` ~L214–372)
-    - Breakpoint/state inspection: `_PyDebuggerStateManager` (`dapper/adapter/server.py` ~L374–568)
-    - Runtime process/IPC/backend wiring inside `PyDebugger` (`dapper/adapter/server.py` ~L881–1109)
-    - Breakpoint/data-breakpoint domain logic inside `PyDebugger` (`dapper/adapter/server.py` ~L752–848, ~L1111–1222)
-    - Execution control + termination/shutdown inside `PyDebugger` (`dapper/adapter/server.py` ~L1224–1541)
-    - DAP transport server boundary: `DebugAdapterServer` (`dapper/adapter/server.py` ~L1543–1710)
-  - **Proposed extraction map:**
-    - `dapper/adapter/debugger/event_router.py`: `_PyDebuggerEventRouter` + debug-message parsing/dispatch
-    - `dapper/adapter/debugger/lifecycle.py`: `_PyDebuggerLifecycleManager` + launch/attach helpers
-    - `dapper/adapter/debugger/state.py`: `_PyDebuggerStateManager` + breakpoint normalization/event forwarding helpers
-    - `dapper/adapter/debugger/runtime.py`: process startup/output readers, IPC reader bootstrap, backend/bridge creation
-    - `dapper/adapter/debugger/session.py`: `PyDebugger` session state, pending-command futures, shutdown/cleanup
-    - `dapper/adapter/server_core.py`: `DebugAdapterServer` request loop + protocol send/response/event methods
-  - **Suggested extraction order (lowest risk first):**
-    1. Move `DebugAdapterServer` to `server_core.py` (clear API boundary, minimal debugger coupling)
-    2. Move event router + lifecycle/state managers to `adapter/debugger/` modules (already logically extracted)
-    3. Extract runtime process/IPC/backend plumbing from `PyDebugger`
-    4. Extract execution-control + shutdown helpers; leave `PyDebugger` as thin composition/orchestration facade
-  - **Progress update (current branch):**
-    - ✅ Extracted debug message/event handling into dedicated `_PyDebuggerEventRouter` in `dapper/adapter/server.py`.
-    - ✅ Added explicit delegation methods on `PyDebugger` (`emit_event`, `resolve_pending_response`, `schedule_program_exit`, pending-command helpers) to reduce direct state coupling.
-    - ✅ Extracted launch/attach/in-process startup orchestration into dedicated `_PyDebuggerLifecycleManager` in `dapper/adapter/server.py`.
-    - ✅ Added lifecycle bridge methods on `PyDebugger` (`start_ipc_reader`, backend/bridge creators, stop-event await, IPC mode toggle, launch helpers) so extracted components avoid direct private-state mutation.
-    - ✅ Extracted breakpoint/state-inspection operations into dedicated `_PyDebuggerStateManager` in `dapper/adapter/server.py` (`set_breakpoints`, `get_stack_trace`, `get_scopes`, `get_variables`, `set_variable`, `evaluate`).
-    - ✅ Added bridge wrappers (`get_active_backend`, `get_inprocess_backend`, breakpoint processing/event helpers) to keep extracted components decoupled from private internals.
-    - ✅ Extracted process/IPC/backend primitives into dedicated `_PyDebuggerRuntimeManager` in `dapper/adapter/server.py` (`start_ipc_reader`, backend/bridge creation, debuggee process startup, output stream forwarding).
-    - ✅ Extracted execution-control and termination lifecycle helpers into dedicated `_PyDebuggerExecutionManager` in `dapper/adapter/server.py` (`continue/step/pause`, thread listing, exception info, configuration-done, disconnect/terminate/restart, raw command send).
-    - ✅ Reduced `PyDebugger` wrapper/alias surface by inlining direct manager/event-router delegation for event handling and pending-response resolution; retained minimal private compatibility alias for launch monkey-patching/tests.
-    - ✅ Moved `DebugAdapterServer` to `dapper/adapter/server_core.py` and preserved import compatibility via re-export in `dapper/adapter/server.py`.
-    - ✅ Moved manager classes into dedicated modules under `dapper/adapter/debugger/`:
-      - `event_router.py`: `_PyDebuggerEventRouter`
-      - `lifecycle.py`: `_PyDebuggerLifecycleManager`
-      - `state.py`: `_PyDebuggerStateManager`
-      - `runtime.py`: `_PyDebuggerRuntimeManager`
-      - `execution.py`: `_PyDebuggerExecutionManager`
-    - ✅ Introduced focused session façade in `dapper/adapter/debugger/session.py` (`_PyDebuggerSessionFacade`) and wired `PyDebugger` pending-command lifecycle through it (`_get_next_command_id`, pending-command map compatibility accessors, response resolution, shutdown failure propagation).
-    - ✅ Moved additional mutable session containers (`threads`, `var_refs`, `breakpoints`, `current_stack_frames`) behind `session.py` with compatibility properties on `PyDebugger` to preserve test-facing attribute access.
-    - ✅ Migrated remaining session-owned mutable containers (`function_breakpoints`, data-watch containers, thread-exit bookkeeping) behind `session.py` with compatibility properties to preserve current direct access patterns.
-    - ✅ Reduced direct container mutation in hot paths by routing key mutation sites through focused session-facade helper methods (`event_router`, `state`, `execution`, data-breakpoint registration, and shutdown state clearing).
-    - ✅ Consolidated remaining high-value direct container reads behind session-facade query helpers where it improved clarity (notably thread iteration for execution/thread-list reporting), while intentionally keeping straightforward direct compatibility reads in low-risk paths.
-    - ✅ Closeout: decomposition now lands on a thin `PyDebugger` orchestration facade backed by dedicated manager modules + a focused session facade, with compatibility accessors retained for test/runtime stability.
-
-- [x] **Reduce compatibility property sprawl in `DebuggerBDB`** ✅
-  - File: `dapper/core/debugger_bdb.py` (~L100–310)
-  - Status: Completed. Production runtime paths now use delegate components directly (`stepping_controller`, `thread_tracker`, `exception_handler`, `var_manager`, `bp_manager`).
-  - Note: Compatibility-style properties intentionally remain only in test doubles (`tests/mocks.py`, `tests/dummy_debugger.py`).
-
 - [ ] **Replace global `SessionState` singleton with explicit session composition**
   - Files: `dapper/shared/debug_shared.py`, `dapper/shared/command_handlers.py`, `dapper/ipc/ipc_receiver.py`, `dapper/launcher/debug_launcher.py`
   - Problem: `SessionState` currently mixes transport lifecycle, debugger lifecycle, command dispatch/provider registry, and source-reference catalog in one mutable global object (`state`).
@@ -108,12 +55,14 @@ Generated from a full codebase review on 2026-02-14.
    - Source lookup behavior (`sourceReference`, `path`, provider hooks) remains parity-stable.
    - Tests no longer require test-only `SessionState` subclasses for common setup.
   - **Status update (implemented in current branch):**
-    - ✅ Added composed session internals in `dapper/shared/debug_shared.py`: `DebugSession`, `SessionTransport`, `SourceCatalog`, `CommandDispatcher`, `ProcessControl`.
-    - ✅ Kept compatibility surface (`SessionState`, module-level `state`, `send_debug_message`) as delegating facade over composed services.
-    - ✅ Moved source-reference storage/lookup and provider dispatch internals behind dedicated service objects while preserving existing call signatures.
-    - ✅ Preserved `SessionState.reset()` singleton semantics for tests and legacy call paths.
-    - ✅ Added context-local session injection primitives (`use_session`, `get_active_session`, `active_state`) and wired explicit session parameters through launcher/receiver/handler entrypoints.
-    - 🔜 Remaining: migrate remaining modules that still import global `state` directly so full non-singleton session instances can be used end-to-end without compatibility shims.
+    - 🔜 Remaining: migrate any external legacy entry-point hooks that still assume implicit singleton construction (`SessionState()`) to explicit session composition or `debug_shared.state`, then consider deprecating `SessionState` compatibility wrappers.
+  - **Recommended order (next steps):**
+    1. [ ] Migrate remaining low-risk tests from direct `debug_shared.state` reads to explicit `DebugSession` fixtures (`tests/integration/test_data_breakpoint_subprocess.py`, `tests/unit/test_source_references.py`, minor stale comment in `tests/unit/test_request_handlers.py`).
+    2. [ ] Migrate medium-risk compatibility-heavy tests to explicit session fixtures while preserving semantics (`tests/integration/test_command_providers.py`, `tests/unit/test_send_debug_message.py`, `tests/unit/test_source_reference_helpers.py`, `tests/unit/test_session_state_start_command_receiver.py`).
+    3. [ ] Replace remaining `SessionState` typing mentions in runtime with `DebugSession`/Protocol-oriented typing where practical (`dapper/shared/source_handlers.py`).
+    4. [ ] Evaluate replacing remaining monkeypatch seams (e.g., sender alias in `dapper/ipc/ipc_receiver.py`) with explicit injectable hooks for tests.
+    5. [ ] Keep only dedicated compatibility-contract tests for `SessionState` behavior (`tests/unit/test_session_state_reset.py`) and migrate all non-contract tests off singleton assumptions.
+    6. [ ] Add deprecation notice for legacy `SessionState` constructor/reset entry points and define a removal window after external hook migration is complete.
 
 ---
 

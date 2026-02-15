@@ -7,14 +7,18 @@ from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
 from dapper.launcher import debug_launcher
 from dapper.launcher import launcher_ipc
-from dapper.shared.debug_shared import state
+from dapper.shared import debug_shared
 
 
-def teardown_function(_fn):
-    # Reset full session state to avoid cross-test leakage
-    state.__class__.reset()
+@pytest.fixture(autouse=True)
+def use_debug_session():
+    session = debug_shared.DebugSession()
+    with debug_shared.use_session(session):
+        yield session
 
 
 def test_socket_connector_tcp_success():
@@ -140,7 +144,7 @@ def test_socket_connector_unix_closes_on_connect_failure():
         mock_sock.close.assert_called_once()
 
 
-def test_setup_ipc_socket_with_connector():
+def test_setup_ipc_socket_with_connector(use_debug_session):
     """Test that we can inject a mock connector into _setup_ipc_socket."""
 
     class FakeSock:
@@ -158,18 +162,22 @@ def test_setup_ipc_socket_with_connector():
             return FakeSock()
 
     connector = MockConnector()
+    session = use_debug_session
 
     # Test unix path
     debug_launcher._setup_ipc_socket(
         "unix", None, None, "/tmp/x", ipc_binary=False, connector=connector
     )
-    assert state.ipc_enabled is True
+    assert session.ipc_enabled is True
 
-    # Reset IPC-related state before testing the TCP path
-    state.__class__.reset()
+    # Reset IPC-related fields before testing the TCP path
+    session.ipc_enabled = False
+    session.ipc_sock = None
+    session.ipc_rfile = None
+    session.ipc_wfile = None
 
     # Test tcp path
     debug_launcher._setup_ipc_socket(
         "tcp", "127.0.0.1", 12345, None, ipc_binary=False, connector=connector
     )
-    assert state.ipc_enabled is True
+    assert session.ipc_enabled is True

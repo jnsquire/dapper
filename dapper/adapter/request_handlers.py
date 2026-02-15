@@ -433,6 +433,7 @@ class RequestHandler:
         Returns (content, path) where either may be None on failure.
         """
         dbg = self.server.debugger
+        active_session = debug_shared.get_active_session()
         content: str | None = None
         path: str | None = None
 
@@ -450,7 +451,7 @@ class RequestHandler:
         # Fallback to shared state
         if content is None:
             try:
-                content = debug_shared.state.get_source_content_by_ref(source_reference)
+                content = active_session.get_source_content_by_ref(source_reference)
             except Exception:
                 content = None
 
@@ -460,7 +461,7 @@ class RequestHandler:
             if callable(getter_meta):
                 meta = getter_meta(source_reference)
             else:
-                meta = debug_shared.state.get_source_meta(source_reference)
+                meta = active_session.get_source_meta(source_reference)
             if inspect.isawaitable(meta):
                 meta = await meta
             if isinstance(meta, dict):
@@ -474,6 +475,7 @@ class RequestHandler:
     async def _resolve_by_path(self, path: str) -> str | None:
         """Resolve source content by path, prefer debugger helper then shared state."""
         dbg = self.server.debugger
+        active_session = debug_shared.get_active_session()
         content: str | None = None
 
         getter = getattr(dbg, "get_source_content_by_path", None)
@@ -488,7 +490,7 @@ class RequestHandler:
 
         if content is None:
             try:
-                content = debug_shared.state.get_source_content_by_path(path)
+                content = active_session.get_source_content_by_path(path)
             except Exception:
                 content = None
 

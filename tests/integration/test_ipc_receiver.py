@@ -5,6 +5,7 @@ from queue import Queue
 import pytest
 
 from dapper.ipc import ipc_receiver
+from dapper.shared import debug_shared
 
 
 class DummyLock:
@@ -45,18 +46,18 @@ def test_dap_mapping_provider_handle_variants():
 
 
 def test_receive_debug_commands_ipc():
-    # prepare fake state
-    s = ipc_receiver.state
-    s.is_terminated = False
-    s.ipc_enabled = True
-    s.command_queue = Queue()
+    # prepare explicit session
+    session = debug_shared.DebugSession()
+    session.is_terminated = False
+    session.ipc_enabled = True
+    session.command_queue = Queue()
 
     # fake reader that returns a JSON line
     cmd = {"command": "dummy", "seq": 1}
     line = json.dumps(cmd) + "\n"
 
     # use StringIO which implements TextIOBase for typing compatibility
-    s.ipc_rfile = io.StringIO(line)
+    session.ipc_rfile = io.StringIO(line)
 
     class DummyLock:
         def __enter__(self):
@@ -68,77 +69,66 @@ def test_receive_debug_commands_ipc():
     # run receiver - it will queue the command, then encounter EOF
     # which triggers exit_func(0) -> SystemExit in test mode
     with pytest.raises(SystemExit):
-        ipc_receiver.receive_debug_commands()
+        ipc_receiver.receive_debug_commands(session=session)
 
     # queue should have exactly one item (no double-dispatch)
-    assert not s.command_queue.empty()
-    got = s.command_queue.get_nowait()
+    assert not session.command_queue.empty()
+    got = session.command_queue.get_nowait()
     assert got["command"] == "dummy"
-    assert s.command_queue.empty()
+    assert session.command_queue.empty()
 
 
 def test_process_queued_commands(monkeypatch):
-    s = ipc_receiver.state
-    s.command_queue = Queue()
-    s.command_queue.put({"command": "a"})
-    s.command_queue.put({"command": "b"})
+    session = debug_shared.DebugSession()
+    session.command_queue = Queue()
+    session.command_queue.put({"command": "a"})
+    session.command_queue.put({"command": "b"})
 
     called = []
 
     def fake_dispatch(c):
         called.append(c)
 
-    monkeypatch.setattr(s, "dispatch_debug_command", fake_dispatch)
+    monkeypatch.setattr(session, "dispatch_debug_command", fake_dispatch)
 
-    ipc_receiver.process_queued_commands()
+    ipc_receiver.process_queued_commands(session=session)
     assert len(called) == 2
-    assert s.command_queue.empty()
+    assert session.command_queue.empty()
 
 
 def test_receive_debug_commands_requires_ipc():
     """Test that receive_debug_commands raises RuntimeError when IPC is not enabled."""
-    s = ipc_receiver.state
-    # Save original state
-    orig_is_terminated = s.is_terminated
-    orig_ipc_enabled = s.ipc_enabled
-    orig_ipc_rfile = s.ipc_rfile
+    session = debug_shared.DebugSession()
+    session.is_terminated = False
+    session.ipc_enabled = False
+    session.ipc_rfile = None
 
-    try:
-        s.is_terminated = False
-        s.ipc_enabled = False
-        s.ipc_rfile = None
-
-        # Should raise RuntimeError since IPC is mandatory
-        with pytest.raises(RuntimeError, match="IPC is required"):
-            ipc_receiver.receive_debug_commands()
-    finally:
-        # Restore original state
-        s.is_terminated = orig_is_terminated
-        s.ipc_enabled = orig_ipc_enabled
-        s.ipc_rfile = orig_ipc_rfile
+    # Should raise RuntimeError since IPC is mandatory
+    with pytest.raises(RuntimeError, match="IPC is required"):
+        ipc_receiver.receive_debug_commands(session=session)
 
 
 def test_receive_debug_commands_malformed_json_ipc(monkeypatch):
-    s = ipc_receiver.state
-    s.is_terminated = False
-    s.ipc_enabled = True
-    s.command_queue = Queue()
+    session = debug_shared.DebugSession()
+    session.is_terminated = False
+    session.ipc_enabled = True
+    session.command_queue = Queue()
 
     # malformed JSON line
     line = "{ not-a-json }\n"
-    s.ipc_rfile = io.StringIO(line)
+    session.ipc_rfile = io.StringIO(line)
 
     called = []
 
     def fake_send(event_type, **kwargs):
         # capture the error message and stop the loop
         called.append((event_type, kwargs))
-        s.is_terminated = True
+        session.is_terminated = True
 
     # patch the module-level send_debug_message used in receive_debug_commands
     monkeypatch.setattr(ipc_receiver, "send_debug_message", fake_send)
 
-    ipc_receiver.receive_debug_commands()
+    ipc_receiver.receive_debug_commands(session=session)
 
     assert called, "send_debug_message was not called for malformed JSON"
     ev, kw = called[0]

@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+import pytest
+
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
@@ -33,6 +35,14 @@ if TYPE_CHECKING:
 
 
 _CONVERSION_FAILED = object()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_active_session():
+    """Run each test with an isolated explicit DebugSession."""
+    session = debug_shared.DebugSession()
+    with debug_shared.use_session(session):
+        yield session
 
 
 def _try_test_convert(
@@ -79,7 +89,7 @@ def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None
             assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
             error_response_fn=dch._error_response,
             conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: dch.state.debugger,
+            get_state_debugger=dch._active_debugger,
             make_variable_fn=_make_variable_for_tests,
             logger=dch.logger,
         )
@@ -99,7 +109,7 @@ def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None
             logger=dch.logger,
             error_response_fn=dch._error_response,
             conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: dch.state.debugger,
+            get_state_debugger=dch._active_debugger,
             make_variable_fn=_make_variable_for_tests,
         )
 
@@ -141,7 +151,7 @@ def test_set_object_member_dict_list_tuple_and_attribute():
             assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
             error_response_fn=dch._error_response,
             conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: dch.state.debugger,
+            get_state_debugger=dch._active_debugger,
             make_variable_fn=_make_variable_for_tests,
             logger=dch.logger,
         )
@@ -193,7 +203,7 @@ def test_set_scope_variable_locals_and_globals():
             logger=dch.logger,
             error_response_fn=dch._error_response,
             conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: dch.state.debugger,
+            get_state_debugger=dch._active_debugger,
             make_variable_fn=_make_variable_for_tests,
         )
 
@@ -212,7 +222,7 @@ def test_set_scope_variable_locals_and_globals():
 
 def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     dbg = DummyDebugger()
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     # capture send_debug_message calls
     calls = []
@@ -256,7 +266,7 @@ def test_continue_next_step_out(monkeypatch):
     tid = threading.get_ident()
     dbg.stopped_thread_ids.add(tid)
     dbg.current_frame = object()
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
     # capture
 
     def _no_op(*_args, **_kwargs):
@@ -287,7 +297,7 @@ def test_continue_next_step_out(monkeypatch):
 def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
     dbg = DummyDebugger()
     tid = 12345
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -318,7 +328,7 @@ def test_variables_and_set_variable(monkeypatch):
     frame = SimpleNamespace(f_locals={"a": 1}, f_globals={"b": 2})
     dbg.frame_id_to_frame[1] = frame
     dbg.var_refs[7] = (1, "locals")
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     # stub variable factory to predictable output
     def fake_make_variable(_dbg, _name, value, _frame):
@@ -365,7 +375,7 @@ def test_variables_and_set_variable(monkeypatch):
 
 def test_set_variable_bad_args_failure_payload(monkeypatch):
     dbg = DummyDebugger()
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -387,7 +397,7 @@ def test_set_variable_bad_args_failure_payload(monkeypatch):
 def test_set_variable_missing_frame_failure_payload(monkeypatch):
     dbg = DummyDebugger()
     dbg.var_refs[10] = (999, "locals")
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -409,7 +419,7 @@ def test_set_variable_missing_frame_failure_payload(monkeypatch):
 def test_set_variable_conversion_failure_payload(monkeypatch):
     dbg = DummyDebugger()
     dbg.var_refs[11] = ("object", {"x": 1})
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -454,7 +464,9 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
     def get_source_content_by_path(_path):
         return "print(1)"
 
-    monkeypatch.setattr(dch.state, "get_source_content_by_path", get_source_content_by_path)
+    monkeypatch.setattr(
+        dch._active_session(), "get_source_content_by_path", get_source_content_by_path
+    )
     calls = []
 
     def recorder2(kind, **kwargs):
@@ -462,7 +474,11 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder2)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder2)
-    source_handlers.handle_source({"path": str(p)}, dch.state, dch._safe_send_debug_message)
+    source_handlers.handle_source(
+        {"path": str(p)},
+        dch._active_session(),
+        dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "response"
 
@@ -471,7 +487,7 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
     dbg = DummyDebugger()
     frame = SimpleNamespace(f_globals={"y": 2}, f_locals={})
     dbg.frame_id_to_frame[1] = frame
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -510,7 +526,7 @@ def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
     dbg = DummyDebugger()
     frame = SimpleNamespace(f_globals={"x": 2}, f_locals={})
     dbg.current_frame = frame
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -546,18 +562,18 @@ def test_handle_exception_info_variants(monkeypatch):
     # missing threadId
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {}),
-        state=dch.state,
+        state=dch._active_session(),
         safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "error"
 
     # debugger not initialized
-    monkeypatch.setattr(dch.state, "debugger", None)
+    monkeypatch.setattr(dch._active_session(), "debugger", None)
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 1}),
-        state=dch.state,
+        state=dch._active_session(),
         safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
@@ -565,11 +581,11 @@ def test_handle_exception_info_variants(monkeypatch):
 
     # debugger with no info for thread
     dbg = DummyDebugger()
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 2}),
-        state=dch.state,
+        state=dch._active_session(),
         safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
@@ -585,7 +601,7 @@ def test_handle_exception_info_variants(monkeypatch):
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 3}),
-        state=dch.state,
+        state=dch._active_session(),
         safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
@@ -605,7 +621,7 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
             )
 
     dbg = DbgWithMake()
-    monkeypatch.setattr(dch.state, "debugger", dbg)
+    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
     res = debug_shared.make_variable_object("n", 5, dbg)
     assert isinstance(res, dict)
     assert res["value"].startswith("dbg:")
@@ -620,7 +636,7 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
             msg = "fail"
             raise RuntimeError(msg)
 
-    monkeypatch.setattr(dch.state, "debugger", DbgBad())
+    monkeypatch.setattr(dch._active_session(), "debugger", DbgBad())
     res2 = debug_shared.make_variable_object("n", 6, dbg)
     assert isinstance(res2, dict)
 
@@ -644,22 +660,30 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
     sys.modules["m_b2"] = m2
 
     # state handling for refs
-    monkeypatch.setattr(dch.state, "get_ref_for_path", lambda _p: None)
+    monkeypatch.setattr(dch._active_session(), "get_ref_for_path", lambda _p: None)
 
     def get_or_create_source_ref(_p, _n=None):
         return 123
 
-    monkeypatch.setattr(dch.state, "get_or_create_source_ref", get_or_create_source_ref)
+    monkeypatch.setattr(
+        dch._active_session(),
+        "get_or_create_source_ref",
+        get_or_create_source_ref,
+    )
 
     def get_source_meta(ref):
         return {"path": str(p1)} if ref == 123 else None
 
-    monkeypatch.setattr(dch.state, "get_source_meta", get_source_meta)
+    monkeypatch.setattr(dch._active_session(), "get_source_meta", get_source_meta)
 
     def get_source_content_by_ref(ref):
         return "print(1)" if ref == 123 else None
 
-    monkeypatch.setattr(dch.state, "get_source_content_by_ref", get_source_content_by_ref)
+    monkeypatch.setattr(
+        dch._active_session(),
+        "get_source_content_by_ref",
+        get_source_content_by_ref,
+    )
 
     calls = []
 
@@ -668,7 +692,7 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder5)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder5)
-    source_handlers.handle_loaded_sources(dch.state, dch._safe_send_debug_message)
+    source_handlers.handle_loaded_sources(dch._active_session(), dch._safe_send_debug_message)
     assert calls
     assert calls[-1][0] == "response"
 
@@ -689,7 +713,11 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
     def get_source_content_binary(_path):
         return "\x00\x01"
 
-    monkeypatch.setattr(dch.state, "get_source_content_by_path", get_source_content_binary)
+    monkeypatch.setattr(
+        dch._active_session(),
+        "get_source_content_by_path",
+        get_source_content_binary,
+    )
     calls = []
 
     def recorder6(kind, **kwargs):
@@ -697,17 +725,25 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dch, "send_debug_message", recorder6)
     monkeypatch.setattr(command_handlers, "send_debug_message", recorder6)
-    source_handlers.handle_source({"path": str(p)}, dch.state, dch._safe_send_debug_message)
+    source_handlers.handle_source(
+        {"path": str(p)},
+        dch._active_session(),
+        dch._safe_send_debug_message,
+    )
     assert calls
     assert calls[-1][0] == "response"
 
     # sourceReference path mapping
-    monkeypatch.setattr(dch.state, "get_source_meta", lambda _ref: {"path": str(p)})
-    monkeypatch.setattr(dch.state, "get_source_content_by_ref", lambda _ref: "print(2)")
+    monkeypatch.setattr(dch._active_session(), "get_source_meta", lambda _ref: {"path": str(p)})
+    monkeypatch.setattr(
+        dch._active_session(),
+        "get_source_content_by_ref",
+        lambda _ref: "print(2)",
+    )
     calls.clear()
     source_handlers.handle_source(
         {"source": {"sourceReference": 1}},
-        dch.state,
+        dch._active_session(),
         dch._safe_send_debug_message,
     )
     assert calls

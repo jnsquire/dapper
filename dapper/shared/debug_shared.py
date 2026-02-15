@@ -492,30 +492,24 @@ class DebugSession:
 
 
 class SessionState(DebugSession):
-    """Compatibility singleton facade over the composed DebugSession model."""
+    """Compatibility facade around the default composed debug session.
 
-    _instance = None
+    `SessionState` instances are regular `DebugSession` objects. The module-level
+    `state` object is the default shared session used by legacy call sites.
+    """
+
     _reset_lock = threading.RLock()
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        if getattr(self, "_initialized", False):
-            return
-        self._initialize_mutable_state()
-        self._initialized = True
-
     @classmethod
-    def reset(cls) -> SessionState:
-        """Reinitialize all mutable singleton state and return the instance."""
+    def reset(cls) -> DebugSession:
+        """Reinitialize all mutable default-session state and return it."""
         with cls._reset_lock:
-            instance = cls()
-            instance._initialize_mutable_state()
-            instance._initialized = True
-            return instance
+            current_state = globals().get("state")
+            if not isinstance(current_state, DebugSession):
+                current_state = cls()
+                globals()["state"] = current_state
+            current_state._initialize_mutable_state()
+            return current_state
 
 
 # Module-level singleton instance used throughout the codebase

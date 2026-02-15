@@ -26,23 +26,13 @@ from dapper.shared import lifecycle_handlers
 from dapper.shared import stepping_handlers
 from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
-from dapper.shared.debug_shared import SessionState
 from tests.mocks import make_real_frame
 
 
-# Create a test-specific subclass of SessionState for testing
-class _TestSessionState(SessionState):
-    """Test-specific SessionState with additional attributes for testing."""
+def _session() -> debug_shared.DebugSession:
+    """Return the active explicit test session."""
+    return debug_shared.get_active_session()
 
-    def __init__(self):
-        super().__init__()
-        self.breakpoints: dict[str, list[dict[str, Any]]] = {}
-        self.var_refs: dict[int, Any] = {}
-
-
-# Replace the shared state with our test-specific version
-test_shared_state = _TestSessionState()
-dl.state = test_shared_state
 
 # Type aliases for better type hints
 
@@ -52,9 +42,7 @@ class TestDebugLauncherBasic:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
-        # Reinitialize the test-specific SessionState instance and reattach it.
-        test_shared_state.reset()
-        dl.state = test_shared_state
+        # Session setup is handled by the module-level autouse fixture.
 
     def test_parse_args_basic(self) -> None:
         """Test basic argument parsing."""
@@ -144,7 +132,7 @@ class TestDebugLauncherBasic:
         mock_debugger_class.return_value = mock_debugger
 
         # Save original state
-        original_state = dl.state.__dict__.copy()
+        original_state = _session().__dict__.copy()
 
         try:
             # Test with stop on entry
@@ -152,22 +140,22 @@ class TestDebugLauncherBasic:
 
             # Verify debugger was created and configured
             mock_debugger_class.assert_called_once()
-            assert dl.state.debugger is not None
+            assert _session().debugger is not None
 
             # The stop_at_entry flag should be set on the debugger, not the state
             # This is a bug in the test, not the implementation
             # We should check the debugger's configuration instead
 
             # Reset for next test
-            dl.state.debugger = None
+            _session().debugger = None
 
             # Test without stop on entry
             dl.configure_debugger(False)
-            assert dl.state.debugger is not None
+            assert _session().debugger is not None
 
         finally:
             # Restore original state
-            dl.state.__dict__.update(original_state)
+            _session().__dict__.update(original_state)
 
     def test_handle_initialize(self) -> None:
         """Test initialize command handling."""
@@ -199,8 +187,7 @@ class TestBreakpointHandling:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
-        test_shared_state.reset()
-        dl.state = test_shared_state
+        # Session setup is handled by the module-level autouse fixture.
 
     @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_set_breakpoints(self, mock_send: MagicMock) -> None:
@@ -256,8 +243,7 @@ class TestVariableHandling:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
-        test_shared_state.reset()
-        dl.state = test_shared_state
+        # Session setup is handled by the module-level autouse fixture.
 
     @patch("dapper.shared.command_handlers.send_debug_message")
     def test_handle_variables(self, mock_send: MagicMock) -> None:
@@ -339,16 +325,16 @@ class TestExpressionEvaluation:
     def test_handle_evaluate(self, mock_send: MagicMock) -> None:
         """Test expression evaluation."""
         # Setup
-        dl.state.debugger = MagicMock()
+        _session().debugger = MagicMock()
         mock_frame = make_real_frame({"x": 10, "y": 20})
-        dl.state.debugger.stepping_controller.current_frame = mock_frame
+        _session().debugger.stepping_controller.current_frame = mock_frame
 
         # Test arguments
         args = {"expression": "x + y", "context": "watch"}
 
         # Execute
         variable_handlers.handle_evaluate_impl(
-            dl.state.debugger,
+            _session().debugger,
             args,
             evaluate_with_policy=handlers.evaluate_with_policy,
             format_evaluation_error=variable_handlers.format_evaluation_error,
@@ -369,8 +355,7 @@ class TestControlFlow:
 
     def setup_method(self) -> None:
         """Reset shared state before each test."""
-        test_shared_state.reset()
-        dl.state = test_shared_state
+        # Session setup is handled by the module-level autouse fixture.
 
     def test_handle_continue(self) -> None:
         """Test continue command."""
@@ -1274,16 +1259,15 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def setup_teardown():
     """Setup and teardown for tests."""
-    # Save original state and modules
-    original_state = dl.state.__dict__.copy()
+    # Save original modules and install an explicit active session.
     original_modules = sys.modules.copy()
-
-    # Reset state before each test
-    dl.state = debug_shared.SessionState()
+    session = debug_shared.DebugSession()
+    session_context = debug_shared.use_session(session)
+    session_context.__enter__()
 
     yield  # Test runs here
 
-    # Restore original state and modules
+    # Restore original modules and clear active-session context.
+    session_context.__exit__(None, None, None)
     sys.modules.clear()
     sys.modules.update(original_modules)
-    dl.state.__dict__.update(original_state)

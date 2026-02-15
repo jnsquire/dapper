@@ -12,7 +12,6 @@ Test enhanced setVariable functionality
 
 import unittest
 from unittest.mock import Mock
-from unittest.mock import patch
 
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
@@ -122,11 +121,8 @@ class TestEnhancedSetVariable(unittest.TestCase):
         assert result == "new_value"
         assert isinstance(result, str)
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_set_object_member_dict(self, mock_state):
+    def test_set_object_member_dict(self):
         """Test setting dictionary items"""
-        mock_state.debugger = self.mock_debugger
-
         test_dict = {"key1": "value1", "key2": "value2"}
         result = self._set_object_member_direct(test_dict, "key3", "'new_value'")
 
@@ -134,11 +130,8 @@ class TestEnhancedSetVariable(unittest.TestCase):
         assert test_dict["key3"] == "new_value"
         assert result["body"]["value"] == "'new_value'"
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_set_object_member_list(self, mock_state):
+    def test_set_object_member_list(self):
         """Test setting list items by index"""
-        mock_state.debugger = self.mock_debugger
-
         test_list = [1, 2, 3]
         result = self._set_object_member_direct(test_list, "1", "99")
 
@@ -146,21 +139,16 @@ class TestEnhancedSetVariable(unittest.TestCase):
         assert test_list[1] == 99
         assert result["body"]["value"] == "99"
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_set_object_member_list_invalid_index(self, mock_state):
+    def test_set_object_member_list_invalid_index(self):
         """Test setting list items with invalid index"""
-        mock_state.debugger = self.mock_debugger
-
         test_list = [1, 2, 3]
         result = self._set_object_member_direct(test_list, "10", "99")
 
         assert not result["success"]
         assert "out of range" in result["message"]
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_set_object_member_object_attribute(self, mock_state):
+    def test_set_object_member_object_attribute(self):
         """Test setting object attributes"""
-        mock_state.debugger = self.mock_debugger
 
         class TestClass:
             def __init__(self):
@@ -172,22 +160,16 @@ class TestEnhancedSetVariable(unittest.TestCase):
         assert result["success"]
         assert test_obj.attr1 == "modified"
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_set_object_member_tuple_immutable(self, mock_state):
+    def test_set_object_member_tuple_immutable(self):
         """Test that tuples cannot be modified"""
-        mock_state.debugger = self.mock_debugger
-
         test_tuple = (1, 2, 3)
         result = self._set_object_member_direct(test_tuple, "0", "99")
 
         assert not result["success"]
         assert "immutable" in result["message"]
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_handle_set_variable_object_reference(self, mock_state):
+    def test_handle_set_variable_object_reference(self):
         """Test setVariable with object reference"""
-        mock_state.debugger = self.mock_debugger
-
         # Set up object reference
         test_dict = {"key": "value"}
         var_ref = 2001
@@ -213,11 +195,8 @@ class TestEnhancedSetVariable(unittest.TestCase):
         assert result["success"]
         assert test_dict["new_key"] == "new_value"
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_handle_set_variable_scope_with_expression(self, mock_state):
+    def test_handle_set_variable_scope_with_expression(self):
         """Test setVariable with expression evaluation in scope"""
-        mock_state.debugger = self.mock_debugger
-
         # Set up frame with variables for expression
         frame_id = 1
         var_ref = 1001

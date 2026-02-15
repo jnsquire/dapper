@@ -17,14 +17,24 @@ from typing import Any
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import COMMAND_HANDLERS
 
-# Backward compatibility: tests and legacy callers import ipc_receiver.state.
-state = debug_shared.active_state
+# Backward compatibility: tests and legacy callers may patch ipc_receiver.send_debug_message.
 send_debug_message = debug_shared.send_debug_message
 
 logger = logging.getLogger(__name__)
 
 HANDLE_ARGS_DIRECT = 2
 HANDLE_ARGS_PROVIDER = 4
+
+
+def _active_session(session: debug_shared.DebugSession | None = None) -> debug_shared.DebugSession:
+    """Return explicitly provided session or context-local active session."""
+    return session if session is not None else debug_shared.get_active_session()
+
+
+def _send_error(message: str, session: debug_shared.DebugSession) -> None:
+    """Emit an error event using the provided active session context."""
+    with debug_shared.use_session(session):
+        send_debug_message("error", message=message)
 
 
 class DapMappingProvider:
@@ -81,7 +91,7 @@ def receive_debug_commands(session: debug_shared.DebugSession | None = None) -> 
 
     IPC is mandatory; raises RuntimeError if IPC is not enabled.
     """
-    active_session = session if session is not None else debug_shared.get_active_session()
+    active_session = _active_session(session)
     _ensure_mapping_provider(active_session)
 
     active_session.require_ipc()
@@ -101,13 +111,12 @@ def receive_debug_commands(session: debug_shared.DebugSession | None = None) -> 
                 command = json.loads(command_json)
                 active_session.command_queue.put(command)
             except Exception as e:
-                with debug_shared.use_session(active_session):
-                    send_debug_message("error", message=f"Error receiving command: {e!s}")
+                _send_error(f"Error receiving command: {e!s}", active_session)
                 traceback.print_exc()
 
 
 def process_queued_commands(session: debug_shared.DebugSession | None = None):
-    active_session = session if session is not None else debug_shared.get_active_session()
+    active_session = _active_session(session)
     _ensure_mapping_provider(active_session)
     while True:
         try:

@@ -13,12 +13,17 @@ class _DummyProvider:
         return None
 
 
-def test_reset_preserves_singleton_identity() -> None:
+def test_reset_preserves_default_state_identity() -> None:
     before = ds.state
     after = ds.SessionState.reset()
 
     assert before is after
     assert ds.state is after
+
+
+def test_sessionstate_constructor_is_independent_from_default_state() -> None:
+    explicit = ds.SessionState()
+    assert explicit is not ds.state
 
 
 def test_reset_reinitializes_mutable_fields() -> None:

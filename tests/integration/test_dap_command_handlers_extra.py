@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import types
 
+import pytest
+
 from dapper.launcher import comm as launcher_comm
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
@@ -16,6 +18,14 @@ from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
 
 _CONVERSION_FAILED = object()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_active_session():
+    """Run each test with an isolated explicit DebugSession."""
+    session = debug_shared.DebugSession()
+    with debug_shared.use_session(session):
+        yield session
 
 
 def _try_test_convert(value_str, frame=None, parent_obj=None):
@@ -49,7 +59,7 @@ def _invoke_set_variable_via_domain(dbg, arguments):
             assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
             error_response_fn=handlers._error_response,
             conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: handlers.state.debugger,
+            get_state_debugger=handlers._active_debugger,
             make_variable_fn=_make_variable_for_tests,
             logger=handlers.logger,
         )
@@ -67,7 +77,7 @@ def _invoke_set_variable_via_domain(dbg, arguments):
             logger=handlers.logger,
             error_response_fn=handlers._error_response,
             conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: handlers.state.debugger,
+            get_state_debugger=handlers._active_debugger,
             make_variable_fn=_make_variable_for_tests,
         )
 
@@ -102,7 +112,7 @@ def capture_send(monkeypatch):
 
 def test_set_breakpoints_and_state(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.state.debugger = dbg
+    debug_shared.get_active_session().debugger = dbg
     messages = capture_send(monkeypatch)
 
     breakpoint_handlers.handle_set_breakpoints_impl(
@@ -123,7 +133,7 @@ def test_set_breakpoints_and_state(monkeypatch):
 
 def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.state.debugger = dbg
+    debug_shared.get_active_session().debugger = dbg
     messages = capture_send(monkeypatch)
 
     class Frame:
@@ -142,7 +152,7 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
 
 def test_set_variable_on_object(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.state.debugger = dbg
+    debug_shared.get_active_session().debugger = dbg
     messages = capture_send(monkeypatch)
 
     obj = {"x": 1}
@@ -169,12 +179,11 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
 
     monkeypatch.setitem(sys.modules, "mymod", fake_mod)
 
-    # Ensure a clean session state for deterministic behaviour
-    debug_shared.SessionState.reset()
+    session = debug_shared.get_active_session()
 
     messages = capture_send(monkeypatch)
 
-    source_handlers.handle_loaded_sources(debug_shared.state, handlers._safe_send_debug_message)
+    source_handlers.handle_loaded_sources(session, handlers._safe_send_debug_message)
 
     resp = [m for m in messages if m[0] == "response"]
     assert resp

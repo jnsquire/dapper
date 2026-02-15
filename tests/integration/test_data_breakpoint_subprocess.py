@@ -15,7 +15,7 @@ def test_set_data_breakpoints_command_registers_and_triggers():
     # Arrange - put a real DebuggerBDB into the shared session state
     mock_send = MagicMock()
     dbg = DebuggerBDB(send_message=mock_send)
-    state = debug_shared.SessionState()
+    state = debug_shared.state
     # Assign a concrete DebuggerBDB into the session state; cast to the
     # DebuggerLike protocol to satisfy static type checkers used by the
     # test suite while still using the real debugger instance at runtime.

@@ -25,7 +25,6 @@ from dapper.launcher.comm import send_debug_message
 from dapper.launcher.launcher_ipc import connector as default_connector
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import handle_debug_command
-from dapper.shared.debug_shared import state
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -37,7 +36,7 @@ KIND_COMMAND = 2
 
 
 def _handle_command_bytes(payload: bytes, session: Any | None = None) -> None:
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     try:
         command = json.loads(payload.decode("utf-8"))
         active_session.command_queue.put(command)
@@ -49,7 +48,7 @@ def _handle_command_bytes(payload: bytes, session: Any | None = None) -> None:
 
 
 def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) -> None:
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     while not active_session.is_terminated:
         try:
             data = conn.recv_bytes()
@@ -71,7 +70,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) ->
 
 
 def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     while not active_session.is_terminated:
         header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
         if not header:
@@ -97,7 +96,7 @@ def receive_debug_commands(session: Any | None = None) -> None:
 
     IPC is mandatory; the launcher will not fall back to stdio.
     """
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     active_session.require_ipc()
 
     # Binary IPC path (default)
@@ -163,7 +162,7 @@ def _setup_ipc_pipe(ipc_pipe: str | None, session: Any | None = None) -> None:
         msg = "Pipe IPC requested but not on Windows or missing pipe name"
         raise RuntimeError(msg)
 
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     active_session.ipc_enabled = True
     active_session.ipc_pipe_conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")
 
@@ -197,7 +196,7 @@ def _setup_ipc_socket(
         msg = "failed to connect socket"
         raise RuntimeError(msg)
 
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     active_session.ipc_sock = sock
     if ipc_binary:
         # binary sockets use buffering=0 for raw bytes
@@ -231,7 +230,7 @@ def setup_ipc_from_args(args: Any, session: Any | None = None) -> None:
 
 def start_command_listener(session: Any | None = None) -> threading.Thread:
     """Start the background thread that listens for incoming commands."""
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     thread = threading.Thread(target=receive_debug_commands, args=(active_session,), daemon=True)
     thread.start()
     return thread
@@ -241,7 +240,7 @@ def start_command_listener(session: Any | None = None) -> threading.Thread:
 
 def configure_debugger(stop_on_entry: bool, session: Any | None = None) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     dbg = DebuggerBDB(
         send_message=send_debug_message,
         process_commands=active_session.process_queued_commands_launcher,
@@ -257,7 +256,7 @@ def run_with_debugger(
 ) -> None:
     """Execute the target program under the debugger instance in state."""
     sys.argv = [program_path, *program_args]
-    active_session = session if session is not None else state
+    active_session = session if session is not None else debug_shared.get_active_session()
     dbg = active_session.debugger
     if dbg is None:
         dbg = configure_debugger(False, active_session)
@@ -266,7 +265,7 @@ def run_with_debugger(
 
 def main():
     """Main entry point for the debug launcher"""
-    session = state
+    session = debug_shared.get_active_session()
     # Parse arguments and set module state
     args = parse_args()
     program_path = args.program

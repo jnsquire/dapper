@@ -24,8 +24,16 @@ from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.transport_factory import TransportConfig
 from dapper.ipc.transport_factory import TransportFactory
 from dapper.launcher import debug_launcher
-from dapper.shared.debug_shared import state
+from dapper.shared import debug_shared
 from dapper.utils.events import EventEmitter
+
+
+@pytest.fixture(autouse=True)
+def use_debug_session():
+    session = debug_shared.DebugSession()
+    with debug_shared.use_session(session):
+        yield session
+
 
 # ---------------------------------------------------------------------------
 # 1. Memory leak in frame_id_to_frame
@@ -111,15 +119,16 @@ class TestDataBreakpointAllChanges:
 class TestStreamReceiverReturnsAfterExit:
     """_recv_binary_from_stream returns after exit_func(0) on EOF."""
 
-    def test_returns_on_empty_header(self):
+    def test_returns_on_empty_header(self, use_debug_session):
+        session = use_debug_session
         exit_called = []
-        original_exit = state.exit_func
+        original_exit = session.exit_func
 
         def record_exit(code: int) -> None:
             exit_called.append(code)
 
-        state.exit_func = record_exit
-        state.is_terminated = False
+        session.exit_func = record_exit
+        session.is_terminated = False
 
         # Provide an empty stream (header is b"")
         rfile = io.BytesIO(b"")
@@ -127,19 +136,20 @@ class TestStreamReceiverReturnsAfterExit:
         try:
             debug_launcher._recv_binary_from_stream(rfile)
         finally:
-            state.exit_func = original_exit
+            session.exit_func = original_exit
 
         assert exit_called == [0]
 
-    def test_returns_on_empty_payload(self):
+    def test_returns_on_empty_payload(self, use_debug_session):
+        session = use_debug_session
         exit_called = []
-        original_exit = state.exit_func
+        original_exit = session.exit_func
 
         def record_exit(code: int) -> None:
             exit_called.append(code)
 
-        state.exit_func = record_exit
-        state.is_terminated = False
+        session.exit_func = record_exit
+        session.is_terminated = False
 
         # Provide a valid header but truncated payload
         header = pack_frame(2, b"test")[:8]  # header only, no payload
@@ -148,7 +158,7 @@ class TestStreamReceiverReturnsAfterExit:
         try:
             debug_launcher._recv_binary_from_stream(rfile)
         finally:
-            state.exit_func = original_exit
+            session.exit_func = original_exit
 
         assert exit_called == [0]
 
@@ -162,43 +172,43 @@ class TestNoDoubleDispatch:
     """receive_debug_commands only queues; process_queued_commands dispatches."""
 
     def test_receive_only_queues_no_dispatch(self, monkeypatch):
-        s = ipc_receiver.state
-        s.is_terminated = False
-        s.ipc_enabled = True
-        s.command_queue = Queue()
+        session = debug_shared.DebugSession()
+        session.is_terminated = False
+        session.ipc_enabled = True
+        session.command_queue = Queue()
 
         cmd = {"command": "test_cmd", "seq": 1}
-        s.ipc_rfile = io.StringIO(json.dumps(cmd) + "\n")
+        session.ipc_rfile = io.StringIO(json.dumps(cmd) + "\n")
 
         dispatch_calls = []
 
         def record_dispatch(command: dict[str, Any]) -> None:
             dispatch_calls.append(command)
 
-        monkeypatch.setattr(s, "dispatch_debug_command", record_dispatch)
+        monkeypatch.setattr(session, "dispatch_debug_command", record_dispatch)
 
         with pytest.raises(SystemExit):
-            ipc_receiver.receive_debug_commands()
+            ipc_receiver.receive_debug_commands(session=session)
 
         # dispatch_debug_command should NOT have been called directly
         assert dispatch_calls == []
         # But the command should be in the queue
-        assert not s.command_queue.empty()
-        assert s.command_queue.get_nowait()["command"] == "test_cmd"
+        assert not session.command_queue.empty()
+        assert session.command_queue.get_nowait()["command"] == "test_cmd"
 
     def test_process_queued_dispatches_exactly_once(self, monkeypatch):
-        s = ipc_receiver.state
-        s.command_queue = Queue()
-        s.command_queue.put({"command": "a"})
+        session = debug_shared.DebugSession()
+        session.command_queue = Queue()
+        session.command_queue.put({"command": "a"})
 
         dispatch_calls = []
 
         def record_dispatch(command: dict[str, Any]) -> None:
             dispatch_calls.append(command)
 
-        monkeypatch.setattr(s, "dispatch_debug_command", record_dispatch)
+        monkeypatch.setattr(session, "dispatch_debug_command", record_dispatch)
 
-        ipc_receiver.process_queued_commands()
+        ipc_receiver.process_queued_commands(session=session)
         assert len(dispatch_calls) == 1
         assert dispatch_calls[0]["command"] == "a"
 

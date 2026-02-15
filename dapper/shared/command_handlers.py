@@ -12,7 +12,7 @@ Both IPC pathways dispatch through the `COMMAND_HANDLERS` registry:
 
 Dependencies:
 - `dapper.launcher.comm.send_debug_message` for IPC message output
-- `dapper.shared.debug_shared.state` for debugger session state
+- `dapper.shared.debug_shared.get_active_session` for debugger session state
 """
 
 from __future__ import annotations
@@ -37,8 +37,6 @@ from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from dapper.shared.value_conversion import evaluate_with_policy
-
-state = _d_shared.active_state
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +151,16 @@ def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
     command_handler_helpers.set_dbg_stepping_flag(dbg)
 
 
+def _active_session() -> _d_shared.DebugSession:
+    """Return the context-local active debug session."""
+    return _d_shared.get_active_session()
+
+
+def _active_debugger() -> DebuggerLike | None:
+    """Return the active debugger from the context-local session."""
+    return cast("DebuggerLike | None", _active_session().debugger)
+
+
 # =============================================================================
 # Public API Functions (for backward compatibility with (dbg, arguments) signature)
 # These are called by tests that use the old signature.
@@ -161,13 +169,13 @@ def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
 
 # =============================================================================
 # Registered Handlers (decorated with @command_handler)
-# These take only (arguments) and get dbg from state.debugger
+# These take only (arguments) and get dbg from active session.
 # =============================================================================
 
 
 @command_handler("setBreakpoints")
 def _cmd_set_breakpoints(arguments: SetBreakpointsArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         breakpoint_handlers.handle_set_breakpoints_impl(
             dbg,
@@ -179,7 +187,7 @@ def _cmd_set_breakpoints(arguments: SetBreakpointsArguments | dict[str, Any] | N
 
 @command_handler("setFunctionBreakpoints")
 def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         breakpoint_handlers.handle_set_function_breakpoints_impl(
             dbg,
@@ -191,7 +199,7 @@ def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) ->
 def _cmd_set_exception_breakpoints(
     arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         breakpoint_handlers.handle_set_exception_breakpoints_impl(
             dbg,
@@ -201,14 +209,14 @@ def _cmd_set_exception_breakpoints(
 
 @command_handler("continue")
 def _cmd_continue(arguments: ContinueArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stepping_handlers.handle_continue_impl(dbg, cast("dict[str, Any] | None", arguments))
 
 
 @command_handler("next")
 def _cmd_next(arguments: NextArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stepping_handlers.handle_next_impl(
             dbg,
@@ -220,7 +228,7 @@ def _cmd_next(arguments: NextArguments | dict[str, Any] | None) -> None:
 
 @command_handler("stepIn")
 def _cmd_step_in(arguments: StepInArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stepping_handlers.handle_step_in_impl(
             dbg,
@@ -232,7 +240,7 @@ def _cmd_step_in(arguments: StepInArguments | dict[str, Any] | None) -> None:
 
 @command_handler("stepOut")
 def _cmd_step_out(arguments: StepOutArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stepping_handlers.handle_step_out_impl(
             dbg,
@@ -244,7 +252,7 @@ def _cmd_step_out(arguments: StepOutArguments | dict[str, Any] | None) -> None:
 
 @command_handler("pause")
 def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stepping_handlers.handle_pause_impl(
             dbg,
@@ -257,7 +265,7 @@ def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
 
 @command_handler("stackTrace")
 def _cmd_stack_trace(arguments: StackTraceArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stack_handlers.handle_stack_trace_impl(
             dbg,
@@ -269,14 +277,14 @@ def _cmd_stack_trace(arguments: StackTraceArguments | dict[str, Any] | None) -> 
 
 @command_handler("threads")
 def _cmd_threads(arguments: dict[str, Any] | None = None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stack_handlers.handle_threads_impl(dbg, arguments, _safe_send_debug_message)
 
 
 @command_handler("scopes")
 def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         stack_handlers.handle_scopes_impl(
             dbg,
@@ -288,7 +296,7 @@ def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> None:
 
 @command_handler("variables")
 def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
 
         def _make_variable_fn(
@@ -330,7 +338,7 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
 
 @command_handler("setVariable")
 def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
 
         def _make_variable_fn(
@@ -360,7 +368,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
                 assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
                 error_response_fn=command_handler_helpers.error_response,
                 conversion_error_message=_CONVERSION_ERROR_MESSAGE,
-                get_state_debugger=lambda: state.debugger,
+                get_state_debugger=_active_debugger,
                 make_variable_fn=_make_variable_fn,
                 logger=logger,
                 var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
@@ -372,7 +380,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
 
 @command_handler("evaluate")
 def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         variable_handlers.handle_evaluate_impl(
             dbg,
@@ -388,7 +396,7 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
 def _cmd_set_data_breakpoints(
     arguments: SetDataBreakpointsArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         variable_handlers.handle_set_data_breakpoints_impl(
             dbg,
@@ -401,7 +409,7 @@ def _cmd_set_data_breakpoints(
 def _cmd_data_breakpoint_info(
     arguments: DataBreakpointInfoArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = state.debugger
+    dbg = _active_debugger()
     if dbg:
         variable_handlers.handle_data_breakpoint_info_impl(
             dbg,
@@ -416,7 +424,7 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
     """Handle exceptionInfo request."""
     lifecycle_handlers.cmd_exception_info(
         arguments,
-        state=state,
+        state=_active_session(),
         safe_send_debug_message=_safe_send_debug_message,
     )
 
@@ -430,7 +438,7 @@ def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
 def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> None:
     lifecycle_handlers.handle_terminate_impl(
         safe_send_debug_message=_safe_send_debug_message,
-        state=state,
+        state=_active_session(),
     )
 
 
@@ -445,19 +453,19 @@ def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
 def _cmd_restart(_arguments: dict[str, Any] | None = None) -> None:
     lifecycle_handlers.handle_restart_impl(
         safe_send_debug_message=_safe_send_debug_message,
-        state=state,
+        state=_active_session(),
         logger=logger,
     )
 
 
 @command_handler("loadedSources")
 def _cmd_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
-    source_handlers.handle_loaded_sources(state, _safe_send_debug_message)
+    source_handlers.handle_loaded_sources(_active_session(), _safe_send_debug_message)
 
 
 @command_handler("source")
 def _cmd_source(arguments: dict[str, Any] | None = None) -> None:
-    source_handlers.handle_source(arguments, state, _safe_send_debug_message)
+    source_handlers.handle_source(arguments, _active_session(), _safe_send_debug_message)
 
 
 @command_handler("modules")

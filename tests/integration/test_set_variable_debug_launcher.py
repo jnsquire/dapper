@@ -6,7 +6,6 @@ Test for setVariable functionality in debug_launcher.py
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
-from unittest.mock import patch
 
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
@@ -118,11 +117,8 @@ class TestSetVariable(unittest.TestCase):
         assert convert_value_with_context("'hello'") == "hello"
         assert convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_create_variable_object_simple(self, mock_state):
+    def test_create_variable_object_simple(self):
         """Test variable object creation for simple values"""
-        mock_state.debugger = self.mock_debugger
-
         # Test simple value
         var_obj = make_variable_object("test_var", 42)
         assert var_obj["name"] == "test_var"
@@ -130,12 +126,8 @@ class TestSetVariable(unittest.TestCase):
         assert var_obj["type"] == "int"
         assert var_obj["variablesReference"] == 0
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_handle_set_variable_locals(self, mock_state):
+    def test_handle_set_variable_locals(self):
         """Test setting a local variable"""
-        # Set up mocks
-        mock_state.debugger = self.mock_debugger
-
         # Set up variable reference for locals
         frame_id = 1
         var_ref = 1001
@@ -156,12 +148,8 @@ class TestSetVariable(unittest.TestCase):
         # Verify variable was set
         assert self.mock_frame.f_locals["x"] == 99
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_handle_set_variable_globals(self, mock_state):
+    def test_handle_set_variable_globals(self):
         """Test setting a global variable"""
-        # Set up mocks
-        mock_state.debugger = self.mock_debugger
-
         # Set up variable reference for globals
         frame_id = 1
         var_ref = 1002
@@ -186,12 +174,8 @@ class TestSetVariable(unittest.TestCase):
         # Verify variable was set
         assert self.mock_frame.f_globals["new_global"] == "test_string"
 
-    @patch("dapper.launcher.debug_launcher.state")
-    def test_handle_set_variable_invalid_ref(self, mock_state):
+    def test_handle_set_variable_invalid_ref(self):
         """Test setting variable with invalid reference"""
-        # Set up mocks
-        mock_state.debugger = self.mock_debugger
-
         # Test arguments with invalid reference
         arguments = {"variablesReference": 9999, "name": "x", "value": "42"}
 
