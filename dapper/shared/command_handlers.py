@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
     # Data breakpoints are defined separately
     from dapper.protocol.data_breakpoints import SetDataBreakpointsArguments
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.requests import ContinueArguments
     from dapper.protocol.requests import EvaluateArguments
@@ -148,7 +149,7 @@ def _get_thread_ident() -> int:
     return command_handler_helpers.get_thread_ident(threading)
 
 
-def _set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
+def _set_dbg_stepping_flag(dbg: CommandHandlerDebuggerLike) -> None:
     """Ensure the debugger reports a stepping state."""
     command_handler_helpers.set_dbg_stepping_flag(dbg)
 
@@ -158,9 +159,9 @@ def _active_session() -> _d_shared.DebugSession:
     return _d_shared.get_active_session()
 
 
-def _active_debugger() -> DebuggerLike | None:
+def _active_debugger() -> CommandHandlerDebuggerLike | None:
     """Return the active debugger from the context-local session."""
-    return cast("DebuggerLike | None", _active_session().debugger)
+    return cast("CommandHandlerDebuggerLike | None", _active_session().debugger)
 
 
 # =============================================================================
@@ -302,7 +303,7 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
     if dbg:
 
         def _make_variable_fn(
-            runtime_dbg: object | None,
+            runtime_dbg: DebuggerLike | None,
             name: str,
             value: object,
             frame: object | None,
@@ -318,7 +319,7 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
             )
 
         def _resolve_variables_for_reference(
-            runtime_dbg: object | None,
+            runtime_dbg: CommandHandlerDebuggerLike | None,
             frame_info: object,
         ) -> list[dict[str, Any]]:
             return variable_command_runtime.resolve_variables_for_reference_runtime(
@@ -344,7 +345,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
     if dbg:
 
         def _make_variable_fn(
-            runtime_dbg: object | None,
+            runtime_dbg: DebuggerLike | None,
             name: str,
             value: object,
             frame: object | None,
@@ -362,18 +363,21 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
         result = variable_handlers.handle_set_variable_command_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
-            dependencies=variable_command_runtime.build_set_variable_dependencies(
-                convert_value_with_context_fn=convert_value_with_context,
-                evaluate_with_policy_fn=evaluate_with_policy,
-                set_object_member_helper=command_handler_helpers.set_object_member,
-                set_scope_variable_helper=command_handler_helpers.set_scope_variable,
-                assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-                error_response_fn=command_handler_helpers.error_response,
-                conversion_error_message=_CONVERSION_ERROR_MESSAGE,
-                get_state_debugger=_active_debugger,
-                make_variable_fn=_make_variable_fn,
-                logger=logger,
-                var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
+            dependencies=cast(
+                "variable_handlers.SetVariableCommandDependencies",
+                variable_command_runtime.build_set_variable_dependencies(
+                    convert_value_with_context_fn=convert_value_with_context,
+                    evaluate_with_policy_fn=evaluate_with_policy,
+                    set_object_member_helper=command_handler_helpers.set_object_member_with_dependencies,
+                    set_scope_variable_helper=command_handler_helpers.set_scope_variable_with_dependencies,
+                    assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+                    error_response_fn=command_handler_helpers.error_response,
+                    conversion_error_message=_CONVERSION_ERROR_MESSAGE,
+                    get_state_debugger=_active_debugger,
+                    make_variable_fn=_make_variable_fn,
+                    logger=logger,
+                    var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
+                ),
             ),
         )
         if result:

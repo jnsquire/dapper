@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from typing import Protocol
 
 if TYPE_CHECKING:
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
 
@@ -16,7 +17,7 @@ class GetThreadIdentFn(Protocol):
 
 
 def handle_stack_trace_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     get_thread_ident: GetThreadIdentFn,
@@ -79,7 +80,7 @@ def handle_stack_trace_impl(
 
 
 def handle_threads_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     _arguments: Payload | None,
     safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> Payload:
@@ -99,7 +100,7 @@ def handle_threads_impl(
 
 
 def handle_scopes_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     safe_send_debug_message: SafeSendDebugMessageFn,

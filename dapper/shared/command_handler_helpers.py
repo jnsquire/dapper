@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 from typing import Callable
 from typing import Protocol
+from typing import TypedDict
 from typing import cast
+
+from dapper.protocol.debugger_protocol import DebuggerLike
 
 Payload = dict[str, Any]
 
@@ -26,10 +29,18 @@ class SafeSendDebugMessageFn(Protocol):
     def __call__(self, message_type: str, **payload: Any) -> bool: ...
 
 
+class ThreadTrackerLike(Protocol):
+    frame_id_to_frame: dict[int, object]
+
+
+class DebuggerWithThreadTrackerLike(DebuggerLike, Protocol):
+    thread_tracker: ThreadTrackerLike
+
+
 class MakeVariableFn(Protocol):
     def __call__(
         self,
-        dbg: object | None,
+        dbg: DebuggerLike | None,
         name: str,
         value: object,
         frame: object | None,
@@ -49,8 +60,39 @@ class ConvertWithContextFn(Protocol):
     ) -> object: ...
 
 
+class FrameLike(Protocol):
+    f_locals: dict[str, object]
+    f_globals: dict[str, object]
+
+
 class EvaluateWithPolicyFn(Protocol):
-    def __call__(self, expression: str, frame: object, allow_builtins: bool = False) -> object: ...
+    def __call__(
+        self, expression: str, frame: FrameLike, allow_builtins: bool = False
+    ) -> object: ...
+
+
+class ScopeVariableDependencies(TypedDict):
+    try_custom_convert: ConvertWithContextFn
+    conversion_failed_sentinel: object
+    evaluate_with_policy_fn: EvaluateWithPolicyFn
+    convert_value_with_context_fn: ConvertWithContextFn
+    logger: LoggerLike
+    error_response_fn: ErrorResponseFn
+    conversion_error_message: str
+    get_state_debugger: Callable[[], DebuggerLike | None]
+    make_variable_fn: MakeVariableFn
+
+
+class ObjectMemberDependencies(TypedDict):
+    try_custom_convert: ConvertWithContextFn
+    conversion_failed_sentinel: object
+    convert_value_with_context_fn: ConvertWithContextFn
+    assign_to_parent_member_fn: Callable[[object, str, object], str | None]
+    error_response_fn: ErrorResponseFn
+    conversion_error_message: str
+    get_state_debugger: Callable[[], DebuggerLike | None]
+    make_variable_fn: MakeVariableFn
+    logger: LoggerLike
 
 
 def error_response(message: str) -> Payload:
@@ -63,7 +105,7 @@ def get_thread_ident(threading_module: ThreadingLike) -> int:
     return threading_module.get_ident()
 
 
-def set_dbg_stepping_flag(dbg: object) -> None:
+def set_dbg_stepping_flag(dbg: DebuggerLike) -> None:
     """Ensure debugger stepping flag is enabled, best-effort."""
     try:
         dbg.stepping_controller.stepping = True
@@ -97,12 +139,12 @@ def build_safe_send_debug_message(
 
 
 def make_variable(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     name: str,
     value: object,
     frame: object | None,
     *,
-    fallback_make_variable: Callable[[str, object, object | None, object | None], Payload],
+    fallback_make_variable: Callable[[str, object, DebuggerLike | None, object | None], Payload],
     simple_fn_argcount: int,
 ) -> Payload:
     """Create a variable object using debugger factory when available."""
@@ -127,7 +169,7 @@ def make_variable(
 
 
 def extract_variables_from_mapping(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     mapping: dict[str, object],
     frame: object | None,
     *,
@@ -141,12 +183,12 @@ def extract_variables_from_mapping(
 
 
 def resolve_variables_for_reference(  # noqa: PLR0912
-    dbg: object | None,
+    dbg: DebuggerWithThreadTrackerLike | None,
     frame_info: object,
     *,
     make_variable_fn: MakeVariableFn,
     extract_variables_from_mapping_fn: Callable[
-        [object | None, dict[str, object], object], list[Payload]
+        [DebuggerLike | None, dict[str, object], object], list[Payload]
     ],
     var_ref_tuple_size: int,
 ) -> list[Payload]:
@@ -155,43 +197,36 @@ def resolve_variables_for_reference(  # noqa: PLR0912
 
     if isinstance(frame_info, list):
         vars_out.extend([v for v in frame_info if isinstance(v, dict)])
-        return vars_out
+    elif isinstance(frame_info, tuple) and len(frame_info) == var_ref_tuple_size:
+        kind, payload = frame_info
 
-    if not (isinstance(frame_info, tuple) and len(frame_info) == var_ref_tuple_size):
-        return vars_out
+        if kind == "object":
+            parent_obj = payload
 
-    kind, payload = frame_info
+            if isinstance(parent_obj, dict):
+                for name, val in parent_obj.items():
+                    vars_out.append(make_variable_fn(dbg, name, val, None))
+            elif isinstance(parent_obj, list):
+                for idx, val in enumerate(parent_obj):
+                    vars_out.append(make_variable_fn(dbg, str(idx), val, None))
+            else:
+                for name in dir(parent_obj):
+                    if name.startswith("_"):
+                        continue
+                    try:
+                        val = getattr(parent_obj, name)
+                    except AttributeError:
+                        continue
+                    vars_out.append(make_variable_fn(dbg, name, val, None))
 
-    if kind == "object":
-        parent_obj = payload
+        elif isinstance(kind, int) and payload in ("locals", "globals") and dbg is not None:
+            frame_id = kind
+            scope = payload
+            frame = getattr(dbg.thread_tracker, "frame_id_to_frame", {}).get(frame_id)
 
-        if isinstance(parent_obj, dict):
-            for name, val in parent_obj.items():
-                vars_out.append(make_variable_fn(dbg, name, val, None))
-        elif isinstance(parent_obj, list):
-            for idx, val in enumerate(parent_obj):
-                vars_out.append(make_variable_fn(dbg, str(idx), val, None))
-        else:
-            for name in dir(parent_obj):
-                if name.startswith("_"):
-                    continue
-                try:
-                    val = getattr(parent_obj, name)
-                except AttributeError:
-                    continue
-                vars_out.append(make_variable_fn(dbg, name, val, None))
-        return vars_out
-
-    if isinstance(kind, int) and payload in ("locals", "globals"):
-        frame_id = kind
-        scope = payload
-        frame = getattr(dbg.thread_tracker, "frame_id_to_frame", {}).get(frame_id)
-        if not frame:
-            return []
-
-        mapping = frame.f_locals if scope == "locals" else frame.f_globals
-        vars_out.extend(extract_variables_from_mapping_fn(dbg, mapping, frame))
-        return vars_out
+            if frame:
+                mapping = frame.f_locals if scope == "locals" else frame.f_globals
+                vars_out.extend(extract_variables_from_mapping_fn(dbg, mapping, frame))
 
     return vars_out
 
@@ -224,7 +259,7 @@ def assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str |
 
 
 def set_scope_variable(  # noqa: PLR0913
-    frame: object,
+    frame: FrameLike,
     scope: str,
     name: str,
     value_str: str,
@@ -236,10 +271,48 @@ def set_scope_variable(  # noqa: PLR0913
     logger: LoggerLike,
     error_response_fn: ErrorResponseFn,
     conversion_error_message: str,
-    get_state_debugger: Callable[[], object | None],
+    get_state_debugger: Callable[[], DebuggerLike | None],
     make_variable_fn: MakeVariableFn,
 ) -> Payload:
     """Set a variable in frame locals/globals scope."""
+    return set_scope_variable_with_dependencies(
+        frame,
+        scope,
+        name,
+        value_str,
+        dependencies={
+            "try_custom_convert": try_custom_convert,
+            "conversion_failed_sentinel": conversion_failed_sentinel,
+            "evaluate_with_policy_fn": evaluate_with_policy_fn,
+            "convert_value_with_context_fn": convert_value_with_context_fn,
+            "logger": logger,
+            "error_response_fn": error_response_fn,
+            "conversion_error_message": conversion_error_message,
+            "get_state_debugger": get_state_debugger,
+            "make_variable_fn": make_variable_fn,
+        },
+    )
+
+
+def set_scope_variable_with_dependencies(
+    frame: FrameLike,
+    scope: str,
+    name: str,
+    value_str: str,
+    *,
+    dependencies: ScopeVariableDependencies,
+) -> Payload:
+    """Set a variable in frame locals/globals scope."""
+    try_custom_convert = dependencies["try_custom_convert"]
+    conversion_failed_sentinel = dependencies["conversion_failed_sentinel"]
+    evaluate_with_policy_fn = dependencies["evaluate_with_policy_fn"]
+    convert_value_with_context_fn = dependencies["convert_value_with_context_fn"]
+    logger = dependencies["logger"]
+    error_response_fn = dependencies["error_response_fn"]
+    conversion_error_message = dependencies["conversion_error_message"]
+    get_state_debugger = dependencies["get_state_debugger"]
+    make_variable_fn = dependencies["make_variable_fn"]
+
     try:
         new_value = try_custom_convert(value_str, frame, None)
         if new_value is conversion_failed_sentinel:
@@ -281,11 +354,47 @@ def set_object_member(  # noqa: PLR0913
     assign_to_parent_member_fn: Callable[[object, str, object], str | None],
     error_response_fn: ErrorResponseFn,
     conversion_error_message: str,
-    get_state_debugger: Callable[[], object | None],
+    get_state_debugger: Callable[[], DebuggerLike | None],
     make_variable_fn: MakeVariableFn,
     logger: LoggerLike,
 ) -> Payload:
     """Set an attribute or item of an object."""
+    return set_object_member_with_dependencies(
+        parent_obj,
+        name,
+        value_str,
+        dependencies={
+            "try_custom_convert": try_custom_convert,
+            "conversion_failed_sentinel": conversion_failed_sentinel,
+            "convert_value_with_context_fn": convert_value_with_context_fn,
+            "assign_to_parent_member_fn": assign_to_parent_member_fn,
+            "error_response_fn": error_response_fn,
+            "conversion_error_message": conversion_error_message,
+            "get_state_debugger": get_state_debugger,
+            "make_variable_fn": make_variable_fn,
+            "logger": logger,
+        },
+    )
+
+
+def set_object_member_with_dependencies(
+    parent_obj: object,
+    name: str,
+    value_str: str,
+    *,
+    dependencies: ObjectMemberDependencies,
+) -> Payload:
+    """Set an attribute or item of an object."""
+    try_custom_convert = dependencies["try_custom_convert"]
+    conversion_failed_sentinel = dependencies["conversion_failed_sentinel"]
+    convert_value_with_context_fn = dependencies["convert_value_with_context_fn"]
+    assign_to_parent_member_fn = dependencies["assign_to_parent_member_fn"]
+    error_response_fn = dependencies["error_response_fn"]
+    conversion_error_message = dependencies["conversion_error_message"]
+    get_state_debugger = dependencies["get_state_debugger"]
+    make_variable_fn = dependencies["make_variable_fn"]
+    logger = dependencies["logger"]
+
     try:
         new_value = try_custom_convert(value_str, None, parent_obj)
         if new_value is conversion_failed_sentinel:
@@ -315,7 +424,7 @@ def set_object_member(  # noqa: PLR0913
 
 
 def extract_variables(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     variables: list[Payload],
     parent: object,
     *,

@@ -50,12 +50,6 @@ class ExceptionInfo(TypedDict):
     details: ExceptionDetails
 
 
-class SupportsSteppingController(Protocol):
-    """Debugger shape that exposes stepping state through a controller delegate."""
-
-    stepping_controller: Any  # stepping/current_frame-compatible delegate
-
-
 class VariableStoreLike(Protocol):
     """Minimum variable-reference store used by shared helpers."""
 
@@ -67,6 +61,37 @@ class SupportsVariableManager(Protocol):
     """Debugger shape that exposes a variable manager delegate."""
 
     var_manager: VariableStoreLike
+
+
+class ThreadTrackerLike(Protocol):
+    """Thread/frame tracker surface consumed by stack/stepping/variable handlers."""
+
+    stopped_thread_ids: set[int]
+    frames_by_thread: dict[int, list[Any]]
+    frame_id_to_frame: dict[int, Any]
+    threads: dict[int, Any]
+
+    def build_stack_frames(self, frame: Any) -> list[Any]: ...
+
+
+class SupportsThreadTracker(Protocol):
+    """Debugger shape that exposes thread/frame tracking delegate."""
+
+    thread_tracker: ThreadTrackerLike
+
+
+class SupportsSteppingCommands(Protocol):
+    """Debugger shape that exposes stepping state and commands consumed by handlers."""
+
+    stepping_controller: Any  # supports .stepping and .current_frame
+
+    def set_continue(self) -> None: ...
+
+    def set_next(self, frame: Any) -> None: ...
+
+    def set_step(self) -> None: ...
+
+    def set_return(self, frame: Any) -> None: ...
 
 
 class BreakpointManagerLike(Protocol):
@@ -87,6 +112,7 @@ class ExceptionHandlerLike(Protocol):
     """Minimum exception handler shape consumed by shared handlers."""
 
     config: ExceptionConfigLike
+    exception_info_by_thread: dict[int, ExceptionInfo]
 
 
 class DataBreakpointStateLike(Protocol):
@@ -153,7 +179,6 @@ class SupportsBreakpointCommands(Protocol):
 
 @runtime_checkable
 class DebuggerLike(
-    SupportsSteppingController,
     SupportsVariableManager,
     SupportsDataBreakpointState,
     SupportsVariableFactory,
@@ -167,17 +192,34 @@ class DebuggerLike(
     and maps to the adapter-side ``PyDebugger`` compatibility surface.
     """
 
+    stepping_controller: Any  # stepping/current_frame-compatible delegate
+
+
+@runtime_checkable
+class CommandHandlerDebuggerLike(
+    DebuggerLike,
+    SupportsThreadTracker,
+    SupportsSteppingCommands,
+    Protocol,
+):
+    """Extended debugger surface consumed by command handler implementations."""
+
+    stack: list[Any] | None
+
 
 __all__ = [
     "BreakpointManagerLike",
+    "CommandHandlerDebuggerLike",
     "DataBreakpointStateLike",
     "DebuggerLike",
     "ExceptionConfigLike",
     "ExceptionHandlerLike",
     "SupportsBreakpointCommands",
     "SupportsDataBreakpointState",
-    "SupportsSteppingController",
+    "SupportsSteppingCommands",
+    "SupportsThreadTracker",
     "SupportsVariableFactory",
     "SupportsVariableManager",
+    "ThreadTrackerLike",
     "VariableStoreLike",
 ]

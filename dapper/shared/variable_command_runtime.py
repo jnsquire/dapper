@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
+
+if TYPE_CHECKING:
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
+    from dapper.protocol.debugger_protocol import DebuggerLike
+    from dapper.shared.command_handler_helpers import Payload
 
 
 def make_variable_runtime(
-    dbg: Any,
+    dbg: DebuggerLike | None,
     name: str,
     value: Any,
-    frame: Any | None,
+    frame: object | None,
     *,
-    make_variable_helper: Any,
-    fallback_make_variable: Any,
+    make_variable_helper: Callable[..., Any],
+    fallback_make_variable: Callable[..., Any],
     simple_fn_argcount: int,
 ) -> dict[str, Any]:
     """Create a variable payload object using injected helper dependencies."""
@@ -27,19 +34,19 @@ def make_variable_runtime(
 
 
 def resolve_variables_for_reference_runtime(
-    dbg: Any,
-    frame_info: Any,
+    dbg: CommandHandlerDebuggerLike | None,
+    frame_info: object,
     *,
-    resolve_variables_helper: Any,
-    extract_variables_from_mapping_helper: Any,
-    make_variable_fn: Any,
+    resolve_variables_helper: Callable[..., list[Payload]],
+    extract_variables_from_mapping_helper: Callable[..., list[Payload]],
+    make_variable_fn: Callable[..., Payload],
     var_ref_tuple_size: int,
-) -> list[dict[str, Any]]:
+) -> list[Payload]:
     """Resolve variable objects for a var reference using injected helpers."""
 
     def _extract_from_mapping(
-        helper_dbg: Any, mapping: dict[str, Any], frame: Any
-    ) -> list[dict[str, Any]]:
+        helper_dbg: DebuggerLike | None, mapping: dict[str, object], frame: object
+    ) -> list[Payload]:
         return extract_variables_from_mapping_helper(
             helper_dbg,
             mapping,

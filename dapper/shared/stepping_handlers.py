@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 from typing import Protocol
 
 if TYPE_CHECKING:
+    from logging import Logger
+
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
 
@@ -15,15 +18,12 @@ class GetThreadIdentFn(Protocol):
 
 
 class SetDbgSteppingFlagFn(Protocol):
-    def __call__(self, dbg: object) -> None: ...
+    def __call__(self, dbg: CommandHandlerDebuggerLike) -> None: ...
 
 
-class LoggerLike(Protocol):
-    def debug(self, msg: str, *args: object, **kwargs: object) -> object: ...
-    def exception(self, msg: str, *args: object, **kwargs: object) -> object: ...
-
-
-def handle_continue_impl(dbg: object | None, arguments: Payload | None) -> None:
+def handle_continue_impl(
+    dbg: CommandHandlerDebuggerLike | None, arguments: Payload | None
+) -> None:
     """Handle continue command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
@@ -35,7 +35,7 @@ def handle_continue_impl(dbg: object | None, arguments: Payload | None) -> None:
 
 
 def handle_next_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -51,7 +51,7 @@ def handle_next_impl(
 
 
 def handle_step_in_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -66,7 +66,7 @@ def handle_step_in_impl(
 
 
 def handle_step_out_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -82,11 +82,11 @@ def handle_step_out_impl(
 
 
 def handle_pause_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     safe_send_debug_message: SafeSendDebugMessageFn,
-    logger: LoggerLike,
+    logger: Logger,
 ) -> None:
     """Handle pause command implementation."""
     import sys as _sys  # noqa: PLC0415

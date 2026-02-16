@@ -3,23 +3,20 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from typing import Protocol
 
 if TYPE_CHECKING:
+    from logging import Logger
+
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
-
-
-class LoggerLike(Protocol):
-    def debug(self, msg: str, *args: object, **kwargs: object) -> object: ...
 
 
 def handle_set_breakpoints_impl(
     dbg: DebuggerLike | None,
     arguments: Payload | None,
     safe_send_debug_message: SafeSendDebugMessageFn,
-    logger: LoggerLike,
+    logger: Logger,
 ) -> Payload | None:
     """Handle setBreakpoints command implementation."""
     arguments = arguments or {}

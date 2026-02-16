@@ -5,16 +5,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Callable
 from typing import Protocol
+from typing import TypedDict
 
 if TYPE_CHECKING:
     from logging import Logger
 
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
+    from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
 
 
 class ResolveVariablesForReferenceFn(Protocol):
-    def __call__(self, dbg: object | None, frame_info: object) -> list[Payload]: ...
+    def __call__(
+        self, dbg: CommandHandlerDebuggerLike | None, frame_info: object, /
+    ) -> list[Payload]: ...
 
 
 class ErrorResponseFn(Protocol):
@@ -39,14 +44,20 @@ class ConvertWithContextFn(Protocol):
 
 
 class EvaluateWithPolicyFn(Protocol):
-    def __call__(self, expression: str, frame: object, allow_builtins: bool = False) -> object: ...
+    def __call__(
+        self,
+        expression: str,
+        frame: object,
+        *,
+        allow_builtins: bool = False,
+    ) -> object: ...
 
 
 class FormatEvaluationErrorFn(Protocol):
     def __call__(self, exc: Exception) -> str: ...
 
 
-class SetVariableCommandDependencies(Protocol):
+class SetVariableCommandDependencies(TypedDict):
     convert_value_with_context_fn: ConvertWithContextFn
     evaluate_with_policy_fn: EvaluateWithPolicyFn
     set_object_member_helper: Callable[..., Payload]
@@ -54,8 +65,8 @@ class SetVariableCommandDependencies(Protocol):
     assign_to_parent_member_fn: Callable[[object, str, object], str | None]
     error_response_fn: ErrorResponseFn
     conversion_error_message: str
-    get_state_debugger: Callable[[], object | None]
-    make_variable_fn: Callable[[object | None, str, object, object | None], Payload]
+    get_state_debugger: Callable[[], DebuggerLike | None]
+    make_variable_fn: Callable[[DebuggerLike | None, str, object, object | None], Payload]
     logger: Logger
     var_ref_tuple_size: int
 
@@ -74,7 +85,7 @@ def format_evaluation_error(
 
 
 def handle_variables_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     safe_send_debug_message: SafeSendDebugMessageFn,
     resolve_variables_for_reference: ResolveVariablesForReferenceFn,
@@ -104,7 +115,7 @@ def handle_variables_impl(
 
 
 def handle_set_variable_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     error_response: ErrorResponseFn,
@@ -150,7 +161,7 @@ def handle_set_variable_impl(
 
 
 def handle_set_variable_command_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     dependencies: SetVariableCommandDependencies,
@@ -181,20 +192,26 @@ def handle_set_variable_command_impl(
             logger.debug("Context conversion fallback failed", exc_info=True)
             return conversion_failed_sentinel
 
+    common_setter_dependencies = {
+        "try_custom_convert": _try_convert,
+        "conversion_failed_sentinel": conversion_failed_sentinel,
+        "convert_value_with_context_fn": convert_value_with_context_fn,
+        "error_response_fn": error_response_fn,
+        "conversion_error_message": conversion_error_message,
+        "get_state_debugger": get_state_debugger,
+        "make_variable_fn": make_variable_fn,
+        "logger": logger,
+    }
+
     def _set_object_member(parent_obj: object, name: str, value_str: str) -> Payload:
         return set_object_member_helper(
             parent_obj,
             name,
             value_str,
-            try_custom_convert=_try_convert,
-            conversion_failed_sentinel=conversion_failed_sentinel,
-            convert_value_with_context_fn=convert_value_with_context_fn,
-            assign_to_parent_member_fn=assign_to_parent_member_fn,
-            error_response_fn=error_response_fn,
-            conversion_error_message=conversion_error_message,
-            get_state_debugger=get_state_debugger,
-            make_variable_fn=make_variable_fn,
-            logger=logger,
+            dependencies={
+                **common_setter_dependencies,
+                "assign_to_parent_member_fn": assign_to_parent_member_fn,
+            },
         )
 
     def _set_scope_variable(
@@ -208,15 +225,10 @@ def handle_set_variable_command_impl(
             scope,
             name,
             value_str,
-            try_custom_convert=_try_convert,
-            conversion_failed_sentinel=conversion_failed_sentinel,
-            evaluate_with_policy_fn=evaluate_with_policy_fn,
-            convert_value_with_context_fn=convert_value_with_context_fn,
-            logger=logger,
-            error_response_fn=error_response_fn,
-            conversion_error_message=conversion_error_message,
-            get_state_debugger=get_state_debugger,
-            make_variable_fn=make_variable_fn,
+            dependencies={
+                **common_setter_dependencies,
+                "evaluate_with_policy_fn": evaluate_with_policy_fn,
+            },
         )
 
     return handle_set_variable_impl(
@@ -232,7 +244,7 @@ def handle_set_variable_command_impl(
 
 
 def handle_evaluate_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     evaluate_with_policy: EvaluateWithPolicyFn,
@@ -286,7 +298,7 @@ def handle_evaluate_impl(
 
 
 def handle_set_data_breakpoints_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     logger: Logger,
 ) -> Payload:
@@ -356,7 +368,7 @@ def handle_set_data_breakpoints_impl(
 
 
 def handle_data_breakpoint_info_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
     max_value_repr_len: int,

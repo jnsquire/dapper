@@ -4,34 +4,20 @@ from __future__ import annotations
 
 import sys
 from typing import TYPE_CHECKING
-from typing import Protocol
 
 if TYPE_CHECKING:
+    from logging import Logger
+
+    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
-
-
-class LoggerLike(Protocol):
-    def debug(self, msg: str, *args: object, **kwargs: object) -> object: ...
-    def exception(self, msg: str, *args: object, **kwargs: object) -> object: ...
-
-
-class SessionStateLike(Protocol):
-    is_terminated: bool
-    ipc_pipe_conn: object | None
-    ipc_wfile: object | None
-    ipc_rfile: object | None
-    ipc_enabled: bool
-    command_thread: object | None
-    debugger: object | None
-    exit_func: object
-    exec_func: object
+    from dapper.shared.debug_shared import DebugSession
 
 
 def handle_exception_info_impl(
-    dbg: object | None,
+    dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
-    logger: LoggerLike,
+    logger: Logger,
 ) -> Payload:
     """Handle exceptionInfo command implementation."""
     arguments = arguments or {}
@@ -74,7 +60,7 @@ def handle_configuration_done_impl() -> Payload:
 def handle_terminate_impl(
     *,
     safe_send_debug_message: SafeSendDebugMessageFn,
-    state: SessionStateLike,
+    state: DebugSession,
 ) -> None:
     """Handle terminate command."""
     safe_send_debug_message("exited", exitCode=0)
@@ -100,8 +86,8 @@ def handle_initialize_impl() -> Payload:
 def handle_restart_impl(  # noqa: PLR0912, PLR0915
     *,
     safe_send_debug_message: SafeSendDebugMessageFn,
-    state: SessionStateLike,
-    logger: LoggerLike,
+    state: DebugSession,
+    logger: Logger,
 ) -> Payload:
     """Handle restart command."""
     safe_send_debug_message("exited", exitCode=0)
@@ -132,7 +118,7 @@ def handle_restart_impl(  # noqa: PLR0912, PLR0915
             logger.debug("Error while cleaning ipc_wfile", exc_info=True)
 
         try:
-            if getattr(state, "ipc_rfile", None) is not None:
+            if state.ipc_rfile is not None:
                 try:
                     state.ipc_rfile.close()
                 except Exception:
@@ -148,7 +134,7 @@ def handle_restart_impl(  # noqa: PLR0912, PLR0915
             pass
 
         try:
-            thread_handle = getattr(state, "command_thread", None)
+            thread_handle = state.command_thread
             if thread_handle is not None and getattr(thread_handle, "is_alive", lambda: False)():
                 try:
                     thread_handle.join(timeout=0.1)
@@ -169,7 +155,7 @@ def handle_restart_impl(  # noqa: PLR0912, PLR0915
 def cmd_exception_info(
     arguments: Payload | None,
     *,
-    state: SessionStateLike,
+    state: DebugSession,
     safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle exceptionInfo request on command registry pathway."""
@@ -183,13 +169,14 @@ def cmd_exception_info(
         safe_send_debug_message("error", message="Debugger not initialized")
         return
 
-    if thread_id not in dbg.exception_handler.exception_info_by_thread:
+    exception_handler = dbg.exception_handler
+    if thread_id not in exception_handler.exception_info_by_thread:
         safe_send_debug_message(
             "error", message=f"No exception info available for thread {thread_id}"
         )
         return
 
-    exception_info = dbg.exception_handler.exception_info_by_thread[thread_id]
+    exception_info = exception_handler.exception_info_by_thread[thread_id]
     safe_send_debug_message(
         "exceptionInfo",
         exceptionId=exception_info["exceptionId"],
