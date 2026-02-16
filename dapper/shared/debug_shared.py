@@ -17,6 +17,8 @@ from typing import Any
 from typing import Callable
 from typing import TypedDict
 from typing import cast
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from dapper.ipc.ipc_binary import pack_frame  # lightweight util
 from dapper.utils.events import EventEmitter
@@ -139,6 +141,9 @@ class SourceCatalog:
         self.source_references: dict[int, SourceReferenceMeta] = {}
         self._path_to_ref: dict[str, int] = {}
         self.next_source_ref = itertools.count(1)
+        self._source_provider_lock = threading.RLock()
+        self._source_providers: list[tuple[int, Callable[[str], str | None]]] = []
+        self._next_source_provider_id = itertools.count(1)
 
     def get_ref_for_path(self, path: str) -> int | None:
         return self._path_to_ref.get(path)
@@ -171,15 +176,65 @@ class SourceCatalog:
         path = meta.get("path")
         if not path:
             return None
-        try:
-            return Path(path).read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            return None
+        return self.get_source_content_by_path(path)
+
+    def register_source_provider(self, provider: Callable[[str], str | None]) -> int:
+        provider_id = next(self._next_source_provider_id)
+        with self._source_provider_lock:
+            self._source_providers.append((provider_id, provider))
+        return provider_id
+
+    def unregister_source_provider(self, provider_id: int) -> bool:
+        with self._source_provider_lock:
+            existing_len = len(self._source_providers)
+            self._source_providers = [
+                (pid, provider) for (pid, provider) in self._source_providers if pid != provider_id
+            ]
+            return len(self._source_providers) != existing_len
 
     @staticmethod
-    def get_source_content_by_path(path: str) -> str | None:
+    def _normalize_path_or_uri(path_or_uri: str) -> tuple[str, bool]:
+        parsed = urlparse(path_or_uri)
+        if not parsed.scheme:
+            return path_or_uri, True
+        if parsed.scheme.lower() != "file":
+            return path_or_uri, False
+
+        normalized_path = url2pathname(parsed.path)
+        if parsed.netloc:
+            if parsed.netloc.lower() == "localhost":
+                return normalized_path, True
+            return path_or_uri, False
+        return normalized_path, True
+
+    def get_source_content_by_path(self, path_or_uri: str) -> str | None:
+        with self._source_provider_lock:
+            providers = list(self._source_providers)
+
+        for provider_id, provider in providers:
+            try:
+                resolved = provider(path_or_uri)
+            except Exception:
+                logger.debug(
+                    "source provider %s failed for %s",
+                    provider_id,
+                    path_or_uri,
+                    exc_info=True,
+                )
+                continue
+            if isinstance(resolved, str):
+                logger.debug(
+                    "source provider %s returned content for %s", provider_id, path_or_uri
+                )
+                return resolved
+            logger.debug("source provider %s returned no content for %s", provider_id, path_or_uri)
+
+        normalized_path, should_try_disk = self._normalize_path_or_uri(path_or_uri)
+        if not should_try_disk:
+            return None
+
         try:
-            return Path(path).read_text(encoding="utf-8", errors="ignore")
+            return Path(normalized_path).read_text(encoding="utf-8", errors="ignore")
         except Exception:
             return None
 
@@ -489,6 +544,12 @@ class DebugSession:
 
     def get_source_content_by_path(self, path: str) -> str | None:
         return self.sources.get_source_content_by_path(path)
+
+    def register_source_provider(self, provider: Callable[[str], str | None]) -> int:
+        return self.sources.register_source_provider(provider)
+
+    def unregister_source_provider(self, provider_id: int) -> bool:
+        return self.sources.unregister_source_provider(provider_id)
 
 
 # Module-level singleton instance used throughout the codebase

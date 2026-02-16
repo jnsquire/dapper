@@ -65,7 +65,7 @@ def mock_server():
     # Set up common mocked methods as AsyncCallRecorder-like async functions
     methods = [
         "continue_execution",
-        "step_over",
+        "next",
         "step_in",
         "step_out",
         "pause",
@@ -140,9 +140,9 @@ async def test_next(handler, mock_server):
 
     result = await handler._handle_next(request)
 
-    # Check that we called step_over with the right arguments
-    assert len(mock_server.debugger.step_over.calls) == 1
-    called_args, _called_kwargs = mock_server.debugger.step_over.calls[0]
+    # Check that we called next with the right arguments
+    assert len(mock_server.debugger.next.calls) == 1
+    called_args, _called_kwargs = mock_server.debugger.next.calls[0]
     assert called_args == (1,)
 
     # Check the response
@@ -312,6 +312,35 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(
     res2 = await handler._handle_source(req)
     assert res2["success"] is True
     assert res2["body"]["content"] == "state-content"
+
+
+@pytest.mark.asyncio
+async def test_handle_source_falls_back_to_session_provider_for_uri(
+    handler, mock_server, use_debug_session
+):
+    uri = "vscode-remote://workspace/app.py"
+
+    def provider(path_or_uri: str) -> str | None:
+        if path_or_uri == uri:
+            return "uri-provider-content"
+        return None
+
+    provider_id = use_debug_session.register_source_provider(provider)
+    try:
+        delattr(mock_server.debugger, "get_source_content_by_path")
+
+        req = {
+            "seq": 101,
+            "type": "request",
+            "command": "source",
+            "arguments": {"source": {"path": uri}},
+        }
+        res = await handler._handle_source(req)
+    finally:
+        use_debug_session.unregister_source_provider(provider_id)
+
+    assert res["success"] is True
+    assert res["body"]["content"] == "uri-provider-content"
 
 
 @pytest.mark.asyncio

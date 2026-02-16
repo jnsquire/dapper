@@ -78,6 +78,23 @@ class IPCContext:
         compare=False,
     )
 
+    def _make_reader_thread(
+        self,
+        target: Callable[[Callable[[str], None]], None],
+        handle_debug_message: Callable[[str], None],
+    ) -> threading.Thread:
+        """Create the reader thread.
+
+        Kept as a dedicated seam so tests can patch thread construction
+        without mutating the global ``threading.Thread`` type.
+        """
+        return threading.Thread(
+            target=target,
+            args=(handle_debug_message,),
+            daemon=True,
+            name="IPCReaderThread",
+        )
+
     # ------------------------------
     # Runtime helpers migrated from PyDebugger
     # ------------------------------
@@ -349,12 +366,7 @@ class IPCContext:
                 return
 
             target = self.run_accept_and_read if accept else self.run_attached_reader
-            self._reader_thread = threading.Thread(
-                target=target,
-                args=(handle_debug_message,),
-                daemon=True,
-                name="IPCReaderThread",
-            )
+            self._reader_thread = self._make_reader_thread(target, handle_debug_message)
             self._reader_thread.start()
 
     def create_listener(

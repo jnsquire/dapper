@@ -57,6 +57,11 @@ def test_socket_connector_unix_no_af():
         assert sock is None
 
 
+def test_socket_connector_unix_no_path_returns_none():
+    connector = launcher_ipc.SocketConnector()
+    assert connector.connect_unix(None) is None
+
+
 def test_socket_connector_unix_success():
     with patch("dapper.launcher.launcher_ipc.socket") as mock_socket:
         mock_socket.AF_UNIX = getattr(socket, "AF_UNIX", 1)
@@ -142,6 +147,28 @@ def test_socket_connector_unix_closes_on_connect_failure():
 
         assert sock is None
         mock_sock.close.assert_called_once()
+
+
+def test_socket_connector_unix_socket_ctor_failure_returns_none():
+    with patch("dapper.launcher.launcher_ipc.socket") as mock_socket:
+        mock_socket.AF_UNIX = getattr(socket, "AF_UNIX", 1)
+        mock_socket.SOCK_STREAM = socket.SOCK_STREAM
+        mock_socket.socket.side_effect = OSError("ctor failed")
+
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_unix("/tmp/x")
+
+        assert sock is None
+
+
+def test_socket_connector_tcp_socket_ctor_failure_returns_none():
+    with patch("dapper.launcher.launcher_ipc.socket.socket") as socket_ctor:
+        socket_ctor.side_effect = OSError("ctor failed")
+
+        connector = launcher_ipc.SocketConnector()
+        sock = connector.connect_tcp("127.0.0.1", 12345)
+
+        assert sock is None
 
 
 def test_setup_ipc_socket_with_connector(use_debug_session):

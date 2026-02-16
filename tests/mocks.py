@@ -314,7 +314,17 @@ class FakeDebugger:
         )
 
     def clear_breaks_for_file(self, path: str) -> None:
-        self.breakpoints.pop(path, None)
+        entries = list(self.breakpoints.get(path, []))
+        for entry in entries:
+            line_value = entry.get("line") if isinstance(entry, dict) else None
+            if line_value is None:
+                continue
+            try:
+                line = int(line_value)
+            except Exception:
+                continue
+            self.clear_break(path, line)
+        self.clear_break_meta_for_file(path)
 
     def clear_break(self, filename: str, lineno: int) -> object | None:
         if filename in self.breakpoints:

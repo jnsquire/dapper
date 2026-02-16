@@ -73,7 +73,7 @@ Generated from a full codebase review on 2026-02-14.
 
 ## Code Quality
 
-- [ ] **Add pluggable source-content hook with URI-aware path handling**
+- [x] **Add pluggable source-content hook with URI-aware path handling**
   - Files: `dapper/shared/debug_shared.py`, `dapper/shared/source_handlers.py`, `dapper/adapter/request_handlers.py` (optional typing-only additions in `dapper/protocol/debugger_protocol.py`)
   - Goal: Allow callers to provide additional source content (remote/editor/generated) based on DAP `source.path` while preserving existing `sourceReference` behavior.
   - Protocol note: DAP `Source.path` may be a filesystem path or URI; non-filesystem content can also be represented via `sourceReference`.
@@ -107,6 +107,12 @@ Generated from a full codebase review on 2026-02-14.
      - Integration tests for `shared/source_handlers.handle_source` and `adapter/request_handlers._handle_source` returning provider-backed content by URI/path.
      - Regression tests to confirm existing `sourceReference` and local-path behavior remain unchanged.
 
+  - **Status update (implemented in current branch):**
+    - ✅ Added provider registry APIs on `SourceCatalog`/`DebugSession` (`register_source_provider`, `unregister_source_provider`) with stable IDs and lock-guarded access.
+    - ✅ Added URI-aware source resolution with provider-first lookup and `file://` normalization for disk fallback in `dapper/shared/debug_shared.py`.
+    - ✅ Updated legacy source-path flow in `dapper/shared/source_handlers.py` to use shared session lookup so provider behavior is consistent.
+    - ✅ Added focused coverage in `tests/unit/test_source_reference_helpers.py`, `tests/unit/test_source_references.py`, and `tests/unit/test_request_handlers.py` for provider lifecycle, URI handling, and sync/async source handler fallback behavior.
+
 
 
 
@@ -122,22 +128,50 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
     - ✅ Added focused unit coverage for `dapper/ipc/sync_adapter.py` in `tests/unit/test_sync_connection_adapter.py`.
     - ✅ New tests cover synchronous adapter method passthrough, missing-loop error path, and close-path exception propagation behavior.
     - ✅ Added launcher IPC edge-case tests in `tests/integration/test_launcher_ipc.py` for EOF/OSError read handling and socket-connect failure cleanup paths.
+    - ✅ Expanded `dapper/ipc/transport_factory.py` unit coverage in `tests/unit/test_transport_factory.py` for transport resolution, unsupported transport guards, unix→tcp fallback paths, and wrapped socket-connect error paths.
+    - ✅ Added dedicated `dapper/ipc/connections/tcp.py` branch tests in `tests/unit/test_tcp_connection_unit.py` for wait timeout/precondition errors, DAP/binary read error branches, and write-path validations.
+    - ✅ Added platform-independent mocked Windows named-pipe coverage in `tests/unit/test_transport_factory.py` for `create_pipe_listener_sync`, `create_pipe_client_sync`, routed `create_listener/create_connection` pipe paths, and wrapped listener/client failure handling.
+    - ✅ Added direct non-Windows guard-path tests for sync named-pipe helpers in `tests/unit/test_transport_factory.py` (`create_pipe_listener_sync`, `create_pipe_client_sync`) to lock expected platform error behavior.
+    - ✅ Enabled mocked-Windows named-pipe connection tests to run cross-platform in `tests/unit/test_pipe_windows_unit.py` (accept/listener path, recv fallback, DBGP binary/text read, binary/text write, and close-resource cleanup).
+    - ✅ Focused `pipe` coverage run (`tests/unit/test_pipe_windows_unit.py` + `tests/integration/test_connections_pipe.py`) now reports `dapper/ipc/connections/pipe.py` at **70/94 branch edges**.
+    - 🔜 Remaining: deeper coverage of platform-specific named-pipe branches and additional factory/listener lifecycle edge cases.
 
-- [ ] **Increase frame evaluation coverage**
+- [x] **Increase frame evaluation coverage**
   - `dapper/_frame_eval/modify_bytecode.py`, `dapper/_frame_eval/selective_tracer.py`, `dapper/_frame_eval/frame_tracing.py` need dedicated tests.
+  - **Progress update (current branch):**
+    - ✅ Added dedicated analyzer/manager branch coverage for `dapper/_frame_eval/selective_tracer.py` in `tests/unit/test_selective_tracer_analyzer_manager.py`.
+    - ✅ New tests cover skip-frame decisions, breakpoint/no-breakpoint routing, function-range breakpoint tracing in step mode, cache invalidation hooks, dispatcher stats/dispatch paths, manager breakpoint lifecycle, and global wrapper delegation.
+    - ✅ Added `modify_bytecode` fallback/error-path tests in `tests/unit/test_bytecode_modification.py` for `insert_code` failure guards, `get_bytecode_info` error handling, and `_rebuild_code_object` legacy fallback construction.
+    - ✅ Targeted frame-eval run now reports: `selective_tracer.py` **76%** (up from **37%** in this focused suite), `frame_tracing.py` **92%**, `modify_bytecode.py` **72%** (up from **63%**).
 
-- [ ] **Increase launcher coverage**
+- [x] **Increase launcher coverage**
   - `dapper/launcher/debug_launcher.py`, `dapper/launcher/launcher_ipc.py` lack unit tests.
   - **Progress update (current branch):**
     - ✅ Added broad launcher + IPC test coverage across orchestration, routing, parse/validation, error branches, and binary/text transport paths.
     - ✅ New/expanded tests are concentrated in `tests/unit/test_debug_launcher.py`, `tests/integration/test_launcher_ipc.py`, and `tests/unit/test_sync_connection_adapter.py`.
-    - 🔜 Remaining: incremental edge-path coverage (receive-loop timing and command error-shaping consistency).
+    - ✅ Added incremental edge-path coverage for receive-loop timing and command error-shaping consistency in `tests/unit/test_debug_launcher.py` and `tests/integration/test_launcher_ipc.py`.
+    - ✅ Targeted launcher run now reports: `dapper/launcher/debug_launcher.py` **99%** and `dapper/launcher/launcher_ipc.py` **100%** coverage.
 
 - [ ] **Increase branch coverage to ≥50%**
   - Error paths and edge cases are largely untested. Focus on conditional branches in `debugger_bdb.py`, `server.py`, and `command_handlers.py`.
+  - **Progress update (current branch):**
+    - ✅ Added `tests/unit/test_server_wrapper_delegation.py` to exercise `PyDebugger` delegation/alias and data-breakpoint wrapper paths in `dapper/adapter/server.py`.
+    - ✅ Focused module run for that test reports `dapper/adapter/server.py` at **62%** coverage.
+    - ✅ Added `tests/unit/test_command_handlers_guards.py` to cover no-debugger guard branches for debugger-dependent command handlers and invalid/unknown command response paths in `dapper/shared/command_handlers.py`.
+    - ✅ Focused coverage run for `tests/unit/test_command_handlers_guards.py` now reports `dapper/shared/command_handlers.py` at **19/40 branch edges** in that target run (up from a previously observed **3/40** in an integration-only focused run).
+    - ✅ Added `tests/unit/test_debugger_bdb_branches.py` for `DebuggerBDB` function-breakpoint call flow branches (`CONTINUE` vs `STOP`), breakpoint-clear edge handling (`None`/non-int lines + metadata clear failure), and `user_exception` `set_continue()` failure fallback path.
+    - ✅ Expanded `tests/unit/test_debugger_bdb_branches.py` with additional edge-path coverage for data-breakpoint stop decisions (default/no-meta + all-continue), single-emission thread registration, optional stopped-event descriptions, `user_line` early-return/default-stop flows, `user_exception` no-break fast path, and function-name non-match handling.
+    - ✅ Added further focused `DebuggerBDB` branch tests for multi-candidate function-name matching, non-mapping data-watch helper guards, custom-breakpoint existing/no-op paths, and explicit regular-breakpoint `CONTINUE` handling.
+    - ✅ Added deeper `DebuggerBDB` path tests for regular-breakpoint `STOP` flow, data-breakpoint stop+return path in `user_line`, regular-breakpoint handled-return path in `user_line`, full `user_exception` stop path, and `clear_breaks_for_file` breaks-lookup exception handling.
+    - ✅ Added less-mocked real-frame/real-break-table `DebuggerBDB` tests in `tests/unit/test_debugger_bdb_branches.py` (entry-path `user_line`, regular-breakpoint handling via real `breaks`, full exception-stop flow, and success-path breakpoint cleanup); full-suite targeted report remains **47%** in this environment.
+    - 🔜 Remaining: raise full-suite branch baselines to the ≥50% target for remaining modules (`debugger_bdb.py` currently **47%** in full-suite targeted run).
 
-- [ ] **Add integration tests for end-to-end DAP sessions**
+- [x] **Add integration tests for end-to-end DAP sessions**
   - Test full launch → set breakpoints → continue → hit breakpoint → inspect variables → disconnect flow.
+  - **Progress update (current branch):**
+    - ✅ Added `tests/integration/test_server.py::test_end_to_end_dap_flow_launch_break_continue_variables_disconnect`.
+    - ✅ New integration test drives request sequence: `initialize` → `launch` → `setBreakpoints` → `configurationDone` → `continue` (emits `stopped` event) → `stackTrace` → `scopes` → `variables` → `disconnect`.
+    - ✅ Asserts response success for each request, verifies breakpoint `stopped` event payload, and validates variable inspection payload (`x=42`) in the same session flow.
 
 ---
 
@@ -147,8 +181,8 @@ Overall: **36.8% line coverage / 14.5% branch coverage** (1120 tests, 120 files)
 |--------------------|------------|
 | Architecture       | 0          |
 | Performance        | 0          |
-| Code Quality       | 1          |
-| Test Coverage      | 5          |
-| **Total**          | **6**      |
+| Code Quality       | 0          |
+| Test Coverage      | 2          |
+| **Total**          | **2**      |
 
-**Next up:** Code Quality source-provider improvements (1 item) and Test Coverage expansion (5 items).
+**Next up:** IPC + branch coverage expansion (2 items).

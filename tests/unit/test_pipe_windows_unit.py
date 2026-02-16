@@ -1,5 +1,4 @@
 import json
-import sys
 
 import pytest
 
@@ -8,8 +7,6 @@ from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
-
-pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only pipe tests")
 
 
 class FakePipeConnection:
@@ -89,7 +86,7 @@ async def test_windows_accept_uses_listener(monkeypatch) -> None:
     fake_conn = FakePipeConnection()
     fake_listener = FakeListener(fake_conn)
 
-    monkeypatch.setattr(pipe_mod.mp_conn, "Listener", lambda _address, _family: fake_listener)
+    monkeypatch.setattr(pipe_mod.mp_conn, "Listener", lambda **_kwargs: fake_listener)
 
     conn = NamedPipeServerConnection("unit-pipe")
     await conn.accept()

@@ -27,6 +27,14 @@ from dapper.ipc.connections.tcp import TCPServerConnection
 logger = logging.getLogger(__name__)
 
 
+def _is_windows() -> bool:
+    """Return True when running on Windows.
+
+    Keeping this behind a helper avoids tests mutating global ``os.name``.
+    """
+    return os.name == "nt"
+
+
 @dataclass
 class TransportConfig:
     """Configuration for IPC transport creation."""
@@ -45,7 +53,7 @@ class TransportFactory:
     @staticmethod
     def get_default_transport() -> str:
         """Get the default transport for the current platform."""
-        return "pipe" if os.name == "nt" else "unix"
+        return "pipe" if _is_windows() else "unix"
 
     @staticmethod
     def resolve_transport(transport: str | None) -> str:
@@ -103,7 +111,7 @@ class TransportFactory:
         config: TransportConfig,
     ) -> tuple[NamedPipeServerConnection, list[str]]:
         """Create a named pipe listener (Windows only)."""
-        if os.name != "nt":
+        if not _is_windows():
             raise RuntimeError("Named pipes are only supported on Windows")
 
         name = config.pipe_name or f"dapper-{os.getpid()}-{int(time.time() * 1000)}"
@@ -124,7 +132,7 @@ class TransportFactory:
     @staticmethod
     def _create_pipe_connection(config: TransportConfig) -> NamedPipeServerConnection:
         """Create a named pipe connection (Windows only)."""
-        if os.name != "nt":
+        if not _is_windows():
             raise RuntimeError("Named pipes are only supported on Windows")
 
         if not config.pipe_name:
@@ -293,7 +301,7 @@ class TransportFactory:
         platforms the pipe listener creation will raise (matching prior
         behaviour where pipes were Windows-only in the sync path).
         """
-        if os.name != "nt":
+        if not _is_windows():
             raise RuntimeError("Named pipes are only supported on Windows")
 
         name = pipe_name or f"dapper-{os.getpid()}-{int(time.time() * 1000)}"
@@ -304,7 +312,7 @@ class TransportFactory:
     @staticmethod
     def create_pipe_client_sync(pipe_name: str) -> mp_conn.Connection:
         """Create a synchronous pipe client connection to the given pipe name."""
-        if os.name != "nt":
+        if not _is_windows():
             raise RuntimeError("Named pipes are only supported on Windows")
 
         if not pipe_name:

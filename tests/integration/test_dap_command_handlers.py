@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import linecache
+from pathlib import Path
 import sys
+import tempfile
 import threading
 import types
 from types import SimpleNamespace
@@ -11,6 +13,7 @@ from typing import cast
 
 import pytest
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
@@ -43,6 +46,12 @@ def _isolated_active_session():
     session = debug_shared.DebugSession()
     with debug_shared.use_session(session):
         yield session
+
+
+def _active_session_with_debugger(dbg: Any) -> tuple[debug_shared.DebugSession, Any]:
+    session = dch._active_session()
+    session.debugger = dbg
+    return session, dbg
 
 
 def _try_test_convert(
@@ -221,8 +230,7 @@ def test_set_scope_variable_locals_and_globals():
 
 
 def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
-    dbg = DummyDebugger()
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
 
     # capture send_debug_message calls
     calls = []
@@ -261,12 +269,51 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     assert dbg.exception_breakpoints_uncaught is True
 
 
+def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
+    _session, dbg = _active_session_with_debugger(DebuggerBDB())
+
+    calls = []
+
+    def fake_send_debug_message(kind, **kwargs):
+        calls.append((kind, kwargs))
+
+    monkeypatch.setattr(dch, "send_debug_message", fake_send_debug_message)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
+        handle.write("\n".join(f"x_{line} = {line}" for line in range(1, 31)) + "\n")
+        source_path = handle.name
+
+    try:
+        cleared_lines: list[int] = []
+        monkeypatch.setattr(
+            dbg, "clear_break", lambda _path, line: cleared_lines.append(int(line))
+        )
+        dbg.breaks = {source_path: [7]}  # type: ignore[attr-defined]
+
+        args = {
+            "source": {"path": source_path},
+            "breakpoints": [{"line": 10}, {"line": 20, "condition": "x > 1"}],
+        }
+        breakpoint_handlers.handle_set_breakpoints_impl(
+            dbg,
+            cast("SetBreakpointsArguments", args),
+            dch._safe_send_debug_message,
+            dch.logger,
+        )
+
+        assert cleared_lines == [7]
+        assert dbg.get_break(source_path, 10)
+        assert dbg.get_break(source_path, 20)
+        assert any(kind == "breakpoints" for kind, _ in calls)
+    finally:
+        Path(source_path).unlink(missing_ok=True)
+
+
 def test_continue_next_step_out(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     tid = threading.get_ident()
     dbg.stopped_thread_ids.add(tid)
     dbg.current_frame = object()
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
     # capture
 
     def _no_op(*_args, **_kwargs):
@@ -295,9 +342,8 @@ def test_continue_next_step_out(monkeypatch):
 
 
 def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     tid = 12345
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -324,11 +370,10 @@ def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
 
 
 def test_variables_and_set_variable(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_locals={"a": 1}, f_globals={"b": 2})
     dbg.frame_id_to_frame[1] = frame
     dbg.var_refs[7] = (1, "locals")
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     # stub variable factory to predictable output
     def fake_make_variable(_dbg, _name, value, _frame):
@@ -374,8 +419,7 @@ def test_variables_and_set_variable(monkeypatch):
 
 
 def test_set_variable_bad_args_failure_payload(monkeypatch):
-    dbg = DummyDebugger()
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
 
     calls = []
 
@@ -395,9 +439,8 @@ def test_set_variable_bad_args_failure_payload(monkeypatch):
 
 
 def test_set_variable_missing_frame_failure_payload(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     dbg.var_refs[10] = (999, "locals")
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -417,9 +460,8 @@ def test_set_variable_missing_frame_failure_payload(monkeypatch):
 
 
 def test_set_variable_conversion_failure_payload(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     dbg.var_refs[11] = ("object", {"x": 1})
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -484,10 +526,9 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
 
 
 def test_handle_evaluate_and_create_variable_object(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_globals={"y": 2}, f_locals={})
     dbg.frame_id_to_frame[1] = frame
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -523,10 +564,9 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
 
 
 def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
-    dbg = DummyDebugger()
+    _session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_globals={"x": 2}, f_locals={})
     dbg.current_frame = frame
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
 
     calls = []
 
@@ -620,8 +660,7 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
                 "Variable", {"value": f"dbg:{value}", "type": "int", "variablesReference": 0}
             )
 
-    dbg = DbgWithMake()
-    monkeypatch.setattr(dch._active_session(), "debugger", dbg)
+    _session, dbg = _active_session_with_debugger(DbgWithMake())
     res = debug_shared.make_variable_object("n", 5, dbg)
     assert isinstance(res, dict)
     assert res["value"].startswith("dbg:")

@@ -205,10 +205,9 @@ def handle_legacy_source(
     else:
         path = arguments.get("path")
         if path:
-            try:
-                content = Path(path).read_text(encoding="utf-8", errors="ignore")
-            except (OSError, UnicodeError):
-                content = ""
+            resolved = state.get_source_content_by_path(path)
+            if resolved is not None:
+                content = resolved
 
     safe_send_debug_message("source", content=content)
     return {"success": True, "body": {"content": content}}

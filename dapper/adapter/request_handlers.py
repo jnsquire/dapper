@@ -6,7 +6,6 @@ Debug Adapter Protocol requests and routes them to appropriate handlers.
 
 from __future__ import annotations
 
-import inspect
 import logging
 import mimetypes
 from pathlib import Path
@@ -23,9 +22,6 @@ from dapper.errors import create_dap_response
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-    from collections.abc import Callable
-
     from dapper.adapter.server import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.adapter.types import DAPResponse
@@ -300,13 +296,7 @@ class RequestHandler:
     async def _handle_next(self, request: NextRequest) -> NextResponse:
         """Handle next request."""
         thread_id = request["arguments"]["threadId"]
-        # Map DAP 'next' to debugger.step_over when available for tests,
-        # otherwise fall back to debugger.next.
-        step_over = getattr(self.server.debugger, "step_over", None)
-        if callable(step_over):
-            await cast("Callable[[int], Awaitable[Any]]", step_over)(thread_id)
-        else:
-            await self.server.debugger.next(thread_id)
+        await self.server.debugger.next(thread_id)
         return cast("NextResponse", self._make_response(request, "next"))
 
     async def _handle_step_in(self, request: StepInRequest) -> StepInResponse:
@@ -389,10 +379,7 @@ class RequestHandler:
     ) -> ConfigurationDoneResponse:
         """Handle configurationDone request."""
         try:
-            result = self.server.debugger.configuration_done_request()
-            # Only await if it's an awaitable (tests may provide a plain Mock)
-            if inspect.isawaitable(result):
-                await result
+            await self.server.debugger.configuration_done_request()
             return cast(
                 "ConfigurationDoneResponse",
                 self._make_response(request, "configurationDone"),
@@ -441,8 +428,7 @@ class RequestHandler:
         getter = getattr(dbg, "get_source_content_by_ref", None)
         if callable(getter):
             try:
-                res = getter(source_reference)
-                res_val = await res if inspect.isawaitable(res) else res
+                res_val = await getter(source_reference)
                 # Only accept string content; otherwise fall back
                 content = res_val if isinstance(res_val, str) else None
             except Exception:
@@ -459,11 +445,9 @@ class RequestHandler:
         getter_meta = getattr(dbg, "get_source_meta", None)
         try:
             if callable(getter_meta):
-                meta = getter_meta(source_reference)
+                meta = await getter_meta(source_reference)
             else:
                 meta = active_session.get_source_meta(source_reference)
-            if inspect.isawaitable(meta):
-                meta = await meta
             if isinstance(meta, dict):
                 path = meta.get("path") or path
         except Exception:
@@ -481,8 +465,7 @@ class RequestHandler:
         getter = getattr(dbg, "get_source_content_by_path", None)
         if callable(getter):
             try:
-                res = getter(path)
-                res_val = await res if inspect.isawaitable(res) else res
+                res_val = await getter(path)
                 # Only accept string content; otherwise fall back
                 content = res_val if isinstance(res_val, str) else None
             except Exception:

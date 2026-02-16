@@ -28,7 +28,10 @@ class AsyncCallRecorder:
         if isinstance(self.side_effect, Exception):
             raise self.side_effect
         if callable(self.side_effect):
-            return self.side_effect(*args, **kwargs)
+            result = self.side_effect(*args, **kwargs)
+            if asyncio.iscoroutine(result) or isinstance(result, asyncio.Future):
+                return await result
+            return result
         return self.return_value
 
     def assert_called_once_with(self, *args, **kwargs):
@@ -245,6 +248,121 @@ async def test_send_event():
     assert event["event"] == "stopped"
     assert event["body"]["reason"] == "breakpoint"
     assert event["body"]["threadId"] == 1
+
+
+@pytest.mark.asyncio
+@patch("dapper.adapter.server.PyDebugger")
+async def test_end_to_end_dap_flow_launch_break_continue_variables_disconnect(
+    mock_debugger_class,
+):
+    """Exercise a full DAP flow through the server message loop."""
+    mock_debugger = mock_debugger_class.return_value
+    mock_debugger.launch = AsyncCallRecorder(return_value=None)
+    mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
+    mock_debugger.configuration_done_request = AsyncCallRecorder(return_value=None)
+    mock_debugger.set_breakpoints = AsyncCallRecorder(return_value=[{"verified": True, "line": 7}])
+
+    # Compose request/response flow payloads used by request handlers.
+    frame_id = 101
+    variables_ref = 501
+    mock_debugger.get_stack_trace = AsyncCallRecorder(
+        return_value=[
+            {
+                "id": frame_id,
+                "name": "target",
+                "line": 7,
+                "column": 1,
+                "source": {"name": "prog.py", "path": "/tmp/prog.py"},
+            }
+        ]
+    )
+    mock_debugger.get_scopes = AsyncCallRecorder(
+        return_value=[
+            {
+                "name": "Locals",
+                "variablesReference": variables_ref,
+                "expensive": False,
+            }
+        ]
+    )
+    mock_debugger.get_variables = AsyncCallRecorder(
+        return_value=[
+            {
+                "name": "x",
+                "value": "42",
+                "type": "int",
+                "variablesReference": 0,
+            }
+        ]
+    )
+
+    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
+        conn = MockConnection()
+        loop = asyncio.get_event_loop()
+        server = DebugAdapterServer(conn, loop)
+
+    async def _continue_and_emit_stop(thread_id: int):
+        await server.send_event("stopped", {"reason": "breakpoint", "threadId": thread_id})
+        return {"allThreadsContinued": True}
+
+    mock_debugger.continue_execution = AsyncCallRecorder(side_effect=_continue_and_emit_stop)
+
+    conn.add_request("initialize", seq=1)
+    conn.add_request("launch", {"program": "prog.py"}, seq=2)
+    conn.add_request(
+        "setBreakpoints",
+        {
+            "source": {"path": "/tmp/prog.py"},
+            "breakpoints": [{"line": 7}],
+        },
+        seq=3,
+    )
+    conn.add_request("configurationDone", {}, seq=4)
+    conn.add_request("continue", {"threadId": 1}, seq=5)
+    conn.add_request("stackTrace", {"threadId": 1, "startFrame": 0, "levels": 20}, seq=6)
+    conn.add_request("scopes", {"frameId": frame_id}, seq=7)
+    conn.add_request("variables", {"variablesReference": variables_ref}, seq=8)
+    conn.add_request("disconnect", {}, seq=9)
+
+    task = asyncio.create_task(server.start())
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(task, timeout=1.5)
+
+    # Responses for each request should be present and successful.
+    responses = {
+        (m.get("command"), m.get("request_seq")): m
+        for m in conn.written_messages
+        if m.get("type") == "response"
+    }
+    assert responses[("initialize", 1)]["success"] is True
+    assert responses[("launch", 2)]["success"] is True
+    assert responses[("setBreakpoints", 3)]["success"] is True
+    assert responses[("configurationDone", 4)]["success"] is True
+    assert responses[("continue", 5)]["success"] is True
+    assert responses[("stackTrace", 6)]["success"] is True
+    assert responses[("scopes", 7)]["success"] is True
+    assert responses[("variables", 8)]["success"] is True
+    assert responses[("disconnect", 9)]["success"] is True
+
+    # Ensure we observed a breakpoint stop event as part of continue flow.
+    stopped_event = next(
+        (
+            m
+            for m in conn.written_messages
+            if m.get("type") == "event" and m.get("event") == "stopped"
+        ),
+        None,
+    )
+    assert stopped_event is not None
+    if stopped_event is not None:
+        assert stopped_event["body"]["reason"] == "breakpoint"
+        assert stopped_event["body"]["threadId"] == 1
+
+    variables_resp = responses[("variables", 8)]
+    variables = variables_resp["body"]["variables"]
+    assert variables
+    assert variables[0]["name"] == "x"
+    assert variables[0]["value"] == "42"
 
 
 @pytest.mark.asyncio

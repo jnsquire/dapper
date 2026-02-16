@@ -300,11 +300,36 @@ class DummyDebugger:
 
     def clear_breaks_for_file(self, path: str) -> None:
         self.cleared.append(path)
-        self.breaks.pop(path, None)
-        # remove meta entries
-        to_del = [k for k in list(self.breakpoint_meta.keys()) if k[0] == path]
-        for k in to_del:
-            self.breakpoint_meta.pop(k, None)
+        try:
+            entries = list(self.breaks.get(path, []))
+        except Exception:
+            entries = []
+
+        for entry in entries:
+            line: int | None = None
+            if isinstance(entry, tuple) and entry:
+                try:
+                    line = int(entry[0])
+                except Exception:
+                    line = None
+            else:
+                try:
+                    line = int(entry)
+                except Exception:
+                    line = None
+
+            if line is None:
+                continue
+
+            try:
+                self.clear_break(path, line)
+            except Exception:
+                pass
+
+        try:
+            self.clear_break_meta_for_file(path)
+        except Exception:
+            pass
 
     def clear_break(self, filename: str, lineno: int) -> Any | None:
         # remove a specific breakpoint if present

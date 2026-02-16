@@ -384,3 +384,71 @@ def test_injection_point_finding(
     breakpoint_lines = {3, 5}
     injection_points = bytecode_modifier._find_injection_points(instructions, breakpoint_lines)
     assert isinstance(injection_points, dict)
+
+
+def test_insert_code_invalid_line_returns_failure(original_code: types.CodeType) -> None:
+    success, result = modify_bytecode_mod.insert_code(original_code, -1, (1, 2))
+    assert success is False
+    assert result is original_code
+
+
+def test_insert_code_handles_inject_breakpoints_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    original_code: types.CodeType,
+) -> None:
+    def explode(_code_obj, _breakpoint_lines, debug_mode=False):
+        assert debug_mode is True
+        msg = "inject failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(modify_bytecode_mod._bytecode_modifier, "inject_breakpoints", explode)
+    success, result = modify_bytecode_mod.insert_code(original_code, 10, (10, 11))
+    assert success is False
+    assert result is original_code
+
+
+def test_get_bytecode_info_error_path_reports_unknown_fields() -> None:
+    class BrokenCode:
+        pass
+
+    info = get_bytecode_info(BrokenCode())  # type: ignore[arg-type]
+    assert info["error"] == "Failed to analyze bytecode"
+    assert info["filename"] == "unknown"
+    assert info["name"] == "unknown"
+
+
+def test_rebuild_code_object_fallback_when_replace_unavailable(
+    bytecode_modifier: BytecodeModifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code = compile("x = 1\n", "<fallback-test>", "exec")
+    instructions = list(dis.get_instructions(code))
+
+    class FakeCode:
+        co_argcount = 0
+        co_kwonlyargcount = 0
+        co_nlocals = 0
+        co_stacksize = 1
+        co_flags = 0
+        co_consts = tuple(code.co_consts)
+        co_names = tuple(code.co_names)
+        co_varnames = tuple(code.co_varnames)
+        co_filename = "<fake>"
+        co_name = "fake"
+        co_firstlineno = 1
+        co_freevars = ()
+        co_cellvars = ()
+        co_posonlyargcount = 0
+        co_lnotab = b""
+
+    captured: dict[str, object] = {}
+
+    def fake_code_type(*args):
+        captured["args"] = args
+        return "rebuilt-fallback"
+
+    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", fake_code_type)
+
+    rebuilt = bytecode_modifier._rebuild_code_object(FakeCode(), instructions)  # type: ignore[arg-type]
+    assert rebuilt == "rebuilt-fallback"
+    assert "args" in captured

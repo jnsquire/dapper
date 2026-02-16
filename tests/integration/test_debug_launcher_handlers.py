@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
@@ -51,6 +52,11 @@ def use_debug_session():
         yield session
 
 
+def _session_with_debugger(session: debug_shared.DebugSession, dbg):
+    session.debugger = dbg
+    return session, dbg
+
+
 def test_handle_initialize_minimal():
     res = lifecycle_handlers.handle_initialize_impl()
     assert isinstance(res, dict)
@@ -61,8 +67,7 @@ def test_handle_initialize_minimal():
 
 
 def test_handle_threads_empty(use_debug_session):
-    s = use_debug_session
-    s.debugger = DummyDebugger()
+    s, _dbg = _session_with_debugger(use_debug_session, DebuggerBDB())
     # No threads
     res = stack_handlers.handle_threads_impl(s.debugger, {}, handlers._safe_send_debug_message)
     assert res["success"] is True
@@ -70,8 +75,7 @@ def test_handle_threads_empty(use_debug_session):
 
 
 def test_handle_scopes_and_variables(use_debug_session):
-    s = use_debug_session
-    dbg = DummyDebugger()
+    _s, dbg = _session_with_debugger(use_debug_session, DummyDebugger())
 
     frame = MockFrame(
         _locals={"a": 1, "b": [1, 2, 3]},
@@ -83,7 +87,6 @@ def test_handle_scopes_and_variables(use_debug_session):
 
     # Register frame
     dbg.frame_id_to_frame[1] = frame
-    s.debugger = dbg
 
     # Request scopes for frame id 1
     res = stack_handlers.handle_scopes_impl(
@@ -159,9 +162,7 @@ def test_handle_source_resolves_source_reference_from_state(tmp_path: Path, use_
 
 
 def test_set_data_breakpoints_and_info(use_debug_session):
-    s = use_debug_session
-    dbg = DummyDebugger()
-    s.debugger = dbg
+    _s, dbg = _session_with_debugger(use_debug_session, DebuggerBDB())
 
     bps = [{"name": "x", "dataId": "d1"}, {"name": "y"}]
     res = variable_handlers.handle_set_data_breakpoints_impl(

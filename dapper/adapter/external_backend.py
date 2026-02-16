@@ -129,6 +129,15 @@ class ExternalProcessBackend(BaseBackend):
             return default
         return response.get("body", default)
 
+    @staticmethod
+    def _normalize_continue_payload(payload: Any) -> dict[str, bool]:
+        """Normalize continue payload to a canonical response body shape."""
+        if isinstance(payload, dict):
+            return {"allThreadsContinued": bool(payload.get("allThreadsContinued", True))}
+        if isinstance(payload, bool):
+            return {"allThreadsContinued": payload}
+        return {"allThreadsContinued": True}
+
     def _build_dispatch_table(
         self,
         args: dict[str, Any],
@@ -194,8 +203,11 @@ class ExternalProcessBackend(BaseBackend):
 
     async def _dispatch_continue(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = {"command": "continue", "arguments": {"threadId": args["thread_id"]}}
-        await self._send_command(cmd)
-        return {"allThreadsContinued": True}
+        response = await self._send_command(cmd, expect_response=True)
+        body = self._extract_body(response, {})
+        if isinstance(body, dict) and body:
+            return self._normalize_continue_payload(body)
+        return self._normalize_continue_payload(response)
 
     async def _dispatch_next(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = {"command": "next", "arguments": {"threadId": args["thread_id"]}}
@@ -336,7 +348,8 @@ class ExternalProcessBackend(BaseBackend):
         if expect_response:
             command_id = self._get_next_command_id()
             command["id"] = command_id
-            response_future = self._loop.create_future()
+            response_loop = asyncio.get_running_loop()
+            response_future = response_loop.create_future()
             with self._lock:
                 self._pending_commands[command_id] = response_future
 
@@ -409,8 +422,11 @@ class ExternalProcessBackend(BaseBackend):
     async def continue_(self, thread_id: int) -> ContinueResponseBody:
         """Continue execution."""
         command = {"command": "continue", "arguments": {"threadId": thread_id}}
-        await self._send_command(command)
-        return {"allThreadsContinued": True}
+        response = await self._send_command(command, expect_response=True)
+        body = self._extract_body(response, {})
+        if isinstance(body, dict) and body:
+            return cast("ContinueResponseBody", self._normalize_continue_payload(body))
+        return cast("ContinueResponseBody", self._normalize_continue_payload(response))
 
     async def next_(self, thread_id: int) -> None:
         """Step over."""

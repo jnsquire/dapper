@@ -89,3 +89,31 @@ def test_loaded_sources_to_source_roundtrip_returns_file_contents(setup_ipc_for_
     disk_text = Path(path).read_text(encoding="utf-8", errors="ignore")
     content = session.get_source_content_by_ref(ref)
     assert content == disk_text
+
+
+def test_source_handler_supports_provider_for_uri_path(setup_ipc_for_tests):
+    session = setup_ipc_for_tests
+    uri = "vscode-remote://workspace/generated.py"
+
+    def provider(path_or_uri: str) -> str | None:
+        if path_or_uri == uri:
+            return "print('from-provider')\n"
+        return None
+
+    provider_id = session.register_source_provider(provider)
+    calls: list[dict[str, Any]] = []
+
+    def capture(_kind: str, **payload: Any) -> bool:
+        calls.append(payload)
+        return True
+
+    try:
+        handle_source({"source": {"path": uri}}, session, capture)
+    finally:
+        session.unregister_source_provider(provider_id)
+
+    assert calls
+    last = calls[-1]
+    assert last.get("success") is True
+    assert isinstance(last.get("body"), dict)
+    assert last["body"]["content"] == "print('from-provider')\n"

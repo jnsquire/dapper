@@ -144,9 +144,12 @@ def test_start_reader_concurrent_callers_create_single_thread(monkeypatch):
             type(self).allow_start.wait(timeout=1.0)
             self._alive = True
 
-    monkeypatch.setattr("dapper.ipc.ipc_context.threading.Thread", BlockingFakeThread)
-
     ctx = IPCContext()
+
+    def _make_reader_thread(*_args, **_kwargs):
+        return BlockingFakeThread()
+
+    monkeypatch.setattr(ctx, "_make_reader_thread", _make_reader_thread)
 
     def _noop(_msg: str) -> None:
         return None

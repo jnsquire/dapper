@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 import sys
+import tempfile
 import types
 
 import pytest
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.launcher import comm as launcher_comm
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
@@ -111,24 +114,36 @@ def capture_send(monkeypatch):
 
 
 def test_set_breakpoints_and_state(monkeypatch):
-    dbg = DummyDebugger()
+    dbg = DebuggerBDB()
     debug_shared.get_active_session().debugger = dbg
     messages = capture_send(monkeypatch)
 
-    breakpoint_handlers.handle_set_breakpoints_impl(
-        dbg,
-        {
-            "source": {"path": "./somefile.py"},
-            "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
-        },
-        handlers._safe_send_debug_message,
-        handlers.logger,
-    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
+        handle.write("\n".join(f"x_{line} = {line}" for line in range(1, 26)) + "\n")
+        source_path = handle.name
+    try:
+        cleared_lines: list[int] = []
+        monkeypatch.setattr(
+            dbg, "clear_break", lambda _path, line: cleared_lines.append(int(line))
+        )
+        dbg.breaks = {source_path: [5]}  # type: ignore[attr-defined]
 
-    assert "./somefile.py" in dbg.cleared
-    assert any(b[0] == 10 for b in dbg.breaks["./somefile.py"])  # line 10
-    assert any(b[0] == 20 for b in dbg.breaks["./somefile.py"])  # line 20
-    assert any(m[0] == "breakpoints" for m in messages)
+        breakpoint_handlers.handle_set_breakpoints_impl(
+            dbg,
+            {
+                "source": {"path": source_path},
+                "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
+            },
+            handlers._safe_send_debug_message,
+            handlers.logger,
+        )
+
+        assert cleared_lines == [5]
+        assert dbg.get_break(source_path, 10)
+        assert dbg.get_break(source_path, 20)
+        assert any(m[0] == "breakpoints" for m in messages)
+    finally:
+        Path(source_path).unlink(missing_ok=True)
 
 
 def test_create_variable_object_and_set_variable_scope(monkeypatch):

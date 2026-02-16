@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+import threading
 from typing import Any
-
-if TYPE_CHECKING:
-    import threading
 
 logger = logging.getLogger(__name__)
 
@@ -196,15 +193,17 @@ class _PyDebuggerSessionFacade:
             if not future.done():
                 future.set_result(data)
 
+        future_loop = future.get_loop()
+
         try:
-            if asyncio.get_running_loop() is self._loop:
+            if asyncio.get_running_loop() is future_loop:
                 _set_result()
                 return
         except RuntimeError:
             pass
 
         try:
-            self._loop.call_soon_threadsafe(_set_result)
+            future_loop.call_soon_threadsafe(_set_result)
         except Exception:
             logger.debug("failed to schedule resolution on debugger loop")
 
@@ -216,12 +215,46 @@ class _PyDebuggerSessionFacade:
         for command_id, future in pending.items():
             if future.done():
                 continue
+
+            future_loop = future.get_loop()
+
+            def _set_exception(f: asyncio.Future[dict[str, Any]] = future) -> None:
+                if not f.done():
+                    f.set_exception(error)
+
             try:
-                future.set_exception(error)
+                if asyncio.get_running_loop() is future_loop:
+                    _set_exception()
+                else:
+                    completion = threading.Event()
+
+                    def _set_exception_with_signal(
+                        f: asyncio.Future[dict[str, Any]] = future,
+                        done: threading.Event = completion,
+                    ) -> None:
+                        try:
+                            if not f.done():
+                                f.set_exception(error)
+                        finally:
+                            done.set()
+
+                    future_loop.call_soon_threadsafe(_set_exception_with_signal)
+                    completion.wait(timeout=0.2)
             except Exception:
                 try:
-                    self._loop.call_soon_threadsafe(
-                        lambda f=future: f.done() or f.set_exception(error)
-                    )
+                    completion = threading.Event()
+
+                    def _set_exception_with_signal(
+                        f: asyncio.Future[dict[str, Any]] = future,
+                        done: threading.Event = completion,
+                    ) -> None:
+                        try:
+                            if not f.done():
+                                f.set_exception(error)
+                        finally:
+                            done.set()
+
+                    future_loop.call_soon_threadsafe(_set_exception_with_signal)
+                    completion.wait(timeout=0.2)
                 except Exception:
                     logger.debug("failed to fail pending future %s", command_id)

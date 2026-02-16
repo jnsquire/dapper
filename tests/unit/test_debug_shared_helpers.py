@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import debug_shared as ds
 from tests.dummy_debugger import DummyDebugger
 
@@ -19,10 +20,9 @@ def test_format_value_str_truncation_and_error():
 
 
 def test_allocate_var_ref_basic_and_none():
-    # Use the shared DummyDebugger for a fully-featured debugger-like object
-    dbg = DummyDebugger()
-    dbg.next_var_ref = 5
-    dbg.var_refs = {}
+    dbg = DebuggerBDB()
+    dbg.var_manager.next_var_ref = 5
+    dbg.var_manager.var_refs = {}
     obj = object()
     ref = ds._allocate_var_ref(obj, dbg)
     # obj has no __dict__ but is not a sequence/dict/tuple; should return 0
@@ -35,8 +35,8 @@ def test_allocate_var_ref_basic_and_none():
     o2 = ObjWithDict()
     ref2 = ds._allocate_var_ref(o2, dbg)
     assert ref2 == 5
-    assert dbg.next_var_ref == 6
-    assert dbg.var_refs[5][0] == "object"
+    assert dbg.var_manager.next_var_ref == 6
+    assert dbg.var_manager.var_refs[5][0] == "object"
 
     assert ds._allocate_var_ref(123, None) == 0
 

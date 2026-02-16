@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.protocol.debugger_protocol import DebuggerLike
 from dapper.protocol.debugger_protocol import ExceptionDetails
 from dapper.protocol.debugger_protocol import ExceptionInfo
@@ -287,6 +290,37 @@ def test_debugger_like_protocol_breakpoint_methods():
     dbg.clear_break_meta_for_file("test.py")
     dbg.clear_all_function_breakpoints()
     assert len(dbg.function_breakpoints) == 0
+
+
+def test_debugger_like_protocol_breakpoint_methods_real_debugger_bdb():
+    dbg = DebuggerBDB()
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
+        handle.write("\n".join(f"x_{line} = {line}" for line in range(1, 26)) + "\n")
+        source_path = handle.name
+
+    try:
+        result = dbg.set_break(source_path, 10, temporary=False, cond="x_10 > 5", funcname="noop")
+        assert result is None
+
+        dbg.record_breakpoint(
+            source_path,
+            15,
+            condition="x_15 == 15",
+            hit_condition=None,
+            log_message="Hit breakpoint",
+        )
+        assert dbg.bp_manager.line_meta[(source_path, 15)]["condition"] == "x_15 == 15"
+
+        dbg.clear_breaks_for_file(source_path)
+        assert not dbg.get_break(source_path, 10)
+
+        dbg.clear_break(source_path, 15)
+        dbg.clear_break_meta_for_file(source_path)
+        dbg.clear_all_function_breakpoints()
+        assert len(dbg.bp_manager.function_names) == 0
+    finally:
+        Path(source_path).unlink(missing_ok=True)
 
 
 def test_debugger_like_protocol_stepping_methods():

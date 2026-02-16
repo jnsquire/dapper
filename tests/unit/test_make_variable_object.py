@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import cast
 
+from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import debug_shared as ds
-from tests.dummy_debugger import DummyDebugger
 
 
 def test_make_variable_object_fallback_and_var_ref_allocation():
-    dbg = DummyDebugger()
+    dbg = DebuggerBDB()
 
     # object with __dict__ should allocate a var ref
     class Obj:
@@ -20,7 +20,7 @@ def test_make_variable_object_fallback_and_var_ref_allocation():
     ref = res["variablesReference"]
     assert isinstance(ref, int)
     if ref != 0:
-        entry = dbg.var_refs.get(ref)
+        entry = dbg.var_manager.var_refs.get(ref)
         assert entry is not None
         assert entry[0] == "object"
 

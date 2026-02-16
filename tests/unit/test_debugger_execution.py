@@ -85,6 +85,19 @@ class TestDebuggerExecution(BaseDebuggerTest):
         # After continue, stopped_event should be cleared
         assert not self.debugger.stopped_event.is_set()
 
+    async def test_continue_execution_returns_backend_continue_payload(self):
+        """Execution manager should return backend continue payload unchanged."""
+        self.debugger.program_running = True
+        self.debugger.is_terminated = False
+
+        mock_backend = MagicMock(spec=ExternalProcessBackend)
+        payload = {"allThreadsContinued": True}
+        mock_backend.continue_ = AsyncMock(return_value=payload)
+        self.debugger._external_backend = mock_backend
+
+        result = await self.debugger.continue_execution(1)
+        assert result == payload
+
     async def test_next_step(self):
         """Test stepping to next line"""
         self.debugger.program_running = True

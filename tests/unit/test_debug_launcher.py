@@ -350,6 +350,112 @@ class TestExpressionEvaluation:
         assert isinstance(kwargs["result"], str)
 
 
+def test_handle_command_bytes_error_sends_shaped_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    messages: list[tuple[str, str]] = []
+    queued: list[dict[str, Any]] = []
+
+    session = SimpleNamespace(command_queue=SimpleNamespace(put=queued.append), ipc_enabled=True)
+
+    monkeypatch.setattr(
+        dl,
+        "send_debug_message",
+        lambda event, **kwargs: messages.append((event, kwargs.get("message", ""))),
+    )
+    monkeypatch.setattr(dl.traceback, "print_exc", lambda: None)
+
+    dl._handle_command_bytes(b"{not-json", session=session)
+
+    assert queued == []
+    assert messages
+    assert messages[-1][0] == "error"
+    assert messages[-1][1].startswith("Error receiving command:")
+
+
+def test_recv_binary_from_pipe_returns_immediately_when_terminated() -> None:
+    class FakeConn:
+        def __init__(self):
+            self.calls = 0
+
+        def recv_bytes(self):
+            self.calls += 1
+            msg = "recv_bytes should not be called when session is terminated"
+            raise AssertionError(msg)
+
+    conn = FakeConn()
+    session = SimpleNamespace(is_terminated=True, exit_func=lambda _code: None)
+
+    dl._recv_binary_from_pipe(conn, session=session)
+    assert conn.calls == 0
+
+
+def test_recv_binary_from_stream_returns_immediately_when_terminated() -> None:
+    class FakeStream:
+        def read(self, _size):
+            msg = "read should not be called when session is terminated"
+            raise AssertionError(msg)
+
+    stream = FakeStream()
+    session = SimpleNamespace(is_terminated=True, exit_func=lambda _code: None)
+
+    dl._recv_binary_from_stream(stream, session=session)
+
+
+def test_recv_binary_from_stream_empty_payload_exits(monkeypatch: pytest.MonkeyPatch) -> None:
+    header_only = pack_frame(2, b"hello")[:8]
+    stream = io.BytesIO(header_only)
+    exits: list[int] = []
+    handled: list[bytes] = []
+
+    session = SimpleNamespace(
+        is_terminated=False,
+        exit_func=exits.append,
+        command_queue=SimpleNamespace(put=lambda _item: None),
+    )
+
+    monkeypatch.setattr(
+        dl, "_handle_command_bytes", lambda payload, _session=None: handled.append(payload)
+    )
+    dl._recv_binary_from_stream(stream, session=session)
+
+    assert handled == []
+    assert exits == [0]
+
+
+def test_setup_ipc_socket_uses_default_connector_when_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSock:
+        def makefile(self, _mode, **_kwargs):
+            return object()
+
+    fake_sock = FakeSock()
+    connector = SimpleNamespace(
+        connect_unix=lambda _path: None,
+        connect_tcp=lambda _host, _port: fake_sock,
+    )
+    session = SimpleNamespace(
+        ipc_sock=None,
+        ipc_rfile=None,
+        ipc_wfile=None,
+        ipc_enabled=False,
+        ipc_binary=False,
+    )
+
+    monkeypatch.setattr(dl, "default_connector", connector)
+    dl._setup_ipc_socket(
+        "tcp",
+        "127.0.0.1",
+        9000,
+        None,
+        ipc_binary=False,
+        connector=None,
+        session=session,
+    )
+
+    assert session.ipc_sock is fake_sock
+    assert session.ipc_enabled is True
+
+
 class TestControlFlow:
     """Tests for execution control flow commands."""
 
