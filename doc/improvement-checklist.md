@@ -15,70 +15,16 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       thin out the remaining facade to pure delegation.
       _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
 
-- [x] **Eliminate duplicated dispatch + standalone methods in `ExternalProcessBackend`** — DONE
-      Unified command routing to a single source of truth (`_dispatch_map`) and
-      converted `_build_dispatch_table` into a backward-compatible wrapper.
-      Removed redundant standalone `configuration_done`/`terminate` overrides so
-      lifecycle commands use the same dispatch path as other DAP commands.
-      _File: [dapper/adapter/external_backend.py](../dapper/adapter/external_backend.py)_
-
-- [x] **Remove `InProcessBackend.exception_info` deep attribute chain** — DONE
-      `self._bridge._inproc.debugger.exception_handler.exception_info_by_thread`
-      violated layer boundaries. Implemented `InProcessBridge.get_exception_info`
-      and updated `InProcessBackend.exception_info` to use it.
-      _Files: [dapper/adapter/inprocess_bridge.py](../dapper/adapter/inprocess_bridge.py), [dapper/adapter/inprocess_backend.py](../dapper/adapter/inprocess_backend.py)_
-
-- [ ] **Break circular reference between `PyDebugger` ↔ `DebugAdapterServer`**
+- [x] **Break circular reference between `PyDebugger` ↔ `DebugAdapterServer`**
       They hold references to each other at construction time. Introduce an
       interface / Protocol so neither depends on the concrete class.
       _Files: [server.py](../dapper/adapter/server.py), [server_core.py](../dapper/adapter/server_core.py)_
-
-- [x] **Consolidate the two IPC management systems** — DONE
-      Removed the legacy `IPCContext` class (540 lines, zero production imports)
-      and its 4 dedicated test files. `IPCManager` is now the sole IPC
-      management interface. Updated all documentation and remaining test
-      monkeypatches to reference `IPCManager`.
-      _Removed: `dapper/ipc/ipc_context.py`; kept: [dapper/ipc/ipc_manager.py](../dapper/ipc/ipc_manager.py)_
 
 - [ ] **Rename `server.py` → `debugger.py` (or move `PyDebugger` into `adapter/debugger/`)**
       The file contains `PyDebugger`, not a server. The actual server is
       `server_core.py`. The `__getattr__` re-export at the bottom of `server.py`
       is an extra source of confusion.
       _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
-
-- [x] **Replace string-based exception classification with `isinstance` checks** — DONE
-      Extracted `_classify_adapter_error` and `_classify_backend_error` helper
-      functions that use `isinstance(e, (ConnectionError, BrokenPipeError,
-      EOFError))` for IPC errors and `isinstance(e, TimeoutError)` for timeouts.
-      Replaced all three string-matching blocks (sync adapter, async adapter,
-      async backend) with calls to these classifiers.
-      _File: [dapper/errors/error_patterns.py](../dapper/errors/error_patterns.py)_
-
----
-
-## P2 — Duplication & DRY
-
-- [x] **Define `SafeSendDebugMessageFn` Protocol once** — DONE
-      Consolidated the protocol in `command_handler_helpers.py` and updated
-      shared handler modules to import it from one place.
-
-- [x] **Define `Payload = dict[str, Any]` type alias once** — DONE
-      Consolidated the alias in `command_handler_helpers.py` and updated
-      shared handler modules to use the shared definition.
-
-- [x] **Extract `_normalize_continue_payload` to `BaseBackend`** — DONE
-      Added shared normalization in `BaseBackend` and removed duplicate
-      implementations from `ExternalProcessBackend` and `InProcessBackend`
-      while preserving backend-specific fallback behavior.
-
-- [x] **Unify sync/async error decorator logic in `error_patterns.py`** — DONE
-      Introduced shared internal helpers for adapter/backend exception
-      handling and switched both sync and async decorators to those helpers.
-      _File: [dapper/errors/error_patterns.py](../dapper/errors/error_patterns.py)_
-
-- [x] **Remove `dapper/launcher/comm.py`** — DONE
-      Deleted the re-export module and updated callers to use
-      `dapper.shared.debug_shared.send_debug_message` directly.
 
 ---
 

@@ -27,6 +27,7 @@ from dapper.adapter.debugger.state import _PyDebuggerStateManager
 from dapper.adapter.source_tracker import LoadedSourceTracker
 from dapper.adapter.types import BreakpointDict
 from dapper.adapter.types import BreakpointResponse
+from dapper.adapter.types import DebuggerServerProtocol
 from dapper.adapter.types import PyDebuggerThread
 from dapper.adapter.types import SourceDict
 from dapper.ipc.ipc_manager import IPCManager
@@ -107,7 +108,7 @@ class PyDebugger:
 
     def __init__(
         self,
-        server: DebugAdapterServer,
+        server: DebuggerServerProtocol,
         loop: asyncio.AbstractEventLoop | None = None,
         enable_frame_eval: bool = False,
     ):
@@ -118,7 +119,7 @@ class PyDebugger:
             loop: Optional event loop to use. If not provided, gets the current event loop.
             enable_frame_eval: Whether to enable frame evaluation optimization.
         """
-        self.server: DebugAdapterServer = server
+        self.server: DebuggerServerProtocol = server
         self.loop: asyncio.AbstractEventLoop
         self._owns_loop: bool
         self.loop, self._owns_loop = _acquire_event_loop(loop)

@@ -11,7 +11,6 @@ from typing import cast
 import pytest
 
 from dapper.core.debugger_bdb import DebuggerBDB
-from dapper.launcher import comm as launcher_comm
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
@@ -120,8 +119,6 @@ def capture_send(monkeypatch):
     monkeypatch.setattr(handlers, "send_debug_message", _send)
     # Patch where the function is imported into command_handlers
     monkeypatch.setattr(command_handlers, "send_debug_message", _send)
-    # Also patch the launcher comm module as fallback
-    monkeypatch.setattr(launcher_comm, "send_debug_message", _send)
     return messages
 
 

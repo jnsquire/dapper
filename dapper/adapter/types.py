@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
+from typing import Protocol
 from typing import TypedDict
 
 from dapper.protocol.requests import CompletionItem
@@ -22,6 +23,7 @@ __all__ = [
     "DAPRequest",
     "DAPResponse",
     "DAPResponseBase",
+    "DebuggerServerProtocol",
     "HandlerResult",
     "PyDebuggerThread",
     "SourceDict",
@@ -57,6 +59,17 @@ class DAPErrorResponse(DAPResponseBase):
 
 # Type alias for handler return values
 HandlerResult = "DAPResponse | None"
+
+
+class DebuggerServerProtocol(Protocol):
+    """Protocol for server features used by PyDebugger.
+
+    Implemented by DebugAdapterServer; extracted to avoid a concrete type
+    dependency between the debugger facade and server core.
+    """
+
+    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
+        """Send a DAP event to the connected client."""
 
 
 # ---------------------------------------------------------------------------
