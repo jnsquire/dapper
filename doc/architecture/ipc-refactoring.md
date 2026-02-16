@@ -4,12 +4,13 @@ This document describes the refactoring of the IPC transport logic for better ma
 
 ## Overview
 
-The original IPC implementation had several maintainability issues:
-- Large monolithic `IPCContext` class (492 lines) with mixed responsibilities
-- Complex connection logic scattered across methods
-- Platform-specific code mixed throughout
-- No clear abstraction between transport types
-- Difficult to test and extend
+The original IPC implementation had a large monolithic `IPCContext` class
+(540 lines) managing raw sockets, pipes, file handles, reader threads, and
+binary framing all in one dataclass. This was replaced by a clean
+three-layer architecture: `IPCManager` → `TransportFactory` → `ConnectionBase`.
+
+The legacy `IPCContext` class has been fully removed; `IPCManager` is now
+the sole IPC management interface used throughout the codebase.
 
 ## New Architecture
 
@@ -108,32 +109,21 @@ class ConnectionBase(ABC):
     async def write_message(message: dict[str, Any]) -> None
 ```
 
-### 5. IPCContextAdapter
-**Purpose**: Backward compatibility layer.
+## Migration Status
 
-**Benefits**:
-- Existing code continues to work unchanged
-- Gradual migration path
-- Maintains all legacy attribute access
-- Delegates to new architecture internally
+### Phase 1: Foundation — Complete
+- Created `TransportFactory`, `ConnectionBase`, `IPCManager`
+- Implemented backward compatibility adapter
 
-## Migration Strategy
+### Phase 2: Production Migration — Complete
+- Updated `server.py` to use `IPCManager`
+- Updated `lifecycle.py` to use `TransportConfig`
+- All production code migrated to new interfaces
 
-### Phase 1: Foundation (Complete)
-- ✅ Created new architecture components
-- ✅ Implemented backward compatibility adapter
-- ✅ Updated server.py to use new components
-- ✅ Maintained existing functionality
-
-### Phase 2: Gradual Migration (Next)
-- Migrate individual components to use new interfaces
-- Update tests to work with new architecture
-- Remove legacy adapter dependencies
-
-### Phase 3: Cleanup (Future)
-- Remove IPCContextAdapter once migration complete
-- Clean up any remaining legacy code
-- Update documentation
+### Phase 3: Cleanup — Complete
+- Removed legacy `IPCContext` class (`ipc_context.py`)
+- Removed `IPCContext`-only test files
+- Updated documentation to reference `IPCManager`
 
 ## Benefits Achieved
 
@@ -156,40 +146,6 @@ class ConnectionBase(ABC):
 - Smaller, focused classes
 - Clear responsibilities
 - Reduced complexity in individual methods
-
-### 5. **Backward Compatibility**
-- Existing code continues to work
-- No breaking changes during migration
-- Gradual adoption possible
-
-## Usage Examples
-
-### Using New Architecture Directly
-
-```python
-from dapper.ipc import IPCManager, TransportConfig
-
-# Create manager
-manager = IPCManager()
-
-# Configure transport
-config = TransportConfig(
-    transport="auto",
-    use_binary=True
-)
-
-# Create listener for launch
-args = manager.create_listener(config)
-
-# Start message handling
-manager.start_reader(handle_message, accept=True)
-
-# Send messages
-manager.send_message({"type": "request", "command": "continue"})
-
-# Cleanup
-manager.cleanup()
-```
 
 ### Using with DapperConfig Integration
 
@@ -215,14 +171,6 @@ manager = IPCManager()
 args = manager.create_listener(transport_config)
 ```
 
-### Legacy Compatibility (Current)
-
-```python
-# Existing code continues to work unchanged
-self.ipc.create_listener(transport="pipe", pipe_name="mypipe")
-self.ipc.connect(transport="tcp", host="localhost", port=4711)
-```
-
 ## Testing Strategy
 
 ### Unit Tests
@@ -233,14 +181,6 @@ self.ipc.connect(transport="tcp", host="localhost", port=4711)
 
 ### Integration Tests  
 - Test end-to-end connection scenarios
-- Test message passing between components
-- Test cleanup and resource management
-- Test platform-specific behavior
-
-### Compatibility Tests
-- Verify legacy adapter works correctly
-- Test migration scenarios
-- Verify no breaking changes
 
 ## Performance Considerations
 

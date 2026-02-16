@@ -1,7 +1,7 @@
 """Small helpers for reading DBGP messages from pipes and sockets.
 
-Centralises the blocking read loops used by IPCContext so testable
-helpers can be reused and the high-level context class is smaller.
+Centralises the blocking read loops so testable helpers can be reused
+across different IPC implementations.
 """
 
 from __future__ import annotations

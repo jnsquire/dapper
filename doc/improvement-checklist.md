@@ -31,11 +31,12 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       interface / Protocol so neither depends on the concrete class.
       _Files: [server.py](../dapper/adapter/server.py), [server_core.py](../dapper/adapter/server_core.py)_
 
-- [ ] **Consolidate the two IPC management systems**
-      `IPCContext` (539 lines) and `IPCManager` (210 lines) overlap
-      significantly. Pick one and remove the other, or merge into a single
-      coherent abstraction.
-      _Files: [dapper/ipc/ipc_context.py](../dapper/ipc/ipc_context.py), [dapper/ipc/ipc_manager.py](../dapper/ipc/ipc_manager.py)_
+- [x] **Consolidate the two IPC management systems** — DONE
+      Removed the legacy `IPCContext` class (540 lines, zero production imports)
+      and its 4 dedicated test files. `IPCManager` is now the sole IPC
+      management interface. Updated all documentation and remaining test
+      monkeypatches to reference `IPCManager`.
+      _Removed: `dapper/ipc/ipc_context.py`; kept: [dapper/ipc/ipc_manager.py](../dapper/ipc/ipc_manager.py)_
 
 - [ ] **Rename `server.py` → `debugger.py` (or move `PyDebugger` into `adapter/debugger/`)**
       The file contains `PyDebugger`, not a server. The actual server is
@@ -73,57 +74,6 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 - [ ] **Remove `dapper/launcher/comm.py`**
       It only re-exports `send_debug_message` from `dapper.shared.debug_shared`.
       Callers can import directly.
-
----
-
-## P3 — Build, CI & Packaging
-
-- [x] **Consolidate all metadata into `pyproject.toml`; slim down `setup.py`** — DONE
-      `setup.py` should only drive the Cython extension build. Remove the
-      duplicate `version`, `install_requires`, `extras_require`, `classifiers`,
-      etc. Also remove dead dev-deps `black`, `isort`, `mypy`.
-      _File: [setup.py](../setup.py)_
-
-- [x] **Re-enable Pyright in CI** — DONE
-      Type-checking is disabled (`if: false`) in `.github/workflows/ci.yml`.
-      Fix the blocking issues and turn it back on so type regressions are caught.
-      _File: [.github/workflows/ci.yml](../.github/workflows/ci.yml#L96-L98)_
-
-- [x] **Unify Python version matrices across CI workflows** — DONE
-      `ci.yml` tests `[3.11, 3.13]`; `tests.yml` tests `[3.9–3.12]`.
-      Neither covers the full supported range. Merge into one matrix or align.
-
-- [x] **Add macOS to the Python test matrix** — DONE
-      Only Ubuntu and Windows are tested. The project claims OS-independent.
-
----
-
-## P4 — Type Safety & Annotations
-
-- [x] **Add type annotations to untyped `frame` parameters** — DONE
-      Added `types.FrameType` annotations to all untyped `frame` parameters in
-      `debug_utils.py`, `debugger_bdb.py`, and `stepping_controller.py`.
-      Also updated the `SupportsVariableFactory` protocol accordingly.
-
-- [x] **Replace `Any` constructor params in `ExternalProcessBackend`** — DONE
-      `get_process_state` is now `Callable[[], tuple[Popen[Any] | None, bool]]`,
-      `lock` is `threading.RLock`, `get_next_command_id` is `Callable[[], int]`.
-
-- [x] **Narrow `debugger: Any` in `BreakpointsController` / `SteppingController`** — DONE
-      Created `_SupportsBreakpointManagement` Protocol for `BreakpointController`.
-      Changed `SteppingController.current_frame` from `Any` to `types.FrameType | None`.
-
-- [x] **Reduce excessive `cast()` usage** — DONE
-      Changed `_make_response` return to `Any` so handlers don't need `cast()`.
-      Removed all `cast()` calls from `request_handlers.py` (~40 calls).
-      Removed redundant casts from `inprocess_backend.py` where bridge methods
-      already return properly typed values.
-
-- [x] **Widen `DebuggerLike` Protocol to cover methods accessed via `getattr`** — DONE
-      Added `SupportsBreakpointCommands` protocol with `set_break`, `clear_break`,
-      `clear_breaks_for_file`, `clear_break_meta_for_file`, `record_breakpoint`,
-      `clear_all_function_breakpoints`, `bp_manager`, and `exception_handler`.
-      Updated `breakpoint_handlers.py` to use `DebuggerLike` instead of `object`.
 
 ---
 

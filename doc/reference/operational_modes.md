@@ -16,7 +16,7 @@ graph TB
         Adapter[DebugAdapterServer]
         Handler[RequestHandler]
         Debugger[PyDebugger]
-        IPC_Context[IPCContext]
+        IPC_Mgr[IPCManager]
     end
     
     subgraph "Debuggee Process (New Subprocess)"
@@ -28,15 +28,15 @@ graph TB
     Client -->|DAP Protocol| Adapter
     Adapter --> Handler
     Handler --> Debugger
-    Debugger --> IPC_Context
+    Debugger --> IPC_Mgr
     
-    IPC_Context -.->|IPC Transport| IPC_Bridge
+    IPC_Mgr -.->|IPC Transport| IPC_Bridge
     IPC_Bridge --> Launcher
     Launcher --> Debuggee
     
     Debuggee -.->|Debug Events| Launcher
-    Launcher -.->|IPC Messages| IPC_Context
-    IPC_Context --> Debugger
+    Launcher -.->|IPC Messages| IPC_Mgr
+    IPC_Mgr --> Debugger
     Debugger --> Handler
     Handler --> Adapter
     Adapter --> Client
@@ -49,7 +49,7 @@ sequenceDiagram
     participant Client as DAP Client
     participant Adapter as DebugAdapterServer
     participant Debugger as PyDebugger
-    participant IPC as IPCContext
+    participant IPC as IPCManager
     participant Launcher as debug_launcher.py
     participant Debuggee as User Program
     
@@ -87,7 +87,7 @@ graph TB
         Adapter[DebugAdapterServer]
         Handler[RequestHandler]
         Debugger[PyDebugger]
-        IPC_Context[IPCContext]
+        IPC_Mgr[IPCManager]
     end
     
     subgraph "Existing Debuggee Process"
@@ -99,15 +99,15 @@ graph TB
     Client -->|DAP Protocol| Adapter
     Adapter --> Handler
     Handler --> Debugger
-    Debugger --> IPC_Context
+    Debugger --> IPC_Mgr
     
-    IPC_Context -->|Connect to existing| IPC_Bridge
+    IPC_Mgr -->|Connect to existing| IPC_Bridge
     IPC_Bridge --> Launcher
     Launcher --> Debuggee
     
     Debuggee -.->|Debug Events| Launcher
-    Launcher -.->|IPC Messages| IPC_Context
-    IPC_Context --> Debugger
+    Launcher -.->|IPC Messages| IPC_Mgr
+    IPC_Mgr --> Debugger
     Debugger --> Handler
     Handler --> Adapter
     Adapter --> Client
@@ -120,7 +120,7 @@ sequenceDiagram
     participant Client as DAP Client
     participant Adapter as DebugAdapterServer
     participant Debugger as PyDebugger
-    participant IPC as IPCContext
+    participant IPC as IPCManager
     participant Launcher as debug_launcher.py
     participant Debuggee as User Program
     

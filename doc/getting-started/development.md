@@ -159,7 +159,7 @@ Guidelines:
 * Prefer passing a factory (`lambda: some_coro(arg)`) instead of a pre-created coroutine object.
 * Do not use `asyncio.run_coroutine_threadsafe` directly unless you require the returned `Future` for synchronization; otherwise defer to `spawn_threadsafe` to centralize task tracking and error handling.
 * If you remove tasks manually, also discard them from the `_bg_tasks` set to prevent memory growth.
-* IPC-related attributes live in `dapper/ipc_context.py` (`IPCContext`).
+* IPC management is handled by `IPCManager` (`dapper/ipc/ipc_manager.py`), which delegates transport details to `ConnectionBase` implementations via `TransportFactory`.
 
 ## Git Workflow and Commit Guidelines
 

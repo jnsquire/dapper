@@ -46,28 +46,27 @@ Resource management:
 
 - The adapter owns the listener and cleans up on shutdown (closing sockets/files and unlinking `AF_UNIX` paths).
 - Reader threads catch and log exceptions; `spawn_threadsafe(lambda: ...)` (factory form) ensures events are forwarded on the adapter loop without creating coroutine objects off-loop.
-- All transient IPC state (listener sockets, pipe handles, r/w files, unix path, binary flag) is centralized in an `IPCContext` dataclass (`dapper/ipc_context.py`). Implementation and tests now access these directly via `self.ipc.<field>`; the former `_ipc_*` bridge has been fully removed.
+- All transient IPC state is managed by the `IPCManager` class (`dapper/ipc/ipc_manager.py`) which delegates transport-specific logic to `TransportFactory` and `ConnectionBase` implementations. `PyDebugger` accesses IPC through `self.ipc` (an `IPCManager` instance).
 
-### IPCContext
+### IPCManager
 
-`IPCContext` groups related fields that were previously individual attributes on `PyDebugger`:
+`IPCManager` provides a streamlined IPC lifecycle interface built on the `ConnectionBase` abstraction:
 
-| Field | Purpose |
-|-------|---------|
-| `enabled` | Whether an IPC channel is currently active |
-| `listen_sock` | Passive listening socket (UNIX/TCP) |
-| `sock` | Accepted active socket connection |
-| `rfile` / `wfile` | File-like wrappers around the active socket/pipe (text or binary) |
-| `pipe_listener` | Windows named pipe listener (AF_PIPE) |
-| `pipe_conn` | Accepted named pipe connection |
-| `unix_path` | Filesystem path for AF_UNIX socket (for cleanup) |
-| `binary` | Whether binary framed IPC (`--ipc-binary`) is in use |
+| Member | Purpose |
+|--------|---------|
+| `is_enabled` | Whether an IPC channel is currently active |
+| `connection` | The active `ConnectionBase` instance (TCP, pipe, or UNIX) |
+| `create_listener(config)` | Create a transport listener and return launcher CLI args |
+| `connect(config)` | Connect to an existing IPC endpoint |
+| `start_reader(handler)` | Spawn a daemon thread that reads messages and dispatches to `handler` |
+| `send_message(msg)` | Async — write a dict message through the connection |
+| `cleanup()` / `acleanup()` | Close connection and reset state (sync/async variants) |
 
 Encapsulation benefits:
 
 - Clear lifecycle ownership (initialized in `launch`, cleaned via `ipc.cleanup()` during shutdown or error paths).
-- Reduced attribute sprawl in `server.py` (improved readability & type hinting).
-- Easier to evolve framing/transport logic without widening `PyDebugger`'s surface.
+- Transport details are hidden behind `ConnectionBase`; the manager only orchestrates listener creation, reader threading, and cleanup.
+- Context manager support (`with ipc_manager:`).
 
 ## Concurrency model
 

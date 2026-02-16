@@ -222,10 +222,10 @@ class TransportFactory:
     def create_tcp_listener_socket(host: str | None = None) -> tuple[_socket.socket, list[str]]:
         """Create a raw TCP listening socket and return (socket, launcher_args).
 
-        This helper centralises the low level socket creation used by both
-        the asynchronous Connection-based path and the legacy synchronous
-        IPCContext. It binds an ephemeral port and returns the socket plus
-        arguments for launching/debuggee invocation.
+        This helper centralises the low-level socket creation used by
+        the Connection-based path and sync callers. It binds an ephemeral
+        port and returns the socket plus arguments for launching/debuggee
+        invocation.
         """
         host = host or "127.0.0.1"
         listen = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
@@ -255,9 +255,9 @@ class TransportFactory:
     ) -> tuple[_socket.socket, list[str], Path]:
         """Create a UNIX-domain listening socket and return (socket, args, path).
 
-        The path is created in the system tempdir if not supplied. This mirrors
-        the logic previously duplicated in IPCContext, centralising creation
-        so both sync and async callers can reuse a single implementation.
+        The path is created in the system tempdir if not supplied,
+        centralising creation so both sync and async callers can reuse
+        a single implementation.
         """
         af_unix = getattr(_socket, "AF_UNIX", None)
         if not af_unix:

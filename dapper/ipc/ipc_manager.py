@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 class IPCManager:
-    """Simplified IPC manager with clear separation of concerns.
+    """IPC manager with clear separation of concerns.
 
-    This class replaces the complex IPCContext with a cleaner interface
-    that delegates transport-specific logic to the factory pattern.
+    Delegates transport-specific logic to the factory pattern and
+    provides lifecycle management for IPC connections.
     """
 
     def __init__(self) -> None:

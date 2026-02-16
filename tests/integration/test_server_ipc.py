@@ -14,7 +14,7 @@ from dapper.adapter.server import PyDebugger
 from dapper.config import DapperConfig
 from dapper.config import DebuggeeConfig
 from dapper.config import IPCConfig
-from dapper.ipc import ipc_context
+from dapper.ipc.ipc_manager import IPCManager
 from tests.integration.test_server import AsyncCallRecorder
 from tests.mocks import MockConnection
 
@@ -142,21 +142,6 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         captured_args.extend(debug_args)
         self.process = Mock(pid=4242)
 
-    class DummyThread:
-        def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
-            self._target = target
-            self._args = args
-            self._kwargs = kwargs or {}
-            self.daemon = daemon
-            self.name = name
-
-        def start(self):
-            if self._target is not None:
-                self._target(*self._args, **self._kwargs)
-
-        def is_alive(self):
-            return False
-
     class DummyServer(DebugAdapterServer):
         def __init__(self, loop):
             # Create a mock connection for the parent class
@@ -190,12 +175,8 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
         server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False
     )
 
-    # Patch the IPC accept method to be a no-op (it would block waiting for connection)
-    def _noop_ipc(_self, _handler):
-        return None
-
-    monkeypatch.setattr(ipc_context.IPCContext, "run_accept_and_read", _noop_ipc, raising=False)
-    monkeypatch.setattr(ipc_context, "threading", type("threading", (), {"Thread": DummyThread}))
+    # Patch the IPCManager reader to be a no-op (it would block waiting for connection)
+    monkeypatch.setattr(IPCManager, "start_reader", lambda *_a, **_kw: None)
 
     config = DapperConfig(
         mode="launch",
