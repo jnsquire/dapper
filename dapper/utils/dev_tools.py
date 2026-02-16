@@ -83,6 +83,50 @@ def update_docs() -> None:
     runpy.run_path(str(script), run_name="__main__")
 
 
+def _run_frame_eval_script(command: str) -> None:
+    """Run scripts/build_frame_eval.py with the given subcommand."""
+    script = Path(__file__).resolve().parent.parent.parent / "scripts" / "build_frame_eval.py"
+    if not script.exists():
+        msg = f"frame-eval build script not found: {script}"
+        raise SystemExit(msg)
+
+    result = subprocess.run([sys.executable, str(script), command], check=False)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def build_dev() -> None:
+    """Build frame-eval extensions in development mode.
+
+    Entry point for `uv run build-dev`.
+    """
+    _run_frame_eval_script("build-dev")
+
+
+def build_prod() -> None:
+    """Build frame-eval extensions in production mode.
+
+    Entry point for `uv run build-prod`.
+    """
+    _run_frame_eval_script("build-prod")
+
+
+def clean_frame_eval() -> None:
+    """Clean frame-eval build artifacts.
+
+    Entry point for `uv run frame-eval-clean`.
+    """
+    _run_frame_eval_script("clean")
+
+
+def test_frame_eval() -> None:
+    """Run frame-eval runtime smoke test.
+
+    Entry point for `uv run frame-eval-test`.
+    """
+    _run_frame_eval_script("test")
+
+
 if __name__ == "__main__":
     update_docs()
 

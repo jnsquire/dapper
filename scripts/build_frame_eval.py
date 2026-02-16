@@ -9,6 +9,7 @@ there so behavior remains the same after relocation.
 import argparse
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -24,33 +25,33 @@ def run_command(cmd, cwd=None):
     return result.returncode == 0
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FRAME_EVAL_DIR = REPO_ROOT / "dapper" / "_frame_eval"
+ARTIFACTS_ROOT = REPO_ROOT / "build" / "frame-eval"
+BUILD_LIB_DIR = ARTIFACTS_ROOT / "lib"
+BUILD_TEMP_DIR = ARTIFACTS_ROOT / "temp"
+CYTHON_BUILD_DIR = ARTIFACTS_ROOT / "cython"
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    elif path.exists():
+        path.unlink(missing_ok=True)
+
+
 def clean_build():
     """Clean build artifacts."""
     print("Cleaning build artifacts...")
-    # Determine repository root (two levels up from scripts/)
-    base_dir = Path(__file__).resolve().parent.parent
 
-    # Remove build directories
-    for build_dir in ["build", "dist"]:
-        if (base_dir / build_dir).exists():
-            run_command(
-                f"rmdir /s /q {build_dir}" if sys.platform == "win32" else f"rm -rf {build_dir}",
-                cwd=base_dir,
-            )
+    # Remove dedicated frame-eval artifact tree.
+    _remove_path(ARTIFACTS_ROOT)
 
-    # Remove Cython generated files
-    for pattern in ["**/*.c", "**/*.so", "**/*.pyd", "**/*.html"]:
-        for file in base_dir.glob(pattern):
+    # Clean up legacy inline artifacts from previous --inplace builds.
+    for pattern in ["_frame_evaluator*.so", "_frame_evaluator*.pyd", "*.html"]:
+        for file in FRAME_EVAL_DIR.glob(pattern):
             if file.is_file():
-                file.unlink()
-
-    # Remove __pycache__ directories
-    for pycache in base_dir.rglob("__pycache__"):
-        if pycache.is_dir():
-            run_command(
-                f"rmdir /s /q {pycache}" if sys.platform == "win32" else f"rm -rf {pycache}",
-                cwd=base_dir,
-            )
+                file.unlink(missing_ok=True)
 
     print("Clean completed.")
 
@@ -62,12 +63,27 @@ def build_development():
     # Set environment variables for development
     env = os.environ.copy()
     env["CYTHON_ANNOTATE"] = "1"  # Generate HTML annotation files
+    env["CYTHON_BUILD_DIR"] = str(CYTHON_BUILD_DIR)
 
-    # Build with verbose output from repository root
-    repo_root = Path(__file__).resolve().parent.parent
-    cmd = [sys.executable, "setup.py", "build_ext", "--inplace", "--verbose"]
+    BUILD_LIB_DIR.mkdir(parents=True, exist_ok=True)
+    BUILD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    CYTHON_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
-    result = subprocess.run(cmd, check=False, env=env, cwd=repo_root)
+    # Build into dedicated artifacts directory from repository root.
+    cmd = [
+        sys.executable,
+        "setup.py",
+        "build_ext",
+        "--verbose",
+        "--build-lib",
+        str(BUILD_LIB_DIR),
+        "--build-temp",
+        str(BUILD_TEMP_DIR),
+    ]
+
+    result = subprocess.run(cmd, check=False, env=env, cwd=REPO_ROOT)
+    if result.returncode == 0:
+        print(f"Build artifacts: {ARTIFACTS_ROOT}")
     return result.returncode == 0
 
 
@@ -75,10 +91,27 @@ def build_production():
     """Build in production mode."""
     print("Building frame evaluation extensions (production mode)...")
 
-    repo_root = Path(__file__).resolve().parent.parent
-    cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+    env = os.environ.copy()
+    env["CYTHON_ANNOTATE"] = "0"
+    env["CYTHON_BUILD_DIR"] = str(CYTHON_BUILD_DIR)
 
-    result = subprocess.run(cmd, check=False, cwd=repo_root)
+    BUILD_LIB_DIR.mkdir(parents=True, exist_ok=True)
+    BUILD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    CYTHON_BUILD_DIR.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        sys.executable,
+        "setup.py",
+        "build_ext",
+        "--build-lib",
+        str(BUILD_LIB_DIR),
+        "--build-temp",
+        str(BUILD_TEMP_DIR),
+    ]
+
+    result = subprocess.run(cmd, check=False, cwd=REPO_ROOT, env=env)
+    if result.returncode == 0:
+        print(f"Build artifacts: {ARTIFACTS_ROOT}")
     return result.returncode == 0
 
 
@@ -88,8 +121,7 @@ def install_dev():
 
     cmd = [sys.executable, "-m", "pip", "install", "-e", " .[dev,frame-eval]"]
     # run_command uses shell=True so join into a single string
-    repo_root = Path(__file__).resolve().parent.parent
-    return run_command(" ".join(cmd), cwd=repo_root)
+    return run_command(" ".join(cmd), cwd=REPO_ROOT)
 
 
 def test_frame_eval():
@@ -99,6 +131,7 @@ def test_frame_eval():
     test_code = """
 import sys
 sys.path.insert(0, ".")
+sys.path.insert(0, r"__BUILD_LIB_DIR__")
 
 try:
     from dapper._frame_eval import is_frame_eval_available, enable_frame_eval
@@ -116,9 +149,10 @@ except ImportError as e:
 except Exception as e:
     print(f"Error: {e}")
 """
+    test_code = test_code.replace("__BUILD_LIB_DIR__", str(BUILD_LIB_DIR))
 
-    repo_root = Path(__file__).resolve().parent.parent
-    return run_command(f'{sys.executable} -c "{test_code}"', cwd=repo_root)
+    result = subprocess.run([sys.executable, "-c", test_code], check=False, cwd=REPO_ROOT)
+    return result.returncode == 0
 
 
 def main():

@@ -13,12 +13,12 @@ readme = "README.md"
 authors = [
     {name = "Joel Squire", email = "joel@squire.org"}
 ]
+license = "MIT"
 dependencies = [
 ]
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 [project.optional-dependencies]
@@ -196,4 +196,8 @@ sort_by_size = true
 # local documentation update helper without requiring an installed package.
 docs = "dapper.utils.dev_tools:update_docs"
 test = "dapper.utils.dev_tools:run_tests"
+build-dev = "dapper.utils.dev_tools:build_dev"
+build-prod = "dapper.utils.dev_tools:build_prod"
+frame-eval-clean = "dapper.utils.dev_tools:clean_frame_eval"
+frame-eval-test = "dapper.utils.dev_tools:test_frame_eval"
 

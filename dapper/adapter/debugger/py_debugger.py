@@ -72,6 +72,124 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _PyDebuggerSteppingControllerShim:
+    """Minimal stepping-controller shim expected by shared helpers."""
+
+    def __init__(self) -> None:
+        self.stepping: bool = False
+        self.current_frame: Any | None = None
+
+
+class _PyDebuggerVarManagerShim:
+    """Adapter exposing variable-store fields on top of PyDebugger state."""
+
+    def __init__(self, debugger: PyDebugger) -> None:
+        self._debugger = debugger
+
+    @property
+    def next_var_ref(self) -> int:
+        return self._debugger.next_var_ref
+
+    @next_var_ref.setter
+    def next_var_ref(self, value: int) -> None:
+        self._debugger.next_var_ref = value
+
+    @property
+    def var_refs(self) -> dict[int, object]:
+        return self._debugger.var_refs
+
+
+class _PyDebuggerDataBreakpointStateShim:
+    """Adapter exposing data-breakpoint bookkeeping in protocol form."""
+
+    def __init__(self, debugger: PyDebugger) -> None:
+        self._debugger = debugger
+
+    _FRAME_DATA_ID_PARTS = 4
+
+    @property
+    def watch_names(self) -> set[str]:
+        names: set[str] = set()
+        for data_id in self._debugger.get_data_watch_keys():
+            parts = data_id.split(":")
+            if (
+                len(parts) >= self._FRAME_DATA_ID_PARTS
+                and parts[0] == "frame"
+                and parts[2] == "var"
+            ):
+                names.add(parts[3])
+        return names
+
+    @property
+    def watch_meta(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for data_id, meta in self._debugger.get_data_watch_items():
+            parts = data_id.split(":")
+            if (
+                len(parts) >= self._FRAME_DATA_ID_PARTS
+                and parts[0] == "frame"
+                and parts[2] == "var"
+            ):
+                out[parts[3]] = meta
+        return out
+
+    @property
+    def data_watches(self) -> dict[str, Any]:
+        return self._debugger.get_data_watch_map()
+
+    @property
+    def frame_watches(self) -> dict[int, list[str]]:
+        return self._debugger.get_frame_watch_map()
+
+
+class _PyDebuggerBreakpointManagerShim:
+    """Adapter exposing function-breakpoint state for shared handlers."""
+
+    def __init__(self, debugger: PyDebugger) -> None:
+        self._debugger = debugger
+        self.function_names: list[str] = []
+        self.function_meta: dict[str, dict[str, Any]] = {}
+
+    def sync_from_debugger(self) -> None:
+        self.function_names = [
+            str(bp.get("name", "")) for bp in self._debugger.function_breakpoints
+        ]
+
+    def clear(self) -> None:
+        self.function_names.clear()
+        self.function_meta.clear()
+
+
+class _PyDebuggerExceptionConfigShim:
+    """Adapter exposing exception breakpoint flags via config fields."""
+
+    def __init__(self, debugger: PyDebugger) -> None:
+        self._debugger = debugger
+
+    @property
+    def break_on_raised(self) -> bool:
+        return self._debugger.exception_breakpoints_raised
+
+    @break_on_raised.setter
+    def break_on_raised(self, value: bool) -> None:
+        self._debugger.exception_breakpoints_raised = bool(value)
+
+    @property
+    def break_on_uncaught(self) -> bool:
+        return self._debugger.exception_breakpoints_uncaught
+
+    @break_on_uncaught.setter
+    def break_on_uncaught(self, value: bool) -> None:
+        self._debugger.exception_breakpoints_uncaught = bool(value)
+
+
+class _PyDebuggerExceptionHandlerShim:
+    """Adapter exposing exception config via `exception_handler.config`."""
+
+    def __init__(self, debugger: PyDebugger) -> None:
+        self.config = _PyDebuggerExceptionConfigShim(debugger)
+
+
 # ---------------------------------------------------------------------------
 # Event loop acquisition helpers
 # ---------------------------------------------------------------------------
@@ -187,6 +305,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         # Optional current frame reference for runtime helpers and tests
         # May hold a real frame (types.FrameType) or a frame-like object used in tests
         self.current_frame: Any | None = None
+        self._initialize_protocol_compat_shims()
 
         # Event routing/decomposition
         self._event_router = _PyDebuggerEventRouter(self)
@@ -199,6 +318,30 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self._runtime_manager = _PyDebuggerRuntimeManager(self)
         # Execution-control/lifecycle decomposition
         self._execution_manager = _PyDebuggerExecutionManager(self)
+
+    def _initialize_protocol_compat_shims(self) -> None:
+        """Initialize compatibility delegates for DebuggerLike consumers."""
+        self.stepping_controller = _PyDebuggerSteppingControllerShim()
+        self.var_manager = _PyDebuggerVarManagerShim(self)
+        self.data_bp_state = _PyDebuggerDataBreakpointStateShim(self)
+        self.bp_manager = _PyDebuggerBreakpointManagerShim(self)
+        self.exception_handler = _PyDebuggerExceptionHandlerShim(self)
+
+    def get_data_watch_keys(self) -> list[str]:
+        """Return a snapshot of data-watch keys."""
+        return list(self._data_watches.keys())
+
+    def get_data_watch_items(self) -> list[tuple[str, dict[str, Any]]]:
+        """Return a snapshot of data-watch metadata entries."""
+        return list(self._data_watches.items())
+
+    def get_data_watch_map(self) -> dict[str, dict[str, Any]]:
+        """Return data-watch metadata mapping."""
+        return self._data_watches
+
+    def get_frame_watch_map(self) -> dict[int, list[str]]:
+        """Return frame-to-data-watch index mapping."""
+        return self._frame_watches
 
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a (possibly coroutine-producing) callback on the debugger loop.
@@ -428,11 +571,100 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """Forward breakpoint-changed events to clients."""
         self._breakpoint_facade.forward_breakpoint_events(storage_list)
 
+    def set_break(
+        self, filename: str, lineno: int, *, cond: str | None = None, **kwargs: Any
+    ) -> bool:
+        """Compatibility helper for shared breakpoint handlers."""
+        entry: BreakpointDict = {"line": int(lineno), "verified": True}
+        if cond is not None:
+            entry["condition"] = cond
+        hit_condition = kwargs.get("hit_condition") or kwargs.get("hitCondition")
+        if isinstance(hit_condition, str):
+            entry["hitCondition"] = hit_condition
+        log_message = kwargs.get("log_message") or kwargs.get("logMessage")
+        if isinstance(log_message, str):
+            entry["logMessage"] = log_message
+        self.breakpoints.setdefault(filename, []).append(entry)
+        return True
+
+    def clear_break(self, filename: str, lineno: int = 0) -> bool:
+        """Compatibility helper to clear a single breakpoint by file/line."""
+        if filename not in self.breakpoints:
+            return False
+        if lineno <= 0:
+            self.breakpoints.pop(filename, None)
+            return True
+
+        def _line_value(bp: BreakpointDict) -> int:
+            line_value = bp.get("line")
+            if isinstance(line_value, int):
+                return line_value
+            return 0
+
+        items = self.breakpoints.get(filename, [])
+        kept = [bp for bp in items if _line_value(bp) != int(lineno)]
+        if kept:
+            self.breakpoints[filename] = kept
+        else:
+            self.breakpoints.pop(filename, None)
+        return True
+
+    def clear_breaks_for_file(self, path: str) -> None:
+        """Compatibility helper to clear all breakpoints for a file."""
+        self.breakpoints.pop(path, None)
+
+    def clear_break_meta_for_file(self, path: str) -> None:
+        """Compatibility helper to clear stored breakpoint metadata for a file."""
+        self.breakpoints.pop(path, None)
+
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: str | None,
+        hit_condition: str | None,
+        log_message: str | None,
+    ) -> None:
+        """Compatibility helper to store breakpoint metadata."""
+        entries = self.breakpoints.setdefault(path, [])
+
+        def _line_value(bp: BreakpointDict) -> int:
+            line_value = bp.get("line")
+            if isinstance(line_value, int):
+                return line_value
+            return 0
+
+        for bp in entries:
+            if _line_value(bp) == int(line):
+                if condition is not None:
+                    bp["condition"] = condition
+                if hit_condition is not None:
+                    bp["hitCondition"] = hit_condition
+                if log_message is not None:
+                    bp["logMessage"] = log_message
+                return
+        entry: BreakpointDict = {"line": int(line), "verified": True}
+        if condition is not None:
+            entry["condition"] = condition
+        if hit_condition is not None:
+            entry["hitCondition"] = hit_condition
+        if log_message is not None:
+            entry["logMessage"] = log_message
+        entries.append(entry)
+
+    def clear_all_function_breakpoints(self) -> None:
+        """Compatibility helper to clear function breakpoints and metadata."""
+        self.function_breakpoints = []
+        self.bp_manager.clear()
+
     async def set_function_breakpoints(
         self, breakpoints: list[FunctionBreakpoint]
     ) -> list[FunctionBreakpoint]:
         """Set breakpoints for functions"""
-        return await self._breakpoint_facade.set_function_breakpoints(breakpoints)
+        result = await self._breakpoint_facade.set_function_breakpoints(breakpoints)
+        self.bp_manager.sync_from_debugger()
+        return result
 
     async def set_exception_breakpoints(
         self,
@@ -451,6 +683,48 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             filters,
             filter_options,
             exception_options,
+        )
+
+    def make_variable_object(
+        self,
+        name: Any,
+        value: Any,
+        _frame: Any | None = None,
+        *,
+        max_string_length: int = 1000,
+    ) -> Variable:
+        """Create a DAP variable payload compatible with shared helpers."""
+        try:
+            value_str = repr(value)
+        except Exception:
+            value_str = "<Error getting value>"
+        if len(value_str) > max_string_length:
+            value_str = value_str[:max_string_length] + "..."
+
+        var_ref = 0
+        if hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple)):
+            var_ref = self.next_var_ref
+            self.next_var_ref += 1
+            self.var_refs[var_ref] = ("object", value)
+
+        presentation_hint: dict[str, Any] = {
+            "kind": "data",
+            "attributes": [],
+            "visibility": "private" if str(name).startswith("_") else "public",
+        }
+
+        if self.data_bp_state.watch_names and str(name) in self.data_bp_state.watch_names:
+            presentation_hint["attributes"].append("hasDataBreakpoint")
+
+        return cast(
+            "Variable",
+            {
+                "name": str(name),
+                "value": value_str,
+                "type": type(value).__name__,
+                "variablesReference": var_ref,
+                "presentationHint": presentation_hint,
+            },
         )
 
     async def continue_execution(self, thread_id: int) -> ContinueResponseBody:

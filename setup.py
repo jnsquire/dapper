@@ -53,7 +53,9 @@ def get_frame_eval_extensions():
         sources=[str(Path("dapper") / "_frame_eval" / "_frame_evaluator.pyx")],
         include_dirs=[str(base_dir / "dapper" / "_frame_eval")],
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
-        extra_compile_args=["-O3"] if sys.platform != "win32" else ["/O2"],
+        extra_compile_args=(
+            ["-O3", "-Wno-unused-function"] if sys.platform != "win32" else ["/O2"]
+        ),
     )
     extensions.append(frame_evaluator_ext)
 
@@ -70,6 +72,7 @@ def get_extensions():
 
     # Cythonize extensions if Cython is available
     if CYTHON_AVAILABLE and frame_eval_exts and cythonize is not None:
+        cython_build_dir = os.environ.get("CYTHON_BUILD_DIR", "build/frame-eval/cython")
         cython_extensions = cythonize(
             extensions,
             compiler_directives={
@@ -81,6 +84,7 @@ def get_extensions():
                 "embedsignature": True,
             },
             annotate=str(os.environ.get("CYTHON_ANNOTATE", "0")).lower() == "1",
+            build_dir=str(Path(cython_build_dir)),
         )
         if cython_extensions is not None:
             extensions = cython_extensions

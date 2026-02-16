@@ -22,6 +22,7 @@ For a detailed checklist of implemented and planned debugger features, see:
 Dapper includes an advanced frame evaluation system that significantly improves debugging performance:
 
 - **[Frame Evaluation User Guide](doc/getting-started/frame-eval/index.md)** - How to enable and configure frame evaluation
+- **[Frame Evaluation Build Guide](doc/architecture/frame-eval/build-guide.md)** - How to build/test frame-eval extensions in development
 - **[Frame Evaluation Performance](doc/architecture/frame-eval/performance.md)** - Performance characteristics and benchmarks
 - **[Frame Evaluation Troubleshooting](doc/getting-started/frame-eval/troubleshooting.md)** - Common issues and solutions
 - **[Frame Evaluation Implementation](doc/architecture/frame-eval/implementation.md)** - Technical implementation details
@@ -54,6 +55,11 @@ uv sync
 
 # Run tests
 uv run pytest
+
+# Frame-eval extension workflow
+uv run build-dev
+uv run frame-eval-test
+uv run frame-eval-clean
 ```
 
 ### VS Code Extension

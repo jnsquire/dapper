@@ -53,7 +53,7 @@ class ExceptionInfo(TypedDict):
 class SupportsSteppingController(Protocol):
     """Debugger shape that exposes stepping state through a controller delegate."""
 
-    stepping_controller: Any  # SteppingController — kept as Any to avoid import cycle
+    stepping_controller: Any  # stepping/current_frame-compatible delegate
 
 
 class VariableStoreLike(Protocol):
@@ -67,6 +67,26 @@ class SupportsVariableManager(Protocol):
     """Debugger shape that exposes a variable manager delegate."""
 
     var_manager: VariableStoreLike
+
+
+class BreakpointManagerLike(Protocol):
+    """Minimum function-breakpoint storage used by shared handlers."""
+
+    function_names: list[str]
+    function_meta: dict[str, dict[str, Any]]
+
+
+class ExceptionConfigLike(Protocol):
+    """Minimum exception-breakpoint flag storage."""
+
+    break_on_raised: bool
+    break_on_uncaught: bool
+
+
+class ExceptionHandlerLike(Protocol):
+    """Minimum exception handler shape consumed by shared handlers."""
+
+    config: ExceptionConfigLike
 
 
 class DataBreakpointStateLike(Protocol):
@@ -105,8 +125,8 @@ class SupportsBreakpointCommands(Protocol):
     ``setFunctionBreakpoints``, and ``setExceptionBreakpoints`` DAP commands.
     """
 
-    bp_manager: Any  # BreakpointManager — kept as Any to avoid import cycle
-    exception_handler: Any  # ExceptionHandler — kept as Any to avoid import cycle
+    bp_manager: BreakpointManagerLike
+    exception_handler: ExceptionHandlerLike
 
     def set_break(
         self, filename: str, lineno: int, *, cond: str | None = ..., **kwargs: Any
@@ -143,13 +163,17 @@ class DebuggerLike(
     """Public debugger typing surface for shared helpers and command plumbing.
 
     Covers the capabilities consumed by ``dapper.shared.debug_shared``,
-    ``dapper.shared.command_handlers``, and ``dapper.shared.breakpoint_handlers``.
+    ``dapper.shared.command_handlers``, and ``dapper.shared.breakpoint_handlers``,
+    and maps to the adapter-side ``PyDebugger`` compatibility surface.
     """
 
 
 __all__ = [
+    "BreakpointManagerLike",
     "DataBreakpointStateLike",
     "DebuggerLike",
+    "ExceptionConfigLike",
+    "ExceptionHandlerLike",
     "SupportsBreakpointCommands",
     "SupportsDataBreakpointState",
     "SupportsSteppingController",

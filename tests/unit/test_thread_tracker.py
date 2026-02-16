@@ -369,7 +369,7 @@ class TestIntegrationWithDebuggerBDB:
         code = SimpleNamespace(co_filename="test.py", co_name="test_func")
         frame = SimpleNamespace(f_code=code, f_lineno=42, f_back=None)
 
-        stack_frames = dbg._get_stack_frames(cast(Any, frame))
+        stack_frames = dbg._get_stack_frames(cast("Any", frame))
 
         assert len(stack_frames) == 1
         assert stack_frames[0]["name"] == "test_func"
