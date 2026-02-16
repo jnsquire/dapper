@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     import types
 
     from dapper.protocol.debugger_protocol import Variable as VariableDict
+    from dapper.protocol.structures import StackFrame
 
 try:
     from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
@@ -136,7 +137,7 @@ class DebuggerBDB(bdb.Bdb):
         """
         self.bp_manager.clear_line_meta_for_file(path)
 
-    def _check_data_watch_changes(self, frame):
+    def _check_data_watch_changes(self, frame: types.FrameType) -> list[str]:
         """Check for changes in watched variables and return list of changed names."""
         # Frame locals in CPython may be a FrameLocalsProxy; accept any
         # mapping-like object rather than requiring a plain dict.
@@ -144,7 +145,7 @@ class DebuggerBDB(bdb.Bdb):
             return []
         return self.data_bp_state.check_for_changes(id(frame), frame.f_locals)
 
-    def _update_watch_snapshots(self, frame):
+    def _update_watch_snapshots(self, frame: types.FrameType) -> None:
         """Update snapshots of watched variable values."""
         if not isinstance(frame.f_locals, Mapping):
             return
@@ -152,7 +153,12 @@ class DebuggerBDB(bdb.Bdb):
 
     # ---------------- Variable object helper -----------------
     def make_variable_object(
-        self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+        self,
+        name: Any,
+        value: Any,
+        frame: types.FrameType | None = None,
+        *,
+        max_string_length: int = 1000,
     ) -> VariableDict:
         """Create a Variable-shaped dict with presentationHint and optional var-ref allocation.
 
@@ -166,7 +172,7 @@ class DebuggerBDB(bdb.Bdb):
             frame=frame,
         )
 
-    def _should_stop_for_data_breakpoint(self, changed_name, frame):
+    def _should_stop_for_data_breakpoint(self, changed_name: str, frame: types.FrameType) -> bool:
         """Evaluate conditions and hitConditions for a changed variable."""
         metas = (self.data_bp_state.watch_meta or {}).get(changed_name, [])
 
@@ -196,7 +202,7 @@ class DebuggerBDB(bdb.Bdb):
                 name=thread_name,
             )
 
-    def _handle_regular_breakpoint(self, filename, line, frame):
+    def _handle_regular_breakpoint(self, filename: str, line: int, frame: types.FrameType) -> bool:
         """Handle regular line breakpoints with hit conditions and log messages.
         Returns True if the breakpoint was handled (either hit or skipped due to conditions),
         False if no breakpoint exists at this location.
@@ -228,11 +234,13 @@ class DebuggerBDB(bdb.Bdb):
         self.set_continue()
         return True
 
-    def _emit_stopped_event(self, frame, thread_id, reason, description=None):
+    def _emit_stopped_event(
+        self, frame: types.FrameType, thread_id: int, reason: str, description: str | None = None
+    ) -> None:
         """Emit a stopped event with proper bookkeeping."""
         self.stepping_controller.current_frame = frame
         self.thread_tracker.stopped_thread_ids.add(thread_id)
-        stack_frames = self._get_stack_frames(frame)
+        stack_frames: list[StackFrame] = self._get_stack_frames(frame)
         self.thread_tracker.frames_by_thread[thread_id] = stack_frames
 
         event_args = {
@@ -245,7 +253,7 @@ class DebuggerBDB(bdb.Bdb):
 
         self.send_message("stopped", **event_args)
 
-    def user_line(self, frame: types.FrameType | Any) -> None:
+    def user_line(self, frame: types.FrameType) -> None:
         filename = frame.f_code.co_filename
         line = frame.f_lineno
         thread_id = threading.get_ident()
@@ -283,8 +291,8 @@ class DebuggerBDB(bdb.Bdb):
 
     def user_exception(
         self,
-        frame: types.FrameType | Any,
-        exc_info: tuple[type[BaseException], BaseException, Any],
+        frame: types.FrameType,
+        exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None],
     ) -> None:
         """Handle exception breakpoints using the exception handler."""
         if not self.exception_handler.should_break(frame):
@@ -299,7 +307,7 @@ class DebuggerBDB(bdb.Bdb):
         # Emit stopped event
         self.stepping_controller.current_frame = frame
         self.thread_tracker.stopped_thread_ids.add(thread_id)
-        stack_frames = self._get_stack_frames(frame)
+        stack_frames: list[StackFrame] = self._get_stack_frames(frame)
         self.thread_tracker.frames_by_thread[thread_id] = stack_frames
 
         self.send_message(
@@ -315,7 +323,7 @@ class DebuggerBDB(bdb.Bdb):
         except Exception:
             logger.debug("set_continue failed after exception stop", exc_info=True)
 
-    def _get_stack_frames(self, frame):
+    def _get_stack_frames(self, frame: types.FrameType) -> list[StackFrame]:
         """Build stack frames for the given frame using the thread tracker."""
         return self.thread_tracker.build_stack_frames(frame)
 
@@ -370,7 +378,7 @@ class DebuggerBDB(bdb.Bdb):
         except Exception:
             logger.debug("Failed to clear breakpoint metadata for %s", path, exc_info=True)
 
-    def user_call(self, frame: types.FrameType | Any, argument_list: Any) -> None:
+    def user_call(self, frame: types.FrameType, argument_list: Any) -> None:
         """Handle function breakpoints.
 
         Checks if the current function call matches any registered function

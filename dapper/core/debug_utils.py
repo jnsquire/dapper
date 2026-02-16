@@ -5,8 +5,12 @@ Utility functions for the debugger.
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from dapper.shared.value_conversion import evaluate_with_policy
+
+if TYPE_CHECKING:
+    import types
 
 # Safety limit for stack walking to avoid infinite loops on mocked frames
 MAX_STACK_DEPTH = 128
@@ -48,7 +52,7 @@ def evaluate_hit_condition(expr: str, hit_count: int) -> bool:
     return True
 
 
-def format_log_message(template: str, frame) -> str:
+def format_log_message(template: str, frame: types.FrameType) -> str:
     def repl(match):
         expr = match.group(1)
         try:
@@ -69,7 +73,7 @@ def format_log_message(template: str, frame) -> str:
     return s.replace(left_placeholder, "{").replace(right_placeholder, "}")
 
 
-def get_function_candidate_names(frame) -> set[str]:
+def get_function_candidate_names(frame: types.FrameType) -> set[str]:
     names: set[str] = set()
     code = getattr(frame, "f_code", None)
     if not code:

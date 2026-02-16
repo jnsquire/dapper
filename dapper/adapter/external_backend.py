@@ -15,6 +15,10 @@ from typing import Any
 from dapper.adapter.base_backend import BaseBackend
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    import subprocess
+    import threading
+
     from dapper.config import DapperConfig
     from dapper.ipc.ipc_manager import IPCManager
 
@@ -32,10 +36,10 @@ class ExternalProcessBackend(BaseBackend):
         self,
         ipc: IPCManager,
         loop: asyncio.AbstractEventLoop,
-        get_process_state: Any,  # Callable returning (process, is_terminated)
+        get_process_state: Callable[[], tuple[subprocess.Popen[Any] | None, bool]],
         pending_commands: dict[int, asyncio.Future[dict[str, Any]]],
-        lock: Any,  # threading.RLock
-        get_next_command_id: Any,  # Callable returning int
+        lock: threading.RLock,
+        get_next_command_id: Callable[[], int],
     ) -> None:
         """Initialize the external process backend.
 

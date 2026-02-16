@@ -14,10 +14,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
     from collections.abc import Coroutine
     from concurrent.futures import Future
+
+
+class _SupportsBreakpointManagement(Protocol):
+    """Minimal debugger surface consumed by :class:`BreakpointController`."""
+
+    def set_breakpoints(
+        self, path: str, breakpoints: list[dict[str, Any]]
+    ) -> Awaitable[list[dict[str, Any]]]: ...
+
+    def set_function_breakpoints(
+        self, breakpoints: list[dict[str, Any]]
+    ) -> Awaitable[list[dict[str, Any]]]: ...
+
+    def set_exception_breakpoints(self, filters: list[str]) -> Awaitable[list[dict[str, Any]]]: ...
+
+    def data_breakpoint_info(self, *, name: str, frame_id: int) -> dict[str, Any]: ...
+
+    def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -51,9 +71,11 @@ class BreakpointController:
     callers on other threads can block with timeouts safely.
     """
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, debugger: Any) -> None:
+    def __init__(
+        self, loop: asyncio.AbstractEventLoop, debugger: _SupportsBreakpointManagement
+    ) -> None:
         self._loop = loop
-        self._debugger = debugger  # PyDebugger
+        self._debugger = debugger
 
     # ---- scheduling helper
     def _schedule(self, coro: Coroutine[Any, Any, Any]) -> Future[Any]:

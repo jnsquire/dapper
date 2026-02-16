@@ -11,7 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import types
 
 
 class StopReason(str, Enum):
@@ -49,7 +52,7 @@ class SteppingController:
 
     stepping: bool = False
     stop_on_entry: bool = False
-    current_frame: Any = None
+    current_frame: types.FrameType | None = None
 
     def is_stepping(self) -> bool:
         """Check if currently in stepping mode."""
@@ -63,7 +66,7 @@ class SteppingController:
         """Set stop on entry mode."""
         self.stop_on_entry = value
 
-    def set_current_frame(self, frame: Any) -> None:
+    def set_current_frame(self, frame: types.FrameType) -> None:
         """Set the current frame."""
         self.current_frame = frame
 

@@ -100,26 +100,30 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P4 — Type Safety & Annotations
 
-- [ ] **Add type annotations to untyped `frame` parameters**
-      Multiple functions in `debug_utils.py` and `debugger_bdb.py` take a
-      `frame` argument with no annotation (should be `types.FrameType`).
+- [x] **Add type annotations to untyped `frame` parameters** — DONE
+      Added `types.FrameType` annotations to all untyped `frame` parameters in
+      `debug_utils.py`, `debugger_bdb.py`, and `stepping_controller.py`.
+      Also updated the `SupportsVariableFactory` protocol accordingly.
 
-- [ ] **Replace `Any` constructor params in `ExternalProcessBackend`**
-      `get_process_state: Any`, `lock: Any`, `get_next_command_id: Any` should
-      be proper `Callable[…]` types.
+- [x] **Replace `Any` constructor params in `ExternalProcessBackend`** — DONE
+      `get_process_state` is now `Callable[[], tuple[Popen[Any] | None, bool]]`,
+      `lock` is `threading.RLock`, `get_next_command_id` is `Callable[[], int]`.
 
-- [ ] **Narrow `debugger: Any` in `BreakpointsController` / `SteppingController`**
-      Use the existing `DebuggerLike` Protocol or a narrower one.
+- [x] **Narrow `debugger: Any` in `BreakpointsController` / `SteppingController`** — DONE
+      Created `_SupportsBreakpointManagement` Protocol for `BreakpointController`.
+      Changed `SteppingController.current_frame` from `Any` to `types.FrameType | None`.
 
-- [ ] **Reduce excessive `cast()` usage**
-      Especially in `request_handlers.py`, `inprocess_backend.py`, and
-      `external_backend.py`. Prefer returning properly typed objects from
-      helpers instead of casting.
+- [x] **Reduce excessive `cast()` usage** — DONE
+      Changed `_make_response` return to `Any` so handlers don't need `cast()`.
+      Removed all `cast()` calls from `request_handlers.py` (~40 calls).
+      Removed redundant casts from `inprocess_backend.py` where bridge methods
+      already return properly typed values.
 
-- [ ] **Widen `DebuggerLike` Protocol to cover methods accessed via `getattr`**
-      `command_handlers.py` accesses `set_break`, `clear_break`, etc. through
-      `getattr` yet these aren't on the Protocol — the type checker can't verify
-      correctness.
+- [x] **Widen `DebuggerLike` Protocol to cover methods accessed via `getattr`** — DONE
+      Added `SupportsBreakpointCommands` protocol with `set_break`, `clear_break`,
+      `clear_breaks_for_file`, `clear_break_meta_for_file`, `record_breakpoint`,
+      `clear_all_function_breakpoints`, `bp_manager`, and `exception_handler`.
+      Updated `breakpoint_handlers.py` to use `DebuggerLike` instead of `object`.
 
 ---
 

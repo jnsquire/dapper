@@ -7,10 +7,14 @@ from the real DebuggerBDB.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
 from typing import TypedDict
 from typing import runtime_checkable
+
+if TYPE_CHECKING:
+    import types
 
 
 class PresentationHint(TypedDict, total=False):
@@ -49,7 +53,7 @@ class ExceptionInfo(TypedDict):
 class SupportsSteppingController(Protocol):
     """Debugger shape that exposes stepping state through a controller delegate."""
 
-    stepping_controller: Any  # SteppingController-like
+    stepping_controller: Any  # SteppingController — kept as Any to avoid import cycle
 
 
 class VariableStoreLike(Protocol):
@@ -87,10 +91,44 @@ class SupportsVariableFactory(Protocol):
         self,
         name: Any,
         value: Any,
-        frame: Any | None = None,
+        frame: types.FrameType | None = None,
         *,
         max_string_length: int = 1000,
     ) -> Variable: ...
+
+
+class SupportsBreakpointCommands(Protocol):
+    """Debugger shape that exposes breakpoint management methods.
+
+    These methods are consumed by ``dapper.shared.breakpoint_handlers`` and
+    ``dapper.shared.command_handlers`` to implement the ``setBreakpoints``,
+    ``setFunctionBreakpoints``, and ``setExceptionBreakpoints`` DAP commands.
+    """
+
+    bp_manager: Any  # BreakpointManager — kept as Any to avoid import cycle
+    exception_handler: Any  # ExceptionHandler — kept as Any to avoid import cycle
+
+    def set_break(
+        self, filename: str, lineno: int, *, cond: str | None = ..., **kwargs: Any
+    ) -> Any: ...
+
+    def clear_break(self, filename: str, lineno: int = ...) -> Any: ...
+
+    def clear_breaks_for_file(self, path: str) -> None: ...
+
+    def clear_break_meta_for_file(self, path: str) -> None: ...
+
+    def record_breakpoint(
+        self,
+        path: str,
+        line: int,
+        *,
+        condition: str | None,
+        hit_condition: str | None,
+        log_message: str | None,
+    ) -> None: ...
+
+    def clear_all_function_breakpoints(self) -> None: ...
 
 
 @runtime_checkable
@@ -99,18 +137,20 @@ class DebuggerLike(
     SupportsVariableManager,
     SupportsDataBreakpointState,
     SupportsVariableFactory,
+    SupportsBreakpointCommands,
     Protocol,
 ):
     """Public debugger typing surface for shared helpers and command plumbing.
 
-    Intentionally narrow: this protocol models only the capabilities consumed
-    by `dapper.shared.debug_shared` and `dapper.shared.command_handlers`.
+    Covers the capabilities consumed by ``dapper.shared.debug_shared``,
+    ``dapper.shared.command_handlers``, and ``dapper.shared.breakpoint_handlers``.
     """
 
 
 __all__ = [
     "DataBreakpointStateLike",
     "DebuggerLike",
+    "SupportsBreakpointCommands",
     "SupportsDataBreakpointState",
     "SupportsSteppingController",
     "SupportsVariableFactory",

@@ -195,7 +195,9 @@ class TestModuleSourcePathValidation:
         h = RequestHandler.__new__(RequestHandler)
         h._seq = 0
 
-        def make_response(request, command, body=None, success=True, message=None):
+        def make_response(
+            request, command, _response_type=None, *, body=None, success=True, message=None
+        ):
             h._seq += 1
             resp = {
                 "type": "response",

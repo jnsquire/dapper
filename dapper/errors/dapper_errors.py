@@ -301,6 +301,6 @@ def create_dap_response(
     command: str,
     *,
     context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> Any:
     """Create a DAP error response using the default error handler."""
     return default_error_handler.create_dap_response(error, request_seq, command, context=context)

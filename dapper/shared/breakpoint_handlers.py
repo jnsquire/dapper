@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
+
+if TYPE_CHECKING:
+    from dapper.protocol.debugger_protocol import DebuggerLike
 
 Payload = dict[str, Any]
 
@@ -17,7 +21,7 @@ class LoggerLike(Protocol):
 
 
 def handle_set_breakpoints_impl(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     arguments: Payload | None,
     safe_send_debug_message: SafeSendDebugMessageFn,
     logger: LoggerLike,
@@ -83,7 +87,7 @@ def handle_set_breakpoints_impl(
 
 
 def handle_set_function_breakpoints_impl(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     arguments: Payload | None,
 ) -> Payload | None:
     """Handle setFunctionBreakpoints command implementation."""
@@ -133,7 +137,7 @@ def handle_set_function_breakpoints_impl(
 
 
 def handle_set_exception_breakpoints_impl(
-    dbg: object | None,
+    dbg: DebuggerLike | None,
     arguments: Payload | None,
 ) -> Payload | None:
     """Handle setExceptionBreakpoints command implementation."""

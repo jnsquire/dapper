@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 
 from dapper.adapter.base_backend import BaseBackend
 
@@ -84,7 +83,7 @@ class InProcessBackend(BaseBackend):
         return self._lifecycle.is_available
 
     @staticmethod
-    def _normalize_continue_payload(payload: Any) -> dict[str, bool]:
+    def _normalize_continue_payload(payload: Any) -> ContinueResponseBody:
         """Normalize continue payload to a canonical response body shape."""
         if isinstance(payload, dict):
             return {"allThreadsContinued": bool(payload.get("allThreadsContinued", True))}
@@ -254,7 +253,7 @@ class InProcessBackend(BaseBackend):
         """Continue execution."""
         try:
             result = self._bridge.continue_(thread_id)
-            return cast("ContinueResponseBody", self._normalize_continue_payload(result))
+            return self._normalize_continue_payload(result)
         except Exception:
             logger.exception("in-process continue failed")
             return {"allThreadsContinued": False}
@@ -292,10 +291,7 @@ class InProcessBackend(BaseBackend):
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
         try:
-            return cast(
-                "StackTraceResponseBody",
-                self._bridge.stack_trace(thread_id, start_frame, levels),
-            )
+            return self._bridge.stack_trace(thread_id, start_frame, levels)
         except Exception:
             logger.exception("in-process stack_trace failed")
             return {"stackFrames": [], "totalFrames": 0}
@@ -309,15 +305,12 @@ class InProcessBackend(BaseBackend):
     ) -> list[Variable]:
         """Get variables for the given reference."""
         try:
-            result = self._bridge.variables(
+            return self._bridge.variables(
                 variables_reference,
                 filter_type=filter_type or None,
                 start=start if start > 0 else None,
                 count=count if count > 0 else None,
             )
-            if isinstance(result, list):
-                return cast("list[Variable]", result)
-            return cast("list[Variable]", result.get("variables", []))
         except Exception:
             logger.exception("in-process variables failed")
             return []
@@ -325,10 +318,7 @@ class InProcessBackend(BaseBackend):
     async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         try:
-            return cast(
-                "SetVariableResponseBody",
-                self._bridge.set_variable(var_ref, name, value),
-            )
+            return self._bridge.set_variable(var_ref, name, value)
         except Exception:
             logger.exception("in-process set_variable failed")
             return {"value": value, "type": "string", "variablesReference": 0}
@@ -338,10 +328,7 @@ class InProcessBackend(BaseBackend):
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
         try:
-            return cast(
-                "EvaluateResponseBody",
-                self._bridge.evaluate(expression, frame_id, context),
-            )
+            return self._bridge.evaluate(expression, frame_id, context)
         except Exception:
             logger.exception("in-process evaluate failed")
             return {
@@ -355,10 +342,7 @@ class InProcessBackend(BaseBackend):
     ) -> CompletionsResponseBody:
         """Get completions for an expression."""
         try:
-            return cast(
-                "CompletionsResponseBody",
-                self._bridge.completions(text, column, frame_id, line),
-            )
+            return self._bridge.completions(text, column, frame_id, line)
         except Exception:
             logger.exception("in-process completions failed")
             return {"targets": []}
