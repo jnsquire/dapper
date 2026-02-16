@@ -36,6 +36,7 @@ class DebugAdapterServer:
     ):
         self.connection = connection
         self.request_handler = RequestHandler(self)
+
         # Prefer caller-supplied or running loop; create one only if needed.
         self.loop, _ = _acquire_event_loop(loop)  # _owns unused here
         self._debugger = PyDebugger(self, self.loop)

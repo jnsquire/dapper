@@ -7,7 +7,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P1 — Architecture & Design
 
-- [ ] **Decompose `PyDebugger` (989 lines, 50+ methods)**
+- [x] **Decompose `PyDebugger` (989 lines, 50+ methods)**
       The class is a God Object that owns threading, IPC, breakpoints, process 
       management, event routing and session state. The manager sub-objects 
       (`_event_router`, `_lifecycle_manager`, …) are a step in the right 

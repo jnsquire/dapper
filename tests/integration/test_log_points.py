@@ -320,7 +320,7 @@ class TestFunctionLogPoints(unittest.TestCase):
 @pytest.mark.asyncio
 async def test_log_points_server_integration():
     """Test log points through the server DAP interface"""
-    with patch("dapper.adapter.server.PyDebugger") as mock_debugger_class:
+    with patch("dapper.adapter.server_core.PyDebugger") as mock_debugger_class:
         # Setup mocked debugger
         mock_debugger = mock_debugger_class.return_value
         mock_debugger.launch = AsyncCallRecorder(return_value=None)
@@ -330,7 +330,7 @@ async def test_log_points_server_integration():
         )
 
         # Create server with patched debugger
-        with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
+        with patch("dapper.adapter.server_core.PyDebugger", return_value=mock_debugger):
             mock_connection = MockConnection()
             loop = asyncio.get_event_loop()
             server = DebugAdapterServer(mock_connection, loop)

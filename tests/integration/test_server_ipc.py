@@ -90,7 +90,7 @@ async def test_write_command_to_channel_requires_ipc():
 
 
 @pytest.mark.asyncio
-@patch("dapper.adapter.server.PyDebugger")
+@patch("dapper.adapter.server_core.PyDebugger")
 async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
     # Setup the mock debugger
     mock_debugger = mock_debugger_class.return_value
@@ -98,7 +98,7 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
     # Create server with patched debugger
-    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server_core.PyDebugger", return_value=mock_debugger):
         mock_connection = MockConnection()
         loop = asyncio.get_event_loop()
         server = DebugAdapterServer(mock_connection, loop)
@@ -210,7 +210,7 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
 
 
 @pytest.mark.asyncio
-@patch("dapper.adapter.server.PyDebugger")
+@patch("dapper.adapter.server_core.PyDebugger")
 async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     """
 
@@ -227,7 +227,7 @@ async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
 
     # Create server with patched debugger
-    with patch("dapper.adapter.server.PyDebugger", return_value=mock_debugger):
+    with patch("dapper.adapter.server_core.PyDebugger", return_value=mock_debugger):
         mock_connection = MockConnection()
         loop = asyncio.get_event_loop()
         server = DebugAdapterServer(mock_connection, loop)
