@@ -13,7 +13,7 @@ from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc import TransportConfig
 
 if TYPE_CHECKING:
-    from dapper.adapter.server import PyDebugger
+    from dapper.adapter.debugger.py_debugger import PyDebugger
     from dapper.config import DapperConfig
 
 logger = logging.getLogger(__name__)

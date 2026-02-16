@@ -20,7 +20,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       interface / Protocol so neither depends on the concrete class.
       _Files: [server.py](../dapper/adapter/server.py), [server_core.py](../dapper/adapter/server_core.py)_
 
-- [ ] **Rename `server.py` → `debugger.py` (or move `PyDebugger` into `adapter/debugger/`)**
+- [x] **Rename `server.py` → `debugger.py` (or move `PyDebugger` into `adapter/debugger/`)**
       The file contains `PyDebugger`, not a server. The actual server is
       `server_core.py`. The `__getattr__` re-export at the bottom of `server.py`
       is an extra source of confusion.

@@ -10,7 +10,7 @@ from dapper.adapter.payload_extractor import extract_payload
 from dapper.adapter.types import PyDebuggerThread
 
 if TYPE_CHECKING:
-    from dapper.adapter.server import PyDebugger
+    from dapper.adapter.debugger.py_debugger import PyDebugger
 
 logger = logging.getLogger(__name__)
 

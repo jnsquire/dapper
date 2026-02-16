@@ -31,7 +31,7 @@ import logging
 import threading
 from typing import Any
 
-from dapper.adapter.server import DebugAdapterServer
+from dapper.adapter.server_core import DebugAdapterServer
 from dapper.core.breakpoints_controller import BreakpointController
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.connections.tcp import TCPServerConnection

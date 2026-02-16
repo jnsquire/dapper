@@ -9,7 +9,8 @@ from typing import Any
 from typing import Callable
 from typing import cast
 
-from dapper.adapter import server as server_module
+from dapper.adapter.debugger.py_debugger import PyDebugger
+from dapper.adapter.debugger.py_debugger import _acquire_event_loop
 from dapper.adapter.request_handlers import RequestHandler
 from dapper.protocol.protocol import ProtocolHandler
 
@@ -36,8 +37,8 @@ class DebugAdapterServer:
         self.connection = connection
         self.request_handler = RequestHandler(self)
         # Prefer caller-supplied or running loop; create one only if needed.
-        self.loop, _ = server_module._acquire_event_loop(loop)  # noqa: SLF001  # _owns unused here
-        self._debugger = server_module.PyDebugger(self, self.loop)
+        self.loop, _ = _acquire_event_loop(loop)  # _owns unused here
+        self._debugger = PyDebugger(self, self.loop)
         self.running = False
         self.sequence_number = 0
         self.protocol_handler = ProtocolHandler()

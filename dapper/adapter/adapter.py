@@ -10,7 +10,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from dapper.adapter.server import DebugAdapterServer
+from dapper.adapter.server_core import DebugAdapterServer
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.connections.tcp import TCPServerConnection
 

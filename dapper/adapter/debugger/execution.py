@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dapper.adapter.server import PyDebugger
+    from dapper.adapter.debugger.py_debugger import PyDebugger
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import ExceptionDetails
     from dapper.protocol.requests import ExceptionInfoResponseBody

@@ -8,7 +8,7 @@ from typing import cast
 from dapper.adapter.types import BreakpointResponse
 
 if TYPE_CHECKING:
-    from dapper.adapter.server import PyDebugger
+    from dapper.adapter.debugger.py_debugger import PyDebugger
     from dapper.adapter.types import SourceDict
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import EvaluateResponseBody

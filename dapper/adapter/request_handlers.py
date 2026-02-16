@@ -51,7 +51,7 @@ from dapper.protocol.requests import VariablesResponse
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
-    from dapper.adapter.server import DebugAdapterServer
+    from dapper.adapter.server_core import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.protocol.data_breakpoints import DataBreakpointInfoRequest
     from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody

@@ -16,7 +16,7 @@ from dapper.adapter.inprocess_bridge import InProcessBridge
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from dapper.adapter.server import PyDebugger
+    from dapper.adapter.debugger.py_debugger import PyDebugger
     from dapper.core.inprocess_debugger import InProcessDebugger
 
 logger = logging.getLogger(__name__)
