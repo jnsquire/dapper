@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.11, 3.13]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -92,8 +92,7 @@ jobs:
         run: |
           ruff check .
 
-      - name: Type check (pyright)  # TEMP DISABLED: pyright failing in CI, re-enable once fixed
-        if: false
+      - name: Type check (pyright)
         run: |
           pyright
 

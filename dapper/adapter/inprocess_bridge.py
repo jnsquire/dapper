@@ -12,11 +12,14 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import cast
 
 if TYPE_CHECKING:
     from dapper.core.inprocess_debugger import InProcessDebugger
+    from dapper.protocol.requests import CompletionsResponseBody
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
@@ -171,7 +174,7 @@ class InProcessBridge:
 
     def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
-        return self._inproc.set_variable(var_ref, name, value)
+        return cast("SetVariableResponseBody", self._inproc.set_variable(var_ref, name, value))
 
     def evaluate(
         self, expression: str, frame_id: int | None = None, context: str | None = None
@@ -185,9 +188,11 @@ class InProcessBridge:
         column: int,
         frame_id: int | None = None,
         line: int = 1,
-    ) -> dict[str, Any]:
+    ) -> CompletionsResponseBody:
         """Get expression completions."""
-        return self._inproc.completions(text, column, frame_id, line)
+        return cast(
+            "CompletionsResponseBody", self._inproc.completions(text, column, frame_id, line)
+        )
 
     # ------------------------------------------------------------------
     # Command dispatch (for _send_command_to_debuggee compatibility)
@@ -268,6 +273,37 @@ class InProcessBridge:
         else:
             if expect_response:
                 return {"body": body or {}}
+            return None
+
+    def get_exception_info(self, thread_id: int) -> ExceptionInfoResponseBody | None:
+        """Return exception info for a thread, if available.
+
+        This provides a stable bridge-level accessor so callers do not need
+        to reach through private debugger internals.
+        """
+        try:
+            exc_handler = self._inproc.debugger.exception_handler
+            info_map = exc_handler.exception_info_by_thread
+            if not isinstance(info_map, dict):
+                return None
+            # Narrow the return type via runtime check; callers can rely on
+            # the TypedDict `ExceptionInfoResponseBody` in type-checked code.
+            ei = info_map.get(thread_id)
+            if not isinstance(ei, dict):
+                return None
+            # Map internal exception info to the public ExceptionInfoResponseBody
+            mapped: dict[str, Any] = {}
+            if "exceptionId" in ei:
+                mapped["exceptionId"] = str(ei.get("exceptionId"))
+            if "description" in ei:
+                mapped["description"] = str(ei.get("description"))
+            if "breakMode" in ei:
+                mapped["breakMode"] = str(ei.get("breakMode"))
+            if "details" in ei and isinstance(ei.get("details"), dict):
+                mapped["details"] = ei.get("details")
+            return cast("ExceptionInfoResponseBody", mapped)
+        except Exception:
+            logger.exception("failed to fetch exception info from inproc debugger")
             return None
 
     def register_data_watches(

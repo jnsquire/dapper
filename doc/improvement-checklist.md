@@ -20,10 +20,11 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       a direct method. Unify to a single implementation.
       _File: [dapper/adapter/external_backend.py](../dapper/adapter/external_backend.py)_
 
-- [ ] **Remove `InProcessBackend.exception_info` deep attribute chain**
+- [x] **Remove `InProcessBackend.exception_info` deep attribute chain** — DONE
       `self._bridge._inproc.debugger.exception_handler.exception_info_by_thread`
-      violates every layer boundary. Expose a proper method on the bridge instead.
-      _File: [dapper/adapter/inprocess_backend.py](../dapper/adapter/inprocess_backend.py)_
+      violated layer boundaries. Implemented `InProcessBridge.get_exception_info`
+      and updated `InProcessBackend.exception_info` to use it.
+      _Files: [dapper/adapter/inprocess_bridge.py](../dapper/adapter/inprocess_bridge.py), [dapper/adapter/inprocess_backend.py](../dapper/adapter/inprocess_backend.py)_
 
 - [ ] **Break circular reference between `PyDebugger` ↔ `DebugAdapterServer`**
       They hold references to each other at construction time. Introduce an
@@ -77,22 +78,22 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P3 — Build, CI & Packaging
 
-- [ ] **Consolidate all metadata into `pyproject.toml`; slim down `setup.py`**
+- [x] **Consolidate all metadata into `pyproject.toml`; slim down `setup.py`** — DONE
       `setup.py` should only drive the Cython extension build. Remove the
       duplicate `version`, `install_requires`, `extras_require`, `classifiers`,
       etc. Also remove dead dev-deps `black`, `isort`, `mypy`.
       _File: [setup.py](../setup.py)_
 
-- [ ] **Re-enable Pyright in CI**
+- [x] **Re-enable Pyright in CI** — DONE
       Type-checking is disabled (`if: false`) in `.github/workflows/ci.yml`.
       Fix the blocking issues and turn it back on so type regressions are caught.
       _File: [.github/workflows/ci.yml](../.github/workflows/ci.yml#L96-L98)_
 
-- [ ] **Unify Python version matrices across CI workflows**
+- [x] **Unify Python version matrices across CI workflows** — DONE
       `ci.yml` tests `[3.11, 3.13]`; `tests.yml` tests `[3.9–3.12]`.
       Neither covers the full supported range. Merge into one matrix or align.
 
-- [ ] **Add macOS to the Python test matrix**
+- [x] **Add macOS to the Python test matrix** — DONE
       Only Ubuntu and Windows are tested. The project claims OS-independent.
 
 ---

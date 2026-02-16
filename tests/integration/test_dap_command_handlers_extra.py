@@ -4,6 +4,9 @@ from pathlib import Path
 import sys
 import tempfile
 import types
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import cast
 
 import pytest
 
@@ -19,6 +22,12 @@ from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from dapper.protocol.debugger_protocol import DebuggerLike
+    from dapper.shared.command_handler_helpers import LoggerLike
 
 _CONVERSION_FAILED = object()
 
@@ -51,11 +60,11 @@ def _make_variable_for_tests(dbg, name, value, frame):
 
 
 def _invoke_set_variable_via_domain(dbg, arguments):
-    def _set_object_member_direct(parent_obj, name, value):
+    def _set_object_member_direct(parent_obj, name, value_str):
         return command_handler_helpers.set_object_member(
             parent_obj,
             name,
-            value,
+            value_str,
             try_custom_convert=_try_test_convert,
             conversion_failed_sentinel=_CONVERSION_FAILED,
             convert_value_with_context_fn=convert_value_with_context,
@@ -64,20 +73,23 @@ def _invoke_set_variable_via_domain(dbg, arguments):
             conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
             get_state_debugger=handlers._active_debugger,
             make_variable_fn=_make_variable_for_tests,
-            logger=handlers.logger,
+            logger=cast("LoggerLike", handlers.logger),
         )
 
-    def _set_scope_variable_direct(frame, scope, name, value):
+    def _set_scope_variable_direct(frame, scope, name, value_str):
+        def _eval_with_policy(expression: str, frame: Any, allow_builtins: bool = False) -> Any:
+            return handlers.evaluate_with_policy(expression, frame, allow_builtins=allow_builtins)
+
         return command_handler_helpers.set_scope_variable(
             frame,
             scope,
             name,
-            value,
+            value_str,
             try_custom_convert=_try_test_convert,
             conversion_failed_sentinel=_CONVERSION_FAILED,
-            evaluate_with_policy_fn=handlers.evaluate_with_policy,
+            evaluate_with_policy_fn=_eval_with_policy,
             convert_value_with_context_fn=convert_value_with_context,
-            logger=handlers.logger,
+            logger=cast("LoggerLike", handlers.logger),
             error_response_fn=handlers._error_response,
             conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
             get_state_debugger=handlers._active_debugger,
@@ -90,7 +102,7 @@ def _invoke_set_variable_via_domain(dbg, arguments):
         error_response=handlers._error_response,
         set_object_member=_set_object_member_direct,
         set_scope_variable=_set_scope_variable_direct,
-        logger=handlers.logger,
+        logger=cast("Logger", handlers.logger),
         conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
         var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
@@ -115,7 +127,7 @@ def capture_send(monkeypatch):
 
 def test_set_breakpoints_and_state(monkeypatch):
     dbg = DebuggerBDB()
-    debug_shared.get_active_session().debugger = dbg
+    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
     messages = capture_send(monkeypatch)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
@@ -135,7 +147,7 @@ def test_set_breakpoints_and_state(monkeypatch):
                 "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
             },
             handlers._safe_send_debug_message,
-            handlers.logger,
+            cast("LoggerLike", handlers.logger),
         )
 
         assert cleared_lines == [5]
@@ -148,7 +160,7 @@ def test_set_breakpoints_and_state(monkeypatch):
 
 def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.get_active_session().debugger = dbg
+    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
     messages = capture_send(monkeypatch)
 
     class Frame:
@@ -167,7 +179,7 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
 
 def test_set_variable_on_object(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.get_active_session().debugger = dbg
+    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
     messages = capture_send(monkeypatch)
 
     obj = {"x": 1}

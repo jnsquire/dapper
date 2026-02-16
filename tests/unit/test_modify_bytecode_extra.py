@@ -54,7 +54,7 @@ def test_create_breakpoint_wrapper_code_and_compile_returns_codeobj():
 
 
 def test_get_bytecode_info_handles_invalid_input():
-    res = mb.get_bytecode_info(None)
+    res = mb.get_bytecode_info(None)  # pyright: ignore[reportArgumentType]
     assert isinstance(res, dict)
     assert "error" in res
 

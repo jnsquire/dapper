@@ -3,7 +3,6 @@ from pathlib import Path
 import sys
 
 from setuptools import Extension
-from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.build_ext import build_ext
 from setuptools.dist import Distribution
@@ -105,30 +104,11 @@ class BinaryDistribution(Distribution):
 
 
 # Setup configuration
+# Project metadata lives in pyproject.toml (PEP 621). Keep setup.py focused
+# on build-time extension wiring only.
 setup_kwargs = {
     "distclass": BinaryDistribution,
-    "name": "dapper",
-    "version": "0.4.0",
-    "description": "Debug Adapter Protocol implementation for Python",
-    "author": "Joel Squire",
-    "author_email": "joel@squire.org",
-    "packages": find_packages(),
-    "include_package_data": True,
-    "install_requires": [],
-    "extras_require": {
-        "dev": [
-            "pytest>=7.0.0",
-            "pytest-asyncio>=0.18.0",
-            "pytest-cov>=3.0.0",
-            "black>=22.0.0",
-            "isort>=5.10.0",
-            "mypy>=0.940",
-        ],
-        "frame-eval": [
-            "Cython>=3.0",
-        ],
-    },
-    "python_requires": ">=3.9",
+    "cmdclass": {"build_ext": BuildExt},
     "options": {
         "bdist_wheel": {
             "universal": False,  # This ensures platform-specific wheels are built
@@ -136,20 +116,6 @@ setup_kwargs = {
             "py_limited_api": False,  # Don't use Python's limited API
         }
     },
-    "classifiers": [
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Developers",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Cython",
-        "Topic :: Software Development :: Debuggers",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    "cmdclass": {"build_ext": BuildExt},
 }
 
 # Add extensions if frame evaluation is included

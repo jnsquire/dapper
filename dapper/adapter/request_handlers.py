@@ -6,6 +6,7 @@ Debug Adapter Protocol requests and routes them to appropriate handlers.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import mimetypes
 from pathlib import Path
@@ -428,7 +429,11 @@ class RequestHandler:
         getter = getattr(dbg, "get_source_content_by_ref", None)
         if callable(getter):
             try:
-                res_val = await getter(source_reference)
+                res = getter(source_reference)
+                if inspect.isawaitable(res):
+                    res_val = await res
+                else:
+                    res_val = res
                 # Only accept string content; otherwise fall back
                 content = res_val if isinstance(res_val, str) else None
             except Exception:
@@ -445,7 +450,11 @@ class RequestHandler:
         getter_meta = getattr(dbg, "get_source_meta", None)
         try:
             if callable(getter_meta):
-                meta = await getter_meta(source_reference)
+                res_meta = getter_meta(source_reference)
+                if inspect.isawaitable(res_meta):
+                    meta = await res_meta
+                else:
+                    meta = res_meta
             else:
                 meta = active_session.get_source_meta(source_reference)
             if isinstance(meta, dict):
@@ -465,7 +474,11 @@ class RequestHandler:
         getter = getattr(dbg, "get_source_content_by_path", None)
         if callable(getter):
             try:
-                res_val = await getter(path)
+                res = getter(path)
+                if inspect.isawaitable(res):
+                    res_val = await res
+                else:
+                    res_val = res
                 # Only accept string content; otherwise fall back
                 content = res_val if isinstance(res_val, str) else None
             except Exception:

@@ -366,32 +366,31 @@ class InProcessBackend(BaseBackend):
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
         """Get exception information for a thread."""
         try:
-            # Access the debugger's exception handler through public interface
-            inproc_debugger = getattr(self._bridge, "_inproc", None)
-            if inproc_debugger:
-                debugger = getattr(inproc_debugger, "debugger", None)
-                if debugger and hasattr(debugger, "exception_handler"):
-                    # Access exception info through the delegate directly
-                    exception_info_map = debugger.exception_handler.exception_info_by_thread
-                    exception_info = exception_info_map.get(thread_id)
-                    if exception_info:
-                        return {
-                            "exceptionId": exception_info.get("exceptionId", "Unknown"),
-                            "description": exception_info.get("description", "Exception occurred"),
-                            "breakMode": exception_info.get("breakMode", "unhandled"),
-                            "details": exception_info.get(
-                                "details",
-                                {
-                                    "message": "Exception information available",
-                                    "typeName": exception_info.get("exceptionId", "Unknown"),
-                                    "fullTypeName": exception_info.get("exceptionId", "Unknown"),
-                                    "source": "in-process debugger",
-                                    "stackTrace": exception_info.get(
-                                        "stackTrace", ["Stack trace available"]
-                                    ),
-                                },
+            # Use bridge accessor to avoid reaching into private internals
+            exception_info = None
+            try:
+                exception_info = self._bridge.get_exception_info(thread_id)
+            except Exception:
+                logger.exception("bridge.get_exception_info failed")
+
+            if exception_info:
+                return {
+                    "exceptionId": exception_info.get("exceptionId", "Unknown"),
+                    "description": exception_info.get("description", "Exception occurred"),
+                    "breakMode": exception_info.get("breakMode", "unhandled"),
+                    "details": exception_info.get(
+                        "details",
+                        {
+                            "message": "Exception information available",
+                            "typeName": exception_info.get("exceptionId", "Unknown"),
+                            "fullTypeName": exception_info.get("exceptionId", "Unknown"),
+                            "source": "in-process debugger",
+                            "stackTrace": exception_info.get(
+                                "stackTrace", ["Stack trace available"]
                             ),
-                        }
+                        },
+                    ),
+                }
         except Exception:
             logger.exception("Failed to get exception info from in-process debugger")
 
