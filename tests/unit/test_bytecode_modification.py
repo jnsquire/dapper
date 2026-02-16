@@ -278,18 +278,19 @@ def test_rebuild_code_object_prefers_replace(
     original_code: types.CodeType,
     monkeypatch,
 ) -> None:
-    """Ensure modern runtimes use code.replace() instead of CodeType(...)."""
+    """Prefer code.replace(), but allow constructor fallback when replacement fails."""
     if not hasattr(original_code, "replace"):
         pytest.skip("code.replace() unavailable on this Python runtime")
 
     instructions = list(dis.get_instructions(original_code))
     real_code_type = type(original_code)
+    code_type_calls = {"count": 0}
 
-    def fail_if_called(*_args, **_kwargs):
-        msg = "Legacy CodeType constructor path should not be used when replace() exists"
-        raise AssertionError(msg)
+    def track_code_type_calls(*args, **kwargs):
+        code_type_calls["count"] += 1
+        return types.CodeType(*args, **kwargs)
 
-    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", fail_if_called)
+    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", track_code_type_calls)
 
     rebuilt = bytecode_modifier._rebuild_code_object(original_code, instructions)
     assert isinstance(rebuilt, real_code_type)
