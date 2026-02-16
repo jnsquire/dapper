@@ -15,9 +15,11 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       thin out the remaining facade to pure delegation.
       _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
 
-- [ ] **Eliminate duplicated dispatch + standalone methods in `ExternalProcessBackend`**
-      Every DAP command is implemented twice — once in `_dispatch_*` and again as
-      a direct method. Unify to a single implementation.
+- [x] **Eliminate duplicated dispatch + standalone methods in `ExternalProcessBackend`** — DONE
+      Unified command routing to a single source of truth (`_dispatch_map`) and
+      converted `_build_dispatch_table` into a backward-compatible wrapper.
+      Removed redundant standalone `configuration_done`/`terminate` overrides so
+      lifecycle commands use the same dispatch path as other DAP commands.
       _File: [dapper/adapter/external_backend.py](../dapper/adapter/external_backend.py)_
 
 - [x] **Remove `InProcessBackend.exception_info` deep attribute chain** — DONE
@@ -44,11 +46,13 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       is an extra source of confusion.
       _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
 
-- [ ] **Replace string-based exception classification with `isinstance` checks**
-      `error_patterns.py` classifies errors by substring-matching on the message
-      (`"connection"`, `"pipe"`, `"timeout"`). Use `isinstance(e, (ConnectionError,
-      BrokenPipeError, TimeoutError, …))` instead.
-      _File: [dapper/errors/error_patterns.py](../dapper/errors/error_patterns.py#L88-L103)_
+- [x] **Replace string-based exception classification with `isinstance` checks** — DONE
+      Extracted `_classify_adapter_error` and `_classify_backend_error` helper
+      functions that use `isinstance(e, (ConnectionError, BrokenPipeError,
+      EOFError))` for IPC errors and `isinstance(e, TimeoutError)` for timeouts.
+      Replaced all three string-matching blocks (sync adapter, async adapter,
+      async backend) with calls to these classifiers.
+      _File: [dapper/errors/error_patterns.py](../dapper/errors/error_patterns.py)_
 
 ---
 

@@ -7,7 +7,6 @@ with a debuggee running in a separate subprocess via IPC.
 from __future__ import annotations
 
 import asyncio
-from functools import partial
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
@@ -134,29 +133,17 @@ class ExternalProcessBackend(BaseBackend):
         self,
         args: dict[str, Any],
     ) -> dict[str, Any]:
-        """Build dispatch table for external-process commands.
+        """Back-compat builder delegating to the prebuilt dispatch map.
 
-        Each handler constructs a DAP protocol message and sends it
-        via ``_send_command``.
+        Older callers may still rely on ``_build_dispatch_table`` returning
+        zero-argument callables. The authoritative command mapping lives in
+        ``self._dispatch_map``.
         """
-        return {
-            "set_breakpoints": partial(self._dispatch_set_breakpoints, args),
-            "set_function_breakpoints": partial(self._dispatch_set_function_breakpoints, args),
-            "set_exception_breakpoints": partial(self._dispatch_set_exception_breakpoints, args),
-            "continue": partial(self._dispatch_continue, args),
-            "next": partial(self._dispatch_next, args),
-            "step_in": partial(self._dispatch_step_in, args),
-            "step_out": partial(self._dispatch_step_out, args),
-            "pause": partial(self._dispatch_pause, args),
-            "get_stack_trace": partial(self._dispatch_stack_trace, args),
-            "get_variables": partial(self._dispatch_variables, args),
-            "set_variable": partial(self._dispatch_set_variable, args),
-            "evaluate": partial(self._dispatch_evaluate, args),
-            "completions": partial(self._dispatch_completions, args),
-            "exception_info": partial(self._dispatch_exception_info, args),
-            "configuration_done": partial(self._dispatch_configuration_done, args),
-            "terminate": partial(self._dispatch_terminate, args),
-        }
+
+        def _wrap(handler):
+            return lambda: handler(args)
+
+        return {name: _wrap(handler) for name, handler in self._dispatch_map.items()}
 
     async def _dispatch_set_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = {
@@ -365,11 +352,6 @@ class ExternalProcessBackend(BaseBackend):
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
-    async def configuration_done(self) -> None:
-        """Signal that configuration is done."""
-        command = {"command": "configurationDone"}
-        await self._send_command(command)
-
     async def initialize(self) -> None:
         """Initialize the external process backend."""
         await self._lifecycle.initialize()
@@ -394,14 +376,3 @@ class ExternalProcessBackend(BaseBackend):
         _ = config  # Mark as intentionally unused
         await self.initialize()
         logger.info("External process debugging session attached")
-
-    async def terminate(self) -> None:
-        """Terminate the debuggee."""
-        await self._lifecycle.begin_termination()
-        try:
-            await self._execute_command("terminate")
-        except Exception as e:
-            logger.warning(f"Error during external process termination: {e}")
-            await self._lifecycle.mark_error(f"Termination failed: {e}")
-        finally:
-            await self._lifecycle.complete_termination()

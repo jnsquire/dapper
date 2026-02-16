@@ -36,6 +36,40 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Exception types that indicate IPC / connectivity problems.
+_IPC_ERRORS = (ConnectionError, BrokenPipeError, EOFError)
+# TimeoutError covers socket.timeout (alias since Python 3.3).
+_TIMEOUT_ERRORS = (TimeoutError,)
+
+
+def _classify_adapter_error(e: Exception, *, operation: str) -> DapperError:
+    """Classify a generic exception into the appropriate ``DapperError`` subtype.
+
+    Uses ``isinstance`` checks against well-known stdlib exception
+    hierarchies rather than inspecting the exception message string.
+    """
+    error_msg = f"Error in adapter operation {operation}: {e!s}"
+
+    if isinstance(e, _IPC_ERRORS):
+        return IPCError(error_msg, cause=e, details={"operation": operation})
+    if isinstance(e, _TIMEOUT_ERRORS):
+        return DapperTimeoutError(error_msg, operation=operation, cause=e)
+    return DapperError(
+        error_msg,
+        error_code="AdapterError",
+        cause=e,
+        details={"operation": operation},
+    )
+
+
+def _classify_backend_error(e: Exception, *, operation: str) -> BackendError | DapperTimeoutError:
+    """Classify a generic exception for backend error decorators."""
+    error_msg = f"Error in backend operation {operation}: {e!s}"
+
+    if isinstance(e, _TIMEOUT_ERRORS):
+        return DapperTimeoutError(error_msg, operation=operation, cause=e)
+    return BackendError(error_msg, operation=operation, cause=e)
+
 
 def handle_adapter_errors(
     operation: str | None = None,
@@ -81,31 +115,9 @@ def handle_adapter_errors(
                 logger.exception("Protocol error in %s", operation or func.__name__)
                 return None
             except Exception as e:
-                # Wrap generic exceptions
-                error_msg = f"Error in adapter operation {operation or func.__name__}: {e!s}"
-
-                # Determine appropriate error type based on exception characteristics
-                if (
-                    "connection" in str(e).lower()
-                    or "pipe" in str(e).lower()
-                    or "socket" in str(e).lower()
-                ):
-                    wrapped_error = IPCError(
-                        error_msg, cause=e, details={"operation": operation or func.__name__}
-                    )
-                elif "timeout" in str(e).lower():
-                    wrapped_error = DapperTimeoutError(
-                        error_msg, operation=operation or func.__name__, cause=e
-                    )
-                else:
-                    wrapped_error = DapperError(
-                        error_msg,
-                        error_code="AdapterError",
-                        cause=e,
-                        details={"operation": operation or func.__name__},
-                    )
-
-                logger.log(log_level, error_msg, exc_info=True)
+                op = operation or func.__name__
+                wrapped_error = _classify_adapter_error(e, operation=op)
+                logger.log(log_level, str(wrapped_error), exc_info=True)
 
                 if reraise:
                     raise wrapped_error from e
@@ -282,29 +294,9 @@ def async_handle_adapter_errors(
                 logger.exception("Protocol error in %s", operation or func.__name__)
                 return None
             except Exception as e:
-                error_msg = f"Error in adapter operation {operation or func.__name__}: {e!s}"
-
-                if (
-                    "connection" in str(e).lower()
-                    or "pipe" in str(e).lower()
-                    or "socket" in str(e).lower()
-                ):
-                    wrapped_error = IPCError(
-                        error_msg, cause=e, details={"operation": operation or func.__name__}
-                    )
-                elif "timeout" in str(e).lower():
-                    wrapped_error = DapperTimeoutError(
-                        error_msg, operation=operation or func.__name__, cause=e
-                    )
-                else:
-                    wrapped_error = DapperError(
-                        error_msg,
-                        error_code="AdapterError",
-                        cause=e,
-                        details={"operation": operation or func.__name__},
-                    )
-
-                logger.log(log_level, error_msg, exc_info=True)
+                op = operation or func.__name__
+                wrapped_error = _classify_adapter_error(e, operation=op)
+                logger.log(log_level, str(wrapped_error), exc_info=True)
 
                 if reraise:
                     raise wrapped_error from e
@@ -343,18 +335,9 @@ def async_handle_backend_errors(
                 logger.exception("Timeout error in %s", operation or func.__name__)
                 return cast("R", None)
             except Exception as e:
-                error_msg = f"Error in backend operation {operation or func.__name__}: {e!s}"
-
-                if "timeout" in str(e).lower():
-                    wrapped_error = DapperTimeoutError(
-                        error_msg, operation=operation or func.__name__, cause=e
-                    )
-                else:
-                    wrapped_error = BackendError(
-                        error_msg, operation=operation or func.__name__, cause=e
-                    )
-
-                logger.log(log_level, error_msg, exc_info=True)
+                op = operation or func.__name__
+                wrapped_error = _classify_backend_error(e, operation=op)
+                logger.log(log_level, str(wrapped_error), exc_info=True)
 
                 if reraise:
                     raise wrapped_error from e
