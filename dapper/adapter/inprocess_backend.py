@@ -41,9 +41,6 @@ class InProcessBackend(BaseBackend):
         super().__init__()
         self._bridge = bridge
 
-        # Register cleanup callback
-        self._lifecycle.add_cleanup_callback(self._cleanup_bridge)
-
         # Pre-built dispatch map to avoid rebuilding nested async wrappers on
         # every command execution. Handlers accept an `args` dict.
         self._dispatch_map = {
@@ -64,14 +61,6 @@ class InProcessBackend(BaseBackend):
             "configuration_done": self._handler_configuration_done,
             "terminate": self._handler_terminate,
         }
-
-    def _cleanup_bridge(self) -> None:
-        """Cleanup the bridge connection."""
-        try:
-            # Add any bridge-specific cleanup here if needed
-            pass
-        except Exception:
-            logger.exception("Failed to cleanup InProcessBridge")
 
     @property
     def bridge(self) -> InProcessBridge:

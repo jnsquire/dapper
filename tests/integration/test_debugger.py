@@ -48,13 +48,13 @@ class BreakpointResponse(TypedDict, total=False):
 
 # Constants for testing
 from dapper.adapter.server import PyDebugger
-from dapper.adapter.server import PyDebuggerThread
-from dapper.common.constants import DEFAULT_BREAKPOINT_CONDITION_VALUE
-from dapper.common.constants import DEFAULT_BREAKPOINT_LINE
-from dapper.common.constants import TEST_ALT_LINE_1
+from dapper.adapter.types import PyDebuggerThread
 from dapper.config import DapperConfig
 from dapper.config import DebuggeeConfig
 from dapper.config import IPCConfig
+from tests.constants import DEFAULT_BREAKPOINT_CONDITION_VALUE
+from tests.constants import DEFAULT_BREAKPOINT_LINE
+from tests.constants import TEST_ALT_LINE_1
 
 # ---------------------------------------------------------------------------
 # Fixtures

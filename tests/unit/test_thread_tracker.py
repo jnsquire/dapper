@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import threading
 from types import SimpleNamespace
+from typing import Any
+from typing import cast
 
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.thread_tracker import MAX_STACK_DEPTH
 from dapper.core.thread_tracker import StackFrame
 from dapper.core.thread_tracker import ThreadTracker
+from dapper.protocol.structures import StackFrame as StackFrameDict
 
 
 class TestStackFrame:
@@ -65,8 +68,6 @@ class TestThreadTrackerInit:
         assert tracker.frames_by_thread == {}
         assert tracker.frame_id_to_frame == {}
         assert tracker.next_frame_id == 1
-        assert tracker.thread_count == 1
-        assert tracker.thread_ids == {}
 
 
 class TestThreadRegistration:
@@ -179,7 +180,10 @@ class TestFrameManagement:
     def test_store_and_get_stack_frames(self):
         """Test storing and retrieving stack frames for a thread."""
         tracker = ThreadTracker()
-        frames = [{"id": 1, "name": "foo"}, {"id": 2, "name": "bar"}]
+        frames = [
+            StackFrameDict(id=1, name="foo", line=1, column=0),
+            StackFrameDict(id=2, name="bar", line=2, column=0),
+        ]
         tracker.store_stack_frames(123, frames)
         assert tracker.get_stack_frames(123) == frames
 
@@ -206,7 +210,9 @@ class TestBuildStackFrames:
         assert len(frames) == 1
         assert frames[0]["name"] == "my_func"
         assert frames[0]["line"] == 42
-        assert frames[0]["source"]["path"] == "/path/test.py"
+        source = frames[0].get("source")
+        assert source is not None
+        assert source.get("path") == "/path/test.py"
         assert frames[0]["id"] == 1
 
     def test_frame_chain(self):
@@ -302,11 +308,12 @@ class TestClear:
         # Populate with data
         tracker.register_thread(123, "Worker")
         tracker.mark_stopped(123)
-        tracker.store_stack_frames(123, [{"id": 1}])
+        tracker.store_stack_frames(
+            123,
+            [StackFrameDict(id=1, name="frame", line=1, column=0)],
+        )
         tracker.register_frame(1, object())
         tracker.allocate_frame_id()
-        tracker.thread_count = 5
-        tracker.thread_ids[1] = 1
 
         # Clear
         tracker.clear()
@@ -317,8 +324,6 @@ class TestClear:
         assert tracker.frames_by_thread == {}
         assert tracker.frame_id_to_frame == {}
         assert tracker.next_frame_id == 1
-        assert tracker.thread_count == 1
-        assert tracker.thread_ids == {}
 
 
 class TestIntegrationWithDebuggerBDB:
@@ -343,8 +348,9 @@ class TestIntegrationWithDebuggerBDB:
         assert 456 in dbg.thread_tracker.stopped_thread_ids
 
         # Test frames_by_thread
-        dbg.thread_tracker.frames_by_thread[123] = [{"id": 1}]
-        assert dbg.thread_tracker.frames_by_thread[123] == [{"id": 1}]
+        frames = [StackFrameDict(id=1, name="frame", line=1, column=0)]
+        dbg.thread_tracker.frames_by_thread[123] = frames
+        assert dbg.thread_tracker.frames_by_thread[123] == frames
 
         # Test next_frame_id (use delegate directly - proxy was removed)
         dbg.thread_tracker.next_frame_id = 10
@@ -363,7 +369,7 @@ class TestIntegrationWithDebuggerBDB:
         code = SimpleNamespace(co_filename="test.py", co_name="test_func")
         frame = SimpleNamespace(f_code=code, f_lineno=42, f_back=None)
 
-        stack_frames = dbg._get_stack_frames(frame)
+        stack_frames = dbg._get_stack_frames(cast(Any, frame))
 
         assert len(stack_frames) == 1
         assert stack_frames[0]["name"] == "test_func"

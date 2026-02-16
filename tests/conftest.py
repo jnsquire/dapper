@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # isort: skip-file
 import asyncio
-import atexit
 import logging
 import os
 from pathlib import Path
@@ -50,9 +49,6 @@ def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
                 pass
 
 
-asyncio.new_event_loop = _tracking_new_event_loop
-
-
 def _close_tracked_event_loops() -> None:
     for loop in list(_created_event_loops):
         try:
@@ -62,8 +58,6 @@ def _close_tracked_event_loops() -> None:
             pass
     _created_event_loops.clear()
 
-
-atexit.register(_close_tracked_event_loops)
 
 # On Windows the default event loop policy uses ProactorEventLoop which
 # attempts to create a socketpair during new_event_loop(). On some Windows
@@ -90,6 +84,22 @@ def add_parent_to_syspath():
         sys.path.remove(parent_dir)
     except ValueError:
         pass
+
+
+@pytest.fixture(autouse=True, scope="session")
+def track_created_event_loops():
+    """Patch `asyncio.new_event_loop` for the test session.
+
+    Installs the tracking wrapper for the duration of the pytest session and
+    restores the original function during teardown.
+    """
+    original_new_event_loop = asyncio.new_event_loop
+    asyncio.new_event_loop = _tracking_new_event_loop
+    try:
+        yield
+    finally:
+        asyncio.new_event_loop = original_new_event_loop
+        _close_tracked_event_loops()
 
 
 @pytest.fixture(autouse=True)

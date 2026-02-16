@@ -87,9 +87,7 @@ class ExternalProcessBackend(BaseBackend):
     def _cleanup_ipc(self) -> None:
         """Cleanup IPC connection."""
         try:
-            # IPC cleanup depends on the specific IPC implementation
-            # Add implementation-specific cleanup here if needed
-            pass
+            self._ipc.cleanup()
         except Exception:
             logger.exception("Failed to cleanup IPC connection")
 

@@ -5,50 +5,6 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ---
 
-## P1 — Architecture & Design
-
-- [x] **Decompose `PyDebugger` (989 lines, 50+ methods)**
-      The class is a God Object that owns threading, IPC, breakpoints, process 
-      management, event routing and session state. The manager sub-objects 
-      (`_event_router`, `_lifecycle_manager`, …) are a step in the right 
-      direction — move `PyDebugger` itself into `dapper/adapter/debugger/` and 
-      thin out the remaining facade to pure delegation.
-      _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
-
----
-
-## P6 — Code Hygiene & Dead Code
-
-- [ ] **Move test constants out of `dapper/common/constants.py`**
-      `TEST_DEFAULT_LINE`, `TEST_ALT_LINE_*`, `TEST_STRING_LIMIT`,
-      `DEFAULT_BREAKPOINT_LINE`, etc. are test fixtures, not production
-      constants. Move to a `tests/constants.py` or test conftest.
-      _File: [dapper/common/constants.py](../dapper/common/constants.py#L28-L33)_
-
-- [ ] **Remove `TYPE_CHECKING: Final[bool] = False` from `constants.py`**
-      It's never used — real code imports `TYPE_CHECKING` from `typing`.
-
-- [ ] **Implement or remove empty cleanup callbacks**
-      `ExternalProcessBackend._cleanup_ipc` and
-      `InProcessBackend._cleanup_bridge` are `pass` stubs registered as
-      callbacks that never do anything.
-
-- [ ] **Remove legacy `thread_count` / `thread_ids` in `ThreadTracker`**
-      Marked "legacy" and never meaningfully used.
-
-- [ ] **Replace `globals()["_current_config"]` with `global _current_config`**
-      In `config_manager._assign_current_config` — the `globals()` pattern is
-      unnecessarily obscure.
-
-- [ ] **Remove duplicate `Coroutine` import in `error_patterns.py`**
-      Imported twice at L18 and L35.
-
-- [ ] **Remove dead `black`/`isort` deps and stale `flake8` config**
-      The project uses `ruff`; `setup.cfg [flake8]` and `pyproject.toml
-      [tool.flake8]` sections are unused.
-
----
-
 ## P7 — Test Quality
 
 - [ ] **Add dedicated tests for untested modules**
@@ -60,7 +16,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       Missing `__init__.py` can cause import issues in some pytest
       configurations.
 
-- [ ] **Remove global monkey-patch of `asyncio.new_event_loop` at import time**
+- [x] **Remove global monkey-patch of `asyncio.new_event_loop` at import time**
       `tests/conftest.py` L19–21 patches at module level; convert to a
       session-scoped fixture.
 

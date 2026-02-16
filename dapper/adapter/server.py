@@ -10,5 +10,12 @@ from dapper.adapter.debugger.py_debugger import PyDebugger
 from dapper.adapter.debugger.py_debugger import _acquire_event_loop
 from dapper.adapter.request_handlers import RequestHandler
 from dapper.adapter.server_core import DebugAdapterServer
+from dapper.adapter.types import PyDebuggerThread
 
-__all__ = ["DebugAdapterServer", "PyDebugger", "RequestHandler", "_acquire_event_loop"]
+__all__ = [
+	"DebugAdapterServer",
+	"PyDebugger",
+	"PyDebuggerThread",
+	"RequestHandler",
+	"_acquire_event_loop",
+]

@@ -62,8 +62,6 @@ class ThreadTracker:
     This class consolidates thread and frame management that was previously
     scattered across multiple attributes in DebuggerBDB:
     - threads: mapping of thread_id -> thread_name
-    - thread_ids: (unused legacy attribute)
-    - thread_count: counter for thread IDs
     - stopped_thread_ids: set of currently stopped threads
     - frames_by_thread: mapping of thread_id -> list of stack frames
     - next_frame_id: counter for frame IDs
@@ -75,8 +73,6 @@ class ThreadTracker:
         frames_by_thread: Mapping of thread ID to list of stack frame dicts.
         frame_id_to_frame: Mapping of frame ID to actual Python frame object.
         next_frame_id: Next frame ID to allocate.
-        thread_count: Counter for generating thread IDs (legacy).
-        thread_ids: Legacy mapping (kept for compatibility).
     """
 
     threads: dict[int, str] = field(default_factory=dict)
@@ -84,8 +80,6 @@ class ThreadTracker:
     frames_by_thread: dict[int, list[StackFrameDict]] = field(default_factory=dict)
     frame_id_to_frame: dict[int, FrameType] = field(default_factory=dict)
     next_frame_id: int = 1
-    thread_count: int = 1
-    thread_ids: dict[int, int] = field(default_factory=dict)  # Legacy
 
     def is_thread_registered(self, thread_id: int) -> bool:
         """Check if a thread is registered."""
@@ -237,8 +231,6 @@ class ThreadTracker:
         self.frames_by_thread.clear()
         self.frame_id_to_frame.clear()
         self.next_frame_id = 1
-        self.thread_count = 1
-        self.thread_ids.clear()
 
 
 __all__ = ["StackFrame", "ThreadTracker"]
