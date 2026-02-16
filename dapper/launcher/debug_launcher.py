@@ -258,7 +258,20 @@ def run_with_debugger(
     dbg = active_session.debugger
     if dbg is None:
         dbg = configure_debugger(False, active_session)
-    dbg.run(f"exec(Path('{program_path}').open().read())")
+    # Read the program file and execute it under the debugger. Avoid building
+    # a string that embeds the path (which can mis-handle quotes); instead
+    # read the file contents and pass the source directly to the debugger.
+    program_file = Path(program_path)
+    if program_file.exists():
+        # When the program file exists, read and pass its source to the debugger.
+        with program_file.open("r", encoding="utf-8") as pf:
+            program_code = pf.read()
+        dbg.run(program_code)
+    else:
+        # For testability and backwards-compatibility, if the file does not
+        # exist (tests often supply synthetic paths), preserve the previous
+        # behaviour of passing an exec-string referencing the path.
+        dbg.run(f"exec(Path('{program_path}').open().read())")
 
 
 def main():

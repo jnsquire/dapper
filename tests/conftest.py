@@ -105,35 +105,36 @@ def event_loop():
     except RuntimeError:
         running = None
 
+    # If a loop is already running (pytest-asyncio), yield it and do not
+    # attempt to shut it down here — pytest manages it.
     if running is not None:
-        # Yield the existing loop without creating another
-        # Best-effort teardown of anything bound to this loop
-        pending = None
-        try:
-            if not running.is_closed():
-                pending = [t for t in asyncio.all_tasks(running) if not t.done()]
-                for t in pending:
-                    t.cancel()
-                if pending:
-                    running.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                running.run_until_complete(running.shutdown_asyncgens())
-                running.run_until_complete(running.shutdown_default_executor())
-                running.close()
-        except Exception:
-            pending = [t for t in asyncio.all_tasks(running) if not t.done()]
-        finally:
-            if pending:
-                results = running.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-                for result in results:
-                    if isinstance(result, Exception):
-                        logger.error(f"Unhandled exception during event loop teardown: {result}")
+        yield running
+        return
 
-            try:
-                asyncio.set_event_loop(None)
-            except Exception:
-                logger.exception("Suppressed exception when resetting event loop")
+    # Otherwise create a per-test loop and clean it up on teardown.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield loop
+    finally:
+        try:
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for t in pending:
+                t.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+        except Exception:
+            logger.exception("Exception during event loop teardown")
+        try:
+            loop.close()
+        except Exception:
+            logger.exception("Failed to close event loop")
+        try:
+            asyncio.set_event_loop(None)
+        except Exception:
+            logger.exception("Failed to unset event loop")
 
 
 def pytest_sessionfinish(session, exitstatus):

@@ -42,14 +42,27 @@ def read_binary_stream(rfile: Any, handle_debug_message: Callable[[str], None]) 
     """
     while True:
         header = read_exact(rfile, HEADER_SIZE)
+        # EOF before any bytes -> normal stop
         if not header:
+            break
+        # If we received fewer bytes than a full header, treat as EOF/partial and stop
+        if len(header) < HEADER_SIZE:
+            logger.error("short header read from binary stream: %d bytes", len(header))
             break
         try:
             kind, length = unpack_header(header)
         except Exception:
+            # Bad header; stop reading to avoid mis-parsing following bytes
+            logger.exception("invalid binary frame header")
             break
         payload = read_exact(rfile, length)
+        # If payload is shorter than expected, treat as EOF/partial and stop
         if not payload:
+            break
+        if len(payload) < length:
+            logger.error(
+                "short payload read from binary stream: expected %d got %d", length, len(payload)
+            )
             break
         if kind == 1:
             try:

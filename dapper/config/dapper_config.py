@@ -208,4 +208,5 @@ class DapperConfig:
 
 
 # Default configuration instance
-DEFAULT_CONFIG = DapperConfig()
+# Use an attach-mode default so the default config passes validation
+DEFAULT_CONFIG = DapperConfig(mode="attach")

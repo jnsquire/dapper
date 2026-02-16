@@ -108,15 +108,13 @@ class BinaryDistribution(Distribution):
 setup_kwargs = {
     "distclass": BinaryDistribution,
     "name": "dapper",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Debug Adapter Protocol implementation for Python",
     "author": "Joel Squire",
     "author_email": "joel@squire.org",
     "packages": find_packages(),
     "include_package_data": True,
-    "install_requires": [
-        "pyright>=1.1.405",
-    ],
+    "install_requires": [],
     "extras_require": {
         "dev": [
             "pytest>=7.0.0",
