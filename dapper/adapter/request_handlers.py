@@ -19,7 +19,6 @@ from typing import TypeVar
 from dapper.adapter.types import DAPResponse
 from dapper.config import DapperConfig
 from dapper.errors import ConfigurationError
-from dapper.errors import async_handle_adapter_errors
 from dapper.errors import create_dap_response
 from dapper.protocol.data_breakpoints import DataBreakpointInfoResponse
 from dapper.protocol.data_breakpoints import SetDataBreakpointsResponse
@@ -226,7 +225,6 @@ class RequestHandler:
 
         return self._make_response(request, "launch", LaunchResponse)
 
-    @async_handle_adapter_errors("attach")
     async def _handle_attach(self, request: AttachRequest) -> AttachResponse:
         """Handle attach request.
 
@@ -235,10 +233,16 @@ class RequestHandler:
         (transport + host/port or path or pipe name).
         IPC is always required for attach.
         """
-        config = DapperConfig.from_attach_request(request)
-        config.validate()
+        try:
+            config = DapperConfig.from_attach_request(request)
+            config.validate()
+        except ConfigurationError as e:
+            return create_dap_response(e, request["seq"], "attach")
 
-        await self.server.debugger.attach(config)
+        try:
+            await self.server.debugger.attach(config)
+        except Exception as e:
+            return create_dap_response(e, request["seq"], "attach")
 
         return self._make_response(request, "attach", AttachResponse)
 

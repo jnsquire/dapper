@@ -6,6 +6,7 @@ access and configuration validation.
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import TYPE_CHECKING
 from typing import Any
@@ -19,6 +20,7 @@ from dapper.config.dapper_config import DapperConfig
 # Thread-safe global configuration state
 _config_lock = threading.RLock()
 _current_config: DapperConfig = DEFAULT_CONFIG
+logger = logging.getLogger(__name__)
 
 
 def _assign_current_config(value: DapperConfig) -> None:
@@ -55,6 +57,11 @@ def update_config(**kwargs: Any) -> None:
     with _config_lock:
         # Create new config with updated values
         current = get_config()
+
+        allowed_keys = {"log_level", "enable_metrics", "timeout_seconds"}
+        unknown_keys = sorted(set(kwargs) - allowed_keys)
+        if unknown_keys:
+            logger.warning("Ignoring unknown config key(s): %s", ", ".join(unknown_keys))
 
         # Update specific fields based on kwargs
         if "log_level" in kwargs:

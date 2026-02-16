@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 try:
     from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
-except Exception:  # pragma: no cover - optional integration
+except ImportError:  # pragma: no cover - optional integration
     integrate_debugger_bdb = None
 
 logger = logging.getLogger(__name__)

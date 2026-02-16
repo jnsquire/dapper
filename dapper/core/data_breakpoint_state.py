@@ -139,7 +139,7 @@ class DataBreakpointState:
             if have_old:
                 try:
                     equal = new_val == old_val
-                except Exception:  # pragma: no cover - defensive
+                except (TypeError, ValueError):  # pragma: no cover - defensive
                     equal = False
                 if old_val is not new_val and not equal:
                     changed.append(name)

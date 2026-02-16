@@ -15,40 +15,6 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       thin out the remaining facade to pure delegation.
       _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
 
-- [x] **Break circular reference between `PyDebugger` ↔ `DebugAdapterServer`**
-      They hold references to each other at construction time. Introduce an
-      interface / Protocol so neither depends on the concrete class.
-      _Files: [server.py](../dapper/adapter/server.py), [server_core.py](../dapper/adapter/server_core.py)_
-
-- [x] **Rename `server.py` → `debugger.py` (or move `PyDebugger` into `adapter/debugger/`)**
-      The file contains `PyDebugger`, not a server. The actual server is
-      `server_core.py`. The `__getattr__` re-export at the bottom of `server.py`
-      is an extra source of confusion.
-      _File: [dapper/adapter/server.py](../dapper/adapter/server.py)_
-
----
-
-## P5 — Error Handling
-
-- [ ] **Narrow `except Exception` to expected types**
-      Several broad catches should be `ImportError`, `KeyError`, etc.:
-      - `debugger_bdb.py` L37 (should be `ImportError`)
-      - `inprocess_debugger.py` L95 (swallows breakpoint-clear errors)
-      - `data_breakpoint_state.py` L127 (swallows comparison errors)
-
-- [ ] **Make error-handling decorator usage consistent in `RequestHandler`**
-      Some handlers use `@async_handle_adapter_errors`, most use manual
-      `try`/`except`. Pick one approach.
-
-- [ ] **Use lazy `%s` formatting in logger calls**
-      Multiple files use `f"…{e}"` with `logger.warning`; switch to
-      `logger.warning("… %s", e)`.
-      _Files: base_backend.py, external_backend.py, inprocess_backend.py_
-
-- [ ] **Log (or raise) unknown kwargs in `config_manager.update_config`**
-      Currently any unrecognized key is silently ignored.
-      _File: [dapper/config/config_manager.py](../dapper/config/config_manager.py#L48-L63)_
-
 ---
 
 ## P6 — Code Hygiene & Dead Code

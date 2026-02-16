@@ -433,7 +433,7 @@ class InProcessBackend(BaseBackend):
             # In-process debugging doesn't need explicit termination
             logger.info("In-process debugging session terminated")
         except Exception as e:
-            logger.warning(f"Error during in-process termination: {e}")
+            logger.warning("Error during in-process termination: %s", e)
             await self._lifecycle.mark_error(f"Termination failed: {e}")
         finally:
             await self._lifecycle.complete_termination()

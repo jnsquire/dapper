@@ -444,7 +444,7 @@ class BaseBackend(DebuggerBackend, ABC):
         try:
             await self._execute_with_timeout("terminate")
         except Exception as e:
-            logger.warning(f"Error during termination: {e}")
+            logger.warning("Error during termination: %s", e)
             await self._lifecycle.mark_error(f"Termination failed: {e}")
         finally:
             await self._lifecycle.complete_termination()

@@ -94,7 +94,7 @@ class InProcessDebugger:
             # Clear existing breakpoints for this file (helper on DebuggerBDB)
             try:
                 self.debugger.clear_breaks_for_file(path)  # type: ignore[attr-defined]
-            except Exception:
+            except AttributeError:
                 pass
             results: list[Breakpoint] = []
             for bp in breakpoints:
