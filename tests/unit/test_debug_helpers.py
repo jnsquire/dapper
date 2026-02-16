@@ -1,9 +1,82 @@
+import textwrap
+
+from dapper.core import debug_helpers as dh
+
+
+def test_safe_getattr_and_wrappers():
+    class Obj:
+        x = 1
+
+        @property
+        def bad(self):
+            raise RuntimeError("boom")
+
+        f_code = (lambda: None).__code__
+        val_int = 42
+        val_str = "hello"
+
+    o = Obj()
+
+    # basic getattr
+    assert dh.safe_getattr(o, "x", 0) == 1
+
+    # getattr that raises should return default
+    assert dh.safe_getattr(o, "bad", "def") == "def"
+
+    # missing attribute returns default
+    assert dh.safe_getattr(o, "missing", "d") == "d"
+
+    # expected_type mismatch returns default
+    assert dh.safe_getattr(o, "x", "d", expected_type=str) == "d"
+
+    # wrappers
+    assert dh.get_code(o, "f_code") is o.f_code
+    assert dh.get_int(o, "val_int") == 42
+    assert dh.get_str(o, "val_str") == "hello"
+
+
+def test_frame_has_ast_handler_positive_and_negative(tmp_path):
+    # Create a temporary python source file with a try/except block
+    src = textwrap.dedent(
+        """
+        def foo():
+            x = 0
+            try:
+                a = 1
+            except Exception:
+                a = 2
+
+        def bar():
+            pass
+        """
+    )
+
+    p = tmp_path / "mod_with_try.py"
+    p.write_text(src)
+
+    # Compile the source with the filename pointing to the temp file
+    code = compile(src, str(p), "exec")
+
+    # Line 4 (1-based) contains the assignment inside the try block -> should detect handler
+    assert dh.frame_has_ast_handler(code, 4) is True
+
+    # Line 2 is outside the try/except -> should be False
+    assert dh.frame_has_ast_handler(code, 2) is False
+
+
+def test_frame_has_ast_handler_returns_none_for_missing_source():
+    # Compile code with a filename that does not exist on disk
+    src = "x = 1\n"
+    code = compile(src, "nonexistent_file_for_test.py", "exec")
+
+    # linecache will be empty for this filename -> function should return None
+    assert dh.frame_has_ast_handler(code, 1) is None
+
+
 from pathlib import Path
 import types
 from typing import Any
 from typing import cast
-
-from dapper.core import debug_helpers as dh
 
 
 def test_safe_getattr_basic_and_type_checks():

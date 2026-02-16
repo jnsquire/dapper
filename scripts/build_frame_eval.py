@@ -1,8 +1,9 @@
 """
-Build script for frame evaluation Cython extensions.
+Build script for frame evaluation Cython extensions (dev helper).
 
-This script helps with development by providing easy commands to build
-and test the frame evaluation extensions.
+Moved into `scripts/` so it lives with other developer tooling. The
+script determines the repository root automatically and operates from
+there so behavior remains the same after relocation.
 """
 
 import argparse
@@ -26,13 +27,15 @@ def run_command(cmd, cwd=None):
 def clean_build():
     """Clean build artifacts."""
     print("Cleaning build artifacts...")
-    base_dir = Path(__file__).parent
+    # Determine repository root (two levels up from scripts/)
+    base_dir = Path(__file__).resolve().parent.parent
 
     # Remove build directories
     for build_dir in ["build", "dist"]:
         if (base_dir / build_dir).exists():
             run_command(
-                f"rmdir /s /q {build_dir}" if sys.platform == "win32" else f"rm -rf {build_dir}"
+                f"rmdir /s /q {build_dir}" if sys.platform == "win32" else f"rm -rf {build_dir}",
+                cwd=base_dir,
             )
 
     # Remove Cython generated files
@@ -45,7 +48,8 @@ def clean_build():
     for pycache in base_dir.rglob("__pycache__"):
         if pycache.is_dir():
             run_command(
-                f"rmdir /s /q {pycache}" if sys.platform == "win32" else f"rm -rf {pycache}"
+                f"rmdir /s /q {pycache}" if sys.platform == "win32" else f"rm -rf {pycache}",
+                cwd=base_dir,
             )
 
     print("Clean completed.")
@@ -59,10 +63,11 @@ def build_development():
     env = os.environ.copy()
     env["CYTHON_ANNOTATE"] = "1"  # Generate HTML annotation files
 
-    # Build with verbose output
+    # Build with verbose output from repository root
+    repo_root = Path(__file__).resolve().parent.parent
     cmd = [sys.executable, "setup.py", "build_ext", "--inplace", "--verbose"]
 
-    result = subprocess.run(cmd, check=False, env=env)
+    result = subprocess.run(cmd, check=False, env=env, cwd=repo_root)
     return result.returncode == 0
 
 
@@ -70,9 +75,10 @@ def build_production():
     """Build in production mode."""
     print("Building frame evaluation extensions (production mode)...")
 
+    repo_root = Path(__file__).resolve().parent.parent
     cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
 
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False, cwd=repo_root)
     return result.returncode == 0
 
 
@@ -80,16 +86,16 @@ def install_dev():
     """Install in development mode with frame evaluation."""
     print("Installing Dapper in development mode with frame evaluation...")
 
-    cmd = [sys.executable, "-m", "pip", "install", "-e", ".[dev,frame-eval]"]
-
-    return run_command(" ".join(cmd))
+    cmd = [sys.executable, "-m", "pip", "install", "-e", " .[dev,frame-eval]"]
+    # run_command uses shell=True so join into a single string
+    repo_root = Path(__file__).resolve().parent.parent
+    return run_command(" ".join(cmd), cwd=repo_root)
 
 
 def test_frame_eval():
     """Test frame evaluation functionality."""
     print("Testing frame evaluation...")
 
-    # Try to import and test basic functionality
     test_code = """
 import sys
 sys.path.insert(0, ".")
@@ -111,7 +117,8 @@ except Exception as e:
     print(f"Error: {e}")
 """
 
-    return run_command(f'{sys.executable} -c "{test_code}"')
+    repo_root = Path(__file__).resolve().parent.parent
+    return run_command(f'{sys.executable} -c "{test_code}"', cwd=repo_root)
 
 
 def main():

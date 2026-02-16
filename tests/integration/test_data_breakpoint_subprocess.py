@@ -11,15 +11,18 @@ if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import DebuggerLike
 
 
+def _active_session_with_debugger(
+    dbg: DebuggerBDB,
+) -> tuple[debug_shared.DebugSession, DebuggerBDB]:
+    session = debug_shared.DebugSession()
+    session.debugger = cast("DebuggerLike", dbg)
+    return session, dbg
+
+
 def test_set_data_breakpoints_command_registers_and_triggers():
     # Arrange - put a real DebuggerBDB into an explicit debug session
     mock_send = MagicMock()
-    dbg = DebuggerBDB(send_message=mock_send)
-    session = debug_shared.DebugSession()
-    # Assign a concrete DebuggerBDB into the session; cast to the
-    # DebuggerLike protocol to satisfy static type checkers used by the
-    # test suite while still using the real debugger instance at runtime.
-    session.debugger = cast("DebuggerLike", dbg)
+    session, dbg = _active_session_with_debugger(DebuggerBDB(send_message=mock_send))
 
     with debug_shared.use_session(session):
         # Act - send the setDataBreakpoints command via standard command dispatcher
