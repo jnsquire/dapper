@@ -441,6 +441,9 @@ def test_rebuild_code_object_fallback_when_replace_unavailable(
         co_posonlyargcount = 0
         co_lnotab = b""
 
+        def co_lines(self):
+            return code.co_lines()
+
     captured: dict[str, object] = {}
 
     def fake_code_type(*args):

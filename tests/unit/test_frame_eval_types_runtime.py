@@ -50,7 +50,11 @@ def test_get_func_code_info_is_runtime_callable() -> None:
 
     assert info is not Ellipsis
     assert hasattr(info, "breakpoint_found")
-    assert hasattr(info, "update_breakpoint_info")
+    if hasattr(info, "update_breakpoint_info"):
+        assert callable(info.update_breakpoint_info)
+    else:
+        # Cython-backed FuncCodeInfo may not expose all fallback helper methods.
+        assert getattr(frame_types, "_CYTHON_AVAILABLE", False) is True
 
 
 def test_get_frame_eval_stats_returns_mapping() -> None:
