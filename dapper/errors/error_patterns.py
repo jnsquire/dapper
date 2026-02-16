@@ -31,9 +31,6 @@ from dapper.errors.dapper_errors import DebuggerError
 from dapper.errors.dapper_errors import IPCError
 from dapper.errors.dapper_errors import ProtocolError
 
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-
 logger = logging.getLogger(__name__)
 
 # Exception types that indicate IPC / connectivity problems.
@@ -71,6 +68,71 @@ def _classify_backend_error(e: Exception, *, operation: str) -> BackendError | D
     return BackendError(error_msg, operation=operation, cause=e)
 
 
+def _handle_adapter_exception(
+    e: Exception,
+    *,
+    operation: str,
+    reraise: bool,
+    log_level: int,
+) -> None:
+    """Handle adapter exceptions consistently for sync/async decorators."""
+    if isinstance(e, ConfigurationError):
+        if reraise:
+            raise e
+        logger.exception("Configuration error in %s", operation)
+        return
+
+    if isinstance(e, IPCError):
+        if reraise:
+            raise e
+        logger.exception("IPC error in %s", operation)
+        return
+
+    if isinstance(e, ProtocolError):
+        if reraise:
+            raise e
+        logger.exception("Protocol error in %s", operation)
+        return
+
+    wrapped_error = _classify_adapter_error(e, operation=operation)
+    logger.log(log_level, str(wrapped_error), exc_info=True)
+
+    if reraise:
+        raise wrapped_error from e
+
+
+def _handle_backend_exception(
+    e: Exception,
+    *,
+    operation: str,
+    reraise: bool,
+    log_level: int,
+    backend_type: str | None = None,
+) -> None:
+    """Handle backend exceptions consistently for sync/async decorators."""
+    if isinstance(e, BackendError):
+        if reraise:
+            raise e
+        logger.exception("Backend error in %s", operation)
+        return
+
+    if isinstance(e, DapperTimeoutError):
+        if reraise:
+            raise e
+        logger.exception("Timeout error in %s", operation)
+        return
+
+    wrapped_error = _classify_backend_error(e, operation=operation)
+    if isinstance(wrapped_error, BackendError) and backend_type is not None:
+        wrapped_error.backend_type = backend_type
+        wrapped_error.details["backend_type"] = backend_type
+
+    logger.log(log_level, str(wrapped_error), exc_info=True)
+
+    if reraise:
+        raise wrapped_error from e
+
+
 def handle_adapter_errors(
     operation: str | None = None,
     *,
@@ -96,31 +158,14 @@ def handle_adapter_errors(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
-            except ConfigurationError:
-                # Already properly typed - just log and re-raise if needed
-                if reraise:
-                    raise
-                logger.exception("Configuration error in %s", operation or func.__name__)
-                return None
-            except IPCError:
-                # Already properly typed - just log and re-raise if needed
-                if reraise:
-                    raise
-                logger.exception("IPC error in %s", operation or func.__name__)
-                return None
-            except ProtocolError:
-                # Already properly typed - just log and re-raise if needed
-                if reraise:
-                    raise
-                logger.exception("Protocol error in %s", operation or func.__name__)
-                return None
             except Exception as e:
                 op = operation or func.__name__
-                wrapped_error = _classify_adapter_error(e, operation=op)
-                logger.log(log_level, str(wrapped_error), exc_info=True)
-
-                if reraise:
-                    raise wrapped_error from e
+                _handle_adapter_exception(
+                    e,
+                    operation=op,
+                    reraise=reraise,
+                    log_level=log_level,
+                )
                 return None
 
         return wrapper
@@ -155,19 +200,13 @@ def handle_backend_errors(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                error_msg = f"Error in {backend_type} backend operation {operation or func.__name__}: {e!s}"
-
-                wrapped_error = BackendError(
-                    error_msg,
+                _handle_backend_exception(
+                    e,
+                    operation=operation or func.__name__,
+                    reraise=reraise,
+                    log_level=log_level,
                     backend_type=backend_type,
-                    cause=e,
-                    details={"operation": operation or func.__name__},
                 )
-
-                logger.log(log_level, error_msg, exc_info=True)
-
-                if reraise:
-                    raise wrapped_error from e
                 return None
 
         return wrapper
@@ -278,28 +317,14 @@ def async_handle_adapter_errors(
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
-            except ConfigurationError:
-                if reraise:
-                    raise
-                logger.exception("Configuration error in %s", operation or func.__name__)
-                return None
-            except IPCError:
-                if reraise:
-                    raise
-                logger.exception("IPC error in %s", operation or func.__name__)
-                return None
-            except ProtocolError:
-                if reraise:
-                    raise
-                logger.exception("Protocol error in %s", operation or func.__name__)
-                return None
             except Exception as e:
                 op = operation or func.__name__
-                wrapped_error = _classify_adapter_error(e, operation=op)
-                logger.log(log_level, str(wrapped_error), exc_info=True)
-
-                if reraise:
-                    raise wrapped_error from e
+                _handle_adapter_exception(
+                    e,
+                    operation=op,
+                    reraise=reraise,
+                    log_level=log_level,
+                )
                 return None
 
         return wrapper
@@ -324,23 +349,14 @@ def async_handle_backend_errors(
         async def wrapper(*args: Any, **kwargs: Any) -> R:
             try:
                 return await func(*args, **kwargs)
-            except BackendError:
-                if reraise:
-                    raise
-                logger.exception("Backend error in %s", operation or func.__name__)
-                return cast("R", None)
-            except DapperTimeoutError:
-                if reraise:
-                    raise
-                logger.exception("Timeout error in %s", operation or func.__name__)
-                return cast("R", None)
             except Exception as e:
                 op = operation or func.__name__
-                wrapped_error = _classify_backend_error(e, operation=op)
-                logger.log(log_level, str(wrapped_error), exc_info=True)
-
-                if reraise:
-                    raise wrapped_error from e
+                _handle_backend_exception(
+                    e,
+                    operation=op,
+                    reraise=reraise,
+                    log_level=log_level,
+                )
                 return cast("R", None)
 
         return wrapper

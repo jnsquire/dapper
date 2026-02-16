@@ -120,15 +120,6 @@ class ExternalProcessBackend(BaseBackend):
             return default
         return response.get("body", default)
 
-    @staticmethod
-    def _normalize_continue_payload(payload: Any) -> dict[str, bool]:
-        """Normalize continue payload to a canonical response body shape."""
-        if isinstance(payload, dict):
-            return {"allThreadsContinued": bool(payload.get("allThreadsContinued", True))}
-        if isinstance(payload, bool):
-            return {"allThreadsContinued": payload}
-        return {"allThreadsContinued": True}
-
     def _build_dispatch_table(
         self,
         args: dict[str, Any],
@@ -185,8 +176,8 @@ class ExternalProcessBackend(BaseBackend):
         response = await self._send_command(cmd, expect_response=True)
         body = self._extract_body(response, {})
         if isinstance(body, dict) and body:
-            return self._normalize_continue_payload(body)
-        return self._normalize_continue_payload(response)
+            return dict(self._normalize_continue_payload(body))
+        return dict(self._normalize_continue_payload(response))
 
     async def _dispatch_next(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = {"command": "next", "arguments": {"threadId": args["thread_id"]}}

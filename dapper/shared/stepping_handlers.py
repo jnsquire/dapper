@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 from typing import Protocol
 
-Payload = dict[str, Any]
+if TYPE_CHECKING:
+    from dapper.shared.command_handler_helpers import Payload
+    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
 
 
 class GetThreadIdentFn(Protocol):
@@ -14,10 +16,6 @@ class GetThreadIdentFn(Protocol):
 
 class SetDbgSteppingFlagFn(Protocol):
     def __call__(self, dbg: object) -> None: ...
-
-
-class SafeSendDebugMessageFn(Protocol):
-    def __call__(self, message_type: str, **payload: Any) -> bool: ...
 
 
 class LoggerLike(Protocol):

@@ -58,26 +58,27 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P2 — Duplication & DRY
 
-- [ ] **Define `SafeSendDebugMessageFn` Protocol once**
-      Currently copy-pasted **8 times** across `dapper/shared/` handler modules.
-      Define it in `command_handler_helpers.py` and import everywhere.
+- [x] **Define `SafeSendDebugMessageFn` Protocol once** — DONE
+      Consolidated the protocol in `command_handler_helpers.py` and updated
+      shared handler modules to import it from one place.
 
-- [ ] **Define `Payload = dict[str, Any]` type alias once**
-      Redefined in **8 files** under `dapper/shared/`. Consolidate.
+- [x] **Define `Payload = dict[str, Any]` type alias once** — DONE
+      Consolidated the alias in `command_handler_helpers.py` and updated
+      shared handler modules to use the shared definition.
 
-- [ ] **Extract `_normalize_continue_payload` to `BaseBackend`**
-      Identical static method in `ExternalProcessBackend` and
-      `InProcessBackend`.
+- [x] **Extract `_normalize_continue_payload` to `BaseBackend`** — DONE
+      Added shared normalization in `BaseBackend` and removed duplicate
+      implementations from `ExternalProcessBackend` and `InProcessBackend`
+      while preserving backend-specific fallback behavior.
 
-- [ ] **Unify sync/async error decorator logic in `error_patterns.py`**
-      `handle_adapter_errors` and `async_handle_adapter_errors` (and the
-      `*_backend_errors` pair) share ~160 lines of identical classification
-      logic. Factor the classifier into a shared function.
+- [x] **Unify sync/async error decorator logic in `error_patterns.py`** — DONE
+      Introduced shared internal helpers for adapter/backend exception
+      handling and switched both sync and async decorators to those helpers.
       _File: [dapper/errors/error_patterns.py](../dapper/errors/error_patterns.py)_
 
-- [ ] **Remove `dapper/launcher/comm.py`**
-      It only re-exports `send_debug_message` from `dapper.shared.debug_shared`.
-      Callers can import directly.
+- [x] **Remove `dapper/launcher/comm.py`** — DONE
+      Deleted the re-export module and updated callers to use
+      `dapper.shared.debug_shared.send_debug_message` directly.
 
 ---
 

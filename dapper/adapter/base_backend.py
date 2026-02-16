@@ -179,6 +179,27 @@ class BaseBackend(DebuggerBackend, ABC):
         """Get information about the last error."""
         return self._lifecycle.error_info
 
+    @staticmethod
+    def _normalize_continue_payload(
+        payload: Any,
+        *,
+        default_all_threads_continued: bool = True,
+        default_for_non_dict: bool | None = None,
+    ) -> ContinueResponseBody:
+        """Normalize continue payload to canonical DAP response shape."""
+        non_dict_default = (
+            default_all_threads_continued if default_for_non_dict is None else default_for_non_dict
+        )
+        if isinstance(payload, dict):
+            return {
+                "allThreadsContinued": bool(
+                    payload.get("allThreadsContinued", default_all_threads_continued)
+                )
+            }
+        if isinstance(payload, bool):
+            return {"allThreadsContinued": payload}
+        return {"allThreadsContinued": non_dict_default}
+
     # ------------------------------------------------------------------
     # Default implementations that delegate to _execute_command
     # ------------------------------------------------------------------

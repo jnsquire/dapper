@@ -11,7 +11,7 @@ Both IPC pathways dispatch through the `COMMAND_HANDLERS` registry:
 - Socket-based IPC: `ipc_receiver.py` wraps `COMMAND_HANDLERS` in a provider
 
 Dependencies:
-- `dapper.launcher.comm.send_debug_message` for IPC message output
+- `dapper.shared.debug_shared.send_debug_message` for IPC message output
 - `dapper.shared.debug_shared.get_active_session` for debugger session state
 """
 
@@ -22,10 +22,8 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
-from typing import Protocol
 from typing import cast
 
-from dapper.launcher.comm import send_debug_message
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
 from dapper.shared import debug_shared as _d_shared
@@ -61,11 +59,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import VariablesArguments
 
 
-CommandPayload = dict[str, Any]
-
-
-class SafeSendDebugMessageFn(Protocol):
-    def __call__(self, message_type: str, **payload: Any) -> bool: ...
+CommandPayload = command_handler_helpers.Payload
 
 
 VAR_REF_TUPLE_SIZE = 2
@@ -85,11 +79,19 @@ COMMAND_HANDLERS: dict[str, Callable[..., None]] = {}
 
 _error_response: Callable[[str], dict[str, Any]] = command_handler_helpers.error_response
 
+# Backward compatibility: tests/legacy code monkeypatch this symbol directly.
+send_debug_message = _d_shared.send_debug_message
 
-_safe_send_debug_message: SafeSendDebugMessageFn = (
+
+def _send_debug_message_adapter(message_type: str, **payload: Any) -> object:
+    send_debug_message(message_type, **payload)
+    return None
+
+
+_safe_send_debug_message: command_handler_helpers.SafeSendDebugMessageFn = (
     command_handler_helpers.build_safe_send_debug_message(
-        lambda: send_debug_message,
-        logger,
+        lambda: _send_debug_message_adapter,
+        cast("command_handler_helpers.LoggerLike", logger),
         dynamic=True,
     )
 )

@@ -21,7 +21,6 @@ from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import read_exact
 from dapper.ipc.ipc_binary import unpack_header
-from dapper.launcher.comm import send_debug_message
 from dapper.launcher.launcher_ipc import connector as default_connector
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import handle_debug_command
@@ -33,6 +32,9 @@ Debug launcher entry point. Delegates to split modules.
 logger = logging.getLogger(__name__)
 
 KIND_COMMAND = 2
+
+# Backward compatibility: tests/legacy code reference debug_launcher.send_debug_message.
+send_debug_message = debug_shared.send_debug_message
 
 
 def _handle_command_bytes(payload: bytes, session: Any | None = None) -> None:

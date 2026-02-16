@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from typing import Any
 from typing import Callable
 from typing import Protocol
 
 if TYPE_CHECKING:
     from logging import Logger
 
-
-Payload = dict[str, Any]
-
-
-class SafeSendDebugMessageFn(Protocol):
-    def __call__(self, message_type: str, **payload: Any) -> bool: ...
+    from dapper.shared.command_handler_helpers import Payload
+    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
 
 
 class ResolveVariablesForReferenceFn(Protocol):

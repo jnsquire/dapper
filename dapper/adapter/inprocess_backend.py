@@ -82,15 +82,6 @@ class InProcessBackend(BaseBackend):
         """Check if the backend is available."""
         return self._lifecycle.is_available
 
-    @staticmethod
-    def _normalize_continue_payload(payload: Any) -> ContinueResponseBody:
-        """Normalize continue payload to a canonical response body shape."""
-        if isinstance(payload, dict):
-            return {"allThreadsContinued": bool(payload.get("allThreadsContinued", True))}
-        if isinstance(payload, bool):
-            return {"allThreadsContinued": payload}
-        return {"allThreadsContinued": False}
-
     # -------------------------
     # Generic per-command handlers
     # -------------------------
@@ -253,7 +244,11 @@ class InProcessBackend(BaseBackend):
         """Continue execution."""
         try:
             result = self._bridge.continue_(thread_id)
-            return self._normalize_continue_payload(result)
+            return self._normalize_continue_payload(
+                result,
+                default_all_threads_continued=True,
+                default_for_non_dict=False,
+            )
         except Exception:
             logger.exception("in-process continue failed")
             return {"allThreadsContinued": False}
