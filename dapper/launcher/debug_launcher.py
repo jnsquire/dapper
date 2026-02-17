@@ -164,6 +164,10 @@ def _setup_ipc_pipe(ipc_pipe: str | None, session: Any | None = None) -> None:
         msg = "Pipe IPC requested but not on Windows or missing pipe name"
         raise RuntimeError(msg)
 
+    if not str(ipc_pipe).startswith("\\\\.\\pipe\\"):
+        msg = "Pipe IPC requested but pipe name must be a full Windows named-pipe path"
+        raise RuntimeError(msg)
+
     active_session = session if session is not None else debug_shared.get_active_session()
     active_session.ipc_enabled = True
     active_session.ipc_pipe_conn = _mpc.Client(address=ipc_pipe, family="AF_PIPE")

@@ -207,9 +207,25 @@ class DebuggerBDB(bdb.Bdb):
         Returns True if the breakpoint was handled (either hit or skipped due to conditions),
         False if no breakpoint exists at this location.
         """
+        canonical_filename = self.canonic(filename)
+        has_line_in_break_table = False
+        with contextlib.suppress(Exception):
+            has_line_in_break_table = int(line) in [
+                int(ln) for ln in self.breaks.get(filename, []) if ln is not None  # type: ignore[attr-defined]
+            ] or int(line) in [
+                int(ln)
+                for ln in self.breaks.get(canonical_filename, [])  # type: ignore[attr-defined]
+                if ln is not None
+            ]
+
         if not (
             self.get_break(filename, line)
+            or has_line_in_break_table
             or (filename in self.bp_manager.custom and line in self.bp_manager.custom[filename])
+            or (
+                canonical_filename in self.bp_manager.custom
+                and line in self.bp_manager.custom[canonical_filename]
+            )
         ):
             return False
 
@@ -357,21 +373,32 @@ class DebuggerBDB(bdb.Bdb):
         the specified filename. Also clears adapter-side breakpoint metadata
         for that file.
         """
-        try:
-            # bdb maintains a mapping filename -> list[int] of line numbers
-            lines = self.breaks.get(path, [])  # type: ignore[attr-defined]
-        except Exception:
-            lines = []
-        for ln in lines:
-            # Best-effort clearing of breakpoints per line
-            if ln is None:
-                continue
+        canonical_path = self.canonic(path)
+
+        def _clear_for_key(key: str) -> None:
             try:
-                iln = int(ln)
+                # bdb maintains a mapping filename -> list[int] of line numbers
+                lines = list(self.breaks.get(key, []))  # type: ignore[attr-defined]
             except Exception:
-                continue
-            with contextlib.suppress(Exception):
-                self.clear_break(path, iln)
+                lines = []
+            for ln in lines:
+                if ln is None:
+                    continue
+                try:
+                    iln = int(ln)
+                except Exception:
+                    continue
+                with contextlib.suppress(Exception):
+                    self.clear_break(key, iln)
+
+        _clear_for_key(path)
+        if canonical_path != path:
+            _clear_for_key(canonical_path)
+
+        with contextlib.suppress(Exception):
+            self.clear_all_file_breaks(path)
+        with contextlib.suppress(Exception):
+            self.clear_all_file_breaks(canonical_path)
         # Clear DAP-specific metadata for this file, if any
         try:
             self.clear_break_meta_for_file(path)
