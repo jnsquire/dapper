@@ -8,9 +8,9 @@ import itertools
 import json
 import logging
 import os
-import re
 from pathlib import Path
 import queue
+import re
 import sys
 import threading
 from typing import TYPE_CHECKING
