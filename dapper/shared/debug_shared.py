@@ -8,6 +8,7 @@ import itertools
 import json
 import logging
 import os
+import re
 from pathlib import Path
 import queue
 import sys
@@ -194,9 +195,20 @@ class SourceCatalog:
 
     @staticmethod
     def _normalize_path_or_uri(path_or_uri: str) -> tuple[str, bool]:
+        # Fast-path: detect Windows drive-letter absolute paths before
+        # invoking urlparse. urlparse treats strings like "C:\\path" as
+        # having a single-letter scheme, so check first to avoid that.
+        if re.match(r"^[A-Za-z]:[\\/].*", path_or_uri):
+            return path_or_uri, True
+
         parsed = urlparse(path_or_uri)
+
+        # If there's no scheme, treat as a plain filesystem path.
         if not parsed.scheme:
             return path_or_uri, True
+
+        # Only accept file:// URIs for disk access; other schemes are
+        # considered non-filesystem and should not be attempted on disk.
         if parsed.scheme.lower() != "file":
             return path_or_uri, False
 
