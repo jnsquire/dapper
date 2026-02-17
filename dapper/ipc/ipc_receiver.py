@@ -14,6 +14,7 @@ from queue import Empty
 import traceback
 from typing import Any
 from typing import Callable
+from typing import overload
 
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import COMMAND_HANDLERS
@@ -73,23 +74,51 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    def handle(self, *args: Any):
+    @overload
+    def handle(self, session: str, command: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    @overload
+    def handle(
+        self,
+        session: debug_shared.DebugSession,
+        command: str,
+        arguments: dict[str, Any],
+        full_command: dict[str, Any],
+    ) -> dict[str, Any] | None: ...
+
+    def handle(
+        self,
+        session: str | debug_shared.DebugSession,
+        command: str | dict[str, Any],
+        arguments: dict[str, Any] | None = None,
+        full_command: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """Handle calls from both direct and provider-based dispatch paths."""
-        if len(args) == HANDLE_ARGS_DIRECT:
-            command, arguments = args
-        elif len(args) == HANDLE_ARGS_PROVIDER:
-            _session, command, arguments, _full_command = args
+        del full_command
+
+        resolved_command: str
+        payload: dict[str, Any]
+
+        if isinstance(session, str):
+            if not isinstance(command, dict):
+                msg = "Expected arguments payload dict for direct handle() call"
+                raise TypeError(msg)
+            resolved_command = session
+            payload = command
         else:
-            msg = f"Unexpected handle() arguments: {len(args)}"
-            raise TypeError(msg)
+            if not isinstance(command, str) or not isinstance(arguments, dict):
+                msg = "Expected (session, command, arguments, full_command) call shape"
+                raise TypeError(msg)
+            resolved_command = command
+            payload = arguments
 
         # The underlying mapping handlers only accept `arguments` so delegate
         # and translate their return shape to the protocol expected by
         # register_command_provider.
-        func = self._mapping.get(command)
+        func = self._mapping.get(resolved_command)
         if not callable(func):
-            return {"success": False, "message": f"Unknown command: {command}"}
-        result = func(arguments)
+            return {"success": False, "message": f"Unknown command: {resolved_command}"}
+        result = func(payload)
         return result if isinstance(result, dict) and ("success" in result) else None
 
 

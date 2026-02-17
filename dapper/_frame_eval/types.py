@@ -10,6 +10,7 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Union
+from typing import cast
 
 if TYPE_CHECKING:
     from types import CodeType
@@ -20,6 +21,18 @@ BreakpointLines = set[int]
 
 
 _CYTHON_AVAILABLE = False
+
+# Pre-declare names that will be populated when the C extension is available
+# so static analysis doesn't report them as possibly-unbound.
+_cy_clear_thread_local_info: Any = None
+_cy_frame_eval_func: Any = None
+_cy_get_frame_eval_stats: Any = None
+_cy_get_func_code_info: Any = None
+_cy_get_thread_info: Any = None
+_cy_mark_thread_as_pydevd: Any = None
+_cy_set_thread_skip_all: Any = None
+_cy_stop_frame_eval: Any = None
+_cy_unmark_thread_as_pydevd: Any = None
 
 try:
     from dapper._frame_eval._frame_evaluator import FuncCodeInfo as _CythonFuncCodeInfo
@@ -42,8 +55,8 @@ try:
         unmark_thread_as_pydevd as _cy_unmark_thread_as_pydevd,
     )
 
-    ThreadInfo = _CythonThreadInfo
-    FuncCodeInfo = _CythonFuncCodeInfo
+    ThreadInfo = cast("type[ThreadInfo]", _CythonThreadInfo)
+    FuncCodeInfo = cast("type[FuncCodeInfo]", _CythonFuncCodeInfo)
     _CYTHON_AVAILABLE = True
 except ImportError:
 

@@ -36,11 +36,11 @@ if TYPE_CHECKING:
 
         def handle(
             self,
-            session: Any,
+            session: DebugSession,
             command: str,
             arguments: dict[str, Any],
-            full_command: Any,
-        ) -> dict | None: ...
+            full_command: dict[str, Any],
+        ) -> dict[str, Any] | None: ...
 
 
 # Maximum length of strings to be sent over the wire
@@ -288,8 +288,8 @@ class CommandDispatcher:
 
     def dispatch_debug_command(self, session: DebugSession, command: dict[str, Any]) -> None:
         name = str(command.get("command", "")) if isinstance(command, dict) else ""
-        arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
-        arguments = arguments or {}
+        raw_arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
+        arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
 
         with self._providers_lock:
             providers = [p for _, p in list(self._providers)]
@@ -308,7 +308,7 @@ class CommandDispatcher:
         self._send_unknown_command(command, name)
 
     @staticmethod
-    def _send_response_for_result(command: dict[str, Any], result: Any) -> None:
+    def _send_response_for_result(command: dict[str, Any], result: dict[str, Any] | None) -> None:
         if not (isinstance(result, dict) and ("success" in result)):
             return
         cmd_id = command.get("id") if isinstance(command, dict) else None

@@ -227,10 +227,12 @@ class InProcessDebugger:
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> StackTraceResponseBody:
         dbg = self.debugger
-        if thread_id not in getattr(dbg, "thread_tracker", dbg).frames_by_thread:
+        thread_tracker = getattr(dbg, "thread_tracker", None)
+        frames_by_thread = getattr(thread_tracker, "frames_by_thread", {})
+        if thread_id not in frames_by_thread:
             return cast("StackTraceResponseBody", {"stackFrames": [], "totalFrames": 0})
 
-        frames = dbg.thread_tracker.frames_by_thread[thread_id]
+        frames = frames_by_thread[thread_id]
         total_frames = len(frames)
         if levels > 0:
             end_frame = min(start_frame + levels, total_frames)
@@ -262,7 +264,11 @@ class InProcessDebugger:
         # scope ref is a tuple of (frame_id, scope)
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
+            frame = None
+            if isinstance(frame_id, int):
+                frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
+                    frame_id
+                )
             variables: list[Variable] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
@@ -288,7 +294,11 @@ class InProcessDebugger:
         frame_info = dbg.var_manager.var_refs[var_ref]
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
+            frame = None
+            if isinstance(frame_id, int):
+                frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
+                    frame_id
+                )
             if not frame:
                 return {"success": False, "message": "Frame not found"}
             try:
@@ -308,9 +318,11 @@ class InProcessDebugger:
         self, expression: str, frame_id: int | None = None, _context: str | None = None
     ) -> EvaluateResponseBody:
         dbg = self.debugger
-        frame = (
-            dbg.thread_tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
-        )
+        frame = None
+        if isinstance(frame_id, int):
+            frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
+                frame_id
+            )
         if not frame:
             return {
                 "result": f"<evaluation of '{expression}' not available>",

@@ -1,4 +1,4 @@
 {
   "pythonVersion": "3.9",
-  "include": ["dapper", "tests"]
+  "include": ["dapper"]
 }

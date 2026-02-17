@@ -13,6 +13,9 @@ from typing import Protocol
 from typing import TypedDict
 from typing import runtime_checkable
 
+# Avoid relying on `TypeAlias` being available in all typing versions; expose
+# runtime aliases as simple Any-typed names for static compatibility.
+
 if TYPE_CHECKING:
     import types
 
@@ -21,6 +24,7 @@ class PresentationHint(TypedDict, total=False):
     kind: str
     attributes: list[str]
     visibility: str
+    lazy: bool
 
 
 class Variable(TypedDict):
@@ -193,6 +197,15 @@ class DebuggerLike(
     """
 
     stepping_controller: Any  # stepping/current_frame-compatible delegate
+
+    def run(self, code: str) -> Any: ...
+
+    # VarRef aliases (exposed for tests). Use broad `Any`-typed names so
+    # different implementations remain structurally compatible.
+    VarRefObject: Any
+    VarRefScope: Any
+    VarRefList: Any
+    VarRef: Any
 
 
 @runtime_checkable

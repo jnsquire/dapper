@@ -15,11 +15,11 @@ if TYPE_CHECKING:
     from dapper.shared.debug_shared import DebugSession
 
 
-def _collect_module_sources(seen_paths: set[str]) -> list[Payload]:
+def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
     """Collect sources from sys.modules."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[Source] = []
+    sources: list[dict[str, Any]] = []
 
     for module_name, module in sys.modules.items():
         if module is None:
@@ -42,7 +42,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Payload]:
 
             origin = getattr(module, "__package__", module_name)
             source_obj = Source(name=module_path.name, path=module_file, origin=f"module:{origin}")
-            sources.append(source_obj)
+            sources.append(dict(source_obj))
 
         except (AttributeError, TypeError, OSError):
             continue
@@ -50,11 +50,11 @@ def _collect_module_sources(seen_paths: set[str]) -> list[Payload]:
     return sources
 
 
-def _collect_linecache_sources(seen_paths: set[str]) -> list[Payload]:
+def _collect_linecache_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
     """Collect sources from linecache."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[Source] = []
+    sources: list[dict[str, Any]] = []
 
     for filename in linecache.cache:
         if filename not in seen_paths and filename.endswith((".py", ".pyw")):
@@ -64,7 +64,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[Payload]:
                 if abs_path not in seen_paths and file_path.exists():
                     seen_paths.add(abs_path)
                     source = Source(name=file_path.name, path=abs_path, origin="linecache")
-                    sources.append(source)
+                    sources.append(dict(source))
             except (OSError, TypeError):
                 continue
 
@@ -78,7 +78,7 @@ def _collect_main_program_source(
     """Collect the main program source if available."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[Source] = []
+    sources: list[dict[str, Any]] = []
 
     if state.debugger:
         program_path = getattr(state.debugger, "program_path", None)
@@ -88,7 +88,7 @@ def _collect_main_program_source(
                 abs_path = str(program_file_path)
                 if program_file_path.exists():
                     sources.append(
-                        Source(name=program_file_path.name, path=abs_path, origin="main")
+                        dict(Source(name=program_file_path.name, path=abs_path, origin="main"))
                     )
             except (OSError, TypeError):
                 pass
