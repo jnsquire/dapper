@@ -545,7 +545,10 @@ __dapper_breakpoint_wrapper_{line}()
         while args and args[-1] is None:
             args.pop()
 
-        return types.CodeType(*args)
+        try:
+            return type(original_code)(*args)
+        except Exception:
+            return types.CodeType(*args)
 
 
 # Global bytecode modifier instance
