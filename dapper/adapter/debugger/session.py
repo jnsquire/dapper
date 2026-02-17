@@ -15,9 +15,6 @@ class _PyDebuggerSessionFacade:
         self._lock = lock
         self._loop = loop
         self._threads: dict[int, Any] = {}
-        self._var_refs: dict[int, object] = {}
-        self._breakpoints: dict[str, list[dict[str, Any]]] = {}
-        self._function_breakpoints: list[dict[str, Any]] = []
         self._current_stack_frames: dict[int, list[Any]] = {}
         self._thread_exit_events: dict[int, object] = {}
         self._data_watches: dict[str, dict[str, Any]] = {}
@@ -34,36 +31,12 @@ class _PyDebuggerSessionFacade:
         self._threads = value
 
     @property
-    def var_refs(self) -> dict[int, object]:
-        return self._var_refs
-
-    @var_refs.setter
-    def var_refs(self, value: dict[int, object]) -> None:
-        self._var_refs = value
-
-    @property
-    def breakpoints(self) -> dict[str, list[dict[str, Any]]]:
-        return self._breakpoints
-
-    @breakpoints.setter
-    def breakpoints(self, value: dict[str, list[dict[str, Any]]]) -> None:
-        self._breakpoints = value
-
-    @property
     def current_stack_frames(self) -> dict[int, list[Any]]:
         return self._current_stack_frames
 
     @current_stack_frames.setter
     def current_stack_frames(self, value: dict[int, list[Any]]) -> None:
         self._current_stack_frames = value
-
-    @property
-    def function_breakpoints(self) -> list[dict[str, Any]]:
-        return self._function_breakpoints
-
-    @function_breakpoints.setter
-    def function_breakpoints(self, value: list[dict[str, Any]]) -> None:
-        self._function_breakpoints = value
 
     @property
     def thread_exit_events(self) -> dict[int, object]:
@@ -135,22 +108,6 @@ class _PyDebuggerSessionFacade:
         with self._lock:
             return self._current_stack_frames.get(thread_id)
 
-    def cache_var_ref(self, var_ref: int, value: object) -> None:
-        with self._lock:
-            self._var_refs[var_ref] = value
-
-    def get_var_ref(self, var_ref: int) -> object | None:
-        with self._lock:
-            return self._var_refs.get(var_ref)
-
-    def has_var_ref(self, var_ref: int) -> bool:
-        with self._lock:
-            return var_ref in self._var_refs
-
-    def set_breakpoints_for_path(self, path: str, breakpoints: list[dict[str, Any]]) -> None:
-        with self._lock:
-            self._breakpoints[path] = breakpoints
-
     def clear_data_watch_containers(self) -> None:
         with self._lock:
             self._data_watches.clear()
@@ -166,10 +123,7 @@ class _PyDebuggerSessionFacade:
 
     def clear_runtime_state(self) -> None:
         with self._lock:
-            self._var_refs.clear()
             self._threads.clear()
-            self._breakpoints.clear()
-            self._function_breakpoints.clear()
             self._current_stack_frames.clear()
             self._thread_exit_events.clear()
             self._data_watches.clear()

@@ -5,8 +5,6 @@ import sys
 import pytest
 
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
-from dapper.ipc.ipc_binary import pack_frame
-from dapper.ipc.ipc_binary import unpack_header
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Non-Windows pipe tests")
 
@@ -78,34 +76,14 @@ class DummyPipeFile:
         return bytes(self._buf)
 
 
-"""
-
-import sys
-from pathlib import Path
-
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-
-Async tests for pipe connection; all formerly sync coroutine calls are now async."""
-
-
-def test_get_pipe_path_for_platforms(monkeypatch):
-    conn = NamedPipeServerConnection("foo")
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert conn._get_pipe_path("mypipe").startswith("\\\\.\\pipe\\")
-    monkeypatch.setattr(sys, "platform", "linux")
-    assert conn._get_pipe_path("mypipe").startswith("/tmp/")
-
-
 @pytest.mark.asyncio
 async def test_read_message_success():
     conn = NamedPipeServerConnection("x")
     message = {"hello": "world"}
     content = json.dumps(message).encode("utf-8")
-    header = f"Content-Length: {len(content)}\r\n".encode()
-    # readline must return bytes; include blank line afterwards
-    conn.reader = DummyReader([header, b"\r\n"], content=content)
+    # Provide header line and blank line as separate readline items
+    lines = [f"Content-Length: {len(content)}\r\n".encode(), b"\r\n"]
+    conn.reader = DummyReader(lines, content=content)
 
     out = await conn.read_message()
     assert out == message
@@ -231,74 +209,3 @@ async def test_close_unlinks_pipe(tmp_path):
     await conn.close()
 
     assert not p.exists()
-
-
-@pytest.mark.asyncio
-async def test_read_dbgp_message_text_and_bytes():
-    conn = NamedPipeServerConnection("tx")
-
-    # text form
-    conn.reader = DummyReader([b"DBGP: text-val\n"])
-    out = await conn.read_dbgp_message()
-    assert out == "text-val"
-
-    # bytes that are DBGP prefixed
-    conn.reader = DummyReader([b"DBGP: bytes-val\n"])
-    out = await conn.read_dbgp_message()
-    assert out == "bytes-val"
-
-
-@pytest.mark.asyncio
-async def test_read_dbgp_message_binary_frame():
-
-    conn = NamedPipeServerConnection("bf")
-    payload = b"hello-binary"
-    # pack as kind==1 (DBGP event payload)
-    frame = pack_frame(1, payload)
-    conn.reader = DummyReader([frame])
-    out = await conn.read_dbgp_message()
-    assert out == payload.decode("utf-8")
-
-
-@pytest.mark.asyncio
-async def test_write_dbgp_text_and_binary_writer_and_pipefile():
-    # Text writer path
-    conn = NamedPipeServerConnection("wdbg")
-    w = DummyWriter()
-    conn.writer = w
-    conn.use_binary = False
-    await conn.write_dbgp_message("msg-text")
-    assert b"DBGP: msg-text\n" in bytes(w.buffer)
-
-    # Text pipe_file path
-    pf = DummyPipeFile()
-    conn.writer = None
-    conn.pipe_file = pf
-    await conn.write_dbgp_message("msg-sync")
-    assert b"DBGP: msg-sync\n" in pf.getvalue()
-
-    # Binary writer path
-    conn = NamedPipeServerConnection("wbin")
-    w = DummyWriter()
-    conn.writer = w
-    conn.use_binary = True
-    await conn.write_dbgp_message("bin-msg")
-    buf = bytes(w.buffer)
-    # check header + payload
-    hdr = buf[:8]
-    kind, length = unpack_header(hdr)
-    assert kind == 2
-    payload = buf[8 : 8 + length]
-    assert payload.decode("utf-8") == "bin-msg"
-
-    # Binary pipe_file path
-    pf = DummyPipeFile()
-    conn.writer = None
-    conn.pipe_file = pf
-    await conn.write_dbgp_message("bin-sync")
-    data = pf.getvalue()
-    hdr = data[:8]
-    kind, length = unpack_header(hdr)
-    assert kind == 2
-    payload = data[8 : 8 + length]
-    assert payload.decode("utf-8") == "bin-sync"

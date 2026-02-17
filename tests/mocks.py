@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from typing import TYPE_CHECKING
 from typing import Protocol
 
@@ -81,20 +80,6 @@ class MockConnection(ConnectionBase):
 
     async def write_message(self, message):
         self.written_messages.append(message)
-
-    async def read_dbgp_message(self) -> str | None:
-        """Return a stringified version of the next DAP message for DBGP tests."""
-        msg = await self.read_message()
-        if msg is None:
-            return None
-        try:
-            return json.dumps(msg)
-        except Exception:
-            return str(msg)
-
-    async def write_dbgp_message(self, message: str) -> None:
-        # Store raw DBGP writes separately so tests can assert
-        self.written_messages.append({"dbgp": message})
 
     def add_request(self, command, arguments=None, seq=1):
         req = {"seq": seq, "type": "request", "command": command}

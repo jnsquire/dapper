@@ -36,17 +36,5 @@ class ConnectionBase(ABC):
         """Read a DAP message from the connection. May return None on EOF."""
 
     @abstractmethod
-    async def read_dbgp_message(self) -> str | None:
-        """Read a DBGP-style message from the connection.
-
-        This returns a string payload (decoded UTF-8) for DBGP framed or
-        text transports, or None on EOF.
-        """
-
-    @abstractmethod
-    async def write_dbgp_message(self, message: str) -> None:
-        """Write a DBGP-style message (text or binary frame) to the connection."""
-
-    @abstractmethod
     async def write_message(self, message: dict[str, Any]) -> None:
         """Write a DAP message to the connection."""

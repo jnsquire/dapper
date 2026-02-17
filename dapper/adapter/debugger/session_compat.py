@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -14,7 +15,35 @@ if TYPE_CHECKING:
     from dapper.adapter.source_tracker import LoadedSourceTracker
     from dapper.adapter.types import BreakpointDict
     from dapper.adapter.types import PyDebuggerThread
+    from dapper.core.breakpoint_manager import BreakpointManager
+    from dapper.core.variable_manager import VariableManager
     from dapper.protocol.requests import FunctionBreakpoint
+
+
+class _VarRefProxy(MutableMapping):
+    def __init__(self, variable_manager: Any) -> None:
+        self._variable_manager = variable_manager
+
+    def __getitem__(self, key: int) -> Any:
+        value = self._variable_manager.var_refs[key]
+        if isinstance(value, tuple) and len(value) == 2 and value[0] == "object":  # noqa: PLR2004
+            return value[1]
+        return value
+
+    def __setitem__(self, key: int, value: Any) -> None:
+        self._variable_manager.var_refs[key] = ("object", value)
+
+    def __delitem__(self, key: int) -> None:
+        del self._variable_manager.var_refs[key]
+
+    def __iter__(self):
+        return iter(self._variable_manager.var_refs)
+
+    def __len__(self) -> int:
+        return len(self._variable_manager.var_refs)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._variable_manager.var_refs
 
 
 class _PyDebuggerSessionCompatMixin:
@@ -24,6 +53,8 @@ class _PyDebuggerSessionCompatMixin:
     mutable runtime containers to `_PyDebuggerSessionFacade`.
     """
 
+    variable_manager: VariableManager
+    breakpoint_manager: BreakpointManager
     _source_introspection: LoadedSourceTracker
     _session_facade: _PyDebuggerSessionFacade
     _inproc_backend: InProcessBackend | None
@@ -59,24 +90,77 @@ class _PyDebuggerSessionCompatMixin:
         self._session_facade.threads = cast("dict[int, Any]", value)
 
     @property
-    def var_refs(self) -> dict[int, object]:
-        """Compatibility wrapper around session facade variable references."""
-        return self._session_facade.var_refs
+    def var_refs(self) -> MutableMapping[int, Any]:
+        """Compatibility wrapper around session facade variable references.
+
+        Note: VariableManager stores (type, value) tuples, while legacy SessionFacade
+        stored just the value. This property attempts to return the underlying value
+        when possible to satisfy legacy tests.
+        """
+        return _VarRefProxy(self.variable_manager)
 
     @var_refs.setter
     def var_refs(self, value: dict[int, object]) -> None:
-        """Compatibility setter for tests that patch var refs directly."""
-        self._session_facade.var_refs = value
+        """Compatibility setter for tests that patch var refs directly.
+
+        Note: Takes raw objects and wraps them in ("object", value) tuples
+        for VariableManager storage.
+        """
+        # Convert raw objects to VariableManager internal format
+        new_refs = {}
+        for ref_id, obj in value.items():
+            new_refs[ref_id] = ("object", obj)
+        self.variable_manager.var_refs = new_refs
 
     @property
     def breakpoints(self) -> dict[str, list[BreakpointDict]]:
         """Compatibility wrapper around session facade breakpoint storage."""
-        return cast("dict[str, list[BreakpointDict]]", self._session_facade.breakpoints)
+        result: dict[str, list[BreakpointDict]] = {}
+        # Access internal structure directly as this is a compat mixin
+        # intended to bridge legacy state access patterns.
+        # pylint: disable=protected-access
+        for path, lines_meta in self.breakpoint_manager._line_meta_by_path.items():  # noqa: SLF001
+            result[path] = []
+            for line, meta in lines_meta.items():
+                # Construct BreakpointDict from internal metadata
+                bp_dict = {"line": int(line), **meta}  # Ensure line is int
+                result[path].append(cast("BreakpointDict", bp_dict))
+        return result
 
     @breakpoints.setter
     def breakpoints(self, value: dict[str, list[BreakpointDict]]) -> None:
         """Compatibility setter for tests that patch breakpoints directly."""
-        self._session_facade.breakpoints = cast("dict[str, list[dict[str, Any]]]", value)
+        # Clear all existing line breakpoints first.
+        # We iterate over a copy of keys because clear_line_meta_for_file modifies the dictionary.
+        for path in list(self.breakpoint_manager._line_meta_by_path.keys()):  # noqa: SLF001
+            self.breakpoint_manager.clear_line_meta_for_file(path)
+
+        for path, bps in value.items():
+            for bp in bps:
+                # Map BreakpointDict fields to internal API arguments
+                # Note: 'line' is required in BreakpointDict for storage
+                line = bp.get("line")
+                if line is not None:
+                    # Extract known fields
+                    condition = bp.get("condition")
+                    hit_condition = bp.get("hitCondition")
+                    log_message = bp.get("logMessage")
+
+                    # Pass all other fields as kwargs to preserve metadata like 'verified', 'id', etc.
+                    extra_meta = {
+                        k: v
+                        for k, v in bp.items()
+                        if k not in ("line", "condition", "hitCondition", "logMessage")
+                    }
+
+                    self.breakpoint_manager.record_line_breakpoint(
+                        path,
+                        int(line),
+                        condition=condition,
+                        hit_condition=hit_condition,
+                        log_message=log_message,
+                        **extra_meta,
+                    )
 
     @property
     def current_stack_frames(self) -> dict[int, list]:
@@ -91,12 +175,31 @@ class _PyDebuggerSessionCompatMixin:
     @property
     def function_breakpoints(self) -> list[FunctionBreakpoint]:
         """Compatibility wrapper around session facade function breakpoints."""
-        return cast("list[FunctionBreakpoint]", self._session_facade.function_breakpoints)
+        result: list[FunctionBreakpoint] = []
+        for name in self.breakpoint_manager.function_names:
+            meta = self.breakpoint_manager.get_function_meta(name)
+            # Construct FunctionBreakpoint from name and meta
+            fbp = {"name": name, **meta}
+            result.append(cast("FunctionBreakpoint", fbp))
+        return result
 
     @function_breakpoints.setter
     def function_breakpoints(self, value: list[FunctionBreakpoint]) -> None:
         """Compatibility setter for tests that patch function breakpoints directly."""
-        self._session_facade.function_breakpoints = cast("list[dict[str, Any]]", value)
+        self.breakpoint_manager.clear_function_breakpoints()
+
+        names: list[str] = []
+        metas: dict[str, dict[str, Any]] = {}
+
+        for fbp in value:
+            name = fbp.get("name")
+            if name:
+                names.append(name)
+                # Extract meta fields: all excluding 'name'
+                meta = {k: v for k, v in fbp.items() if k != "name"}
+                metas[name] = meta
+
+        self.breakpoint_manager.set_function_breakpoints(names, metas)
 
     @property
     def thread_exit_events(self) -> dict[int, object]:
@@ -177,22 +280,54 @@ class _PyDebuggerSessionCompatMixin:
         return self._session_facade.get_cached_stack_frames(thread_id)
 
     def cache_var_ref(self, var_ref: int, value: object) -> None:
-        """Cache a variable reference payload in session facade."""
-        self._session_facade.cache_var_ref(var_ref, value)
+        """Cache a variable reference payload in session facade.
+
+        Wraps the value in ("object", value) tuple to match VariableManager format.
+        """
+        self.variable_manager.var_refs[var_ref] = ("object", value)
 
     def get_var_ref(self, var_ref: int) -> object | None:
-        """Get variable reference payload from session facade."""
-        return self._session_facade.get_var_ref(var_ref)
+        """Get variable reference payload from session facade.
+
+        Unwraps ("object", value) tuple from VariableManager.
+        """
+        ref_data = self.variable_manager.var_refs.get(var_ref)
+        if isinstance(ref_data, tuple) and len(ref_data) == 2 and ref_data[0] == "object":  # noqa: PLR2004
+            return ref_data[1]
+        return ref_data
 
     def has_var_ref(self, var_ref: int) -> bool:
         """Return whether a variable reference exists in session facade."""
-        return self._session_facade.has_var_ref(var_ref)
+        return var_ref in self.variable_manager.var_refs
 
     def set_breakpoints_for_path(self, path: str, breakpoints: list[BreakpointDict]) -> None:
         """Store source breakpoints for a path in session facade."""
-        self._session_facade.set_breakpoints_for_path(
-            path, cast("list[dict[str, Any]]", breakpoints)
-        )
+        self.breakpoint_manager.clear_line_meta_for_file(path)
+        for bp in breakpoints:
+            line = bp.get("line")
+            if line is None:
+                continue
+
+            # Extract known fields
+            condition = bp.get("condition")
+            hit_condition = bp.get("hitCondition")
+            log_message = bp.get("logMessage")
+
+            # Pass all other fields as kwargs to preserve metadata like 'verified', 'id', etc.
+            extra_meta = {
+                k: v
+                for k, v in bp.items()
+                if k not in ("line", "condition", "hitCondition", "logMessage")
+            }
+
+            self.breakpoint_manager.record_line_breakpoint(
+                path,
+                int(line),
+                condition=condition,
+                hit_condition=hit_condition,
+                log_message=log_message,
+                **extra_meta,
+            )
 
     def clear_data_watch_containers(self) -> None:
         """Clear data-watch bookkeeping containers in session facade."""
@@ -207,8 +342,20 @@ class _PyDebuggerSessionCompatMixin:
         self._session_facade.add_frame_watch(frame_id, data_id)
 
     def clear_runtime_state(self) -> None:
-        """Clear mutable runtime session containers in session facade."""
+        """Clear mutable runtime session containers in session facade.
+
+        Clears both legacy session facade state and core managers.
+        """
         self._session_facade.clear_runtime_state()
+        if hasattr(self, "variable_manager"):
+            self.variable_manager.var_refs.clear()
+            self.variable_manager.next_var_ref = self.variable_manager.DEFAULT_START_REF
+        if hasattr(self, "breakpoint_manager"):
+            self.breakpoint_manager.line_meta.clear()
+            self.breakpoint_manager._line_meta_by_path.clear()  # noqa: SLF001
+            self.breakpoint_manager.function_names.clear()
+            self.breakpoint_manager.function_meta.clear()
+            self.breakpoint_manager.custom.clear()
 
     def _get_process_state(self) -> tuple[subprocess.Popen | None, bool]:
         """Get the current process state for the external backend."""

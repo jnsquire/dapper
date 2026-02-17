@@ -149,12 +149,28 @@ def set_thread_skip_all(skip: bool) -> None:
     info.step_mode = skip
 
 
+def dummy_trace_dispatch(frame: FrameType, event: str, arg: Any) -> Any:
+    """Fallback dummy trace dispatch function.
+
+    Args:
+        frame: The frame object.
+        event: The event name (e.g. 'call', 'line', 'return').
+        arg: The event argument.
+
+    Returns:
+        The trace function itself or None.
+    """
+    del frame, event, arg
+    return None
+
+
 __all__ = [
     "BreakpointLines",
     "FrameStats",
     "FuncCodeInfo",
     "ThreadInfo",
     "clear_thread_local_info",
+    "dummy_trace_dispatch",
     "frame_eval_func",
     "get_frame_eval_stats",
     "get_func_code_info",

@@ -55,6 +55,7 @@ class BreakpointManager:
         condition: str | None = None,
         hit_condition: str | None = None,
         log_message: str | None = None,
+        **kwargs: Any,
     ) -> None:
         """Record metadata for a line breakpoint.
 
@@ -64,6 +65,7 @@ class BreakpointManager:
             condition: Optional condition expression.
             hit_condition: Optional hit count condition.
             log_message: Optional log message (makes this a logpoint).
+            **kwargs: Additional metadata (e.g. verified, message, id).
         """
         key = (path, int(line))
         meta = self.line_meta.get(key, {})
@@ -71,6 +73,7 @@ class BreakpointManager:
         meta["condition"] = condition
         meta["hitCondition"] = hit_condition
         meta["logMessage"] = log_message
+        meta.update(kwargs)
         self.line_meta[key] = meta
         if path not in self._line_meta_by_path:
             self._line_meta_by_path[path] = {}

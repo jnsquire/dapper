@@ -57,14 +57,8 @@ class SyncConnectionAdapter:
     def accept(self) -> None:
         return self._run_coro(self._conn.accept())
 
-    def read_dbgp_message(self) -> str | None:
-        return self._run_coro(self._conn.read_dbgp_message())
-
     def read_message(self) -> dict | None:
         return self._run_coro(self._conn.read_message())
-
-    def write_dbgp_message(self, msg: str) -> None:
-        return self._run_coro(self._conn.write_dbgp_message(msg))
 
     def write_message(self, message: dict[str, Any]) -> None:
         return self._run_coro(self._conn.write_message(message))

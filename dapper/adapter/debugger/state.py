@@ -141,14 +141,9 @@ class _PyDebuggerStateManager:
 
     async def get_scopes(self, frame_id: int) -> list[Scope]:
         """Get variable scopes for a stack frame."""
-        var_ref = self._debugger.next_var_ref
-        self._debugger.next_var_ref += 1
-
-        global_var_ref = self._debugger.next_var_ref
-        self._debugger.next_var_ref += 1
-
-        self._debugger.cache_var_ref(var_ref, (frame_id, "locals"))
-        self._debugger.cache_var_ref(global_var_ref, (frame_id, "globals"))
+        # Use VariableManager to allocate scope references
+        var_ref = self._debugger.variable_manager.allocate_scope_ref(frame_id, "locals")
+        global_var_ref = self._debugger.variable_manager.allocate_scope_ref(frame_id, "globals")
 
         return [
             {

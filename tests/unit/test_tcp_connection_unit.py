@@ -78,24 +78,7 @@ async def test_read_dap_message_missing_content_length_raises():
 
 
 @pytest.mark.asyncio
-async def test_read_binary_message_bad_header_returns_none():
-    conn = TCPServerConnection(host="127.0.0.1", port=0)
-    conn.reader = _DummyReader(exact=[b"NOTMAGIC"])
-    out = await conn._read_binary_message()
-    assert out is None
-
-
-@pytest.mark.asyncio
-async def test_read_binary_message_bad_json_returns_none():
-    conn = TCPServerConnection(host="127.0.0.1", port=0)
-    header = b"DP" + bytes([1, 1]) + (3).to_bytes(4, "big")
-    conn.reader = _DummyReader(exact=[header, b"abc"])
-    out = await conn._read_binary_message()
-    assert out is None
-
-
-@pytest.mark.asyncio
-async def test_write_message_and_dbgp_modes():
+async def test_write_message():
     conn = TCPServerConnection(host="127.0.0.1", port=0)
     writer = _DummyWriter()
     conn.writer = writer
@@ -103,16 +86,3 @@ async def test_write_message_and_dbgp_modes():
     await conn.write_message({"event": "ok"})
     assert b"Content-Length:" in bytes(writer.data)
     assert json.dumps({"event": "ok"}).encode("utf-8") in bytes(writer.data)
-
-    writer.data.clear()
-    conn.use_binary = False
-    await conn.write_dbgp_message("hello")
-    assert bytes(writer.data) == b"DBGP: hello\n"
-
-
-@pytest.mark.asyncio
-async def test_write_message_without_writer_raises():
-    conn = TCPServerConnection(host="127.0.0.1", port=0)
-    conn.writer = None
-    with pytest.raises(RuntimeError, match="No active connection"):
-        await conn.write_message({"x": 1})

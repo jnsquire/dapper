@@ -15,16 +15,9 @@ class _FakeConn:
     async def accept(self) -> None:
         self.calls.append(("accept", None))
 
-    async def read_dbgp_message(self) -> str:
-        self.calls.append(("read_dbgp_message", None))
-        return "dbgp"
-
     async def read_message(self) -> dict[str, Any]:
         self.calls.append(("read_message", None))
         return {"ok": True}
-
-    async def write_dbgp_message(self, msg: str) -> None:
-        self.calls.append(("write_dbgp_message", msg))
 
     async def write_message(self, message: dict[str, Any]) -> None:
         self.calls.append(("write_message", message))
@@ -42,16 +35,12 @@ def test_sync_connection_adapter_roundtrip_methods() -> None:
     try:
         assert adapter._loop_ready.is_set()
         assert adapter.accept() is None
-        assert adapter.read_dbgp_message() == "dbgp"
         assert adapter.read_message() == {"ok": True}
-        assert adapter.write_dbgp_message("hello") is None
         payload = {"type": "event", "event": "stopped"}
         assert adapter.write_message(payload) is None
 
         assert ("accept", None) in conn.calls
-        assert ("read_dbgp_message", None) in conn.calls
         assert ("read_message", None) in conn.calls
-        assert ("write_dbgp_message", "hello") in conn.calls
         assert ("write_message", payload) in conn.calls
     finally:
         adapter.close()

@@ -29,9 +29,6 @@ from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.breakpoint_resolver import ResolveResult
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.inprocess_debugger import InProcessDebugger
-from dapper.ipc.connections.pipe import NamedPipeServerConnection
-from dapper.ipc.ipc_binary import HEADER_SIZE
-from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.launcher_ipc import SocketConnector
 from tests.mocks import make_real_frame
 
@@ -107,57 +104,6 @@ class TestConfigManagerGlobal:
         t.start()
         t.join()
         assert result == ["DEBUG"]
-
-
-# ---------------------------------------------------------------------------
-# 2. Pipe double-payload — pack_frame already includes the payload
-# ---------------------------------------------------------------------------
-
-
-class TestPipeWriteDbgpBinaryFrame:
-    """Verify write_dbgp_message in binary mode produces a single
-    correctly-framed payload, not a double payload."""
-
-    @pytest.mark.asyncio
-    async def test_binary_frame_correct_length(self) -> None:
-        """The written frame should be exactly HEADER_SIZE + len(content)."""
-        conn = NamedPipeServerConnection("test_pipe")
-        conn.use_binary = True
-
-        # Use a DummyWriter to capture output
-        class Capture:
-            def __init__(self) -> None:
-                self.buf = bytearray()
-
-            def write(self, data: bytes) -> None:
-                self.buf.extend(data)
-
-            async def drain(self) -> None:
-                pass
-
-        writer = Capture()
-        conn.writer = writer  # type: ignore[assignment]
-
-        message = "hello world"
-        await conn.write_dbgp_message(message)
-
-        payload = bytes(writer.buf)
-        content = message.encode("utf-8")
-
-        # Frame = header (8 bytes) + content
-        expected_len = HEADER_SIZE + len(content)
-        assert len(payload) == expected_len, (
-            f"Expected {expected_len} bytes, got {len(payload)}. "
-            "Likely double-payload bug if longer."
-        )
-
-        # Verify the header is parseable and declares the right length
-        kind, length = unpack_header(payload[:HEADER_SIZE])
-        assert kind == 2
-        assert length == len(content)
-
-        # Verify content matches
-        assert payload[HEADER_SIZE:] == content
 
 
 # ---------------------------------------------------------------------------
