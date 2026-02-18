@@ -5,6 +5,7 @@ import asyncio
 import atexit
 import ctypes
 from datetime import datetime
+from datetime import timezone
 import faulthandler
 import logging
 import os
@@ -41,7 +42,7 @@ def _faulthandler_dump_interval_seconds() -> int:
 def _shutdown_trace(message: str) -> None:
     if not _shutdown_trace_enabled():
         return
-    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    stamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     print(f"[dapper-pytest-shutdown {stamp}] {message}", file=sys.stderr, flush=True)
 
 
@@ -64,11 +65,10 @@ def _maybe_start_faulthandler_dump() -> None:
 
 
 def _format_threads_for_trace() -> str:
-    items: list[str] = []
-    for thread in threading.enumerate():
-        items.append(
-            f"{thread.name}(ident={thread.ident},daemon={thread.daemon},alive={thread.is_alive()})"
-        )
+    items = [
+        f"{thread.name}(ident={thread.ident},daemon={thread.daemon},alive={thread.is_alive()})"
+        for thread in threading.enumerate()
+    ]
     return ", ".join(items)
 
 
@@ -81,6 +81,7 @@ def _shutdown_atexit_trace() -> None:
     except Exception:
         pass
 
+
 # Track event loops created via asyncio.new_event_loop so tests can ensure
 # they are explicitly closed. This prevents relying on CPython's GC and the
 # loop destructor which may run during interpreter shutdown and observe
@@ -88,7 +89,7 @@ def _shutdown_atexit_trace() -> None:
 _created_event_loops: set[asyncio.AbstractEventLoop] = set()
 _orig_new_event_loop = asyncio.new_event_loop
 _KNOWN_BACKGROUND_THREAD_NAMES = {"SyncConnAdapterLoop", "IPC-Reader"}
-_pytest_session_exitstatus = 0
+_pytest_session_state: dict[str, int] = {"exitstatus": 0}
 
 
 def _force_thread_shutdown_enabled() -> bool:
@@ -174,7 +175,7 @@ def _join_known_background_threads(timeout_seconds: float = 1.0) -> None:
             continue
         try:
             thread.join(timeout=timeout_seconds)
-        except Exception:  # noqa: PERF203
+        except Exception:
             pass
 
 
@@ -222,7 +223,7 @@ def _force_stop_lingering_threads(timeout_seconds: float = 1.0) -> None:
             break
         try:
             thread.join(timeout=remaining)
-        except Exception:  # noqa: PERF203
+        except Exception:
             pass
 
 
@@ -319,8 +320,7 @@ def pytest_sessionfinish(session, exitstatus):
 
     If jest tests fail, exit the entire pytest run with the jest exit code so CI signals failure.
     """
-    global _pytest_session_exitstatus
-    _pytest_session_exitstatus = int(exitstatus)
+    _pytest_session_state["exitstatus"] = int(exitstatus)
     # If pytest already failed, continue and still run JS tests to gather all results.
     # Mark args as used to satisfy linters (plugin requires specific arg names)
     del session, exitstatus
@@ -372,7 +372,7 @@ def pytest_unconfigure(config):
     _shutdown_trace(f"threads at unconfigure: {_format_threads_for_trace()}")
 
     if _force_process_exit_enabled():
-        code = int(_pytest_session_exitstatus)
+        code = int(_pytest_session_state["exitstatus"])
         _shutdown_trace(f"forcing os._exit({code}) due to DAPPER_PYTEST_FORCE_OS_EXIT")
         try:
             sys.stdout.flush()

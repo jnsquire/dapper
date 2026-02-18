@@ -211,7 +211,9 @@ class DebuggerBDB(bdb.Bdb):
         has_line_in_break_table = False
         with contextlib.suppress(Exception):
             has_line_in_break_table = int(line) in [
-                int(ln) for ln in self.breaks.get(filename, []) if ln is not None  # type: ignore[attr-defined]
+                int(ln)
+                for ln in self.breaks.get(filename, [])
+                if ln is not None  # type: ignore[attr-defined]
             ] or int(line) in [
                 int(ln)
                 for ln in self.breaks.get(canonical_filename, [])  # type: ignore[attr-defined]

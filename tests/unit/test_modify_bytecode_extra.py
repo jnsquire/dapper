@@ -1,4 +1,3 @@
-import dis
 import types
 
 from dapper._frame_eval import modify_bytecode as mb

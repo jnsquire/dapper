@@ -26,7 +26,9 @@ def test_is_expected_loop_shutdown_error_matches_runtime_error() -> None:
         RuntimeError("Event loop stopped before Future completed.")
     )
     assert not _is_expected_loop_shutdown_error(RuntimeError("other runtime error"))
-    assert not _is_expected_loop_shutdown_error(ValueError("Event loop stopped before Future completed."))
+    assert not _is_expected_loop_shutdown_error(
+        ValueError("Event loop stopped before Future completed.")
+    )
 
 
 def test_read_messages_accept_shutdown_does_not_log_error(caplog) -> None:
