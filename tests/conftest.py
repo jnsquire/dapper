@@ -2,10 +2,16 @@ from __future__ import annotations
 
 # isort: skip-file
 import asyncio
+import atexit
+import ctypes
+from datetime import datetime
+import faulthandler
 import logging
 import os
 from pathlib import Path
 import sys
+import threading
+import time
 
 import pytest
 
@@ -14,12 +20,94 @@ from dapper.utils.dev_tools import run_js_tests
 
 logger = logging.getLogger(__name__)
 
+
+def _shutdown_trace_enabled() -> bool:
+    return str(os.getenv("DAPPER_PYTEST_SHUTDOWN_TRACE", "0")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _faulthandler_dump_interval_seconds() -> int:
+    raw = str(os.getenv("DAPPER_PYTEST_FAULTHANDLER_DUMP_SECONDS", "0")).strip()
+    try:
+        interval = int(raw)
+    except ValueError:
+        return 0
+    return max(interval, 0)
+
+
+def _shutdown_trace(message: str) -> None:
+    if not _shutdown_trace_enabled():
+        return
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    print(f"[dapper-pytest-shutdown {stamp}] {message}", file=sys.stderr, flush=True)
+
+
+def _maybe_start_faulthandler_dump() -> None:
+    interval = _faulthandler_dump_interval_seconds()
+    if interval <= 0:
+        return
+
+    try:
+        faulthandler.enable(file=sys.stderr)
+    except Exception as exc:  # pragma: no cover - best-effort diagnostics
+        _shutdown_trace(f"faulthandler.enable failed: {exc!s}")
+        return
+
+    try:
+        faulthandler.dump_traceback_later(interval, repeat=True, file=sys.stderr)
+        _shutdown_trace(f"faulthandler.dump_traceback_later started interval={interval}s")
+    except Exception as exc:  # pragma: no cover - best-effort diagnostics
+        _shutdown_trace(f"faulthandler.dump_traceback_later failed: {exc!s}")
+
+
+def _format_threads_for_trace() -> str:
+    items: list[str] = []
+    for thread in threading.enumerate():
+        items.append(
+            f"{thread.name}(ident={thread.ident},daemon={thread.daemon},alive={thread.is_alive()})"
+        )
+    return ", ".join(items)
+
+
+@atexit.register
+def _shutdown_atexit_trace() -> None:
+    _shutdown_trace("atexit reached")
+    _shutdown_trace(f"threads at atexit: {_format_threads_for_trace()}")
+    try:
+        faulthandler.cancel_dump_traceback_later()
+    except Exception:
+        pass
+
 # Track event loops created via asyncio.new_event_loop so tests can ensure
 # they are explicitly closed. This prevents relying on CPython's GC and the
 # loop destructor which may run during interpreter shutdown and observe
 # partially torn-down objects, leading to UnraisableExceptionWarning.
 _created_event_loops: set[asyncio.AbstractEventLoop] = set()
 _orig_new_event_loop = asyncio.new_event_loop
+_KNOWN_BACKGROUND_THREAD_NAMES = {"SyncConnAdapterLoop", "IPC-Reader"}
+_pytest_session_exitstatus = 0
+
+
+def _force_thread_shutdown_enabled() -> bool:
+    # Enabled by default on Windows in test runs to avoid known
+    # post-summary shutdown hangs from leaked background threads.
+    default = "1" if sys.platform.startswith("win") else "0"
+    return str(os.getenv("DAPPER_FORCE_THREAD_SHUTDOWN", default)).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _force_process_exit_enabled() -> bool:
+    return str(os.getenv("DAPPER_PYTEST_FORCE_OS_EXIT", "0")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
@@ -50,13 +138,91 @@ def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
 
 
 def _close_tracked_event_loops() -> None:
-    for loop in list(_created_event_loops):
+    loops = list(_created_event_loops)
+
+    # First, ask running loops (possibly in background threads) to stop.
+    for loop in loops:
+        try:
+            if not loop.is_closed() and loop.is_running():
+                loop.call_soon_threadsafe(loop.stop)
+        except Exception:  # noqa: PERF203
+            pass
+
+    # Give background loop threads a small window to observe stop signal.
+    time.sleep(0.05)
+
+    # Then close loops that remain open.
+    for loop in loops:
         try:
             if not loop.is_closed():
                 loop.close()
         except Exception:  # noqa: PERF203
             pass
+
     _created_event_loops.clear()
+
+
+def _join_known_background_threads(timeout_seconds: float = 1.0) -> None:
+    current = threading.current_thread()
+    for thread in list(threading.enumerate()):
+        if thread is current:
+            continue
+        if thread.name not in _KNOWN_BACKGROUND_THREAD_NAMES:
+            continue
+        if not thread.is_alive():
+            continue
+        try:
+            thread.join(timeout=timeout_seconds)
+        except Exception:  # noqa: PERF203
+            pass
+
+
+def _force_stop_lingering_threads(timeout_seconds: float = 1.0) -> None:
+    if not _force_thread_shutdown_enabled():
+        return
+
+    current = threading.current_thread()
+    candidates: list[threading.Thread] = []
+    for thread in list(threading.enumerate()):
+        if thread is current or not thread.is_alive():
+            continue
+        if thread.name in _KNOWN_BACKGROUND_THREAD_NAMES or thread.name.startswith("asyncio_"):
+            candidates.append(thread)
+
+    if not candidates:
+        return
+
+    py_async_exc = ctypes.pythonapi.PyThreadState_SetAsyncExc
+    py_async_exc.argtypes = [ctypes.c_ulong, ctypes.py_object]
+    py_async_exc.restype = ctypes.c_int
+
+    for thread in candidates:
+        if thread.ident is None:
+            continue
+        try:
+            result = py_async_exc(ctypes.c_ulong(thread.ident), ctypes.py_object(SystemExit))
+            if result > 1:
+                py_async_exc(ctypes.c_ulong(thread.ident), None)
+                _shutdown_trace(
+                    f"forced-stop rollback for thread {thread.name} ident={thread.ident}"
+                )
+                continue
+            _shutdown_trace(
+                f"forced-stop signal sent to thread {thread.name} ident={thread.ident} result={result}"
+            )
+        except Exception as exc:  # pragma: no cover - best-effort diagnostics
+            _shutdown_trace(f"forced-stop failed for thread {thread.name}: {exc!s}")
+
+    # Give threads a final chance to exit.
+    deadline = time.time() + timeout_seconds
+    for thread in candidates:
+        remaining = max(0.0, deadline - time.time())
+        if remaining <= 0:
+            break
+        try:
+            thread.join(timeout=remaining)
+        except Exception:  # noqa: PERF203
+            pass
 
 
 # On Windows the default event loop policy uses ProactorEventLoop which
@@ -152,19 +318,64 @@ def pytest_sessionfinish(session, exitstatus):
 
     If jest tests fail, exit the entire pytest run with the jest exit code so CI signals failure.
     """
+    global _pytest_session_exitstatus
+    _pytest_session_exitstatus = int(exitstatus)
     # If pytest already failed, continue and still run JS tests to gather all results.
     # Mark args as used to satisfy linters (plugin requires specific arg names)
     del session, exitstatus
+    _shutdown_trace("pytest_sessionfinish entered")
+    _maybe_start_faulthandler_dump()
+    _shutdown_trace(f"threads at sessionfinish entry: {_format_threads_for_trace()}")
     # Allow the `run_tests` runner to suppress running JS tests inside pytest
     skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFTEST")
     if skip_in_conftest is None:
         # Backward compatibility for historical typo.
         skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT", "0")
 
+    _shutdown_trace(f"skip_in_conftest={skip_in_conftest!r}")
+
     if str(skip_in_conftest).lower() in ("1", "true", "yes"):
+        _shutdown_trace("pytest_sessionfinish returning early (JS tests skipped)")
         return
     try:
+        _shutdown_trace("calling run_js_tests()")
         run_js_tests()
+        _shutdown_trace("run_js_tests() completed")
     except JSTestsFailedError as exc:
         logger.exception("Extension JS tests failed")
         sys.exit(exc.returncode)
+    finally:
+        _shutdown_trace("pytest_sessionfinish exiting")
+
+
+def pytest_unconfigure(config):
+    _shutdown_trace("pytest_unconfigure entered")
+    try:
+        plugin_names = sorted(
+            {
+                str(name)
+                for name, plugin in config.pluginmanager.list_name_plugin()
+                if plugin is not None
+            }
+        )
+        _shutdown_trace(f"loaded plugins: {plugin_names}")
+    except Exception as exc:  # pragma: no cover - best-effort diagnostics
+        _shutdown_trace(f"failed to enumerate plugins: {exc!s}")
+
+    # Aggressive final cleanup for leaked background loops/threads that can
+    # keep the interpreter alive on Windows during pytest shutdown.
+    _close_tracked_event_loops()
+    _join_known_background_threads(timeout_seconds=1.5)
+    _force_stop_lingering_threads(timeout_seconds=1.5)
+
+    _shutdown_trace(f"threads at unconfigure: {_format_threads_for_trace()}")
+
+    if _force_process_exit_enabled():
+        code = int(_pytest_session_exitstatus)
+        _shutdown_trace(f"forcing os._exit({code}) due to DAPPER_PYTEST_FORCE_OS_EXIT")
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(code)

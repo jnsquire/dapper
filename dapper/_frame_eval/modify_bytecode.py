@@ -95,6 +95,50 @@ _BREAKPOINT_CONST_INDEX = -1  # Will be replaced with actual index
 _DEBUGGER_CALL_CONST = "__dapper_breakpoint_check__"
 
 
+def _make_instruction(
+    *,
+    opname: str,
+    opcode: int,
+    arg: int | None,
+    argval: Any,
+    argrepr: str,
+    offset: int,
+    starts_line: int | None,
+    is_jump_target: bool = False,
+) -> dis.Instruction:
+    fields = set(getattr(dis.Instruction, "_fields", ()))
+
+    kwargs: dict[str, Any] = {
+        "opname": opname,
+        "opcode": opcode,
+        "arg": arg,
+        "argval": argval,
+        "argrepr": argrepr,
+        "offset": offset,
+    }
+
+    if "is_jump_target" in fields:
+        kwargs["is_jump_target"] = is_jump_target
+
+    if "starts_line" in fields:
+        kwargs["starts_line"] = starts_line
+
+    if "start_offset" in fields:
+        kwargs["start_offset"] = offset
+
+    if "line_number" in fields:
+        kwargs["line_number"] = starts_line
+
+    if "label" in fields:
+        kwargs["label"] = None
+    if "positions" in fields:
+        kwargs["positions"] = None
+    if "cache_info" in fields:
+        kwargs["cache_info"] = None
+
+    return dis.Instruction(**kwargs)
+
+
 class BytecodeModifier:
     """Advanced bytecode modification system for frame evaluation."""
 
@@ -602,7 +646,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
     # This creates a simple breakpoint instruction that will
     # call the frame evaluation hook
     instructions = [
-        dis.Instruction(
+        _make_instruction(
             opname="LOAD_CONST",
             opcode=LOAD_CONST,
             arg=0,
@@ -612,7 +656,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
             starts_line=line,
             is_jump_target=False,
         ),
-        dis.Instruction(
+        _make_instruction(
             opname="CALL_FUNCTION",
             opcode=CALL_FUNCTION,
             arg=1,
@@ -622,7 +666,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
             starts_line=None,
             is_jump_target=False,
         ),
-        dis.Instruction(
+        _make_instruction(
             opname="POP_TOP",
             opcode=POP_TOP,
             arg=None,

@@ -24,6 +24,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_expected_loop_shutdown_error(exc: BaseException) -> bool:
+    """Return whether an exception represents expected loop shutdown."""
+    if not isinstance(exc, RuntimeError):
+        return False
+    message = str(exc)
+    return "Event loop stopped before Future completed" in message
+
+
 class IPCManager:
     """IPC manager with clear separation of concerns.
 
@@ -179,7 +187,14 @@ class IPCManager:
             if self._should_accept and hasattr(self._connection, "accept"):
                 # Always call accept() - it will handle start_listening() if needed
                 logger.debug("Accepting connection...")
-                loop.run_until_complete(self._connection.accept())
+                try:
+                    loop.run_until_complete(self._connection.accept())
+                except Exception as exc:
+                    if _is_expected_loop_shutdown_error(exc):
+                        logger.debug("Reader thread exiting during accept() shutdown")
+                        return
+                    logger.exception("Error accepting IPC connection")
+                    return
                 logger.debug("Connection accepted")
 
             # Read messages in a loop
@@ -192,10 +207,14 @@ class IPCManager:
                         break
                     logger.debug("Received IPC message: %s", message)
                     self._message_handler(message)
-                except Exception:
+                except Exception as exc:
+                    if _is_expected_loop_shutdown_error(exc):
+                        logger.debug("Reader thread exiting during read_message() shutdown")
+                        break
                     logger.exception("Error reading IPC message")
                     break
         finally:
+            asyncio.set_event_loop(None)
             loop.close()
 
     def __enter__(self) -> Self:

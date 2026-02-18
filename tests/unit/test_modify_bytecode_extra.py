@@ -6,7 +6,7 @@ from dapper._frame_eval import modify_bytecode as mb
 
 def test_is_breakpoint_sequence_and_length():
     instrs = [
-        dis.Instruction(
+        mb._make_instruction(
             opname="LOAD_CONST",
             opcode=mb.LOAD_CONST,
             arg=0,
@@ -16,7 +16,7 @@ def test_is_breakpoint_sequence_and_length():
             starts_line=None,
             is_jump_target=False,
         ),
-        dis.Instruction(
+        mb._make_instruction(
             opname="CALL_FUNCTION",
             opcode=mb.CALL_FUNCTION,
             arg=1,
@@ -26,7 +26,7 @@ def test_is_breakpoint_sequence_and_length():
             starts_line=None,
             is_jump_target=False,
         ),
-        dis.Instruction(
+        mb._make_instruction(
             opname="POP_TOP",
             opcode=mb.POP_TOP,
             arg=None,

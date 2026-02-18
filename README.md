@@ -56,6 +56,17 @@ uv sync
 # Run tests
 uv run pytest
 
+# From WSL: run tests on host Windows Python (avoids WSL-specific hangs)
+bash ./scripts/run-windows-tests-from-wsl.sh -q
+
+# Optional: include JS extension tests (disabled by default for this wrapper)
+DAPPER_SKIP_JS_TESTS_IN_CONFTEST=0 DAPPER_SKIP_JS_TESTS=0 \
+    bash ./scripts/run-windows-tests-from-wsl.sh -q
+
+# Note: this wrapper defaults to DAPPER_PYTEST_FORCE_OS_EXIT=1 on host Windows
+# to avoid known post-summary pytest shutdown hangs. To opt out:
+DAPPER_PYTEST_FORCE_OS_EXIT=0 bash ./scripts/run-windows-tests-from-wsl.sh -q
+
 # Frame-eval extension workflow
 uv run build-dev
 uv run frame-eval-test
