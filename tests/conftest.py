@@ -103,7 +103,8 @@ def _force_thread_shutdown_enabled() -> bool:
 
 
 def _force_process_exit_enabled() -> bool:
-    return str(os.getenv("DAPPER_PYTEST_FORCE_OS_EXIT", "0")).lower() in (
+    default = "1" if sys.platform.startswith("win") and os.getenv("CI") else "0"
+    return str(os.getenv("DAPPER_PYTEST_FORCE_OS_EXIT", default)).lower() in (
         "1",
         "true",
         "yes",

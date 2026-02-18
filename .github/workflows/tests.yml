@@ -36,4 +36,7 @@ jobs:
         run: python -m pip install -e ".[frame-eval]"
 
       - name: Run tests
+        env:
+          DAPPER_PYTEST_FORCE_OS_EXIT: ${{ startsWith(matrix.os, 'windows') && '1' || '0' }}
+          DAPPER_FORCE_THREAD_SHUTDOWN: ${{ startsWith(matrix.os, 'windows') && '1' || '0' }}
         run: uv run pytest -q
