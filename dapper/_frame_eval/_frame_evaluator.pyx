@@ -267,12 +267,29 @@ cpdef set_thread_skip_all(bint skip):
     thread_info.skip_all_frames = skip
 
 
-# External C APIs for code object extra data
+# _PyEval_RequestCodeExtraIndex, _PyCode_SetExtra, and _PyCode_GetExtra were all
+# deprecated in Python 3.12 in favour of PyUnstable_Eval_RequestCodeExtraIndex,
+# PyUnstable_Code_SetExtra, and PyUnstable_Code_GetExtra respectively.  Use the
+# new names on 3.12+ so the build is warning-free; fall back to the old names on
+# earlier versions.
 cdef extern from "Python.h":
     ctypedef void (*freefunc)(void *)
-    int _PyCode_SetExtra_C "_PyCode_SetExtra"(object code, Py_ssize_t index, void *extra)
-    int _PyCode_GetExtra_C "_PyCode_GetExtra"(object code, Py_ssize_t index, void **extra)
-    Py_ssize_t _PyEval_RequestCodeExtraIndex_C "_PyEval_RequestCodeExtraIndex"(freefunc)
+
+cdef extern from *:
+    """
+    #if PY_VERSION_HEX >= 0x030c0000
+    #  define _dapper_RequestCodeExtraIndex PyUnstable_Eval_RequestCodeExtraIndex
+    #  define _dapper_Code_GetExtra         PyUnstable_Code_GetExtra
+    #  define _dapper_Code_SetExtra         PyUnstable_Code_SetExtra
+    #else
+    #  define _dapper_RequestCodeExtraIndex _PyEval_RequestCodeExtraIndex
+    #  define _dapper_Code_GetExtra         _PyCode_GetExtra
+    #  define _dapper_Code_SetExtra         _PyCode_SetExtra
+    #endif
+    """
+    Py_ssize_t _dapper_RequestCodeExtraIndex_C "_dapper_RequestCodeExtraIndex"(freefunc)
+    int _PyCode_SetExtra_C "_dapper_Code_SetExtra"(object code, Py_ssize_t index, void *extra)
+    int _PyCode_GetExtra_C "_dapper_Code_GetExtra"(object code, Py_ssize_t index, void **extra)
 
 # Cleanup function for code extra data
 cdef void _cleanup_code_extra(void *obj) noexcept:
@@ -281,7 +298,7 @@ cdef void _cleanup_code_extra(void *obj) noexcept:
 
 def _PyEval_RequestCodeExtraIndex():
     """Request a new code extra index with our cleanup function."""
-    return _PyEval_RequestCodeExtraIndex_C(_cleanup_code_extra)
+    return _dapper_RequestCodeExtraIndex_C(_cleanup_code_extra)
 
 def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
     """Set extra data on code object.
