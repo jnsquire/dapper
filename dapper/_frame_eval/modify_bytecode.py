@@ -21,6 +21,20 @@ if TYPE_CHECKING:
     from types import CodeType
 
 
+def _get_instructions(code_obj: CodeType) -> list[dis.Instruction]:
+    """Return instructions for *code_obj*, including inline CACHE entries on 3.11+.
+
+    Python 3.11 introduced per-instruction inline cache slots in ``co_code``.
+    ``dis.get_instructions()`` omits them by default, so a round-trip through the
+    instruction list produces a shorter byte string that Python rejects as
+    malformed.  Passing ``show_caches=True`` re-includes the CACHE pseudo-
+    instructions so that the reconstructed bytecode has the correct length.
+    """
+    if sys.version_info >= (3, 11):
+        return list(dis.get_instructions(code_obj, show_caches=True))  # type: ignore[call-arg]
+    return list(dis.get_instructions(code_obj))
+
+
 class BytecodeInfo(TypedDict):
     """Type definition for bytecode information dictionary.
 
@@ -175,8 +189,8 @@ class BytecodeModifier:
             if cache_key in self.modified_code_objects:
                 return True, self.modified_code_objects[cache_key]
 
-            # Get original instructions
-            instructions = list(dis.get_instructions(code_obj))
+            # Get original instructions (including CACHE entries on 3.11+)
+            instructions = _get_instructions(code_obj)
 
             # Find injection points
             injection_points = self._find_injection_points(instructions, breakpoint_lines)
@@ -267,7 +281,7 @@ __dapper_breakpoint_wrapper_{line}()
             return code_obj
 
         try:
-            instructions = list(dis.get_instructions(code_obj))
+            instructions = _get_instructions(code_obj)
             optimized_instructions = self._optimize_instructions(instructions)
             _accepted, optimized = self._rebuild_code_object(code_obj, optimized_instructions)
         except Exception:
@@ -290,7 +304,7 @@ __dapper_breakpoint_wrapper_{line}()
             CodeType: Cleaned code object
         """
         try:
-            instructions = list(dis.get_instructions(code_obj))
+            instructions = _get_instructions(code_obj)
             cleaned_instructions = []
 
             i = 0
@@ -470,20 +484,22 @@ __dapper_breakpoint_wrapper_{line}()
             return 3
         return 1
 
-    def _rebuild_code_object(  # noqa: PLR0912, PLR0915
+    def _rebuild_code_object(  # noqa: PLR0912
         self, original_code: CodeType, new_instructions: list[dis.Instruction]
     ) -> tuple[bool, CodeType]:
         """Rebuild a code object with new instructions."""
-        # Convert instructions back to bytecode
+        # Convert instructions back to bytecode.
+        # Python 3.6+ uses a fixed 2-byte word-code format: one byte for the
+        # opcode and one byte for the argument (low 8 bits).  Arguments that
+        # exceed 255 are handled by EXTENDED_ARG prefix instructions, which
+        # dis.get_instructions() returns as explicit Instruction objects whose
+        # own arg field already contains only the relevant byte.  CACHE
+        # pseudo-instructions (Python 3.11+) are also included when
+        # _get_instructions() is used, and they follow the same 2-byte layout.
         bytecode = bytearray()
         for instr in new_instructions:
             bytecode.append(instr.opcode)
-            if instr.arg is not None:
-                if instr.arg >= 0:
-                    bytecode.extend(instr.arg.to_bytes(2, "little"))
-                else:
-                    # Handle negative arguments
-                    bytecode.extend((instr.arg & 0xFFFF).to_bytes(2, "little"))
+            bytecode.append(instr.arg & 0xFF if instr.arg is not None else 0)
 
         # Prefer the stable replace() API (available since Python 3.8).
         # This avoids constructor-signature drift across Python versions.

@@ -362,11 +362,11 @@ def test_breakpoint_sequence_detection(bytecode_modifier: BytecodeModifier) -> N
     """Test breakpoint sequence detection."""
     # Create a fake breakpoint sequence
     if sys.version_info >= (3, 11):
-        # Python 3.11+ requires line_number parameter
+        # Python 3.11+ has an extra `positions` field (Positions | None)
         fake_instructions = [
-            dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False, 1),
-            dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False, 1),
-            dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False, 1),
+            dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False, None),
+            dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False, None),
+            dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False, None),
         ]
     else:
         # Python 3.10 and earlier
