@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from dapper.ipc.ipc_binary import pack_frame  # lightweight util
+from dapper.shared.runtime_source_registry import RuntimeSourceEntry
+from dapper.shared.runtime_source_registry import RuntimeSourceRegistry
 from dapper.utils.events import EventEmitter
 
 if TYPE_CHECKING:
@@ -145,6 +147,8 @@ class SourceCatalog:
         self._source_provider_lock = threading.RLock()
         self._source_providers: list[tuple[int, Callable[[str], str | None]]] = []
         self._next_source_provider_id = itertools.count(1)
+        # Registry for in-memory / synthetic sources (eval, exec, Jinja, etc.)
+        self._dynamic = RuntimeSourceRegistry()
 
     def get_ref_for_path(self, path: str) -> int | None:
         return self._path_to_ref.get(path)
@@ -170,7 +174,69 @@ class SourceCatalog:
     def get_source_meta(self, ref: int) -> SourceReferenceMeta | None:
         return self.source_references.get(ref)
 
+    def register_dynamic_source(
+        self,
+        virtual_path: str,
+        source_text: str,
+        *,
+        name: str | None = None,
+        origin: str = "dynamic",
+    ) -> int:
+        """Register an in-memory source string for a non-filesystem code object.
+
+        Allocates a ``sourceReference`` integer (reusing any existing one for
+        *virtual_path*) and stores both the metadata in
+        :attr:`source_references` and the source text in the dynamic
+        :class:`~dapper.shared.runtime_source_registry.RuntimeSourceRegistry`.
+
+        Args:
+            virtual_path: Synthetic filename (e.g. ``"<string>"``).  Used as
+                          the path key for later ``source`` request look-ups.
+            source_text:  Complete source content to serve to DAP clients.
+            name:         Human-readable display name (falls back to *virtual_path*).
+            origin:       Provenance tag, e.g. ``"eval"`` or ``"jinja"``.
+
+        Returns:
+            The integer ``sourceReference`` for this entry.
+        """
+        ref = self.get_or_create_source_ref(virtual_path, name=name)
+        self._dynamic.register(virtual_path, source_text, name=name, origin=origin, ref_hint=ref)
+        return ref
+
+    def get_dynamic_sources(self) -> list[RuntimeSourceEntry]:
+        """Return all registered dynamic (in-memory) source entries."""
+        return self._dynamic.all_entries()
+
+    def get_or_register_dynamic_from_linecache(
+        self,
+        path: str,
+    ) -> int:
+        """Look up *path* in :mod:`linecache`, register the content, and return the ref.
+
+        If ``linecache`` has no content for *path* a placeholder comment is
+        registered instead so that a valid ``sourceReference`` is still
+        returned.  Idempotent — calling with the same *path* twice returns the
+        same ref.
+
+        Args:
+            path: Synthetic filename, e.g. ``"<string>"``.
+
+        Returns:
+            The integer ``sourceReference`` allocated for *path*.
+        """
+        entry = self._dynamic.get_or_register_from_linecache(path)
+        if entry is not None:
+            return self.register_dynamic_source(
+                path, entry.source_text, name=entry.name, origin=entry.origin
+            )
+        placeholder = f"# source not available for {path}\n"
+        return self.register_dynamic_source(path, placeholder, origin="placeholder")
+
     def get_source_content_by_ref(self, ref: int) -> str | None:
+        # Check the dynamic (in-memory) store before attempting a disk read.
+        text = self._dynamic.get_source_text(ref)
+        if text is not None:
+            return text
         meta = self.get_source_meta(ref)
         if not meta:
             return None
@@ -220,6 +286,12 @@ class SourceCatalog:
         return normalized_path, True
 
     def get_source_content_by_path(self, path_or_uri: str) -> str | None:
+        # Check the dynamic (in-memory) store first — handles synthetic
+        # filenames like "<string>" that can never exist on disk.
+        text = self._dynamic.get_source_text_by_path(path_or_uri)
+        if text is not None:
+            return text
+
         with self._source_provider_lock:
             providers = list(self._source_providers)
 
@@ -562,6 +634,28 @@ class DebugSession:
 
     def unregister_source_provider(self, provider_id: int) -> bool:
         return self.sources.unregister_source_provider(provider_id)
+
+    def register_dynamic_source(
+        self,
+        virtual_path: str,
+        source_text: str,
+        *,
+        name: str | None = None,
+        origin: str = "dynamic",
+    ) -> int:
+        """Register an in-memory source string for a synthetic code object.
+
+        Convenience delegation to
+        :meth:`~dapper.shared.debug_shared.SourceCatalog.register_dynamic_source`.
+        Returns the integer ``sourceReference`` allocated for *virtual_path*.
+        """
+        return self.sources.register_dynamic_source(
+            virtual_path, source_text, name=name, origin=origin
+        )
+
+    def get_dynamic_sources(self) -> list[RuntimeSourceEntry]:
+        """Return all registered dynamic (in-memory) source entries."""
+        return self.sources.get_dynamic_sources()
 
 
 # Module-level singleton instance used throughout the codebase

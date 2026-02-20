@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
+
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
@@ -68,6 +70,10 @@ def handle_stack_trace_impl(
                         "column": 0,
                     }
                 )
+
+        # Annotate any synthetic-filename frames with sourceReference so
+        # DAP clients can fetch the in-memory source via the source request.
+        annotate_stack_frames_with_source_refs(stack_frames)
 
     safe_send_debug_message(
         "stackTrace",

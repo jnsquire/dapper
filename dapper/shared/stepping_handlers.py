@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
+
 if TYPE_CHECKING:
     from logging import Logger
 
@@ -124,6 +126,7 @@ def handle_pause_impl(
             if frame is not None:
                 try:
                     stack_frames = dbg.thread_tracker.build_stack_frames(frame)
+                    annotate_stack_frames_with_source_refs(stack_frames)  # type: ignore[arg-type]
                     dbg.thread_tracker.frames_by_thread[thread_id] = stack_frames
                     dbg.stepping_controller.current_frame = frame
                 except Exception:

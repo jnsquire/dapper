@@ -96,6 +96,20 @@ def _collect_main_program_source(
     return sources
 
 
+def _collect_dynamic_sources(state: DebugSession) -> list[dict[str, Any]]:
+    """Collect in-memory (dynamic) sources from the runtime source registry."""
+    sources: list[dict[str, Any]] = []
+    for entry in state.get_dynamic_sources():
+        source: dict[str, Any] = {
+            "name": entry.name,
+            "path": entry.virtual_path,
+            "sourceReference": entry.ref,
+            "origin": entry.origin,
+        }
+        sources.append(source)
+    return sources
+
+
 def handle_loaded_sources(
     state: DebugSession,
     safe_send_debug_message: SafeSendDebugMessageFn,
@@ -119,6 +133,9 @@ def handle_loaded_sources(
             source_item.get("name"),
         )
         source_item["sourceReference"] = ref_id
+
+    # Include dynamic (in-memory) sources — these already carry sourceReference.
+    loaded_sources.extend(_collect_dynamic_sources(state))
 
     safe_send_debug_message("response", success=True, body={"sources": loaded_sources})
 

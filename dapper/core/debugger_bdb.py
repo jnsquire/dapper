@@ -23,6 +23,7 @@ from dapper.core.exception_handler import ExceptionHandler
 from dapper.core.stepping_controller import SteppingController
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
+from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
 
 if TYPE_CHECKING:
     import types
@@ -343,7 +344,9 @@ class DebuggerBDB(bdb.Bdb):
 
     def _get_stack_frames(self, frame: types.FrameType) -> list[StackFrame]:
         """Build stack frames for the given frame using the thread tracker."""
-        return self.thread_tracker.build_stack_frames(frame)
+        stack_frames = self.thread_tracker.build_stack_frames(frame)
+        annotate_stack_frames_with_source_refs(stack_frames)  # type: ignore[arg-type]
+        return stack_frames
 
     def set_custom_breakpoint(
         self, filename: str, line: int, condition: str | None = None
