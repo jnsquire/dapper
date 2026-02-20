@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from concurrent.futures import Future
 
+    from dapper.adapter.types import BreakpointResponse
+    from dapper.adapter.types import SourceDict
+    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.structures import Breakpoint
     from dapper.protocol.structures import SourceBreakpoint
@@ -36,9 +39,9 @@ class _SupportsBreakpointManagement(Protocol):
 
     def set_breakpoints(
         self,
-        path: str,
+        source: SourceDict | str,
         breakpoints: list[SourceBreakpoint],
-    ) -> Awaitable[list[Breakpoint]]: ...
+    ) -> Awaitable[list[BreakpointResponse]]: ...
 
     def set_function_breakpoints(
         self,
@@ -47,11 +50,13 @@ class _SupportsBreakpointManagement(Protocol):
 
     def set_exception_breakpoints(self, filters: list[str]) -> Awaitable[list[Breakpoint]]: ...
 
-    def data_breakpoint_info(self, *, name: str, frame_id: int) -> dict[str, Any]: ...
+    def data_breakpoint_info(
+        self, *, name: str, frame_id: int
+    ) -> DataBreakpointInfoResponseBody: ...
 
     def set_data_breakpoints(
         self, breakpoints: list[DataBreakpointPayload]
-    ) -> list[DataBreakpointPayload]: ...
+    ) -> list[Breakpoint]: ...
 
 
 @dataclass(frozen=True)
@@ -108,12 +113,12 @@ class BreakpointController:
         self,
         path: str | Path,
         breakpoints: list[LineBreakpointSpec],
-    ) -> Future[list[Breakpoint]]:
+    ) -> Future[list[BreakpointResponse]]:
         return self._schedule(self.async_set_source(path, breakpoints))
 
     async def async_set_source(
         self, path: str | Path, breakpoints: list[LineBreakpointSpec]
-    ) -> list[Breakpoint]:
+    ) -> list[BreakpointResponse]:
         path_str = str(Path(path).resolve())
         bp_list: list[SourceBreakpoint] = []
         for bp in breakpoints:
@@ -154,20 +159,16 @@ class BreakpointController:
         return await self._debugger.set_exception_breakpoints(list(filters))
 
     # ---- data breakpoints (Phase 1 bookkeeping)
-    def data_info(self, *, name: str, frame_id: int) -> Future[dict[str, Any]]:
+    def data_info(self, *, name: str, frame_id: int) -> Future[DataBreakpointInfoResponseBody]:
         return self._schedule(self.async_data_info(name=name, frame_id=frame_id))
 
-    async def async_data_info(self, *, name: str, frame_id: int) -> dict[str, Any]:
+    async def async_data_info(self, *, name: str, frame_id: int) -> DataBreakpointInfoResponseBody:
         return self._debugger.data_breakpoint_info(name=name, frame_id=frame_id)
 
-    def set_data(
-        self, breakpoints: list[DataBreakpointSpec]
-    ) -> Future[list[DataBreakpointPayload]]:
+    def set_data(self, breakpoints: list[DataBreakpointSpec]) -> Future[list[Breakpoint]]:
         return self._schedule(self.async_set_data(breakpoints))
 
-    async def async_set_data(
-        self, breakpoints: list[DataBreakpointSpec]
-    ) -> list[DataBreakpointPayload]:
+    async def async_set_data(self, breakpoints: list[DataBreakpointSpec]) -> list[Breakpoint]:
         bp_list: list[DataBreakpointPayload] = [
             {
                 "dataId": bp.data_id,
