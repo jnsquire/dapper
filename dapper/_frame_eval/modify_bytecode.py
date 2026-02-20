@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
 
+from dapper._frame_eval.bytecode_safety import safe_replace_code
+from dapper._frame_eval.telemetry import telemetry
+
 if TYPE_CHECKING:
     from types import CodeType
 
@@ -185,14 +188,22 @@ class BytecodeModifier:
             # Create new instruction list with breakpoints
             new_instructions = self._create_breakpoint_instructions(instructions, injection_points)
 
-            # Rebuild code object
-            modified_code = self._rebuild_code_object(code_obj, new_instructions)
+            # Rebuild code object — validated by the safety layer
+            accepted, modified_code = self._rebuild_code_object(code_obj, new_instructions)
+
+            if not accepted:
+                # Validation failure already recorded by _rebuild_code_object.
+                return False, code_obj
 
             # Cache the result
             self.modified_code_objects[cache_key] = modified_code
         except Exception as e:
             if debug_mode:
                 print(f"Error injecting breakpoints: {e}")
+            telemetry.record_bytecode_injection_failed(
+                filename=getattr(code_obj, "co_filename", "unknown"),
+                name=getattr(code_obj, "co_name", "unknown"),
+            )
             return False, code_obj
         else:
             return True, modified_code
@@ -258,9 +269,15 @@ __dapper_breakpoint_wrapper_{line}()
         try:
             instructions = list(dis.get_instructions(code_obj))
             optimized_instructions = self._optimize_instructions(instructions)
-            return self._rebuild_code_object(code_obj, optimized_instructions)
+            _accepted, optimized = self._rebuild_code_object(code_obj, optimized_instructions)
         except Exception:
+            telemetry.record_bytecode_optimization_failed(
+                filename=getattr(code_obj, "co_filename", "unknown"),
+                name=getattr(code_obj, "co_name", "unknown"),
+            )
             return code_obj
+        else:
+            return optimized
 
     def remove_breakpoints(self, code_obj: CodeType) -> CodeType:
         """
@@ -289,10 +306,16 @@ __dapper_breakpoint_wrapper_{line}()
                 cleaned_instructions.append(instr)
                 i += 1
 
-            return self._rebuild_code_object(code_obj, cleaned_instructions)
+            _accepted, cleaned = self._rebuild_code_object(code_obj, cleaned_instructions)
 
         except Exception:
+            telemetry.record_bytecode_optimization_failed(
+                filename=getattr(code_obj, "co_filename", "unknown"),
+                name=getattr(code_obj, "co_name", "unknown"),
+            )
             return code_obj
+        else:
+            return cleaned
 
     def _get_cache_key(
         self, code_obj: CodeType, breakpoint_lines: set[int]
@@ -447,9 +470,9 @@ __dapper_breakpoint_wrapper_{line}()
             return 3
         return 1
 
-    def _rebuild_code_object(  # noqa: PLR0912
+    def _rebuild_code_object(  # noqa: PLR0912, PLR0915
         self, original_code: CodeType, new_instructions: list[dis.Instruction]
-    ) -> CodeType:
+    ) -> tuple[bool, CodeType]:
         """Rebuild a code object with new instructions."""
         # Convert instructions back to bytecode
         bytecode = bytearray()
@@ -466,10 +489,11 @@ __dapper_breakpoint_wrapper_{line}()
         # This avoids constructor-signature drift across Python versions.
         if hasattr(original_code, "replace"):
             try:
-                return original_code.replace(
+                candidate = original_code.replace(
                     co_code=bytes(bytecode),
                     co_stacksize=original_code.co_stacksize + 2,
                 )
+                return safe_replace_code(original_code, candidate)
             except Exception:
                 # Fall back to legacy constructor path for compatibility.
                 pass
@@ -590,9 +614,13 @@ __dapper_breakpoint_wrapper_{line}()
             args.pop()
 
         try:
-            return type(original_code)(*args)
+            candidate = type(original_code)(*args)
         except Exception:
-            return types.CodeType(*args)
+            try:
+                candidate = types.CodeType(*args)
+            except Exception:
+                return False, original_code
+        return safe_replace_code(original_code, candidate)
 
 
 # Global bytecode modifier instance
@@ -628,6 +656,11 @@ def insert_code(
         )
     except Exception:
         # If anything goes wrong, return original code object
+        telemetry.record_bytecode_injection_failed(
+            filename=getattr(code_obj, "co_filename", "unknown"),
+            name=getattr(code_obj, "co_name", "unknown"),
+            line=line,
+        )
         return False, code_obj
     else:
         return success, modified_code

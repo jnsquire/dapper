@@ -36,6 +36,9 @@ from dapper._frame_eval.selective_tracer import enable_selective_tracing
 from dapper._frame_eval.selective_tracer import get_selective_trace_function
 from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.selective_tracer import update_breakpoints
+from dapper._frame_eval.telemetry import FrameEvalTelemetrySnapshot
+from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+from dapper._frame_eval.telemetry import telemetry
 
 # Check module availability
 debugger_bdb_available = importlib.util.find_spec("dapper.core.debugger_bdb") is not None
@@ -65,6 +68,7 @@ class IntegrationStatistics(TypedDict):
     performance_data: dict[str, Any]
     trace_manager_stats: dict[str, Any]
     cache_stats: CacheStatistics
+    telemetry: FrameEvalTelemetrySnapshot
 
 
 class DebuggerFrameEvalBridge:
@@ -130,6 +134,7 @@ class DebuggerFrameEvalBridge:
                     return True
         except Exception:
             self.integration_stats["errors_handled"] += 1
+            telemetry.record_selective_tracing_analysis_failed()
             if not self.config["fallback_on_error"]:
                 raise
         return False
@@ -157,6 +162,7 @@ class DebuggerFrameEvalBridge:
 
             except Exception:
                 self.integration_stats["errors_handled"] += 1
+                telemetry.record_py_debugger_trace_hook_failed()
                 if self.config["fallback_on_error"]:
                     return self._call_original_fallback(
                         debugger_instance, frame, original_user_line_func
@@ -222,6 +228,7 @@ class DebuggerFrameEvalBridge:
         except Exception:
             # Clean up if an error occurs during integration
             self.original_trace_functions.pop(debugger_id, None)
+            telemetry.record_integration_bdb_failed()
 
             if self.config["fallback_on_error"]:
                 self.integration_stats["errors_handled"] += 1
@@ -282,6 +289,7 @@ class DebuggerFrameEvalBridge:
                     except Exception:
                         if self.config["fallback_on_error"]:
                             self.integration_stats["errors_handled"] += 1
+                            telemetry.record_py_debugger_breakpoint_hook_failed()
                             return (
                                 original_set_breakpoints(source, breakpoints, **kwargs)
                                 if original_set_breakpoints
@@ -312,6 +320,7 @@ class DebuggerFrameEvalBridge:
                     except Exception:
                         if self.config["fallback_on_error"]:
                             self.integration_stats["errors_handled"] += 1
+                            telemetry.record_py_debugger_trace_hook_failed()
                             if original_set_trace:
                                 original_set_trace()
                         else:
@@ -331,6 +340,7 @@ class DebuggerFrameEvalBridge:
         except Exception:
             if self.config["fallback_on_error"]:
                 self.integration_stats["errors_handled"] += 1
+                telemetry.record_py_debugger_integration_failed()
                 return False
             raise
 
@@ -369,11 +379,15 @@ class DebuggerFrameEvalBridge:
 
             except Exception:
                 # If we can't read/compile the file, skip bytecode optimization
-                pass
+                self.integration_stats["errors_handled"] += 1
+                telemetry.record_bytecode_optimization_file_read_failed(
+                    filepath=filepath,
+                )
 
         except Exception:
             # Silently fail if bytecode optimization fails
-            pass
+            self.integration_stats["errors_handled"] += 1
+            telemetry.record_bytecode_optimization_failed()
 
     def remove_integration(self, debugger_instance) -> bool:
         """
@@ -410,6 +424,7 @@ class DebuggerFrameEvalBridge:
 
         except Exception:
             # If anything goes wrong during removal, consider it a failure
+            telemetry.record_integration_remove_failed()
             return False
 
     def update_config(self, **kwargs) -> None:
@@ -448,6 +463,7 @@ class DebuggerFrameEvalBridge:
                 },
                 "trace_manager_stats": trace_stats,
                 "cache_stats": cache_stats,
+                "telemetry": get_frame_eval_telemetry(),
             }
 
     def reset_statistics(self) -> None:
@@ -550,4 +566,5 @@ def auto_integrate_debugger(debugger_instance) -> bool:
         # ruff: noqa: TRY300 - Valid try-except structure, return is part of try block
 
     except Exception:
+        telemetry.record_auto_integration_failed()
         return False

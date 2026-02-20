@@ -16,6 +16,13 @@ class FrameEvalConfig:
         cache_size: Size of the frame evaluation cache
         optimize: Whether to optimize bytecode
         timeout: Operation timeout in seconds
+        conditional_breakpoints_enabled: When ``True``, breakpoints with a
+            ``condition`` expression are evaluated in the frame's context
+            before dispatching to the debugger; frames where the condition is
+            falsy are skipped cheaply.  Defaults to ``True``.
+        condition_budget_s: Soft wall-clock budget (seconds) for evaluating a
+            single condition expression.  If exceeded, a telemetry reason code
+            is recorded and a warning is logged.  Defaults to ``0.1``.
     """
 
     # Default values
@@ -25,6 +32,8 @@ class FrameEvalConfig:
     cache_size: int = 1000
     optimize: bool = True
     timeout: float = 30.0
+    conditional_breakpoints_enabled: bool = True
+    condition_budget_s: float = 0.1
 
     def __post_init__(self):
         """Initialize the configuration and handle any unknown fields."""
@@ -43,6 +52,8 @@ class FrameEvalConfig:
             "cache_size": self.cache_size,
             "optimize": self.optimize,
             "timeout": self.timeout,
+            "conditional_breakpoints_enabled": self.conditional_breakpoints_enabled,
+            "condition_budget_s": self.condition_budget_s,
         }
 
     @classmethod

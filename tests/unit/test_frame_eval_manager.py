@@ -121,26 +121,31 @@ class TestFrameEvalManager:
                 self.serial = serial
 
         with (
-            patch.object(self.manager, "_check_platform_compatibility", return_value=True),
-            patch.object(self.manager, "_is_incompatible_environment", return_value=False),
+            patch.object(
+                self.manager._compatibility_policy,
+                "is_incompatible_environment",
+                return_value=False,
+            ),
             patch("platform.platform", return_value="Windows-10"),
             patch("sys.platform", "win32"),
+            patch("platform.system", return_value="Windows"),
+            patch("platform.architecture", return_value=("64bit", "WindowsPE")),
             patch("platform.python_implementation", return_value="CPython"),
         ):
             # Test with compatible Python version
-            with patch("sys.version_info", VersionInfo(3, 8, 0, "final", 0)):
+            with patch("sys.version_info", VersionInfo(3, 11, 0, "final", 0)):
                 result = self.manager.check_environment_compatibility()
                 assert result["compatible"] is True
-                assert result["python_version"] == "3.8.0"
+                assert result["python_version"] == "3.11.0"
 
             # Test with incompatible Python version (too old)
-            with patch("sys.version_info", VersionInfo(3, 5, 0, "final", 0)):
+            with patch("sys.version_info", VersionInfo(3, 8, 0, "final", 0)):
                 result = self.manager.check_environment_compatibility()
                 assert result["compatible"] is False
                 assert "Python version too old" in result["reason"]
 
             # Test with incompatible Python version (too new)
-            with patch("sys.version_info", VersionInfo(3, 11, 0, "final", 0)):
+            with patch("sys.version_info", VersionInfo(3, 14, 0, "final", 0)):
                 result = self.manager.check_environment_compatibility()
                 assert result["compatible"] is False
                 assert "Python version too new" in result["reason"]

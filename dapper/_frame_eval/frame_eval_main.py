@@ -17,7 +17,9 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import ClassVar
 
+from dapper._frame_eval.compatibility_policy import FrameEvalCompatibilityPolicy
 from dapper._frame_eval.config import FrameEvalConfig
+from dapper._frame_eval.runtime import FrameEvalRuntime
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -33,9 +35,6 @@ class FrameEvalManager:
 
     # Module constants
     COMPATIBLE_PYTHON_VERSIONS: ClassVar[list[str]] = [
-        "3.6",
-        "3.7",
-        "3.8",
         "3.9",
         "3.10",
         "3.11",
@@ -64,7 +63,17 @@ class FrameEvalManager:
     def initialize(self) -> None:
         """Initialize the frame evaluation manager."""
         self._frame_eval_config = FrameEvalConfig()
+        self._compatibility_policy = FrameEvalCompatibilityPolicy(
+            min_python=(3, 9),
+            max_python=(3, 13),
+            supported_platforms=tuple(self.SUPPORTED_PLATFORMS),
+            supported_architectures=tuple(self.SUPPORTED_ARCHITECTURES),
+            incompatible_debuggers=tuple(self.INCOMPATIBLE_DEBUGGERS),
+            incompatible_environment_vars=tuple(self.INCOMPATIBLE_ENVIRONMENT_VARS),
+            incompatible_coverage_tools=tuple(self.INCOMPATIBLE_COVERAGE_TOOLS),
+        )
         self._is_initialized = False
+        self._runtime = FrameEvalRuntime(self._frame_eval_config)
         self._compatibility_cache: dict[tuple, dict[str, Any]] = {}
         self._logger = logging.getLogger(__name__)
 
@@ -189,16 +198,7 @@ class FrameEvalManager:
         Returns:
             bool: True if running in incompatible environment
         """
-        # Check if running in certain IDEs or debuggers
-        if any(name in sys.modules for name in self.INCOMPATIBLE_DEBUGGERS):
-            return True
-
-        # Check for certain environments
-        if any(env_var in os.environ for env_var in self.INCOMPATIBLE_ENVIRONMENT_VARS):
-            return True
-
-        # Check if running under coverage tools
-        return bool(any(name in sys.modules for name in self.INCOMPATIBLE_COVERAGE_TOOLS))
+        return self._compatibility_policy.is_incompatible_environment(sys.modules, os.environ)
 
     def check_environment_compatibility(self) -> dict[str, Any]:
         """
@@ -212,32 +212,15 @@ class FrameEvalManager:
         if cache_key in self._compatibility_cache:
             return self._compatibility_cache[cache_key]
 
-        compatibility = {
-            "compatible": False,
-            "reason": "",
-            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            "platform": platform.platform(),
-            "architecture": platform.architecture()[0],
-            "implementation": platform.python_implementation(),
-        }
-
-        # Check Python version
-        version_tuple = (sys.version_info.major, sys.version_info.minor)
-        if version_tuple < (3, 6):
-            compatibility["reason"] = "Python version too old (requires 3.6+)"
-        elif version_tuple > (3, 10):
-            compatibility["reason"] = "Python version too new (3.11+ not supported)"
-        # Check platform compatibility
-        elif not self._check_platform_compatibility():
-            compatibility["reason"] = f"Platform {platform.platform()} not supported"
-        # Check for incompatible environments
-        elif self._is_incompatible_environment():
-            compatibility["reason"] = (
-                "Running in incompatible environment (debugger or IDE detected)"
-            )
-        # All checks passed
-        else:
-            compatibility["compatible"] = True
+        compatibility = self._compatibility_policy.evaluate_environment(
+            version_info=sys.version_info,
+            platform_name=platform.platform(),
+            platform_system=platform.system(),
+            architecture=platform.architecture()[0],
+            implementation=platform.python_implementation(),
+            modules=sys.modules,
+            environ=os.environ,
+        )
 
         self._compatibility_cache[cache_key] = compatibility
         return compatibility
@@ -250,14 +233,10 @@ class FrameEvalManager:
             bool: True if current platform is supported
         """
         current_platform = platform.system()
-        if current_platform not in self.SUPPORTED_PLATFORMS:
-            return False
-
-        # Check architecture
         arch = platform.architecture()[0]
-        return arch in self.SUPPORTED_ARCHITECTURES
+        return self._compatibility_policy.is_supported_platform(current_platform, arch)
 
-    def setup_frame_eval(self, config: dict[str, Any]) -> bool:
+    def setup_frame_eval(self, config: dict[str, Any]) -> bool:  # noqa: PLR0911
         """
         Set up frame evaluation with the provided configuration.
 
@@ -293,6 +272,11 @@ class FrameEvalManager:
         if not self.update_config(config):
             return False
 
+        # Keep runtime configuration in sync with validated manager config
+        if not self._runtime.initialize(self._frame_eval_config.to_dict()):
+            self._logger.warning("Failed to initialize frame evaluation runtime")
+            return False
+
         self._is_initialized = True
         return True
 
@@ -321,6 +305,7 @@ class FrameEvalManager:
         return {
             "frame_eval_initialized": self._is_initialized,
             "frame_eval_config": self._frame_eval_config,
+            "runtime_status": self._runtime.status(),
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "platform": platform.system(),
             "architecture": platform.architecture()[0],
@@ -336,8 +321,10 @@ class FrameEvalManager:
             bool: True if initialization was successful
         """
         try:
-            # Initialize any required components here
-            # For now, just log that we're initializing
+            # Delegate component lifecycle to the runtime composition root.
+            if not self._runtime.initialize(self._frame_eval_config.to_dict()):
+                self._logger.warning("Runtime initialization returned False")
+                return False
             self._logger.debug("Initializing frame evaluation components")
         except Exception:
             self._logger.exception("Failed to initialize frame evaluation components")
@@ -353,7 +340,8 @@ class FrameEvalManager:
         and ensures proper resource deallocation.
         """
         try:
-            # Clean up any resources here
+            # Delegate component cleanup to the runtime composition root.
+            self._runtime.shutdown()
             self._logger.debug("Cleaning up frame evaluation components")
         except Exception:
             self._logger.exception("Error during cleanup of frame evaluation components")

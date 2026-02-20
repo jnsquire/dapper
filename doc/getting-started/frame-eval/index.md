@@ -106,6 +106,38 @@ print(f"Trace calls saved: {stats['integration_stats']['trace_calls_saved']}")
 print(f"Breakpoints optimized: {stats['integration_stats']['breakpoints_optimized']}")
 ```
 
+### Telemetry & selective tracing 🔍
+
+Dapper now exposes structured telemetry for the frame-eval subsystem and richer selective-tracing diagnostics so you can observe fallback/events and tune runtime behavior.
+
+- Telemetry records reason-codes (fallbacks, optimization failures, policy disables) and a short recent-event log.
+- Selective tracing exposes lightweight analysis stats (trace-rate, cache-hits, fast-path hits) so you can verify that only relevant frames are being traced.
+
+Minimal example — read/reset telemetry and check selective-tracing stats:
+
+```python
+from dapper._frame_eval.telemetry import (
+    get_frame_eval_telemetry,
+    reset_frame_eval_telemetry,
+)
+from dapper._frame_eval.debugger_integration import get_integration_statistics
+
+# Read telemetry snapshot
+telemetry = get_frame_eval_telemetry()
+print(telemetry.reason_counts)
+
+# Reset telemetry collector
+reset_frame_eval_telemetry()
+
+# Detect recent bytecode-injection failures
+if telemetry.reason_counts.bytecode_injection_failed > 0:
+    print("Bytecode injection failures observed — consider disabling bytecode_optimization for troubleshooting")
+
+# Selective-tracing stats are available via integration/runtime stats
+stats = get_integration_statistics()
+print("trace stats:", stats["trace_stats"])
+```
+
 ## Usage Patterns
 
 ### Best Practices

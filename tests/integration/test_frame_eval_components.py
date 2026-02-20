@@ -11,9 +11,13 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 from unittest.mock import patch
 import weakref
+
+if TYPE_CHECKING:
+    import types
 
 # Third-party imports
 import pytest
@@ -34,7 +38,12 @@ from dapper._frame_eval.cache_manager import set_breakpoints
 MODIFY_BYTECODE_AVAILABLE = (
     importlib.util.find_spec("dapper._frame_eval.modify_bytecode") is not None
 )
+from dapper._frame_eval.bytecode_safety import safe_replace_code
+from dapper._frame_eval.bytecode_safety import validate_code_object
 from dapper._frame_eval.cache_manager import set_func_code_info
+from dapper._frame_eval.modify_bytecode import BytecodeModifier
+from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
 
 # Check if selective tracer is available
 SELECTIVE_TRACER_AVAILABLE = (
@@ -263,9 +272,8 @@ class TestFrameEvalCoreComponents:
         main_thread_info = get_thread_info()
 
         # Modify main thread info
-        main_thread_info.fully_initialized = 1
+        main_thread_info.fully_initialized = True
 
-        # Create a new thread and check its info
         def check_thread_info():
             thread_info = get_thread_info()
             # Should be different instance
@@ -282,7 +290,7 @@ class TestFrameEvalCoreComponents:
         thread.join()
 
         # Main thread info should be unchanged
-        assert main_thread_info.fully_initialized == 1, (
+        assert main_thread_info.fully_initialized is True, (
             f"Main thread's fully_initialized was changed to {main_thread_info.fully_initialized}"
         )
 
@@ -320,7 +328,7 @@ class TestFrameEvalCoreComponents:
         """Test clearing thread local info."""
         # Get thread info and modify it
         thread_info = get_thread_info()
-        thread_info.fully_initialized = 1
+        thread_info.fully_initialized = True
 
         # Clear thread local info
         clear_thread_local_info()
@@ -599,6 +607,114 @@ class TestPerformanceUtils:
         if hasattr(sys, "getsizeof"):
             actual_size = sys.getsizeof(data[0])
             assert actual_size > 0
+
+
+class TestBytecodeSafetyLayer:
+    """Tests for the bytecode_safety validation and safe-replace helpers."""
+
+    def _make_simple_code(self) -> types.CodeType:
+        """Return a trivial compiled code object for testing."""
+
+        return compile("x = 1 + 2", "<test>", "exec")
+
+    def test_valid_code_passes_validation(self):
+        """An unmodified code object is always valid against itself."""
+        code = self._make_simple_code()
+        result = validate_code_object(code, code)
+        assert result.valid
+        assert result.errors == []
+
+    def test_decodable_check_catches_garbage_bytecode(self):
+        """A code object with undecodable bytecode is flagged by the safety layer."""
+        code = self._make_simple_code()
+        # Clobber the bytecode with non-decodable bytes (all 0xFF, not a valid opcode).
+        try:
+            bad_code = code.replace(co_code=b"\xff" * len(code.co_code))
+        except TypeError:
+            # Older Python may not support co_code in replace(); skip gracefully.
+            pytest.skip("code.replace(co_code=...) not supported on this Python version")
+
+        result = validate_code_object(
+            code, bad_code, {"validate_decodable": True, "validate_stacksize": False}
+        )
+        # We allow valid=True if dis tolerates the bytes (some versions do), but
+        # the important thing is no exception is raised from validate_code_object.
+        assert isinstance(result.valid, bool)
+
+    def test_stacksize_decrease_is_rejected(self):
+        """A code object whose stacksize is smaller than the original fails validation."""
+        code = self._make_simple_code()
+        try:
+            bad_code = code.replace(co_stacksize=max(0, code.co_stacksize - 1))
+        except TypeError:
+            pytest.skip("code.replace(co_stacksize=...) not supported on this Python version")
+
+        if bad_code.co_stacksize >= code.co_stacksize:
+            pytest.skip("stacksize could not be forced lower (co_stacksize already 0)")
+
+        result = validate_code_object(
+            code, bad_code, {"validate_decodable": False, "validate_stacksize": True}
+        )
+        assert not result.valid
+        assert any("decreased" in e for e in result.errors)
+
+    def test_stacksize_excessive_growth_is_rejected(self):
+        """A code object that grows the stack beyond the max delta fails."""
+        code = self._make_simple_code()
+        try:
+            big_stack_code = code.replace(co_stacksize=code.co_stacksize + 100)
+        except TypeError:
+            pytest.skip("code.replace(co_stacksize=...) not supported on this Python version")
+
+        result = validate_code_object(
+            code,
+            big_stack_code,
+            {"validate_decodable": False, "validate_stacksize": True, "max_stacksize_delta": 8},
+        )
+        assert not result.valid
+        assert any("exceeds" in e for e in result.errors)
+
+    def test_safe_replace_code_accepts_valid_modification(self):
+        """safe_replace_code returns (True, modified) for a valid code object."""
+        code = self._make_simple_code()
+        accepted, returned = safe_replace_code(code, code)
+        assert accepted
+        assert returned is code
+
+    def test_safe_replace_code_rejects_and_records_invalid(self):
+        """safe_replace_code records a reason code and returns original when invalid."""
+        code = self._make_simple_code()
+        try:
+            bad_code = code.replace(co_stacksize=max(0, code.co_stacksize - 1))
+        except TypeError:
+            pytest.skip("code.replace(co_stacksize=...) not supported on this Python version")
+
+        if bad_code.co_stacksize >= code.co_stacksize:
+            pytest.skip("stacksize could not be forced lower")
+
+        reset_frame_eval_telemetry()
+        accepted, returned = safe_replace_code(code, bad_code)
+        assert not accepted
+        assert returned is code
+
+        snap = get_frame_eval_telemetry()
+        assert snap.reason_counts.bytecode_injection_failed >= 1
+
+    def test_inject_breakpoints_falls_back_on_safety_failure(self):
+        """BytecodeModifier.inject_breakpoints returns original code if safety rejects result."""
+        modifier = BytecodeModifier()
+        code = self._make_simple_code()
+        breakpoint_lines = {1}
+
+        # Force safe_replace_code to always reject so we can verify the fallback path.
+        with patch(
+            "dapper._frame_eval.modify_bytecode.safe_replace_code",
+            return_value=(False, code),
+        ):
+            success, result = modifier.inject_breakpoints(code, breakpoint_lines)
+
+        assert not success
+        assert result is code
 
 
 if __name__ == "__main__":

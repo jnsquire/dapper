@@ -4,6 +4,7 @@
 import dis
 import sys
 import types
+from typing import cast
 import warnings
 
 # Third-party imports
@@ -16,6 +17,7 @@ pytestmark = pytest.mark.filterwarnings(
 
 # Local application imports
 from dapper._frame_eval import modify_bytecode as modify_bytecode_mod
+from dapper._frame_eval.modify_bytecode import BytecodeErrorInfo
 from dapper._frame_eval.modify_bytecode import BytecodeModifier
 from dapper._frame_eval.modify_bytecode import clear_bytecode_cache
 from dapper._frame_eval.modify_bytecode import get_bytecode_info
@@ -292,7 +294,8 @@ def test_rebuild_code_object_prefers_replace(
 
     monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", track_code_type_calls)
 
-    rebuilt = bytecode_modifier._rebuild_code_object(original_code, instructions)
+    accepted, rebuilt = bytecode_modifier._rebuild_code_object(original_code, instructions)
+    assert accepted
     assert isinstance(rebuilt, real_code_type)
 
 
@@ -412,7 +415,9 @@ def test_get_bytecode_info_error_path_reports_unknown_fields() -> None:
     class BrokenCode:
         pass
 
-    info = get_bytecode_info(BrokenCode())  # type: ignore[arg-type]
+    raw = get_bytecode_info(BrokenCode())  # type: ignore[arg-type]
+    # Narrow to BytecodeErrorInfo — the error path always includes the "error" key.
+    info = cast("BytecodeErrorInfo", raw)
     assert info["error"] == "Failed to analyze bytecode"
     assert info["filename"] == "unknown"
     assert info["name"] == "unknown"
@@ -443,7 +448,8 @@ def test_rebuild_code_object_fallback_when_replace_unavailable(
         co_lnotab = b""
 
         def co_lines(self):
-            return code.co_lines()
+            co_lines_fn = getattr(code, "co_lines", None)
+            return co_lines_fn() if co_lines_fn is not None else iter(())
 
     captured: dict[str, object] = {}
 
@@ -453,6 +459,9 @@ def test_rebuild_code_object_fallback_when_replace_unavailable(
 
     monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", fake_code_type)
 
-    rebuilt = bytecode_modifier._rebuild_code_object(FakeCode(), instructions)  # type: ignore[arg-type]
-    assert rebuilt == "rebuilt-fallback"
+    accepted, _rebuilt = bytecode_modifier._rebuild_code_object(FakeCode(), instructions)  # type: ignore[arg-type]
+    # The fake constructor was invoked (fallback path exercised).
     assert "args" in captured
+    # "rebuilt-fallback" is a str, not a CodeType; the safety layer rejects it
+    # and returns (False, original) rather than propagating a corrupt object.
+    assert not accepted

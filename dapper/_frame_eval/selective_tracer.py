@@ -20,6 +20,7 @@ from typing import TypedDict
 from dapper._frame_eval.cache_manager import get_breakpoints
 from dapper._frame_eval.cache_manager import invalidate_breakpoints
 from dapper._frame_eval.cache_manager import set_breakpoints
+from dapper._frame_eval.condition_evaluator import get_condition_evaluator
 
 
 class ThreadInfo(Protocol):
@@ -87,6 +88,25 @@ class TraceDecision(TypedDict):
     frame_info: FrameDebugInfo
 
 
+class _ConditionalBreakpointSpecRequired(TypedDict):
+    """Required keys for :class:`ConditionalBreakpointSpec`."""
+
+    lineno: int
+
+
+class ConditionalBreakpointSpec(_ConditionalBreakpointSpecRequired, total=False):
+    """Specification for a breakpoint, optionally with a condition expression.
+
+    Attributes:
+        lineno: Line number of the breakpoint (required).
+        condition: Optional Python expression.  When present the breakpoint
+            only triggers when the expression evaluates to a truthy value in
+            the frame's context.  ``None`` means unconditional.
+    """
+
+    condition: str | None
+
+
 class FrameTraceAnalyzer:
     """
     Analyzes frames to determine if they should be traced.
@@ -98,6 +118,8 @@ class FrameTraceAnalyzer:
     def __init__(self):
         self._analysis_cache = {}
         self._cache_lock = threading.RLock()
+        # Maps filename -> {lineno -> condition expression}
+        self._breakpoint_conditions: dict[str, dict[int, str]] = {}
         self._stats = {
             "total_frames": 0,
             "traced_frames": 0,
@@ -176,6 +198,16 @@ class FrameTraceAnalyzer:
 
         # Check for breakpoint on current line
         if lineno in file_breakpoints:
+            # Fast-path: evaluate condition before full dispatch.
+            condition = self._breakpoint_conditions.get(filename, {}).get(lineno)
+            if condition is not None:
+                result = get_condition_evaluator().evaluate(condition, frame)
+                if not result["passed"] and not result["fallback"]:
+                    return self._create_trace_decision(
+                        should_trace=False,
+                        reason="condition_not_met",
+                        frame_info=frame_info,
+                    )
             return self._create_trace_decision(
                 should_trace=True,
                 reason="breakpoint_on_line",
@@ -286,17 +318,33 @@ class FrameTraceAnalyzer:
             for key in keys_to_remove:
                 del self._analysis_cache[key]
 
+    def set_breakpoint_conditions(self, filename: str, conditions: dict[int, str | None]) -> None:
+        """Store condition expressions for breakpoints in *filename*.
+
+        Args:
+            filename: Absolute path of the source file.
+            conditions: Mapping of line number → condition expression.  A
+                value of ``None`` removes any existing condition for that line.
+        """
+        active = {ln: expr for ln, expr in conditions.items() if expr is not None}
+        with self._cache_lock:
+            if active:
+                self._breakpoint_conditions[filename] = active
+            else:
+                self._breakpoint_conditions.pop(filename, None)
+
     def invalidate_file(self, filename: str) -> None:
         """Invalidate cached breakpoint information for a file."""
         invalidate_breakpoints(filename)
 
-        # Clear analysis cache for this file
+        # Clear analysis cache and conditions for this file
         with self._cache_lock:
             keys_to_remove = [
                 key for key in self._analysis_cache if key.startswith(f"{filename}:")
             ]
             for key in keys_to_remove:
                 del self._analysis_cache[key]
+            self._breakpoint_conditions.pop(filename, None)
 
     def get_statistics(self) -> dict[str, Any]:
         """Get tracing statistics."""
@@ -458,6 +506,35 @@ class FrameTraceManager:
         with self._lock:
             self._global_breakpoints[filename] = set(breakpoints)
             self.dispatcher.update_breakpoints(filename, breakpoints)
+
+    def set_conditional_breakpoints(
+        self, filename: str, specs: list[ConditionalBreakpointSpec]
+    ) -> None:
+        """Set breakpoints with optional condition expressions for *filename*.
+
+        Unconditional breakpoints (``condition=None``) are treated identically
+        to plain breakpoints registered via :meth:`update_file_breakpoints`.
+        Conditional ones additionally store the expression so the
+        :class:`~dapper._frame_eval.condition_evaluator.ConditionEvaluator`
+        can gate dispatch.
+
+        Args:
+            filename: Absolute path of the source file.
+            specs: List of :class:`ConditionalBreakpointSpec` dicts, each
+                containing at least a ``lineno`` key and optionally a
+                ``condition`` key.
+        """
+        lines: set[int] = set()
+        conditions: dict[int, str | None] = {}
+        for spec in specs:
+            lineno = spec["lineno"]
+            lines.add(lineno)
+            conditions[lineno] = spec.get("condition")
+
+        with self._lock:
+            self._global_breakpoints[filename] = lines
+            self.dispatcher.update_breakpoints(filename, lines)
+            self.dispatcher.analyzer.set_breakpoint_conditions(filename, conditions)
 
     def update_all_breakpoints(self, breakpoint_map: dict[str, set[int]]) -> None:
         """Update breakpoints for all files."""

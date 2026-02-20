@@ -124,7 +124,7 @@ def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
         if sys.platform.startswith("win"):
             try:
                 prev_policy = asyncio.get_event_loop_policy()
-                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # type: ignore[attr-defined]
             except Exception:
                 prev_policy = None
 
@@ -234,7 +234,7 @@ def _force_stop_lingering_threads(timeout_seconds: float = 1.0) -> None:
 # fallback socketpair path and is sufficient for unit tests.
 if sys.platform.startswith("win"):
     try:
-        from asyncio import WindowsSelectorEventLoopPolicy
+        from asyncio import WindowsSelectorEventLoopPolicy  # type: ignore[attr-defined]
 
         asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
     except Exception:
