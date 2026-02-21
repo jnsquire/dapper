@@ -39,8 +39,8 @@ def request_handler(mock_server):
 @pytest.mark.asyncio
 async def test_configuration_done_handler_exists(request_handler):
     """Test that the configurationDone handler method exists."""
-    assert hasattr(request_handler, "_handle_configurationDone")
-    assert callable(request_handler._handle_configurationDone)
+    assert hasattr(request_handler, "_handle_configuration_done")
+    assert callable(request_handler._handle_configuration_done)
 
 
 @pytest.mark.asyncio
@@ -48,7 +48,7 @@ async def test_configuration_done_request_success(request_handler, mock_debugger
     """Test successful configurationDone request."""
     request = {"seq": 1, "type": "request", "command": "configurationDone"}
 
-    response = await request_handler._handle_configurationDone(request)
+    response = await request_handler._handle_configuration_done(request)
 
     # Verify debugger.configuration_done_request was called
     mock_debugger.configuration_done_request.assert_called_once()
@@ -68,7 +68,7 @@ async def test_configuration_done_request_error(request_handler, mock_debugger):
 
     request = {"seq": 2, "type": "request", "command": "configurationDone"}
 
-    response = await request_handler._handle_configurationDone(request)
+    response = await request_handler._handle_configuration_done(request)
 
     # Verify debugger.configuration_done_request was called
     mock_debugger.configuration_done_request.assert_called_once()

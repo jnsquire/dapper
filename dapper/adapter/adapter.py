@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Well-known default DAP port.  Used only when the caller provides no explicit
+# port; prefer port=0 (OS-assigned) in any context where the port is
+# negotiated at runtime.
+DEFAULT_DAP_PORT: int = 4711
+
 
 async def create_connection(
     connection_type: str,
@@ -38,7 +43,7 @@ async def create_connection(
         A ConnectionBase instance or None if the connection type is unknown.
     """
     if connection_type == "tcp":
-        return TCPServerConnection(host=host, port=port or 4711)
+        return TCPServerConnection(host=host, port=port if port is not None else DEFAULT_DAP_PORT)
     if connection_type == "pipe":
         if pipe_name is None:
             pipe_name = "dapper_debug_pipe"

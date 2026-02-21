@@ -23,16 +23,18 @@ class TCPServerConnection(ConnectionBase):
     the bound port needs to be known before clients connect.
     """
 
-    def __init__(self, host: str | None = None, port: int | None = None) -> None:
+    def __init__(self, host: str | None = None, port: int = 0) -> None:
         """Initialize the TCP server connection.
 
         Args:
             host: The host address to bind to. Defaults to localhost.
-            port: The port to bind to. Use 0 for an ephemeral port.
+            port: The port to bind to. Use 0 for an OS-assigned ephemeral
+                port (recommended). Pass an explicit port number only when
+                a fixed port is required (e.g. user-supplied configuration).
         """
         super().__init__()
         self.host = host or "localhost"
-        self.port = 4711 if port is None else port
+        self.port = port
         self.server: asyncio.Server | None = None
         self._client_connected: asyncio.Future[bool] | None = None
         self.use_binary = False  # Default to regular DAP protocol

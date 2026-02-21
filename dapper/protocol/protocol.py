@@ -56,15 +56,49 @@ class ProtocolFactory:
         with self._seq_lock:
             return next(self._seq_counter)
 
+    @overload
     def create_request(
         self, command: str, arguments: dict[str, Any] | None = None
-    ) -> GenericRequest:
+    ) -> GenericRequest: ...
+
+    @overload
+    def create_request(
+        self, command: str, arguments: dict[str, Any] | None = None, *, return_type: type[RequestT]
+    ) -> RequestT: ...
+
+    def create_request(
+        self,
+        command: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        return_type: type[RequestT] | None = None,
+    ) -> RequestT | GenericRequest:
         request_dict: dict[str, Any] = dict(seq=self._next_seq(), type="request")
         request_dict["command"] = command
         if arguments is not None:
             request_dict["arguments"] = arguments
+        result = cast("GenericRequest", request_dict)
+        return cast("RequestT", result) if return_type else result  # type: ignore[return-value]
 
-        return cast("GenericRequest", request_dict)
+    @overload
+    def create_response(
+        self,
+        request: GenericRequest,
+        success: bool,
+        body: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> GenericResponse: ...
+
+    @overload
+    def create_response(
+        self,
+        request: GenericRequest,
+        success: bool,
+        body: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        *,
+        return_type: type[ResponseT],
+    ) -> ResponseT: ...
 
     def create_response(
         self,
@@ -72,7 +106,9 @@ class ProtocolFactory:
         success: bool,
         body: dict[str, Any] | None = None,
         error_message: str | None = None,
-    ) -> GenericResponse:
+        *,
+        return_type: type[ResponseT] | None = None,
+    ) -> ResponseT | GenericResponse:
         # request is a TypedDict; access via plain dict for safety
         req = cast("dict[str, Any]", request)
 
@@ -90,19 +126,52 @@ class ProtocolFactory:
         if not success and error_message is not None:
             response_dict["message"] = error_message
 
-        return cast("GenericResponse", response_dict)
+        result = cast("GenericResponse", response_dict)
+        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
 
-    def create_error_response(self, request: GenericRequest, error_message: str) -> ErrorResponse:
+    @overload
+    def create_error_response(
+        self, request: GenericRequest, error_message: str
+    ) -> ErrorResponse: ...
+
+    @overload
+    def create_error_response(
+        self, request: GenericRequest, error_message: str, *, return_type: type[ResponseT]
+    ) -> ResponseT: ...
+
+    def create_error_response(
+        self,
+        request: GenericRequest,
+        error_message: str,
+        *,
+        return_type: type[ResponseT] | None = None,
+    ) -> ResponseT | ErrorResponse:
         error_body = {
             "error": "ProtocolError",
             "details": {
                 "command": request.get("command"),
             },
         }
-        response = self.create_response(request, False, error_body, error_message)
-        return cast("ErrorResponse", response)
+        result = self.create_response(request, False, error_body, error_message)
+        return cast("ResponseT", result) if return_type else cast("ErrorResponse", result)  # type: ignore[return-value]
 
-    def create_event(self, event_type: str, body: dict[str, Any] | None = None) -> GenericEvent:
+    @overload
+    def create_event(
+        self, event_type: str, body: dict[str, Any] | None = None
+    ) -> GenericEvent: ...
+
+    @overload
+    def create_event(
+        self, event_type: str, body: dict[str, Any] | None = None, *, return_type: type[EventT]
+    ) -> EventT: ...
+
+    def create_event(
+        self,
+        event_type: str,
+        body: dict[str, Any] | None = None,
+        *,
+        return_type: type[EventT] | None = None,
+    ) -> EventT | GenericEvent:
         event_dict: dict[str, Any] = {
             "seq": self._next_seq(),
             "type": "event",
@@ -112,7 +181,8 @@ class ProtocolFactory:
         if body is not None:
             event_dict["body"] = body
 
-        return cast("GenericEvent", event_dict)
+        result = cast("GenericEvent", event_dict)
+        return cast("EventT", result) if return_type else result  # type: ignore[return-value]
 
     # ---- Specialized request creators -------------------------------------
 
@@ -277,15 +347,7 @@ class ProtocolFactory:
         event = self.create_event("breakpoint", body)
         return cast("GenericEvent", event)
 
-
-class ProtocolHandler:
-    """
-    Handles parsing and construction of Debug Adapter Protocol messages.
-    """
-
-    def __init__(self):
-        # Creation responsibilities are moved to ProtocolFactory.
-        self._factory = ProtocolFactory(seq_start=1)
+    # ---- Message parsing --------------------------------------------------
 
     def parse_message(self, message_json: str):
         # -> Union[Request, Response, Event]:
@@ -360,175 +422,6 @@ class ProtocolHandler:
 
         return cast("GenericEvent", message)
 
-    @overload
-    def create_request(
-        self, command: str, arguments: dict[str, Any] | None = None
-    ) -> GenericRequest: ...
 
-    @overload
-    def create_request(
-        self, command: str, arguments: dict[str, Any] | None = None, *, return_type: type[RequestT]
-    ) -> RequestT: ...
-
-    def create_request(
-        self,
-        command: str,
-        arguments: dict[str, Any] | None = None,
-        *,
-        return_type: type[RequestT] | None = None,
-    ) -> RequestT | GenericRequest:
-        result = self._factory.create_request(command, arguments)
-        return cast("RequestT", result) if return_type else result  # type: ignore[return-value]
-
-    @overload
-    def create_response(
-        self,
-        request: GenericRequest,
-        success: bool,
-        body: dict[str, Any] | None = None,
-        error_message: str | None = None,
-    ) -> GenericResponse: ...
-
-    @overload
-    def create_response(
-        self,
-        request: GenericRequest,
-        success: bool,
-        body: dict[str, Any] | None = None,
-        error_message: str | None = None,
-        *,
-        return_type: type[ResponseT],
-    ) -> ResponseT: ...
-
-    def create_response(
-        self,
-        request: GenericRequest,
-        success: bool,
-        body: dict[str, Any] | None = None,
-        error_message: str | None = None,
-        *,
-        return_type: type[ResponseT] | None = None,
-    ) -> ResponseT | GenericResponse:
-        result = self._factory.create_response(request, success, body, error_message)
-        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
-
-    @overload
-    def create_error_response(
-        self, request: GenericRequest, error_message: str
-    ) -> ErrorResponse: ...
-
-    @overload
-    def create_error_response(
-        self, request: GenericRequest, error_message: str, *, return_type: type[ResponseT]
-    ) -> ResponseT: ...
-
-    def create_error_response(
-        self,
-        request: GenericRequest,
-        error_message: str,
-        *,
-        return_type: type[ResponseT] | None = None,
-    ) -> ResponseT | ErrorResponse:
-        result = self._factory.create_error_response(request, error_message)
-        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
-
-    @overload
-    def create_event(
-        self, event_type: str, body: dict[str, Any] | None = None
-    ) -> GenericEvent: ...
-
-    @overload
-    def create_event(
-        self, event_type: str, body: dict[str, Any] | None = None, *, return_type: type[EventT]
-    ) -> EventT: ...
-
-    def create_event(
-        self,
-        event_type: str,
-        body: dict[str, Any] | None = None,
-        *,
-        return_type: type[EventT] | None = None,
-    ) -> EventT | GenericEvent:
-        result = self._factory.create_event(event_type, body)
-        return cast("EventT", result) if return_type else result  # type: ignore[return-value]
-
-    # Specific request creation methods
-
-    def create_initialize_request(self, client_id: str, adapter_id: str) -> GenericRequest:
-        return self._factory.create_initialize_request(client_id, adapter_id)
-
-    def create_launch_request(
-        self, program: str, args: list | None = None, no_debug: bool = False
-    ) -> GenericRequest:
-        return self._factory.create_launch_request(program, args, no_debug)
-
-    def create_configuration_done_request(self) -> GenericRequest:
-        return self._factory.create_configuration_done_request()
-
-    def create_set_breakpoints_request(
-        self, source: dict[str, Any], breakpoints: list
-    ) -> GenericRequest:
-        return self._factory.create_set_breakpoints_request(source, breakpoints)
-
-    def create_continue_request(self, thread_id: int) -> GenericRequest:
-        return self._factory.create_continue_request(thread_id)
-
-    def create_next_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
-        return self._factory.create_next_request(thread_id, granularity)
-
-    def create_step_in_request(
-        self,
-        thread_id: int,
-        target_id: int | None = None,
-        granularity: str = "line",
-    ) -> GenericRequest:
-        return self._factory.create_step_in_request(thread_id, target_id, granularity)
-
-    def create_step_out_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
-        return self._factory.create_step_out_request(thread_id, granularity)
-
-    def create_threads_request(self) -> GenericRequest:
-        return self._factory.create_threads_request()
-
-    def create_stack_trace_request(
-        self, thread_id: int, start_frame: int = 0, levels: int = 20
-    ) -> GenericRequest:
-        return self._factory.create_stack_trace_request(thread_id, start_frame, levels)
-
-    def create_scopes_request(self, frame_id: int) -> GenericRequest:
-        return self._factory.create_scopes_request(frame_id)
-
-    def create_variables_request(self, variables_reference: int) -> GenericRequest:
-        return self._factory.create_variables_request(variables_reference)
-
-    def create_evaluate_request(
-        self, expression: str, frame_id: int | None = None
-    ) -> GenericRequest:
-        return self._factory.create_evaluate_request(expression, frame_id)
-
-    # Event creation methods
-
-    def create_initialized_event(self) -> GenericEvent:
-        return self._factory.create_initialized_event()
-
-    def create_stopped_event(
-        self, reason: str, thread_id: int, text: str | None = None
-    ) -> GenericEvent:
-        return self._factory.create_stopped_event(reason, thread_id, text)
-
-    def create_exited_event(self, exit_code: int) -> GenericEvent:
-        return self._factory.create_exited_event(exit_code)
-
-    def create_terminated_event(self, restart: bool = False) -> GenericEvent:
-        return self._factory.create_terminated_event(restart)
-
-    def create_thread_event(self, reason: str, thread_id: int) -> GenericEvent:
-        return self._factory.create_thread_event(reason, thread_id)
-
-    def create_output_event(self, output: str, category: str = "console") -> GenericEvent:
-        return self._factory.create_output_event(output, category)
-
-    def create_breakpoint_event(
-        self, reason: str, breakpoint_info: dict[str, Any]
-    ) -> GenericEvent:
-        return self._factory.create_breakpoint_event(reason, breakpoint_info)
+# Backward-compatible alias — all callers can continue using ProtocolHandler.
+ProtocolHandler = ProtocolFactory

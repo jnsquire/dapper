@@ -56,7 +56,7 @@ async def test_set_variable_request_success(request_handler, mock_debugger):
         },
     }
 
-    response = await request_handler._handle_setVariable(request)
+    response = await request_handler._handle_set_variable(request)
 
     # Verify debugger.set_variable was called
     mock_debugger.set_variable.assert_called_once_with(123, "myVar", "42")
@@ -87,7 +87,7 @@ async def test_set_variable_request_error(request_handler, mock_debugger):
         },
     }
 
-    response = await request_handler._handle_setVariable(request)
+    response = await request_handler._handle_set_variable(request)
 
     # Verify debugger.set_variable was called
     mock_debugger.set_variable.assert_called_once_with(999, "invalidVar", "test")

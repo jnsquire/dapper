@@ -12,7 +12,7 @@ from typing import cast
 from dapper.adapter.debugger.py_debugger import PyDebugger
 from dapper.adapter.debugger.py_debugger import _acquire_event_loop
 from dapper.adapter.request_handlers import RequestHandler
-from dapper.protocol.protocol import ProtocolHandler
+from dapper.protocol.protocol import ProtocolFactory
 
 if TYPE_CHECKING:
     from dapper.adapter.types import DAPRequest
@@ -42,7 +42,7 @@ class DebugAdapterServer:
         self._debugger = PyDebugger(self, self.loop)
         self.running = False
         self.sequence_number = 0
-        self.protocol_handler = ProtocolHandler()
+        self.protocol_handler = ProtocolFactory()
 
     @property
     def debugger(self):

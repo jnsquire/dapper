@@ -13,7 +13,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       Done: `ipc_manager.py` ✓, `payload_extractor.py` ✓.
       Removed: `reader_helpers.py` (file no longer exists).
 
-- [ ] **Add `tests/functional/__init__.py`**
+- [x] **Add `tests/functional/__init__.py`**
       Missing `__init__.py` can cause import issues in some pytest
       configurations.
 
@@ -21,7 +21,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
       `tests/conftest.py` L19–21 patches at module level; convert to a
       session-scoped fixture.
 
-- [ ] **Refactor `FakeDebugger` (480 lines) in `tests/mocks.py`**
+- [x] **Refactor `FakeDebugger` (480 lines) in `tests/mocks.py`**
       Consider splitting into smaller focused fakes or fixture factories so
       changes don't cascade across unrelated tests.
 
@@ -29,15 +29,15 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P8 — Minor / Low-Priority
 
-- [ ] **Remove hardcoded default port 4711 in `TCPServerConnection`**
+- [x] **Remove hardcoded default port 4711 in `TCPServerConnection`**
       Require explicit port configuration or use OS-assigned (`port=0`).
 
-- [ ] **Replace camelCase handler names with snake_case**
+- [x] **Replace camelCase handler names with snake_case**
       `_handle_configurationDone`, `_handle_setVariable`, etc. use camelCase
       with `# noqa: N802` suppressions. The dispatcher already converts case —
       rename to `_handle_configuration_done` etc.
 
-- [ ] **Collapse `ProtocolHandler` proxy into `ProtocolFactory`**
+- [x] **Collapse `ProtocolHandler` proxy into `ProtocolFactory`**
       `ProtocolHandler` delegates every method 1:1 — either merge or inherit.
 
 - [ ] **Remove `variable_command_runtime.py` indirection layer**

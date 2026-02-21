@@ -108,7 +108,8 @@ class RequestHandler:
         command = request["command"]
         handler_method = getattr(self, f"_handle_{command}", None)
         if handler_method is None:
-            # Attempt snake_case fallback for camelCase DAP commands (e.g. setBreakpoints -> set_breakpoints)
+            # DAP command names are camelCase (e.g. "configurationDone"); convert
+            # to snake_case so they match the handler method naming convention.
             snake = re.sub(r"(?<!^)([A-Z])", r"_\1", command).lower()
             handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
         return await handler_method(request)
@@ -375,7 +376,7 @@ class RequestHandler:
                 message=f"Restart failed: {e!s}",
             )
 
-    async def _handle_configurationDone(  # noqa: N802
+    async def _handle_configuration_done(
         self, request: ConfigurationDoneRequest
     ) -> ConfigurationDoneResponse:
         """Handle configurationDone request."""
@@ -666,9 +667,7 @@ class RequestHandler:
             body={"variables": variables},
         )
 
-    async def _handle_setVariable(  # noqa: N802
-        self, request: SetVariableRequest
-    ) -> SetVariableResponse:
+    async def _handle_set_variable(self, request: SetVariableRequest) -> SetVariableResponse:
         """Handle setVariable request."""
         try:
             args = request["arguments"]
@@ -698,7 +697,7 @@ class RequestHandler:
         result = await self.server.debugger.evaluate(expression, frame_id, context)
         return self._make_response(request, "evaluate", EvaluateResponse, body=result)
 
-    async def _handle_dataBreakpointInfo(  # noqa: N802
+    async def _handle_data_breakpoint_info(
         self, request: DataBreakpointInfoRequest
     ) -> DataBreakpointInfoResponse:
         """Handle dataBreakpointInfo request (subset: variable name + frameId)."""
@@ -718,7 +717,7 @@ class RequestHandler:
             request, "dataBreakpointInfo", DataBreakpointInfoResponse, body=body
         )
 
-    async def _handle_setDataBreakpoints(  # noqa: N802
+    async def _handle_set_data_breakpoints(
         self, request: SetDataBreakpointsRequest
     ) -> SetDataBreakpointsResponse:
         """Handle setDataBreakpoints request (full replace)."""
@@ -732,9 +731,7 @@ class RequestHandler:
             body={"breakpoints": results},
         )
 
-    async def _handle_exceptionInfo(  # noqa: N802
-        self, request: ExceptionInfoRequest
-    ) -> ExceptionInfoResponse:
+    async def _handle_exception_info(self, request: ExceptionInfoRequest) -> ExceptionInfoResponse:
         """Handle exceptionInfo request."""
         try:
             args = request["arguments"]

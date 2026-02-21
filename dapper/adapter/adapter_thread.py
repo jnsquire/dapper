@@ -31,6 +31,7 @@ import logging
 import threading
 from typing import Any
 
+from dapper.adapter.adapter import DEFAULT_DAP_PORT
 from dapper.adapter.server_core import DebugAdapterServer
 from dapper.core.breakpoints_controller import BreakpointController
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
@@ -57,7 +58,7 @@ class AdapterThread:
         self,
         connection_type: str,
         host: str = "localhost",
-        port: int | None = 4711,
+        port: int | None = DEFAULT_DAP_PORT,
         pipe_name: str | None = None,
     ) -> None:
         self.connection_type = connection_type
