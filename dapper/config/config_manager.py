@@ -6,6 +6,7 @@ access and configuration validation.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 import threading
 from typing import TYPE_CHECKING
@@ -52,12 +53,8 @@ class ConfigManager:
             if unknown_keys:
                 logger.warning("Ignoring unknown config key(s): %s", ", ".join(unknown_keys))
 
-            if "log_level" in kwargs:
-                current.log_level = kwargs["log_level"]
-            if "enable_metrics" in kwargs:
-                current.enable_metrics = kwargs["enable_metrics"]
-            if "timeout_seconds" in kwargs:
-                current.timeout_seconds = kwargs["timeout_seconds"]
+            valid_updates = {k: v for k, v in kwargs.items() if k in allowed_keys}
+            current = replace(current, **valid_updates)
 
             current.validate()
             self._assign_current_config(current)

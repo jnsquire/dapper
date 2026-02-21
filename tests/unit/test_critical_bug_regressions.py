@@ -64,14 +64,15 @@ class TestConfigManagerGlobal:
         assert get_config().log_level == "DEBUG"
 
     def test_update_config_persists(self) -> None:
-        """update_config should mutate the global config."""
+        """update_config should update the global config."""
         set_config(self._make_valid_config())
         original = get_config()
         update_config(log_level="WARNING")
         updated = get_config()
         assert updated.log_level == "WARNING"
-        # It should still be the same object (mutated in place)
-        assert updated is original
+        # dataclasses.replace produces a new object; original is unchanged
+        assert updated is not original
+        assert original.log_level == "INFO"
 
     def test_reset_config_restores_default(self) -> None:
         """reset_config should revert to DEFAULT_CONFIG."""
