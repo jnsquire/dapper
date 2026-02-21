@@ -27,6 +27,13 @@ class _PyDebuggerExecutionManager:
 
         self._debugger.stopped_event.clear()
 
+        # Invalidate the asyncio task snapshot so stale task references do not
+        # prevent garbage collection while the debuggee is running.
+        try:
+            self._debugger.task_registry.clear()
+        except Exception:
+            pass
+
         with self._debugger.lock:
             thread = self._debugger.get_thread(thread_id)
             if thread is not None:
@@ -43,6 +50,11 @@ class _PyDebuggerExecutionManager:
 
         self._debugger.stopped_event.clear()
 
+        try:
+            self._debugger.task_registry.clear()
+        except Exception:
+            pass
+
         if self._debugger._backend is not None:
             await self._debugger._backend.next_(thread_id)
 
@@ -52,6 +64,11 @@ class _PyDebuggerExecutionManager:
 
         self._debugger.stopped_event.clear()
 
+        try:
+            self._debugger.task_registry.clear()
+        except Exception:
+            pass
+
         if self._debugger._backend is not None:
             await self._debugger._backend.step_in(thread_id, target_id)
 
@@ -60,6 +77,11 @@ class _PyDebuggerExecutionManager:
             return
 
         self._debugger.stopped_event.clear()
+
+        try:
+            self._debugger.task_registry.clear()
+        except Exception:
+            pass
 
         if self._debugger._backend is not None:
             await self._debugger._backend.step_out(thread_id)
@@ -76,6 +98,16 @@ class _PyDebuggerExecutionManager:
         threads: list[Thread] = []
         for thread_id, thread in self._debugger.iter_threads():
             threads.append({"id": thread_id, "name": thread.name})
+
+        # Append asyncio task pseudo-threads from the task registry.
+        # snapshot_threads() re-enumerates live tasks and rebuilds the
+        # per-task stack-frame cache in one pass.
+        try:
+            task_threads = self._debugger.task_registry.snapshot_threads()
+            threads.extend(task_threads)
+        except Exception:
+            logger.debug("Error enumerating asyncio tasks for threads response", exc_info=True)
+
         return threads
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:

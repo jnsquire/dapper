@@ -663,6 +663,9 @@ async def test_get_threads(debugger):
 
     debugger.threads = {1: thread1, 2: thread2}
 
+    # Prevent asyncio tasks from the test environment leaking into results
+    debugger._task_registry.snapshot_threads = MagicMock(return_value=[])
+
     result = await debugger.get_threads()
 
     assert len(result) == 2

@@ -224,6 +224,57 @@ class ThreadTracker:
 
         return stack_frames
 
+    def build_frames_from_list(
+        self,
+        frames: list[types.FrameType | Any],
+    ) -> list[StackFrameDict]:
+        """Build DAP stack frame dicts from a pre-collected list of frame objects.
+
+        Unlike :meth:`build_stack_frames`, which starts from a single frame and
+        walks the ``f_back`` chain, this variant accepts an **already-collected**
+        ordered list so callers can supply their own traversal order (e.g. the
+        coroutine ``cr_await`` chain).
+
+        Each frame receives an allocated frame ID and is registered in the
+        tracker so that subsequent ``scopes`` / ``variables`` requests can
+        resolve it.
+
+        Args:
+            frames: Ordered list of frame objects.  The first element is
+                treated as the innermost (most-recent) frame, matching the
+                DAP stack-trace convention.
+
+        Returns:
+            List of DAP-style stack frame dicts, innermost first.
+        """
+        stack_frames: list[StackFrameDict] = []
+
+        for frame in frames:
+            try:
+                code = frame.f_code
+                filename = getattr(code, "co_filename", "<unknown>")
+                lineno = getattr(frame, "f_lineno", 0)
+                name = getattr(code, "co_name", "<unknown>") or "<unknown>"
+            except Exception:
+                continue
+
+            frame_id = self.allocate_frame_id()
+            self.register_frame(frame_id, frame)
+
+            stack_frame: StackFrameDict = StackFrameDict(
+                id=frame_id,
+                name=name,
+                line=lineno,
+                column=0,
+                source={
+                    "name": Path(filename).name if isinstance(filename, str) else str(filename),
+                    "path": filename,
+                },
+            )
+            stack_frames.append(stack_frame)
+
+        return stack_frames
+
     def clear(self) -> None:
         """Clear all thread and frame state."""
         self.threads.clear()

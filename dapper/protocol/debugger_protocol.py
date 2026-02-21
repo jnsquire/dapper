@@ -19,6 +19,9 @@ from typing import runtime_checkable
 if TYPE_CHECKING:
     import types
 
+    from dapper.protocol.structures import StackFrame as StackFrameDict
+    from dapper.protocol.structures import Thread
+
 
 class PresentationHint(TypedDict, total=False):
     kind: str
@@ -52,6 +55,50 @@ class ExceptionInfo(TypedDict):
     description: str
     breakMode: str
     details: ExceptionDetails
+
+
+class TaskRegistryLike(Protocol):
+    """Structural description of an asyncio task inspector registry.
+
+    Implementations expose live :class:`asyncio.Task` objects as DAP
+    pseudo-threads and build per-task coroutine stack-frame summaries.
+    """
+
+    def is_task_thread_id(self, thread_id: int) -> bool:
+        """Return ``True`` if *thread_id* was allocated for an asyncio task."""
+        ...
+
+    def snapshot_threads(self) -> list[Thread]:
+        """Re-enumerate all live tasks and return DAP Thread dicts."""
+        ...
+
+    def get_task_frames(
+        self,
+        pseudo_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
+    ) -> list[StackFrameDict]:
+        """Return DAP stack frames for the given task pseudo-thread."""
+        ...
+
+    def get_task_frame_count(self, pseudo_id: int) -> int:
+        """Return the total number of frames available for *pseudo_id*."""
+        ...
+
+    def clear(self) -> None:
+        """Reset all internal state."""
+        ...
+
+
+class SupportsTaskRegistry(Protocol):
+    """Debugger shape that exposes an asyncio task inspector registry.
+
+    The ``task_registry`` attribute may be ``None`` for debugger
+    implementations that do not support asyncio task inspection (e.g. the
+    synchronous BDB-based in-process debugger).
+    """
+
+    task_registry: TaskRegistryLike | None
 
 
 class VariableStoreLike(Protocol):
@@ -187,6 +234,7 @@ class DebuggerLike(
     SupportsDataBreakpointState,
     SupportsVariableFactory,
     SupportsBreakpointCommands,
+    SupportsTaskRegistry,
     Protocol,
 ):
     """Public debugger typing surface for shared helpers and command plumbing.
@@ -230,9 +278,11 @@ __all__ = [
     "SupportsBreakpointCommands",
     "SupportsDataBreakpointState",
     "SupportsSteppingCommands",
+    "SupportsTaskRegistry",
     "SupportsThreadTracker",
     "SupportsVariableFactory",
     "SupportsVariableManager",
+    "TaskRegistryLike",
     "ThreadTrackerLike",
     "VariableStoreLike",
 ]

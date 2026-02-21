@@ -115,6 +115,15 @@ class _PyDebuggerStateManager:
         self, thread_id: int, start_frame: int = 0, levels: int = 0
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
+        # Check whether this is an asyncio task pseudo-thread managed by the
+        # task registry.  If so, serve the pre-built coroutine frames directly
+        # without forwarding to the backend (which has no knowledge of them).
+        task_registry = self._debugger.task_registry
+        if task_registry is not None and task_registry.is_task_thread_id(thread_id):
+            frames = task_registry.get_task_frames(thread_id, start_frame, levels)
+            total = task_registry.get_task_frame_count(thread_id)
+            return {"stackFrames": frames, "totalFrames": total}
+
         backend = self._debugger.get_active_backend()
         if backend is not None:
             result = await backend.get_stack_trace(thread_id, start_frame, levels)

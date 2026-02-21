@@ -26,6 +26,7 @@ from dapper.adapter.debugger.session import _PyDebuggerSessionFacade
 from dapper.adapter.debugger.session_compat import _PyDebuggerSessionCompatMixin
 from dapper.adapter.debugger.state import _PyDebuggerStateManager
 from dapper.adapter.source_tracker import LoadedSourceTracker
+from dapper.core.asyncio_task_inspector import AsyncioTaskRegistry
 from dapper.core.breakpoint_manager import BreakpointManager
 from dapper.core.variable_manager import VariableManager
 from dapper.ipc.ipc_manager import IPCManager
@@ -302,6 +303,20 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
 
         self.var_manager = self.variable_manager
         self.bp_manager = self.breakpoint_manager
+
+        # Asyncio task inspector — exposes live tasks as pseudo-threads.
+        self._task_registry: AsyncioTaskRegistry = AsyncioTaskRegistry()
+
+    @property
+    def task_registry(self) -> AsyncioTaskRegistry:
+        """Return the asyncio task inspector registry for this session.
+
+        Exposes live :class:`asyncio.Task` objects as DAP pseudo-threads and
+        provides pre-built coroutine stack-frame summaries for each task.
+        The registry is rebuilt on every ``threads`` request and cleared
+        automatically when execution resumes.
+        """
+        return self._task_registry
 
     def get_data_watch_keys(self) -> list[str]:
         """Return a snapshot of data-watch keys."""

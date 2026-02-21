@@ -15,7 +15,7 @@ Legend
 - [x] **Async-aware stepping** — `step over` an `await` expression should
       suspend at the next await suspension point rather than diving into event
       loop internals.
-- [ ] **asyncio task inspector** — expose all live `asyncio.Task` objects as
+- [x] **asyncio task inspector** — expose all live `asyncio.Task` objects as
       pseudo-threads; show their coroutine call chains as stack frames in the
       DAP stack trace view.
 - [x] **Thread name propagation** — surface `threading.Thread.name` in the
