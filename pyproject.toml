@@ -157,7 +157,7 @@ max-args = 10
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use magic values, assertions, and imports
-"tests/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "INP001"]
+"tests/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "INP001", "ARG001", "ARG005"]
 "testing/**/*" = ["PLR2004", "S101", "TID252", "SLF001", "TRY300", "PLR0911", "PERF203", "INP001"]
 # Examples can be more lenient
 "examples/**/*" = ["INP001", "T201"]

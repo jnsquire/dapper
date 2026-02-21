@@ -13,6 +13,9 @@ from typing import Any
 from typing import Literal
 from typing import Union
 
+from dapper.core.structured_model import get_model_fields
+from dapper.core.structured_model import is_structured_model
+from dapper.core.structured_model import structured_model_label
 from dapper.protocol.debugger_protocol import PresentationHint
 from dapper.protocol.debugger_protocol import Variable as VariableDict
 
@@ -161,6 +164,13 @@ class VariableManager:
         type_name = type(value).__name__
         kind, attrs = self._detect_kind_and_attrs(value, max_string_length)
 
+        # For structured models, use a descriptive type label and record the
+        # number of named fields so DAP clients can render the count badge.
+        named_variables: int | None = None
+        if is_structured_model(value):
+            type_name = structured_model_label(value)
+            named_variables = len(get_model_fields(value))
+
         # Check for data breakpoint
         if data_bp_state is not None:
             name_str = str(name)
@@ -177,13 +187,16 @@ class VariableManager:
             visibility=self._get_visibility(name),
         )
 
-        return VariableDict(
+        result = VariableDict(
             name=str(name),
             value=val_str,
             type=type_name,
             variablesReference=var_ref,
             presentationHint=presentation,
         )
+        if named_variables is not None:
+            result["namedVariables"] = named_variables
+        return result
 
     def _format_value(self, value: Any, max_length: int) -> str:
         """Format a value for display."""

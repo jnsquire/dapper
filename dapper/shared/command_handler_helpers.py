@@ -8,6 +8,8 @@ from typing import Protocol
 from typing import TypedDict
 from typing import cast
 
+from dapper.core.structured_model import get_model_fields
+from dapper.core.structured_model import is_structured_model
 from dapper.protocol.debugger_protocol import DebuggerLike
 
 Payload = dict[str, Any]
@@ -209,6 +211,14 @@ def resolve_variables_for_reference(  # noqa: PLR0912
             elif isinstance(parent_obj, list):
                 for idx, val in enumerate(parent_obj):
                     vars_out.append(make_variable_fn(dbg, str(idx), val, None))
+            elif is_structured_model(parent_obj):
+                for field_name, field_val in get_model_fields(parent_obj):
+                    var = make_variable_fn(dbg, field_name, field_val, None)
+                    # Mark each declared field as a "property" in the UI
+                    hint = var.get("presentationHint")
+                    if isinstance(hint, dict):
+                        hint["kind"] = "property"
+                    vars_out.append(var)
             else:
                 for name in dir(parent_obj):
                     if name.startswith("_"):
@@ -440,9 +450,18 @@ def extract_variables(
             variables.append(_create_variable_object(key, val))
         return
 
-    if isinstance(parent, (list, tuple)):
+    if isinstance(parent, (list, tuple)) and not is_structured_model(parent):
         for i, val in enumerate(parent):
             variables.append(_create_variable_object(str(i), val))
+        return
+
+    if is_structured_model(parent):
+        for field_name, field_val in get_model_fields(parent):
+            var = _create_variable_object(field_name, field_val)
+            hint = var.get("presentationHint")
+            if isinstance(hint, dict):
+                hint["kind"] = "property"
+            variables.append(var)
         return
 
     for attr in dir(parent):

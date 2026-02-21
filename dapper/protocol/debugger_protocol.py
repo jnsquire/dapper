@@ -30,12 +30,23 @@ class PresentationHint(TypedDict, total=False):
     lazy: bool
 
 
-class Variable(TypedDict):
+class _VariableRequired(TypedDict):
     name: str
     value: str
     type: str
     variablesReference: int
     presentationHint: PresentationHint
+
+
+class Variable(_VariableRequired, total=False):
+    """Variable object returned by the debugger.
+
+    Required keys: name, value, type, variablesReference, presentationHint.
+    Optional keys: namedVariables, indexedVariables.
+    """
+
+    namedVariables: int
+    indexedVariables: int
 
 
 class ExceptionDetails(TypedDict):

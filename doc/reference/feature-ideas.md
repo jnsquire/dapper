@@ -26,7 +26,7 @@ Legend
 
 ## 2. Rich Variable Presentation
 
-- [ ] **Dataclass / namedtuple / Pydantic model rendering** — show fields by
+- [x] **Dataclass / namedtuple / Pydantic model rendering** — show fields by
       name, suppress internal `__` attributes, and use `presentationHint` to
       distinguish field types.
 - [ ] **numpy / pandas / torch tensor summaries** — show shape, dtype, and a
@@ -170,7 +170,7 @@ Legend
 | # | Area | User Impact | Estimated Effort |
 |---|------|-------------|-----------------|
 | 1 | Async task inspector | Very High | Medium |
-| 2 | Rich variable presentation (dataclass / numpy) | High | Low–Medium |
+| 2 | ~~Rich variable presentation (dataclass / namedtuple / Pydantic)~~ ✅ / numpy pending | High | Low–Medium |
 | 5 | Expression watchpoints | High | Low (frame-eval infra exists) |
 | 11 | Exception type filtering / "just my code" | High | Medium |
 | 4 | Hot code reloading | High | High |

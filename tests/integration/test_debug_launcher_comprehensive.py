@@ -261,12 +261,12 @@ def test_handle_set_breakpoints_failure(monkeypatch):
 
     # Create a mock function that will replace set_break
     def mock_set_break(
-        self,  # noqa: ARG001
-        filename: str,  # noqa: ARG001
-        lineno: int,  # noqa: ARG001
-        temporary: bool = False,  # noqa: ARG001
-        cond: Any | None = None,  # noqa: ARG001
-        funcname: str | None = None,  # noqa: ARG001
+        self,
+        filename: str,
+        lineno: int,
+        temporary: bool = False,
+        cond: Any | None = None,
+        funcname: str | None = None,
     ) -> Any | None:
         # This mock always returns False to simulate a failed breakpoint set
         return False
@@ -295,7 +295,7 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
     _s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Mock set_break to raise an exception using monkeypatch
-    def mock_set_break(self, filename, lineno, temporary=False, cond=None, funcname=None):  # noqa: ARG001
+    def mock_set_break(self, filename, lineno, temporary=False, cond=None, funcname=None):
         raise ValueError("Test error")
 
     monkeypatch.setattr(dbg, "set_break", mock_set_break.__get__(dbg, DebuggerBDB))

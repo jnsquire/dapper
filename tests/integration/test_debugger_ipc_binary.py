@@ -32,7 +32,7 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
     # Capture the debug command that would be used to start the debuggee
     captured_args: list[list[str]] = []
 
-    def _capture_start(self: PyDebugger, debug_args: list[str]) -> None:  # type: ignore[override]  # noqa: ARG001
+    def _capture_start(self: PyDebugger, debug_args: list[str]) -> None:  # type: ignore[override]
         captured_args.append(list(debug_args))
 
     loop = asyncio.get_event_loop()
