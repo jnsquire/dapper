@@ -53,4 +53,4 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ---
 
-*Generated: 2026-02-16 — based on review of all modules, tests, CI config, and packaging files.*
+*Generated: 2026-02-16 — based on review of all modules, tests, CI config, and packaging files. Last updated: 2026-02-20.*

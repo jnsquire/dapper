@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 from typing import Protocol
 
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
+
+# Code-flag constants for coroutine and async-generator functions (Python 3.5+).
+_CO_COROUTINE: int = inspect.CO_COROUTINE
+_CO_ASYNC_GENERATOR: int = inspect.CO_ASYNC_GENERATOR
+
+
+def _frame_is_coroutine(frame: object) -> bool:
+    """Return True if *frame* belongs to a coroutine or async-generator function."""
+    try:
+        flags: int = frame.f_code.co_flags  # type: ignore[union-attr]
+        return bool(flags & (_CO_COROUTINE | _CO_ASYNC_GENERATOR))
+    except AttributeError:
+        return False
+
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -49,6 +64,8 @@ def handle_next_impl(
     if dbg and thread_id == get_thread_ident():
         set_dbg_stepping_flag(dbg)
         if dbg.stepping_controller.current_frame is not None:
+            if _frame_is_coroutine(dbg.stepping_controller.current_frame):
+                dbg.stepping_controller.set_async_step_over()
             dbg.set_next(dbg.stepping_controller.current_frame)
 
 
@@ -64,6 +81,10 @@ def handle_step_in_impl(
 
     if dbg and thread_id == get_thread_ident():
         set_dbg_stepping_flag(dbg)
+        if dbg.stepping_controller.current_frame is not None and _frame_is_coroutine(
+            dbg.stepping_controller.current_frame
+        ):
+            dbg.stepping_controller.set_async_step_over()
         dbg.set_step()
 
 

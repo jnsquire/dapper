@@ -24,6 +24,7 @@ Legend
 - ✅ Next (step over)
 - ✅ Step In
 - ✅ Step Out
+- 🟡 Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`)
 - ❌ Reverse Continue (reverse debugging)
 - ❌ Step granularity (instruction-level stepping)
 
@@ -57,7 +58,7 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 
 ### Threads & frames
 - ✅ Threads listing and basic metadata
-- ❌ Dynamic thread names (improvements possible)
+- ✅ Dynamic thread names (live names read from `threading.enumerate()` at query time)
 - ✅ Stack traces (frames, locations, ids)
 - ❌ Source references for non-filesystem sources (e.g., generated content)
 
@@ -113,7 +114,7 @@ Phase 3 — advanced features (future)
 
 ---
 
-*Last updated: 2025-11-30*
+*Last updated: 2026-02-20*
 
 This document outlines the Debug Adapter Protocol (DAP) features implemented in Dapper, organized by category.
 
@@ -333,6 +334,6 @@ Current test coverage for debugger features:
 
 ---
 
-*Last updated: November 30, 2025*
+*Last updated: February 20, 2026*
 *Coverage data: 56% overall, 64% debugger module*
 

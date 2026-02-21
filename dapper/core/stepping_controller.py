@@ -53,6 +53,10 @@ class SteppingController:
     stepping: bool = False
     stop_on_entry: bool = False
     current_frame: types.FrameType | None = None
+    # When True, user_line will skip event-loop internal frames (asyncio, etc.)
+    # and wait for the coroutine to resume in user code.  Set automatically
+    # when "next" or "stepIn" is requested while stopped inside a coroutine frame.
+    async_step_over: bool = False
 
     def is_stepping(self) -> bool:
         """Check if currently in stepping mode."""
@@ -106,11 +110,22 @@ class SteppingController:
 
         return reason
 
+    def set_async_step_over(self, value: bool = True) -> None:
+        """Enable or disable async-step-over mode.
+
+        When enabled, ``user_line`` in DebuggerBDB will silently continue
+        through asyncio / concurrent.futures frames so that "step over" and
+        "step into" applied to an ``await`` expression land in user code
+        rather than the event-loop internals.
+        """
+        self.async_step_over = value
+
     def clear(self) -> None:
         """Clear all stepping state."""
         self.stepping = False
         self.stop_on_entry = False
         self.current_frame = None
+        self.async_step_over = False
 
     def request_step(self) -> None:
         """Request a step operation (step into).

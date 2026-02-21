@@ -12,7 +12,7 @@ Legend
 
 ## 1. Async / Concurrency Awareness
 
-- [ ] **Async-aware stepping** — `step over` an `await` expression should
+- [x] **Async-aware stepping** — `step over` an `await` expression should
       suspend at the next await suspension point rather than diving into event
       loop internals.
 - [ ] **asyncio task inspector** — expose all live `asyncio.Task` objects as

@@ -38,6 +38,17 @@ except ImportError:  # pragma: no cover - optional integration
 
 logger = logging.getLogger(__name__)
 
+# Filename substrings that identify asyncio / event-loop internal frames.
+# Normalise to forward slashes so the check works identically on Windows and
+# POSIX without importing `os` at module level for this one purpose.
+_EVENT_LOOP_PATH_MARKERS = ("/asyncio/", "/concurrent/futures/")
+
+
+def _is_event_loop_frame(frame: types.FrameType) -> bool:
+    """Return True if *frame* is inside asyncio or concurrent.futures internals."""
+    filename = frame.f_code.co_filename.replace("\\", "/")
+    return any(marker in filename for marker in _EVENT_LOOP_PATH_MARKERS)
+
 
 def _noop_send_message(*args, **kwargs):
     pass
@@ -273,6 +284,18 @@ class DebuggerBDB(bdb.Bdb):
         self.send_message("stopped", **event_args)
 
     def user_line(self, frame: types.FrameType) -> None:
+        # Async-aware stepping: when we're stepping over/into an await expression
+        # the event loop resumes before the user coroutine does.  Skip any
+        # internal asyncio / concurrent.futures frames so the debugger stops at
+        # the next line of *user* code instead of inside the event loop.
+        if self.stepping_controller.async_step_over and _is_event_loop_frame(frame):
+            self.set_continue()
+            return
+
+        # Arriving at user code — clear the flag so subsequent steps are
+        # unaffected regardless of whether the frame is a coroutine.
+        self.stepping_controller.async_step_over = False
+
         filename = frame.f_code.co_filename
         line = frame.f_lineno
         thread_id = threading.get_ident()
