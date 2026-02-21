@@ -17,14 +17,10 @@ from typing import cast
 if TYPE_CHECKING:
     from dapper.core.inprocess_debugger import InProcessDebugger
     from dapper.protocol.requests import CompletionsResponseBody
-    from dapper.protocol.requests import ContinueResponseBody
-    from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.requests import SetVariableResponseBody
-    from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Breakpoint
-    from dapper.protocol.structures import SourceBreakpoint
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +63,20 @@ class InProcessBridge:
         self._inproc.on_exited.add_listener(self._handle_exited)
         self._inproc.on_output.add_listener(self._handle_output)
 
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute lookup to the underlying InProcessDebugger.
+
+        Pure pass-through methods (e.g. ``continue_``, ``next_``,
+        ``step_in``, ``step_out``, ``stack_trace``, ``evaluate``,
+        ``set_breakpoints``) are handled transparently here so the
+        bridge only defines methods that add logic beyond the raw call.
+        """
+        # Guard against infinite recursion if _inproc is not yet set
+        # (can happen during unpickling or accidental early access).
+        if name == "_inproc":
+            raise AttributeError(name)
+        return getattr(self._inproc, name)
+
     @property
     def debugger(self) -> InProcessDebugger:
         """Access the underlying InProcessDebugger."""
@@ -106,10 +116,6 @@ class InProcessBridge:
     # ------------------------------------------------------------------
     # Breakpoint operations
     # ------------------------------------------------------------------
-    def set_breakpoints(self, path: str, breakpoints: list[SourceBreakpoint]) -> list[Breakpoint]:
-        """Set line breakpoints for a file."""
-        return self._inproc.set_breakpoints(path, breakpoints)
-
     def set_function_breakpoints(
         self, breakpoints: list[FunctionBreakpoint]
     ) -> list[FunctionBreakpoint]:
@@ -121,39 +127,8 @@ class InProcessBridge:
         return list(self._inproc.set_exception_breakpoints(filters))
 
     # ------------------------------------------------------------------
-    # Execution control
-    # ------------------------------------------------------------------
-    def continue_(self, thread_id: int) -> ContinueResponseBody:
-        """Continue execution."""
-        return self._inproc.continue_(thread_id)
-
-    def next_(self, thread_id: int, *, granularity: str = "line") -> None:
-        """Step over."""
-        self._inproc.next_(thread_id, granularity=granularity)
-
-    def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
-    ) -> None:
-        """Step into.
-
-        Note: target_id is accepted for API compatibility but not yet
-        used by InProcessDebugger.
-        """
-        self._inproc.step_in(thread_id, target_id, granularity=granularity)
-
-    def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
-        """Step out."""
-        self._inproc.step_out(thread_id, granularity=granularity)
-
-    # ------------------------------------------------------------------
     # Inspection operations
     # ------------------------------------------------------------------
-    def stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
-    ) -> StackTraceResponseBody:
-        """Get stack trace for a thread."""
-        return self._inproc.stack_trace(thread_id, start_frame, levels)
-
     def variables(
         self,
         variables_reference: int,
@@ -177,12 +152,6 @@ class InProcessBridge:
     def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
         return cast("SetVariableResponseBody", self._inproc.set_variable(var_ref, name, value))
-
-    def evaluate(
-        self, expression: str, frame_id: int | None = None, context: str | None = None
-    ) -> EvaluateResponseBody:
-        """Evaluate an expression."""
-        return self._inproc.evaluate(expression, frame_id, context)
 
     def completions(
         self,

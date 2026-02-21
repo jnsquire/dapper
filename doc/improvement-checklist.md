@@ -7,11 +7,12 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 
 ## P7 — Test Quality
 
-- [ ] **Add dedicated tests for untested modules**
-      Remaining: `error_patterns.py`, `stack_handlers.py`,
-      `variable_command_runtime.py`, `breakpoint_handlers.py`.
-      Done: `ipc_manager.py` ✓, `payload_extractor.py` ✓.
-      Removed: `reader_helpers.py` (file no longer exists).
+- [x] **Add dedicated tests for untested modules**
+      Done: `ipc_manager.py` ✓, `payload_extractor.py` ✓,
+      `error_patterns.py` ✓, `stack_handlers.py` ✓,
+      `breakpoint_handlers.py` ✓.
+      Removed: `reader_helpers.py` (file no longer exists),
+      `variable_command_runtime.py` (removed as P8 indirection cleanup).
 
 - [x] **Add `tests/functional/__init__.py`**
       Missing `__init__.py` can cause import issues in some pytest
@@ -43,7 +44,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 - [x] **Remove `variable_command_runtime.py` indirection layer**
       Functions are trivial pass-throughs adding no value.
 
-- [ ] **Consider `__getattr__` delegation on `InProcessBridge`**
+- [x] **Consider `__getattr__` delegation on `InProcessBridge`**
       15+ one-line pass-through methods could be replaced with attribute
       delegation, keeping only the event-isolation logic explicit.
 

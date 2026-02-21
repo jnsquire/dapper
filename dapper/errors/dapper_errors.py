@@ -140,13 +140,17 @@ class BackendError(DapperError):
         message: str,
         *,
         backend_type: str | None = None,
+        operation: str | None = None,
         **kwargs: Any,
     ) -> None:
         details = kwargs.pop("details", {})
         if backend_type:
             details["backend_type"] = backend_type
+        if operation:
+            details["operation"] = operation
         super().__init__(message, error_code="BackendError", details=details, **kwargs)
         self.backend_type = backend_type
+        self.operation = operation
 
 
 class DapperTimeoutError(DapperError):
