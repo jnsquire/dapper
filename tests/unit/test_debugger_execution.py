@@ -111,7 +111,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
         await self.debugger.next(1)
 
         # Should call the backend's next_ method
-        mock_backend.next_.assert_called_once_with(1)
+        mock_backend.next_.assert_called_once_with(1, granularity="line")
 
     async def test_step_in(self):
         """Test stepping into function"""
@@ -126,7 +126,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
         await self.debugger.step_in(1)
 
         # Should call the backend's step_in method with thread_id and target_id
-        mock_backend.step_in.assert_called_once_with(1, None)
+        mock_backend.step_in.assert_called_once_with(1, None, granularity="line")
 
     async def test_step_out(self):
         """Test stepping out of function"""
@@ -141,7 +141,7 @@ class TestDebuggerExecution(BaseDebuggerTest):
         await self.debugger.step_out(1)
 
         # Should call the backend's step_out method
-        mock_backend.step_out.assert_called_once_with(1)
+        mock_backend.step_out.assert_called_once_with(1, granularity="line")
 
     async def test_pause(self):
         """Test pausing execution"""

@@ -154,6 +154,54 @@ class ProtocolFactory:
         request = self.create_request("continue", args)
         return cast("GenericRequest", request)
 
+    def create_next_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
+        """Create a DAP ``next`` (step-over) request.
+
+        Args:
+            thread_id: The thread to step.
+            granularity: DAP stepGranularity — ``"line"``, ``"statement"``, or
+                ``"instruction"`` (default ``"line"``).
+        """
+        args: dict[str, Any] = {"threadId": thread_id}
+        if granularity != "line":
+            args["granularity"] = granularity
+        request = self.create_request("next", args)
+        return cast("GenericRequest", request)
+
+    def create_step_in_request(
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        granularity: str = "line",
+    ) -> GenericRequest:
+        """Create a DAP ``stepIn`` request.
+
+        Args:
+            thread_id: The thread to step into.
+            target_id: Optional step-in target from ``stepInTargets``.
+            granularity: DAP stepGranularity (default ``"line"``).
+        """
+        args: dict[str, Any] = {"threadId": thread_id}
+        if target_id is not None:
+            args["targetId"] = target_id
+        if granularity != "line":
+            args["granularity"] = granularity
+        request = self.create_request("stepIn", args)
+        return cast("GenericRequest", request)
+
+    def create_step_out_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
+        """Create a DAP ``stepOut`` request.
+
+        Args:
+            thread_id: The thread to step out from.
+            granularity: DAP stepGranularity (default ``"line"``).
+        """
+        args: dict[str, Any] = {"threadId": thread_id}
+        if granularity != "line":
+            args["granularity"] = granularity
+        request = self.create_request("stepOut", args)
+        return cast("GenericRequest", request)
+
     def create_threads_request(self) -> GenericRequest:
         request = self.create_request("threads")
         return cast("GenericRequest", request)
@@ -424,6 +472,20 @@ class ProtocolHandler:
 
     def create_continue_request(self, thread_id: int) -> GenericRequest:
         return self._factory.create_continue_request(thread_id)
+
+    def create_next_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
+        return self._factory.create_next_request(thread_id, granularity)
+
+    def create_step_in_request(
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        granularity: str = "line",
+    ) -> GenericRequest:
+        return self._factory.create_step_in_request(thread_id, target_id, granularity)
+
+    def create_step_out_request(self, thread_id: int, granularity: str = "line") -> GenericRequest:
+        return self._factory.create_step_out_request(thread_id, granularity)
 
     def create_threads_request(self) -> GenericRequest:
         return self._factory.create_threads_request()

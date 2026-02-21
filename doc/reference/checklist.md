@@ -26,7 +26,7 @@ Legend
 - ✅ Step Out
 - ✅ Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`); see [Async Debugging reference](async-debugging.md)
 - ❌ Reverse Continue (reverse debugging)
-- ❌ Step granularity (instruction-level stepping)
+- ✅ Step granularity (instruction-level stepping) — `StepGranularity` enum; `line`/`statement`/`instruction` forwarded end-to-end; `user_opcode` + `f_trace_opcodes` for instruction stepping
 
 ---
 
@@ -133,7 +133,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 ### Program Control
 ### Execution Control
 - ❌ **Reverse Continue**: Continue backwards in execution
-- ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
+- ✅ **Step Granularity**: Control stepping granularity (statement/line/instruction) — DAP `granularity` field threaded from request handlers through all backends; `INSTRUCTION` mode uses `f_trace_opcodes`/`user_opcode`
   - Supports stop-on-entry
  - ✅ **Hit Conditions**: Break after N hits (implemented via BreakpointResolver)
  - ✅ **Log Points**: Log messages without stopping (implemented; see [Breakpoints Controller](../architecture/breakpoints_controller.md))
@@ -150,7 +150,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 ### Phase 1: Complete Basic Features (Current Priority)
 - Implement attach, restart (completed)
 - ✅ Expression evaluation with completions implemented. See [Frame Evaluation user guide](../getting-started/frame-eval/index.md) and [implementation notes](../architecture/frame-eval/implementation.md).
-- ❌ **Step Granularity**: Control stepping granularity (statement/line/instruction)
+- ✅ **Step Granularity**: Control stepping granularity (statement/line/instruction) — implemented in `SteppingController`, `DebuggerBDB.user_opcode`, and full adapter/backend chain
 ### Phase 2: Enhanced Debugging Experience (in-progress)
 - Complete source code requests & navigation (source content requests, goto targets, source references) — basic source requests are implemented; see `source`/`moduleSource` handling and related tests, and the [Breakpoints Controller](../architecture/breakpoints_controller.md) for navigation helpers.
 - ✅ Add expression completions / auto-complete (implemented)
@@ -296,7 +296,7 @@ Many of the essential DAP features are implemented and covered by tests (program
 
 ### Low Priority (Advanced features)
 1. **Reverse Debugging** - Step back, reverse continue
-2. **Step Granularity** - Fine-grained stepping control
+2. ~~**Step Granularity** - Fine-grained stepping control~~ ✅
 
 ---
 

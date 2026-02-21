@@ -292,8 +292,10 @@ class RequestHandler:
 
     async def _handle_next(self, request: NextRequest) -> NextResponse:
         """Handle next request."""
-        thread_id = request["arguments"]["threadId"]
-        await self.server.debugger.next(thread_id)
+        args = request["arguments"]
+        thread_id = args["threadId"]
+        granularity: str = args.get("granularity") or "line"
+        await self.server.debugger.next(thread_id, granularity=granularity)
         return self._make_response(request, "next", NextResponse)
 
     async def _handle_step_in(self, request: StepInRequest) -> StepInResponse:
@@ -301,13 +303,16 @@ class RequestHandler:
         args = request["arguments"]
         thread_id = args["threadId"]
         target_id = args.get("targetId")
-        await self.server.debugger.step_in(thread_id, target_id)
+        granularity: str = args.get("granularity") or "line"
+        await self.server.debugger.step_in(thread_id, target_id, granularity=granularity)
         return self._make_response(request, "stepIn", StepInResponse)
 
     async def _handle_step_out(self, request: StepOutRequest) -> StepOutResponse:
         """Handle stepOut request."""
-        thread_id = request["arguments"]["threadId"]
-        await self.server.debugger.step_out(thread_id)
+        args = request["arguments"]
+        thread_id = args["threadId"]
+        granularity: str = args.get("granularity") or "line"
+        await self.server.debugger.step_out(thread_id, granularity=granularity)
         return self._make_response(request, "stepOut", StepOutResponse)
 
     async def _handle_pause(self, request: PauseRequest) -> PauseResponse:

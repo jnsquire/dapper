@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from typing import Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 
@@ -13,12 +17,12 @@ class _FakeServer:
     def __init__(self) -> None:
         self.events: list[tuple[str, dict[str, Any] | None]] = []
 
-    async def send_event(self, name: str, body: dict[str, Any] | None = None) -> None:
-        self.events.append((name, body))
+    async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
+        self.events.append((event_name, body))
 
 
 @pytest.fixture
-def debugger() -> PyDebugger:
+def debugger() -> Generator[PyDebugger, None, None]:
     loop = asyncio.new_event_loop()
     dbg = PyDebugger(_FakeServer(), loop=loop)
     try:
@@ -33,13 +37,15 @@ async def _install_wrapper_stubs(debugger: PyDebugger) -> None:
     async def _continue(thread_id: int):
         return {"allThreadsContinued": thread_id == 1}
 
-    async def _next(_thread_id: int):
+    async def _next(_thread_id: int, *, granularity: str = "line"):
         return None
 
-    async def _step_in(_thread_id: int, _target_id: int | None = None):
+    async def _step_in(
+        _thread_id: int, _target_id: int | None = None, *, granularity: str = "line"
+    ):
         return None
 
-    async def _step_out(_thread_id: int):
+    async def _step_out(_thread_id: int, *, granularity: str = "line"):
         return None
 
     async def _pause(_thread_id: int):
@@ -89,25 +95,25 @@ async def _install_wrapper_stubs(debugger: PyDebugger) -> None:
     async def _set_breakpoints(_source: Any, _bps: list[dict[str, Any]]):
         return [{"verified": True, "line": 1}]
 
-    debugger._execution_manager.continue_execution = _continue
-    debugger._execution_manager.next = _next
-    debugger._execution_manager.step_in = _step_in
-    debugger._execution_manager.step_out = _step_out
-    debugger._execution_manager.pause = _pause
-    debugger._execution_manager.get_threads = _threads
-    debugger._execution_manager.exception_info = _exc_info
+    debugger._execution_manager.continue_execution = _continue  # type: ignore[assignment]
+    debugger._execution_manager.next = _next  # type: ignore[assignment]
+    debugger._execution_manager.step_in = _step_in  # type: ignore[assignment]
+    debugger._execution_manager.step_out = _step_out  # type: ignore[assignment]
+    debugger._execution_manager.pause = _pause  # type: ignore[assignment]
+    debugger._execution_manager.get_threads = _threads  # type: ignore[assignment]
+    debugger._execution_manager.exception_info = _exc_info  # type: ignore[assignment]
     debugger._execution_manager.configuration_done_request = _done
-    debugger._execution_manager.disconnect = _disconnect
+    debugger._execution_manager.disconnect = _disconnect  # type: ignore[assignment]
     debugger._execution_manager.terminate = _terminate
     debugger._execution_manager.restart = _restart
-    debugger._execution_manager.send_command_to_debuggee = _send_cmd
+    debugger._execution_manager.send_command_to_debuggee = _send_cmd  # type: ignore[assignment]
 
-    debugger._state_manager.get_stack_trace = _stack
-    debugger._state_manager.get_scopes = _scopes
-    debugger._state_manager.get_variables = _vars
-    debugger._state_manager.set_variable = _set_var
-    debugger._state_manager.evaluate = _evaluate
-    debugger._state_manager.set_breakpoints = _set_breakpoints
+    debugger._state_manager.get_stack_trace = _stack  # type: ignore[assignment]
+    debugger._state_manager.get_scopes = _scopes  # type: ignore[assignment]
+    debugger._state_manager.get_variables = _vars  # type: ignore[assignment]
+    debugger._state_manager.set_variable = _set_var  # type: ignore[assignment]
+    debugger._state_manager.evaluate = _evaluate  # type: ignore[assignment]
+    debugger._state_manager.set_breakpoints = _set_breakpoints  # type: ignore[assignment]
 
 
 @pytest.mark.asyncio
@@ -121,8 +127,8 @@ async def test_pydebugger_wrapper_delegation_execution_paths(debugger: PyDebugge
     assert await debugger.pause(1) is True
     assert await debugger.get_threads() == [{"id": 1, "name": "MainThread"}]
 
-    assert (await debugger.exception_info(1))["exceptionId"] == "ValueError"
-    assert (await debugger.get_exception_info(1))["exceptionId"] == "ValueError"
+    assert (await debugger.exception_info(1))["exceptionId"] == "ValueError"  # type: ignore[typeddict-item]
+    assert (await debugger.get_exception_info(1))["exceptionId"] == "ValueError"  # type: ignore[typeddict-item]
 
     await debugger.configuration_done_request()
     await debugger.disconnect(False)
@@ -139,10 +145,10 @@ async def test_pydebugger_wrapper_delegation_state_paths(debugger: PyDebugger):
     assert (await debugger.get_scopes(1))[0]["name"] == "Locals"
     assert (await debugger.get_variables(1))[0]["name"] == "x"
     assert (await debugger.set_variable(1, "x", "2"))["value"] == "2"
-    assert (await debugger.evaluate("x", 1, "watch"))["result"] == "ok"
-    assert (await debugger.evaluate_expression("x", 1, "hover"))["result"] == "ok"
+    assert (await debugger.evaluate("x", 1, "watch"))["result"] == "ok"  # type: ignore[typeddict-item]
+    assert (await debugger.evaluate_expression("x", 1, "hover"))["result"] == "ok"  # type: ignore[typeddict-item]
 
-    assert (await debugger.set_breakpoints("/tmp/a.py", [{"line": 1}]))[0]["verified"] is True
+    assert (await debugger.set_breakpoints("/tmp/a.py", [{"line": 1}]))[0]["verified"] is True  # type: ignore[typeddict-item]
 
 
 @pytest.mark.asyncio
@@ -178,9 +184,9 @@ async def test_data_breakpoint_info_and_set_data_breakpoints(debugger: PyDebugge
     debugger.current_frame = frame
 
     info = debugger.data_breakpoint_info(name="value", frame_id=12)
-    assert info["dataId"] == "frame:12:var:value"
-    assert info["type"] == "int"
-    assert info["value"] == "123"
+    assert info["dataId"] == "frame:12:var:value"  # type: ignore[typeddict-item]
+    assert info["type"] == "int"  # type: ignore[typeddict-item]
+    assert info["value"] == "123"  # type: ignore[typeddict-item]
 
     result = debugger.set_data_breakpoints(
         [
@@ -204,16 +210,16 @@ async def test_set_function_exception_breakpoints_backend_and_fallback(debugger:
         async def completions(self, _text, _column, _frame_id, _line):
             return {"targets": [{"label": "x", "type": "property"}]}
 
-    debugger._external_backend = _Backend()
+    debugger._external_backend = _Backend()  # type: ignore[assignment]
 
     fb = await debugger.set_function_breakpoints([{"name": "foo", "condition": "x > 1"}])
-    assert fb[0]["verified"] is True
+    assert fb[0]["verified"] is True  # type: ignore[typeddict-item]
 
     eb = await debugger.set_exception_breakpoints(["raised"])
     assert eb[0]["verified"] is True
 
     comp = await debugger.completions("x.", 2, frame_id=1, line=1)
-    assert comp["targets"][0]["label"] == "x"
+    assert comp["targets"][0]["label"] == "x"  # type: ignore[typeddict-item]
 
     debugger._external_backend = None
     fallback = await debugger.set_exception_breakpoints(["uncaught"])

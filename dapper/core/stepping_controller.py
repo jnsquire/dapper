@@ -5,11 +5,13 @@ This module provides logic for:
 1. Managing stepping flags (stepping, stop_on_entry)
 2. Determining stop reasons based on current state
 3. Consuming stepping state after stops
+4. Tracking the requested DAP stepGranularity
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,24 @@ class StopReason(str, Enum):
     PAUSE = "pause"
     DATA_BREAKPOINT = "data breakpoint"
     FUNCTION_BREAKPOINT = "function breakpoint"
+
+
+class StepGranularity(str, Enum):
+    """DAP stepGranularity values (Next/StepIn/StepOut requests).
+
+    - LINE: stop at the next source line (default bdb behaviour).
+    - STATEMENT: stop at the next logical statement.  Python has no
+      native sub-line statement boundary, so this currently behaves
+      identically to LINE for ``next``/``stepOut`` and is equivalent to
+      ``stepIn`` semantics for ``stepIn`` (uses ``set_step()``).
+      Full column-level support is a future enhancement.
+    - INSTRUCTION: stop at every bytecode instruction (uses
+      ``frame.f_trace_opcodes = True`` + ``set_step()``).
+    """
+
+    LINE = "line"
+    STATEMENT = "statement"
+    INSTRUCTION = "instruction"
 
 
 @dataclass
@@ -57,6 +77,8 @@ class SteppingController:
     # and wait for the coroutine to resume in user code.  Set automatically
     # when "next" or "stepIn" is requested while stopped inside a coroutine frame.
     async_step_over: bool = False
+    # DAP stepGranularity requested by the client for the current step.
+    granularity: StepGranularity = field(default=StepGranularity.LINE)
 
     def is_stepping(self) -> bool:
         """Check if currently in stepping mode."""
@@ -110,6 +132,21 @@ class SteppingController:
 
         return reason
 
+    def set_granularity(self, granularity: StepGranularity | str) -> None:
+        """Set the requested step granularity.
+
+        Accepts either a :class:`StepGranularity` member or a raw string
+        value (``"line"``, ``"statement"``, ``"instruction"``) as sent by
+        DAP clients.  Unknown strings fall back to :attr:`StepGranularity.LINE`.
+        """
+        if isinstance(granularity, StepGranularity):
+            self.granularity = granularity
+        else:
+            try:
+                self.granularity = StepGranularity(granularity)
+            except ValueError:
+                self.granularity = StepGranularity.LINE
+
     def set_async_step_over(self, value: bool = True) -> None:
         """Enable or disable async-step-over mode.
 
@@ -126,6 +163,7 @@ class SteppingController:
         self.stop_on_entry = False
         self.current_frame = None
         self.async_step_over = False
+        self.granularity = StepGranularity.LINE
 
     def request_step(self) -> None:
         """Request a step operation (step into).
@@ -136,4 +174,4 @@ class SteppingController:
         self.stepping = True
 
 
-__all__ = ["SteppingController", "StopReason"]
+__all__ = ["StepGranularity", "SteppingController", "StopReason"]

@@ -178,17 +178,26 @@ class ExternalProcessBackend(BaseBackend):
         return dict(self._normalize_continue_payload(response))
 
     async def _dispatch_next(self, args: dict[str, Any]) -> dict[str, Any]:
-        cmd = {"command": "next", "arguments": {"threadId": args["thread_id"]}}
+        cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
+        if args.get("granularity") and args["granularity"] != "line":
+            cmd_args["granularity"] = args["granularity"]
+        cmd = {"command": "next", "arguments": cmd_args}
         await self._send_command(cmd)
         return {}
 
     async def _dispatch_step_in(self, args: dict[str, Any]) -> dict[str, Any]:
-        cmd = {"command": "stepIn", "arguments": {"threadId": args["thread_id"]}}
+        cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
+        if args.get("granularity") and args["granularity"] != "line":
+            cmd_args["granularity"] = args["granularity"]
+        cmd = {"command": "stepIn", "arguments": cmd_args}
         await self._send_command(cmd)
         return {}
 
     async def _dispatch_step_out(self, args: dict[str, Any]) -> dict[str, Any]:
-        cmd = {"command": "stepOut", "arguments": {"threadId": args["thread_id"]}}
+        cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
+        if args.get("granularity") and args["granularity"] != "line":
+            cmd_args["granularity"] = args["granularity"]
+        cmd = {"command": "stepOut", "arguments": cmd_args}
         await self._send_command(cmd)
         return {}
 

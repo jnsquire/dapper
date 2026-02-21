@@ -20,6 +20,7 @@ from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_utils import get_function_candidate_names
 from dapper.core.exception_handler import ExceptionHandler
+from dapper.core.stepping_controller import StepGranularity
 from dapper.core.stepping_controller import SteppingController
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
@@ -324,6 +325,40 @@ class DebuggerBDB(bdb.Bdb):
         self._ensure_thread_registered(thread_id)
 
         # Get and consume the stop reason from stepping controller
+        reason = self.stepping_controller.consume_stop_state().value
+
+        self._emit_stopped_event(frame, thread_id, reason)
+        self.process_commands()
+        self.thread_tracker.clear_frames()
+        self.set_continue()
+
+    def user_opcode(self, frame: types.FrameType) -> None:
+        """Stop at each bytecode instruction during instruction-level stepping.
+
+        Called by ``bdb.Bdb.dispatch_opcode`` when ``frame.f_trace_opcodes``
+        is ``True`` and the debugger is handling an ``opcode`` trace event.
+        Only stops when ``stepping_controller.granularity`` is
+        :attr:`~dapper.core.stepping_controller.StepGranularity.INSTRUCTION`
+        and a step is in progress; otherwise returns immediately.
+        """
+        if not self.stepping_controller.stepping:
+            return
+        if self.stepping_controller.granularity is not StepGranularity.INSTRUCTION:
+            return
+
+        # Respect async step-over: skip event-loop frames.
+        if self.stepping_controller.async_step_over and _is_event_loop_frame(frame):
+            return
+
+        self.stepping_controller.async_step_over = False
+
+        # Required by bdb.set_continue() to locate the bottom frame.
+        self.botframe = frame
+
+        thread_id = threading.get_ident()
+        self._ensure_thread_registered(thread_id)
+
+        # Get and consume stop reason (clears stepping flag).
         reason = self.stepping_controller.consume_stop_state().value
 
         self._emit_stopped_event(frame, thread_id, reason)

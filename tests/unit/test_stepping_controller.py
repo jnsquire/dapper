@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from dapper.core.debugger_bdb import DebuggerBDB
+import dapper.core.stepping_controller as _stepping_controller_module
+from dapper.core.stepping_controller import StepGranularity
 from dapper.core.stepping_controller import SteppingController
 from dapper.core.stepping_controller import StopReason
 
@@ -93,7 +95,7 @@ class TestCurrentFrame:
         """Test setting current frame."""
         controller = SteppingController()
         frame = SimpleNamespace(f_lineno=10)
-        controller.set_current_frame(frame)
+        controller.set_current_frame(frame)  # type: ignore[arg-type]
         assert controller.current_frame is frame
 
     def test_current_frame_none(self):
@@ -182,7 +184,7 @@ class TestClear:
         controller = SteppingController()
         controller.stepping = True
         controller.stop_on_entry = True
-        controller.current_frame = SimpleNamespace()
+        controller.current_frame = SimpleNamespace()  # type: ignore[assignment]
 
         controller.clear()
 
@@ -225,7 +227,7 @@ class TestIntegrationWithDebuggerBDB:
         dbg = DebuggerBDB()
 
         frame = SimpleNamespace(f_lineno=42)
-        dbg.stepping_controller.current_frame = frame
+        dbg.stepping_controller.current_frame = frame  # type: ignore[assignment]
         assert dbg.stepping_controller.current_frame is frame
 
         dbg.stepping_controller.current_frame = None
@@ -280,3 +282,114 @@ class TestIntegrationWithDebuggerBDB:
 
         # stop_on_entry should be consumed
         assert dbg.stepping_controller.stop_on_entry is False
+
+
+class TestStepGranularity:
+    """Tests for StepGranularity enum and SteppingController.set_granularity."""
+
+    def test_enum_values(self):
+        assert StepGranularity.LINE.value == "line"
+        assert StepGranularity.STATEMENT.value == "statement"
+        assert StepGranularity.INSTRUCTION.value == "instruction"
+
+    def test_enum_is_string(self):
+        assert StepGranularity.LINE == "line"
+        assert StepGranularity.INSTRUCTION == "instruction"
+
+    def test_default_granularity(self):
+        controller = SteppingController()
+        assert controller.granularity is StepGranularity.LINE
+
+    def test_set_granularity_from_enum(self):
+        controller = SteppingController()
+        controller.set_granularity(StepGranularity.INSTRUCTION)
+        assert controller.granularity is StepGranularity.INSTRUCTION
+
+    def test_set_granularity_from_string(self):
+        controller = SteppingController()
+        controller.set_granularity("instruction")
+        assert controller.granularity is StepGranularity.INSTRUCTION
+
+    def test_set_granularity_statement(self):
+        controller = SteppingController()
+        controller.set_granularity("statement")
+        assert controller.granularity is StepGranularity.STATEMENT
+
+    def test_set_granularity_unknown_falls_back_to_line(self):
+        controller = SteppingController()
+        controller.set_granularity("bogus")
+        assert controller.granularity is StepGranularity.LINE
+
+    def test_clear_resets_granularity(self):
+        controller = SteppingController()
+        controller.set_granularity("instruction")
+        controller.clear()
+        assert controller.granularity is StepGranularity.LINE
+
+    def test_granularity_exported_in_all(self):
+        assert "StepGranularity" in _stepping_controller_module.__all__
+
+
+class TestUserOpcode:
+    """Tests for DebuggerBDB.user_opcode (instruction-level stepping)."""
+
+    def _make_frame(self, filename="test.py", lineno=10):
+        code = SimpleNamespace(
+            co_filename=filename,
+            co_name="test_func",
+            co_flags=0,
+        )
+        return SimpleNamespace(
+            f_code=code,
+            f_lineno=lineno,
+            f_back=None,
+            f_locals={},
+            f_globals={},
+        )
+
+    def test_user_opcode_ignored_when_not_stepping(self):
+        messages = []
+        dbg = DebuggerBDB(send_message=lambda e, **kw: messages.append((e, kw)))
+        dbg.stepping_controller.stepping = False
+        dbg.stepping_controller.set_granularity("instruction")
+
+        frame = self._make_frame()
+        dbg.user_opcode(frame)  # type: ignore[arg-type]
+
+        stopped_events = [e for e, _ in messages if e == "stopped"]
+        assert len(stopped_events) == 0
+
+    def test_user_opcode_ignored_when_granularity_is_line(self):
+        messages = []
+        dbg = DebuggerBDB(send_message=lambda e, **kw: messages.append((e, kw)))
+        dbg.stepping_controller.stepping = True
+        dbg.stepping_controller.set_granularity("line")
+
+        frame = self._make_frame()
+        dbg.user_opcode(frame)  # type: ignore[arg-type]
+
+        stopped_events = [e for e, _ in messages if e == "stopped"]
+        assert len(stopped_events) == 0
+
+    def test_user_opcode_stops_when_instruction_granularity(self):
+        messages = []
+        dbg = DebuggerBDB(send_message=lambda e, **kw: messages.append((e, kw)))
+        dbg.stepping_controller.stepping = True
+        dbg.stepping_controller.set_granularity("instruction")
+
+        frame = self._make_frame()
+        dbg.user_opcode(frame)  # type: ignore[arg-type]
+
+        stopped_events = [(e, kw) for e, kw in messages if e == "stopped"]
+        assert len(stopped_events) >= 1
+        assert stopped_events[-1][1]["reason"] == "step"
+
+    def test_user_opcode_consumes_stepping_flag(self):
+        dbg = DebuggerBDB(send_message=lambda *a, **kw: None)
+        dbg.stepping_controller.stepping = True
+        dbg.stepping_controller.set_granularity("instruction")
+
+        frame = self._make_frame()
+        dbg.user_opcode(frame)  # type: ignore[arg-type]
+
+        assert dbg.stepping_controller.stepping is False

@@ -6,6 +6,7 @@ import inspect
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from dapper.core.stepping_controller import StepGranularity
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
 
 # Code-flag constants for coroutine and async-generator functions (Python 3.5+).
@@ -60,13 +61,23 @@ def handle_next_impl(
     """Handle next command (step over) implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
+    granularity: str = arguments.get("granularity") or "line"
 
     if dbg and thread_id == get_thread_ident():
         set_dbg_stepping_flag(dbg)
+        dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None:
             if _frame_is_coroutine(dbg.stepping_controller.current_frame):
                 dbg.stepping_controller.set_async_step_over()
-            dbg.set_next(dbg.stepping_controller.current_frame)
+            if dbg.stepping_controller.granularity is StepGranularity.INSTRUCTION:
+                # Enable per-instruction trace events and use set_step so all
+                # trace events (including "opcode") fire; the debugger will stop
+                # at each bytecode instruction via user_opcode.
+                dbg.stepping_controller.current_frame.f_trace_opcodes = True
+                dbg.set_step()
+            else:
+                # LINE and STATEMENT: step over to the next source line.
+                dbg.set_next(dbg.stepping_controller.current_frame)
 
 
 def handle_step_in_impl(
@@ -78,13 +89,19 @@ def handle_step_in_impl(
     """Handle stepIn command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
+    granularity: str = arguments.get("granularity") or "line"
 
     if dbg and thread_id == get_thread_ident():
         set_dbg_stepping_flag(dbg)
+        dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None and _frame_is_coroutine(
             dbg.stepping_controller.current_frame
         ):
             dbg.stepping_controller.set_async_step_over()
+        if dbg.stepping_controller.granularity is StepGranularity.INSTRUCTION:
+            frame = dbg.stepping_controller.current_frame
+            if frame is not None:
+                frame.f_trace_opcodes = True
         dbg.set_step()
 
 
@@ -97,9 +114,11 @@ def handle_step_out_impl(
     """Handle stepOut command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
+    granularity: str = arguments.get("granularity") or "line"
 
     if dbg and thread_id == get_thread_ident():
         set_dbg_stepping_flag(dbg)
+        dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None:
             dbg.set_return(dbg.stepping_controller.current_frame)
 

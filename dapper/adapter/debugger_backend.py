@@ -76,21 +76,24 @@ class DebuggerBackend(Protocol):
         """Continue execution."""
         ...
 
-    async def next_(self, thread_id: int) -> None:
+    async def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over."""
         ...
 
-    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    async def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         """Step into.
 
         Args:
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target
                        (see DAP stepInTargets request).
+            granularity: DAP stepGranularity ("line", "statement", "instruction").
         """
         ...
 
-    async def step_out(self, thread_id: int) -> None:
+    async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out."""
         ...
 

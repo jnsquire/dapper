@@ -242,24 +242,26 @@ class InProcessBackend(BaseBackend):
             logger.exception("in-process continue failed")
             return {"allThreadsContinued": False}
 
-    async def next_(self, thread_id: int) -> None:
+    async def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over."""
         try:
-            self._bridge.next_(thread_id)
+            self._bridge.next_(thread_id, granularity=granularity)
         except Exception:
             logger.exception("in-process next failed")
 
-    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    async def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         """Step into."""
         try:
-            self._bridge.step_in(thread_id, target_id)
+            self._bridge.step_in(thread_id, target_id, granularity=granularity)
         except Exception:
             logger.exception("in-process step_in failed")
 
-    async def step_out(self, thread_id: int) -> None:
+    async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out."""
         try:
-            self._bridge.step_out(thread_id)
+            self._bridge.step_out(thread_id, granularity=granularity)
         except Exception:
             logger.exception("in-process step_out failed")
 

@@ -19,6 +19,7 @@ from typing import Any
 from typing import cast
 
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.core.stepping_controller import StepGranularity
 from dapper.ipc.ipc_receiver import process_queued_commands
 from dapper.shared.value_conversion import evaluate_with_policy
 from dapper.utils.events import EventEmitter
@@ -196,27 +197,44 @@ class InProcessDebugger:
                 dbg.set_continue()
             return cast("ContinueResponseBody", {"allThreadsContinued": True})
 
-    def next_(self, thread_id: int) -> None:
+    def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
                 dbg.stepping_controller.stepping = True
-                if dbg.stepping_controller.current_frame is not None:
-                    dbg.set_next(dbg.stepping_controller.current_frame)
+                dbg.stepping_controller.set_granularity(granularity)
+                frame = dbg.stepping_controller.current_frame
+                if frame is not None:
+                    if dbg.stepping_controller.granularity is StepGranularity.INSTRUCTION:
+                        # Enable per-instruction trace events on the current frame.
+                        frame.f_trace_opcodes = True
+                        dbg.set_step()
+                    else:
+                        # LINE and STATEMENT: step over to the next source line.
+                        # (STATEMENT is treated as LINE until column tracking is added.)
+                        dbg.set_next(frame)
 
-    def step_in(self, thread_id: int, target_id: int | None = None) -> None:  # noqa: ARG002
-        # target_id is accepted for DAP compatibility but not yet implemented.
+    def step_in(
+        self, thread_id: int, _target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
+        # _target_id is accepted for DAP compatibility but not yet implemented.
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
                 dbg.stepping_controller.stepping = True
+                dbg.stepping_controller.set_granularity(granularity)
+                if dbg.stepping_controller.granularity is StepGranularity.INSTRUCTION:
+                    frame = dbg.stepping_controller.current_frame
+                    if frame is not None:
+                        frame.f_trace_opcodes = True
                 dbg.set_step()
 
-    def step_out(self, thread_id: int) -> None:
+    def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         with self.command_lock:
             dbg = self.debugger
             if thread_id == threading.get_ident():
                 dbg.stepping_controller.stepping = True
+                dbg.stepping_controller.set_granularity(granularity)
                 if dbg.stepping_controller.current_frame is not None:
                     dbg.set_return(dbg.stepping_controller.current_frame)
 

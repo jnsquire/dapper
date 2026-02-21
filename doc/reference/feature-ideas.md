@@ -43,7 +43,7 @@ Legend
 
 ## 3. Instruction-Level / Statement-Level Step Granularity
 
-- [ ] **Expose DAP `stepGranularity`** (statement / line / instruction) —
+- [x] **Expose DAP `stepGranularity`** (statement / line / instruction) —
       especially useful for comprehensions, generator expressions, and
       decorator stacks where multiple logical operations share one source line.
       The Cython bytecode layer is already in place; an instruction-stepper
@@ -175,7 +175,7 @@ Legend
 | 11 | Exception type filtering / "just my code" | High | Medium |
 | 4 | Hot code reloading | High | High |
 | 10 | ~~Source refs for dynamic code~~ ✅ | Medium–High | Medium |
-| 3 | Step granularity | Medium | Medium (bytecode infra exists) |
+| 3 | ~~Step granularity~~ ✅ | Medium | Medium (bytecode infra exists) |
 | 8 | Coverage-aware breakpoints | Medium | Low–Medium |
 | 6 | Multi-process attach | Medium | High |
 | 9 | Test framework integration | Medium | Medium |

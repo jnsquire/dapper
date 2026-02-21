@@ -127,21 +127,23 @@ class InProcessBridge:
         """Continue execution."""
         return self._inproc.continue_(thread_id)
 
-    def next_(self, thread_id: int) -> None:
+    def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over."""
-        self._inproc.next_(thread_id)
+        self._inproc.next_(thread_id, granularity=granularity)
 
-    def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         """Step into.
 
         Note: target_id is accepted for API compatibility but not yet
         used by InProcessDebugger.
         """
-        self._inproc.step_in(thread_id, target_id)
+        self._inproc.step_in(thread_id, target_id, granularity=granularity)
 
-    def step_out(self, thread_id: int) -> None:
+    def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out."""
-        self._inproc.step_out(thread_id)
+        self._inproc.step_out(thread_id, granularity=granularity)
 
     # ------------------------------------------------------------------
     # Inspection operations

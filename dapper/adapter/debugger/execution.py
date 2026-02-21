@@ -44,7 +44,7 @@ class _PyDebuggerExecutionManager:
 
         return {"allThreadsContinued": False}
 
-    async def next(self, thread_id: int) -> None:
+    async def next(self, thread_id: int, *, granularity: str = "line") -> None:
         if not self._debugger.program_running or self._debugger.is_terminated:
             return
 
@@ -56,9 +56,11 @@ class _PyDebuggerExecutionManager:
             pass
 
         if self._debugger._backend is not None:
-            await self._debugger._backend.next_(thread_id)
+            await self._debugger._backend.next_(thread_id, granularity=granularity)
 
-    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    async def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         if not self._debugger.program_running or self._debugger.is_terminated:
             return
 
@@ -70,9 +72,9 @@ class _PyDebuggerExecutionManager:
             pass
 
         if self._debugger._backend is not None:
-            await self._debugger._backend.step_in(thread_id, target_id)
+            await self._debugger._backend.step_in(thread_id, target_id, granularity=granularity)
 
-    async def step_out(self, thread_id: int) -> None:
+    async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         if not self._debugger.program_running or self._debugger.is_terminated:
             return
 
@@ -84,7 +86,7 @@ class _PyDebuggerExecutionManager:
             pass
 
         if self._debugger._backend is not None:
-            await self._debugger._backend.step_out(thread_id)
+            await self._debugger._backend.step_out(thread_id, granularity=granularity)
 
     async def pause(self, thread_id: int) -> bool:
         if not self._debugger.program_running or self._debugger.is_terminated:

@@ -727,22 +727,25 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """Continue execution of the specified thread"""
         return await self._execution_manager.continue_execution(thread_id)
 
-    async def next(self, thread_id: int) -> None:
+    async def next(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over to the next line"""
-        await self._execution_manager.next(thread_id)
+        await self._execution_manager.next(thread_id, granularity=granularity)
 
-    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    async def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         """Step into a function.
 
         Args:
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target.
+            granularity: DAP stepGranularity ("line", "statement", "instruction").
         """
-        await self._execution_manager.step_in(thread_id, target_id)
+        await self._execution_manager.step_in(thread_id, target_id, granularity=granularity)
 
-    async def step_out(self, thread_id: int) -> None:
+    async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out of the current function"""
-        await self._execution_manager.step_out(thread_id)
+        await self._execution_manager.step_out(thread_id, granularity=granularity)
 
     async def pause(self, thread_id: int) -> bool:
         """Pause execution of the specified thread"""

@@ -304,20 +304,26 @@ class BaseBackend(DebuggerBackend, ABC):
             return_type=ContinueResponseBody,
         )
 
-    async def next_(self, thread_id: int) -> None:
+    async def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over."""
-        await self._execute_with_timeout("next", {"thread_id": thread_id})
+        await self._execute_with_timeout(
+            "next", {"thread_id": thread_id, "granularity": granularity}
+        )
 
-    async def step_in(self, thread_id: int, target_id: int | None = None) -> None:
+    async def step_in(
+        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+    ) -> None:
         """Step into."""
-        args: dict[str, int] = {"thread_id": thread_id}
+        args: dict[str, object] = {"thread_id": thread_id, "granularity": granularity}
         if target_id is not None:
             args["target_id"] = target_id
         await self._execute_with_timeout("step_in", args)
 
-    async def step_out(self, thread_id: int) -> None:
+    async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out."""
-        await self._execute_with_timeout("step_out", {"thread_id": thread_id})
+        await self._execute_with_timeout(
+            "step_out", {"thread_id": thread_id, "granularity": granularity}
+        )
 
     async def pause(self, thread_id: int) -> bool:
         """Pause execution. Returns True if pause was sent."""
