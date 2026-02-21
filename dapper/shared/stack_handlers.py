@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
 from typing import TYPE_CHECKING
 from typing import Protocol
 
@@ -93,12 +94,19 @@ def handle_threads_impl(
     """Handle threads command implementation."""
     threads = []
     if dbg and getattr(dbg.thread_tracker, "threads", None):
+        # Build a live name map from threading.enumerate() so that names
+        # changed after registration (e.g. thread.name = 'worker') are
+        # reflected immediately rather than returning the stale stored value.
+        live_names: dict[int, str] = {
+            t.ident: t.name for t in threading.enumerate() if t.ident is not None
+        }
         for tid, thread_obj in dbg.thread_tracker.threads.items():
-            name = (
+            stored_name = (
                 thread_obj
                 if isinstance(thread_obj, str)
                 else getattr(thread_obj, "name", f"Thread-{tid}")
             )
+            name = live_names.get(tid, stored_name)
             threads.append({"id": tid, "name": name})
 
     safe_send_debug_message("threads", threads=threads)

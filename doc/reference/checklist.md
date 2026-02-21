@@ -188,7 +188,7 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
 ### Threads
 - ✅ **Threads**: Get list of active threads
   - Thread IDs and names
-- ❌ **Thread Names**: Dynamic thread naming
+- ✅ **Thread Names**: Dynamic thread naming (live names read from `threading.enumerate()` at query time)
 
 ### Stack Frames
 - ✅ **Stack Trace**: Get stack frames for a thread
