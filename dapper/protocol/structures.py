@@ -76,6 +76,9 @@ class StackFrame(TypedDict):
     instructionPointerReference: NotRequired[
         str
     ]  # A memory reference for the current instruction pointer
+    presentationHint: NotRequired[
+        Literal["normal", "label", "subtle"]
+    ]  # 'subtle' dims library frames; 'label' renders a separator placeholder
 
 
 class Scope(TypedDict):

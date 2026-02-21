@@ -135,6 +135,11 @@ def parse_args():
         help="Run the program without debugging",
     )
     parser.add_argument(
+        "--no-just-my-code",
+        action="store_true",
+        help="Disable just-my-code filtering (step into library frames)",
+    )
+    parser.add_argument(
         "--ipc",
         choices=["tcp", "unix", "pipe"],
         required=True,
@@ -242,12 +247,17 @@ def start_command_listener(session: Any | None = None) -> threading.Thread:
     return thread
 
 
-def configure_debugger(stop_on_entry: bool, session: Any | None = None) -> DebuggerBDB:
+def configure_debugger(
+    stop_on_entry: bool,
+    session: Any | None = None,
+    just_my_code: bool = True,
+) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""
     active_session = session if session is not None else debug_shared.get_active_session()
     dbg = DebuggerBDB(
         send_message=send_debug_message,
         process_commands=active_session.process_queued_commands_launcher,
+        just_my_code=just_my_code,
     )
     if stop_on_entry:
         dbg.stepping_controller.stop_on_entry = True
@@ -300,7 +310,11 @@ def main():
     start_command_listener(session=session)
 
     # Create the debugger and store it on state
-    configure_debugger(session.stop_at_entry, session=session)
+    configure_debugger(
+        session.stop_at_entry,
+        session=session,
+        just_my_code=not args.no_just_my_code,
+    )
 
     if session.no_debug:
         # Just run the program without debugging

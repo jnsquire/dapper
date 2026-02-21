@@ -73,6 +73,11 @@ class DapperConfig:
     enable_metrics: bool = False
     timeout_seconds: int = 30
 
+    # Just My Code — skip library / stdlib frames during stepping and mark them
+    # as subtle in stack traces.  Matches debugpy's ``justMyCode`` parameter
+    # (boolean, default ``True``).
+    just_my_code: bool = True
+
     @classmethod
     def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
         """Create config from launch request arguments."""
@@ -107,6 +112,7 @@ class DapperConfig:
         return cls(
             mode="launch",
             in_process=_get("inProcess", default=False),
+            just_my_code=_get("justMyCode", default=True),
             debuggee=debuggee,
             ipc=ipc,
         )
@@ -137,6 +143,7 @@ class DapperConfig:
 
         return cls(
             mode="attach",
+            just_my_code=_get_attach("justMyCode", default=True),
             ipc=ipc,
         )
 

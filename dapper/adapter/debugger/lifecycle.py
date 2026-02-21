@@ -59,6 +59,9 @@ class _PyDebuggerLifecycleManager:
         if config.debuggee.no_debug:
             debug_args.append("--no-debug")
 
+        if not config.just_my_code:
+            debug_args.append("--no-just-my-code")
+
         self._debugger.enable_ipc_mode()
 
         transport_config = TransportConfig(

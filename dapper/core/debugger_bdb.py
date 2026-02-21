@@ -20,6 +20,8 @@ from dapper.core.breakpoint_resolver import ResolveAction
 from dapper.core.data_breakpoint_state import DataBreakpointState
 from dapper.core.debug_utils import get_function_candidate_names
 from dapper.core.exception_handler import ExceptionHandler
+from dapper.core.just_my_code import is_user_frame
+from dapper.core.just_my_code import is_user_path
 from dapper.core.stepping_controller import StepGranularity
 from dapper.core.stepping_controller import SteppingController
 from dapper.core.thread_tracker import ThreadTracker
@@ -51,6 +53,19 @@ def _is_event_loop_frame(frame: types.FrameType) -> bool:
     return any(marker in filename for marker in _EVENT_LOOP_PATH_MARKERS)
 
 
+def _annotate_library_frames(stack_frames: list) -> None:
+    """Mark non-user-code frames with ``presentationHint: "subtle"``.
+
+    Mutates *stack_frames* in-place so that DAP clients can dim library frames
+    when ``justMyCode`` is enabled.  Frames without a ``source.path`` are left
+    unchanged (they are typically synthetic / already annotated).
+    """
+    for sf in stack_frames:
+        path: str = (sf.get("source") or {}).get("path", "")
+        if path and not is_user_path(path):
+            sf["presentationHint"] = "subtle"
+
+
 def _noop_send_message(*args, **kwargs):
     pass
 
@@ -66,11 +81,16 @@ class DebuggerBDB(bdb.Bdb):
         enable_frame_eval: bool = False,
         send_message: Callable[..., Any] = _noop_send_message,
         process_commands: Callable[[], Any] = _noop_process_commands,
+        just_my_code: bool = True,
     ):
         super().__init__(skip)
         # Use injected callbacks or fall back to no-ops
         self.send_message = send_message
         self.process_commands = process_commands
+
+        # When True, skip library / stdlib frames during stepping and mark them
+        # as subtle in stack traces (debugpy-compatible ``justMyCode`` semantics).
+        self.just_my_code = just_my_code
 
         # Unified breakpoint resolver for condition/hit/log evaluation
         self.breakpoint_resolver = BreakpointResolver()
@@ -293,6 +313,25 @@ class DebuggerBDB(bdb.Bdb):
             self.set_continue()
             return
 
+        # Just My Code: when enabled and the frame is library / stdlib code,
+        # keep stepping without stopping.  Explicit breakpoints set inside
+        # library code are still honoured (checked later via _handle_regular_breakpoint).
+        if self.just_my_code and not is_user_frame(frame):
+            filename = frame.f_code.co_filename
+            line = frame.f_lineno
+            canonical = self.canonic(filename)
+            # Only honour an explicit breakpoint; otherwise transparently skip.
+            has_explicit_bp = bool(
+                self.get_break(filename, line)
+                or self.get_break(canonical, line)
+                or (
+                    filename in self.bp_manager.custom and line in self.bp_manager.custom[filename]
+                )
+            )
+            if not has_explicit_bp:
+                self.set_step()
+                return
+
         # Arriving at user code — clear the flag so subsequent steps are
         # unaffected regardless of whether the frame is a coroutine.
         self.stepping_controller.async_step_over = False
@@ -404,6 +443,8 @@ class DebuggerBDB(bdb.Bdb):
         """Build stack frames for the given frame using the thread tracker."""
         stack_frames = self.thread_tracker.build_stack_frames(frame)
         annotate_stack_frames_with_source_refs(stack_frames)  # type: ignore[arg-type]
+        if self.just_my_code:
+            _annotate_library_frames(stack_frames)
         return stack_frames
 
     def set_custom_breakpoint(

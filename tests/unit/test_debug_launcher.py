@@ -327,14 +327,14 @@ class TestExpressionEvaluation:
         # Setup
         _session().debugger = MagicMock()
         mock_frame = make_real_frame({"x": 10, "y": 20})
-        _session().debugger.stepping_controller.current_frame = mock_frame
+        _session().debugger.stepping_controller.current_frame = mock_frame  # type: ignore[union-attr]
 
         # Test arguments
         args = {"expression": "x + y", "context": "watch"}
 
         # Execute
         variable_handlers.handle_evaluate_impl(
-            _session().debugger,
+            _session().debugger,  # type: ignore[arg-type]
             args,
             evaluate_with_policy=handlers.evaluate_with_policy,
             format_evaluation_error=variable_handlers.format_evaluation_error,
@@ -384,7 +384,7 @@ def test_recv_binary_from_pipe_returns_immediately_when_terminated() -> None:
     conn = FakeConn()
     session = SimpleNamespace(is_terminated=True, exit_func=lambda _code: None)
 
-    dl._recv_binary_from_pipe(conn, session=session)
+    dl._recv_binary_from_pipe(conn, session=session)  # type: ignore[arg-type]
     assert conn.calls == 0
 
 
@@ -800,7 +800,7 @@ class TestUtilityFunctions:
             sys.path[:] = original_path
 
     def test_setup_ipc_from_args_routes_to_pipe(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        calls: list[tuple[str, Any]] = []
+        calls: list[Any] = []
 
         def _pipe(ipc_pipe, session=None):
             calls.append(("pipe", ipc_pipe, session))
@@ -825,7 +825,7 @@ class TestUtilityFunctions:
         assert calls == [("pipe", "mypipe", session)]
 
     def test_setup_ipc_from_args_routes_to_socket(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        calls: list[tuple[str, Any]] = []
+        calls: list[Any] = []
 
         def _pipe(*_args, **_kwargs):
             calls.append(("pipe", None))
@@ -951,7 +951,7 @@ class TestUtilityFunctions:
             _handle,
         )
 
-        dl._recv_binary_from_pipe(FakeConn(), session=session)
+        dl._recv_binary_from_pipe(FakeConn(), session=session)  # type: ignore[arg-type]
 
         assert len(session.command_queue.items) == 1
         assert session.command_queue.items[0]["command"] == "initialize"
@@ -992,7 +992,7 @@ class TestUtilityFunctions:
             lambda event, **kwargs: messages.append(f"{event}:{kwargs.get('message', '')}"),
         )
 
-        dl._recv_binary_from_pipe(FakeConn(), session=session)
+        dl._recv_binary_from_pipe(FakeConn(), session=session)  # type: ignore[arg-type]
 
         assert any(m.startswith("error:Bad frame header") for m in messages)
         assert "exit:0" in messages
@@ -1031,7 +1031,7 @@ class TestUtilityFunctions:
             _handle,
         )
 
-        dl._recv_binary_from_pipe(FakeConn(), session=session)
+        dl._recv_binary_from_pipe(FakeConn(), session=session)  # type: ignore[arg-type]
 
         assert queue_items == []
         assert handled == []
@@ -1086,6 +1086,7 @@ class TestUtilityFunctions:
             arg=["--x"],
             stop_on_entry=True,
             no_debug=True,
+            no_just_my_code=False,
             ipc="tcp",
             ipc_host="127.0.0.1",
             ipc_port=4444,
@@ -1102,8 +1103,8 @@ class TestUtilityFunctions:
             del session
             calls.append("listener")
 
-        def _configure_debugger(stop_on_entry, session=None):
-            del stop_on_entry, session
+        def _configure_debugger(stop_on_entry, session=None, just_my_code=True):
+            del stop_on_entry, session, just_my_code
             calls.append("cfg")
 
         monkeypatch.setattr(dl, "parse_args", lambda: args)
@@ -1131,6 +1132,7 @@ class TestUtilityFunctions:
             arg=["--x"],
             stop_on_entry=False,
             no_debug=False,
+            no_just_my_code=False,
             ipc="tcp",
             ipc_host="127.0.0.1",
             ipc_port=4444,
@@ -1147,8 +1149,8 @@ class TestUtilityFunctions:
             del session
             calls.append("listener")
 
-        def _configure_debugger(stop_on_entry, session=None):
-            del stop_on_entry, session
+        def _configure_debugger(stop_on_entry, session=None, just_my_code=True):
+            del stop_on_entry, session, just_my_code
             calls.append("cfg")
 
         def _run_with_debugger(program, a, session=None):
