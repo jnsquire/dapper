@@ -7,6 +7,10 @@ This section gathers onboarding material and practical workflows to help develop
 - [Manual testing guidance](./manual-testing.md) — quick and in-depth manual testing steps to exercise the adapter & launcher, transports and common scenarios.
 - [Using Dapper with VS Code](./using-vscode.md) — detailed instructions and configuration examples for using the adapter from Visual Studio Code (standalone adapter or extension-managed venv).
 
+- **Reference guides**
+	- [Async / Concurrency Debugging](../reference/async-debugging.md) — asyncio task inspector, async-aware stepping, dynamic thread names
+	- [Variable Presentation](../reference/variable-presentation.md) — rich variable display: dataclasses, namedtuples, Pydantic, presentation hints
+
 - **Frame Evaluation** — high-performance expression/frame evaluation for debugging:
 	- [User guide](./frame-eval/index.md) — enabling, configuration and best practices for frame evaluation
 	- [Troubleshooting](./frame-eval/troubleshooting.md) — diagnostics and fixes when frame evaluation doesn't behave as expected

@@ -24,7 +24,7 @@ Legend
 - ✅ Next (step over)
 - ✅ Step In
 - ✅ Step Out
-- 🟡 Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`)
+- ✅ Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`); see [Async Debugging reference](async-debugging.md)
 - ❌ Reverse Continue (reverse debugging)
 - ❌ Step granularity (instruction-level stepping)
 
@@ -59,14 +59,15 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 ### Threads & frames
 - ✅ Threads listing and basic metadata
 - ✅ Dynamic thread names (live names read from `threading.enumerate()` at query time)
+- ✅ Asyncio task inspector — live `asyncio.Task` objects exposed as pseudo-threads with full coroutine call stacks
 - ✅ Stack traces (frames, locations, ids)
-- ❌ Source references for non-filesystem sources (e.g., generated content)
+- ✅ Source references for non-filesystem sources (runtime source registry: `eval`, `exec`, `compile`, Cython intermediates)
 
 ### Variables & scopes
 - ✅ Scopes (locals/globals)
 - ✅ Variables listing
 - ✅ Set variable (support for complex types and conversions)
-- 🟡 Variable presentation / presentationHint (supported; expanding coverage)
+- ✅ Variable presentation / presentationHint — see [Variable Presentation reference](variable-presentation.md)
 
 ### Expression evaluation
 - 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
@@ -88,7 +89,7 @@ Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `do
 
 ## Implementation status — short summary
 
-Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are now implemented. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX and profiling integration.
+Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are implemented. Async/concurrency debugging is fully supported — asyncio tasks appear as pseudo-threads, stepping is async-aware, and thread names are live. Structured variable rendering (dataclasses, namedtuples, Pydantic v1 & v2) is implemented with field-level expansion and presentation hints. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX, and profiling integration.
 
 ---
 
@@ -98,8 +99,9 @@ Phase 1 — core polish (current)
 - ✅ Improve expression evaluation ergonomics (completions implemented, evaluate works). See: `doc/getting-started/frame-eval/index.md` and `doc/architecture/frame-eval/implementation.md`.
 
 Phase 2 — enhanced debugging experience (in-progress)
+- ✅ Asyncio task inspector and async-aware stepping (complete). See: [Async Debugging reference](async-debugging.md).
+- ✅ Structured variable rendering — dataclasses, namedtuples, Pydantic (complete). See: [Variable Presentation reference](variable-presentation.md).
 - Improve source navigation & request-level support (goto targets, richer `source` handling). Tests & partial support already present (see `architecture/breakpoints_controller.md` and existing adapter handlers).
-- Expand variable presentation semantics and UI hints (`presentationHint` coverage).
 
 Phase 3 — advanced features (future)
 - Runtime watchpoints / data breakpoint triggers (Phase 1 bookkeeping implemented; runtime triggers are now supported when watches are registered — further work remains for read-access detection, per-address watches, and cross-process robustness)
@@ -211,13 +213,19 @@ This document outlines the Debug Adapter Protocol (DAP) features implemented in 
   - List element modification by index
   - Dictionary key-value setting
   - Error handling for invalid operations and immutable types
-- 🟡 **Variable Presentation**: Rich variable display hints
+- ✅ **Variable Presentation**: Rich variable display hints
   - Supported fields (DAP VariablePresentationHint):
     - `kind` (string): semantic kind; recommended values include `property`, `method`, `class`, `data`, `event`, `baseClass`, `innerClass`, `interface`, `mostDerivedClass`, `virtual`.
     - `attributes` (string[]): badges/flags; recommended values include `static`, `constant`, `readOnly`, `rawString`, `hasObjectId`, `canHaveObjectId`, `hasSideEffects`, `hasDataBreakpoint`.
     - `visibility` (string): `public`, `private`, `protected`, `internal`, `final`.
     - `lazy` (boolean): when true, the client should present a UI affordance to fetch the value (useful for getters or expensive evaluations). When `lazy` is used, `variablesReference` is expected to point at the value provider.
   - Notes: The adapter returns these hints as part of each `Variable`'s `presentationHint`. Clients may map `kind` and `attributes` to icons, styles, or tooltips. Prefer `hasDataBreakpoint` attribute over the deprecated `dataBreakpoint` kind.
+  - **Structured model rendering** (dataclass / namedtuple / Pydantic v1 & v2):
+    - Fields are enumerated in declaration order; `__dunder__` attributes are suppressed.
+    - Each field carries `presentationHint.kind = "property"`.
+    - `namedVariables` is set to the field count so clients display a count badge.
+    - `type` label uses a descriptive prefix, e.g. `"dataclass Point"`, `"namedtuple SimpleNT"`, `"pydantic MyModel"`.
+    - Detection is duck-typed — no hard runtime dependency on Pydantic.
   - Examples:
     - Property (read-only):
 

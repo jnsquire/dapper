@@ -27,6 +27,8 @@ Visual Studio Code already ships with first-class Python debugging, but Dapper a
 - **Protocol-first design** – A pure-Python implementation of the Debug Adapter Protocol that you can instrument, extend, or embed.
 - **Legibility & hackability** – The adapter is written with type-checked, well-documented code; perfect if you want to learn or customize the DAP.
 - **Advanced transports** – Switch between TCP, named pipes, or in-process execution without leaving the comfort of VS Code.
+- **Async / concurrency awareness** – Every live `asyncio.Task` appears as a pseudo-thread in the Threads view, step-over skips event-loop internals, and live `threading.Thread` names are reflected in real time.
+- **Rich variable display** – Dataclasses, `NamedTuple`s, and Pydantic models (v1 & v2) expand field-by-field with proper `property` hints and a field-count badge; callable and class objects carry their own semantic icons.
 - **Friendly for automation** – Dapper is easy to script or run inside CI pipelines while still playing nicely with VS Code's UI.
 
 If you're curious about what powers your debugging sessions—or you want to tailor them—this setup is for you.

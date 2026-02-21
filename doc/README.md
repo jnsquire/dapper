@@ -12,11 +12,21 @@ A Debug Adapter Protocol implementation in Python.
 - Supports both TCP sockets and named pipes using asyncio
 - Provides core debugging functionality (breakpoints, stepping, variable inspection)
 - **High-performance frame evaluation system** for reduced debugging overhead (60-80% faster than traditional tracing)
+- **Async / concurrency debugging** — asyncio tasks exposed as pseudo-threads, async-aware stepping skips event-loop internals, live thread names
+- **Rich variable presentation** — dataclasses, namedtuples, and Pydantic models (v1 & v2) expand field-by-field with `property` hints and a named-field count badge; callables and classes carry semantic kind hints
 
 ### Debugger Features Overview
 
 For a detailed checklist of implemented and planned debugger features, see:
 - **[Debugger Features Checklist](reference/checklist.md)** - Complete feature matrix with implementation status
+
+### Async & concurrency debugging
+
+- **[Async Debugging Reference](reference/async-debugging.md)** — asyncio task inspector, async-aware stepping, dynamic thread names
+
+### Rich variable presentation
+
+- **[Variable Presentation Reference](reference/variable-presentation.md)** — dataclass / namedtuple / Pydantic rendering, presentation hints, field-level expansion
 
 ### Frame Evaluation System
 
