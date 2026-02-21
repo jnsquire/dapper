@@ -11,8 +11,13 @@ from typing import cast
 from dapper.core.structured_model import get_model_fields
 from dapper.core.structured_model import is_structured_model
 from dapper.protocol.debugger_protocol import DebuggerLike
+from dapper.protocol.debugger_protocol import SupportsThreadTracker
+from dapper.shared.debug_shared import make_variable_object as _make_variable_object
 
 Payload = dict[str, Any]
+
+# Number of positional params for the simple (name, value) make_variable_object signature
+_SIMPLE_MAKE_VAR_ARGCOUNT = 2
 
 
 class ThreadingLike(Protocol):
@@ -20,7 +25,7 @@ class ThreadingLike(Protocol):
 
 
 class LoggerLike(Protocol):
-    def debug(self, msg: str, *args: object, **kwargs: object) -> object: ...
+    def debug(self, msg: object, *args: object, exc_info: bool = False) -> object: ...
 
 
 class SendDebugMessageFn(Protocol):
@@ -31,12 +36,8 @@ class SafeSendDebugMessageFn(Protocol):
     def __call__(self, message_type: str, **payload: Any) -> bool: ...
 
 
-class ThreadTrackerLike(Protocol):
-    frame_id_to_frame: dict[int, object]
-
-
-class DebuggerWithThreadTrackerLike(DebuggerLike, Protocol):
-    thread_tracker: ThreadTrackerLike
+class DebuggerWithThreadTrackerLike(DebuggerLike, SupportsThreadTracker, Protocol):
+    pass
 
 
 class MakeVariableFn(Protocol):
@@ -46,11 +47,12 @@ class MakeVariableFn(Protocol):
         name: str,
         value: object,
         frame: object | None,
+        /,
     ) -> Payload: ...
 
 
 class ErrorResponseFn(Protocol):
-    def __call__(self, message: str) -> Payload: ...
+    def __call__(self, message: str, /) -> Payload: ...
 
 
 class ConvertWithContextFn(Protocol):
@@ -69,7 +71,7 @@ class FrameLike(Protocol):
 
 class EvaluateWithPolicyFn(Protocol):
     def __call__(
-        self, expression: str, frame: FrameLike, allow_builtins: bool = False
+        self, expression: str, frame: Any | None, *, allow_builtins: bool = False
     ) -> object: ...
 
 
@@ -145,9 +147,6 @@ def make_variable(
     name: str,
     value: object,
     frame: object | None,
-    *,
-    fallback_make_variable: Callable[[str, object, DebuggerLike | None, object | None], Payload],
-    simple_fn_argcount: int,
 ) -> Payload:
     """Create a variable object using debugger factory when available."""
     fn = getattr(dbg, "make_variable_object", None) if dbg is not None else None
@@ -156,7 +155,7 @@ def make_variable(
         try:
             if (
                 getattr(fn, "__code__", None) is not None
-                and fn.__code__.co_argcount > simple_fn_argcount
+                and fn.__code__.co_argcount > _SIMPLE_MAKE_VAR_ARGCOUNT
             ):
                 var_obj = fn(name, value, frame)
             else:
@@ -165,9 +164,9 @@ def make_variable(
             var_obj = None
 
     if not isinstance(var_obj, dict):
-        var_obj = fallback_make_variable(name, value, dbg, frame)
+        var_obj = _make_variable_object(name, value, dbg, frame)
 
-    return var_obj
+    return cast("Payload", var_obj)
 
 
 def extract_variables_from_mapping(

@@ -40,7 +40,7 @@ Items are grouped into tiers; work each tier roughly top-to-bottom.
 - [x] **Collapse `ProtocolHandler` proxy into `ProtocolFactory`**
       `ProtocolHandler` delegates every method 1:1 — either merge or inherit.
 
-- [ ] **Remove `variable_command_runtime.py` indirection layer**
+- [x] **Remove `variable_command_runtime.py` indirection layer**
       Functions are trivial pass-throughs adding no value.
 
 - [ ] **Consider `__getattr__` delegation on `InProcessBridge`**

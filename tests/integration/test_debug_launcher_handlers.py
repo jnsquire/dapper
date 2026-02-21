@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
 from dapper.shared import source_handlers
 from dapper.shared import stack_handlers
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from tests.dummy_debugger import DummyDebugger
 
@@ -106,20 +106,16 @@ def test_handle_scopes_and_variables(use_debug_session):
         {"variablesReference": locals_ref},
         handlers._safe_send_debug_message,
         lambda runtime_dbg, frame_info: (
-            variable_command_runtime.resolve_variables_for_reference_runtime(
+            handlers.command_handler_helpers.resolve_variables_for_reference(
                 runtime_dbg,
                 frame_info,
-                resolve_variables_helper=handlers.command_handler_helpers.resolve_variables_for_reference,
-                extract_variables_from_mapping_helper=handlers.command_handler_helpers.extract_variables_from_mapping,
-                make_variable_fn=lambda helper_dbg, name, value, frame: (
-                    variable_command_runtime.make_variable_runtime(
+                make_variable_fn=command_handler_helpers.make_variable,
+                extract_variables_from_mapping_fn=lambda helper_dbg, mapping, frame: (
+                    command_handler_helpers.extract_variables_from_mapping(
                         helper_dbg,
-                        name,
-                        value,
+                        mapping,
                         frame,
-                        make_variable_helper=handlers.command_handler_helpers.make_variable,
-                        fallback_make_variable=debug_shared.make_variable_object,
-                        simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
+                        make_variable_fn=command_handler_helpers.make_variable,
                     )
                 ),
                 var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,

@@ -15,8 +15,6 @@ from unittest.mock import Mock
 
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
-from dapper.shared import debug_shared
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 
@@ -31,14 +29,11 @@ def _try_test_convert(value_str, frame=None, parent_obj=None):
 
 
 def _make_variable_for_tests(dbg, name, value, frame):
-    return variable_command_runtime.make_variable_runtime(
+    return command_handler_helpers.make_variable(
         dbg,
         name,
         value,
         frame,
-        make_variable_helper=command_handler_helpers.make_variable,
-        fallback_make_variable=debug_shared.make_variable_object,
-        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
     )
 
 
@@ -58,11 +53,11 @@ class TestEnhancedSetVariable(unittest.TestCase):
         self.mock_frame.f_locals = {"x": 10, "items": [1, 2, 3]}
         self.mock_frame.f_globals = {"config": {"debug": True}}
 
-    def _set_object_member_direct(self, parent_obj, name, value):
+    def _set_object_member_direct(self, parent_obj, name, value_str):
         return command_handler_helpers.set_object_member(
             parent_obj,
             name,
-            value,
+            value_str,
             try_custom_convert=_try_test_convert,
             conversion_failed_sentinel=_CONVERSION_FAILED,
             convert_value_with_context_fn=convert_value_with_context,
@@ -74,12 +69,12 @@ class TestEnhancedSetVariable(unittest.TestCase):
             logger=command_handlers.logger,
         )
 
-    def _set_scope_variable_direct(self, frame, scope, name, value):
+    def _set_scope_variable_direct(self, frame, scope, name, value_str):
         return command_handler_helpers.set_scope_variable(
             frame,
             scope,
             name,
-            value,
+            value_str,
             try_custom_convert=_try_test_convert,
             conversion_failed_sentinel=_CONVERSION_FAILED,
             evaluate_with_policy_fn=command_handlers.evaluate_with_policy,

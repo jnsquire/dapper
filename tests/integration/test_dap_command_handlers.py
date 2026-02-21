@@ -22,7 +22,6 @@ from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
 from dapper.shared import source_handlers
 from dapper.shared import stepping_handlers
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
@@ -64,24 +63,30 @@ def _try_test_convert(
 
 
 def _make_variable_for_tests(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[str, Any]:
-    return variable_command_runtime.make_variable_runtime(
+    return command_handler_helpers.make_variable(
         dbg,
         name,
         value,
         frame,
-        make_variable_helper=command_handler_helpers.make_variable,
-        fallback_make_variable=debug_shared.make_variable_object,
-        simple_fn_argcount=dch.SIMPLE_FN_ARGCOUNT,
     )
 
 
 def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
-    return variable_command_runtime.resolve_variables_for_reference_runtime(
+    def _extract_from_mapping(
+        helper_dbg: Any, mapping: dict[str, Any], frame: Any
+    ) -> list[dict[str, Any]]:
+        return command_handler_helpers.extract_variables_from_mapping(
+            helper_dbg,
+            mapping,
+            frame,
+            make_variable_fn=_make_variable_for_tests,
+        )
+
+    return command_handler_helpers.resolve_variables_for_reference(
         dbg,
         frame_info,
-        resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
-        extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
         make_variable_fn=_make_variable_for_tests,
+        extract_variables_from_mapping_fn=_extract_from_mapping,
         var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
     )
 
@@ -385,12 +390,18 @@ def test_variables_and_set_variable(monkeypatch):
     def _resolve_with_fake_make_variable(
         runtime_dbg: Any, frame_info: Any
     ) -> list[dict[str, Any]]:
-        return variable_command_runtime.resolve_variables_for_reference_runtime(
+        return command_handler_helpers.resolve_variables_for_reference(
             runtime_dbg,
             frame_info,
-            resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
-            extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
             make_variable_fn=fake_make_variable,
+            extract_variables_from_mapping_fn=lambda helper_dbg, mapping, frame: (
+                command_handler_helpers.extract_variables_from_mapping(
+                    helper_dbg,
+                    mapping,
+                    frame,
+                    make_variable_fn=fake_make_variable,
+                )
+            ),
             var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
         )
 

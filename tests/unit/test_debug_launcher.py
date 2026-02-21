@@ -24,7 +24,6 @@ from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
 from dapper.shared import stepping_handlers
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from tests.mocks import make_real_frame
 
@@ -276,20 +275,16 @@ class TestVariableHandling:
             args,
             handlers._safe_send_debug_message,
             lambda runtime_dbg, frame_info: (
-                variable_command_runtime.resolve_variables_for_reference_runtime(
+                command_handler_helpers.resolve_variables_for_reference(
                     runtime_dbg,
                     frame_info,
-                    resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
-                    extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
-                    make_variable_fn=lambda helper_dbg, name, value, frame: (
-                        variable_command_runtime.make_variable_runtime(
+                    make_variable_fn=command_handler_helpers.make_variable,
+                    extract_variables_from_mapping_fn=lambda helper_dbg, mapping, frame: (
+                        command_handler_helpers.extract_variables_from_mapping(
                             helper_dbg,
-                            name,
-                            value,
+                            mapping,
                             frame,
-                            make_variable_helper=command_handler_helpers.make_variable,
-                            fallback_make_variable=debug_shared.make_variable_object,
-                            simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
+                            make_variable_fn=command_handler_helpers.make_variable,
                         )
                     ),
                     var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,

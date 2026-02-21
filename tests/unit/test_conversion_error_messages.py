@@ -4,8 +4,6 @@ from types import SimpleNamespace
 
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers as handlers
-from dapper.shared import debug_shared
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 
@@ -20,14 +18,11 @@ def _try_test_convert(value_str, frame=None, parent_obj=None):
 
 
 def _make_variable_for_tests(dbg, name, value, frame):
-    return variable_command_runtime.make_variable_runtime(
+    return command_handler_helpers.make_variable(
         dbg,
         name,
         value,
         frame,
-        make_variable_helper=command_handler_helpers.make_variable,
-        fallback_make_variable=debug_shared.make_variable_object,
-        simple_fn_argcount=handlers.SIMPLE_FN_ARGCOUNT,
     )
 
 

@@ -19,8 +19,6 @@ from dapper.core.inprocess_debugger import InProcessDebugger
 from dapper.ipc.connections.tcp import TCPServerConnection
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
-from dapper.shared import debug_shared
-from dapper.shared import variable_command_runtime
 from dapper.shared.value_conversion import evaluate_with_policy
 
 # ---------------------------------------------------------------------------
@@ -85,14 +83,11 @@ def _make_frame(local_vars: dict | None = None, global_vars: dict | None = None)
 
 
 def _make_variable_for_tests(dbg, name, value, frame):
-    return variable_command_runtime.make_variable_runtime(
+    return command_handler_helpers.make_variable(
         dbg,
         name,
         value,
         frame,
-        make_variable_helper=command_handler_helpers.make_variable,
-        fallback_make_variable=debug_shared.make_variable_object,
-        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
     )
 
 
@@ -126,7 +121,7 @@ class TestEvalPolicyEnforcement:
 
         result = ipd.evaluate("__import__('os')", frame_id=1)
         # Should be blocked - result is error, not actual os module
-        assert result["type"] == "error" or "blocked" in result.get("result", "").lower()
+        assert result.get("type") == "error" or "blocked" in result.get("result", "").lower()
 
     def test_breakpoint_condition_blocks_import(self):
         resolver = BreakpointResolver()
@@ -193,18 +188,18 @@ class TestModuleSourcePathValidation:
         """Create a minimal request handler instance."""
 
         h = RequestHandler.__new__(RequestHandler)
-        h._seq = 0
+        seq = [0]
 
         def make_response(
             request, command, _response_type=None, *, body=None, success=True, message=None
         ):
-            h._seq += 1
+            seq[0] += 1
             resp = {
                 "type": "response",
                 "request_seq": request.get("seq", 0),
                 "command": command,
                 "success": success,
-                "seq": h._seq,
+                "seq": seq[0],
             }
             if body:
                 resp["body"] = body
@@ -212,7 +207,7 @@ class TestModuleSourcePathValidation:
                 resp["message"] = message
             return resp
 
-        h._make_response = make_response
+        setattr(h, "_make_response", make_response)  # noqa: B010 — bypass Pyright's attribute type-check
         return h
 
     @pytest.mark.asyncio

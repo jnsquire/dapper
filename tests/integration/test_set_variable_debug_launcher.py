@@ -9,8 +9,6 @@ from unittest.mock import Mock
 
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
-from dapper.shared import debug_shared
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 
 # Import the specific functions we want to test
@@ -28,14 +26,11 @@ def _try_convert(value_str, frame=None, parent_obj=None):
 
 
 def _make_variable_for_tests(dbg, name, value, frame):
-    return variable_command_runtime.make_variable_runtime(
+    return command_handler_helpers.make_variable(
         dbg,
         name,
         value,
         frame,
-        make_variable_helper=command_handler_helpers.make_variable,
-        fallback_make_variable=debug_shared.make_variable_object,
-        simple_fn_argcount=command_handlers.SIMPLE_FN_ARGCOUNT,
     )
 
 

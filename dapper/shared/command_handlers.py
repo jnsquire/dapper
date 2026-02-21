@@ -31,7 +31,6 @@ from dapper.shared import lifecycle_handlers
 from dapper.shared import source_handlers
 from dapper.shared import stack_handlers
 from dapper.shared import stepping_handlers
-from dapper.shared import variable_command_runtime
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from dapper.shared.value_conversion import evaluate_with_policy
@@ -78,7 +77,7 @@ _TRUNC_SUFFIX = "..."
 COMMAND_HANDLERS: dict[str, Callable[..., None]] = {}
 
 
-_error_response: Callable[[str], dict[str, Any]] = command_handler_helpers.error_response
+_error_response = command_handler_helpers.error_response
 
 # Backward compatibility: tests/legacy code monkeypatch this symbol directly.
 send_debug_message = _d_shared.send_debug_message
@@ -308,26 +307,34 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
             value: object,
             frame: object | None,
         ) -> dict[str, Any]:
-            return variable_command_runtime.make_variable_runtime(
+            return command_handler_helpers.make_variable(
                 runtime_dbg,
                 name,
                 value,
                 frame,
-                make_variable_helper=command_handler_helpers.make_variable,
-                fallback_make_variable=_d_shared.make_variable_object,
-                simple_fn_argcount=SIMPLE_FN_ARGCOUNT,
             )
 
         def _resolve_variables_for_reference(
             runtime_dbg: CommandHandlerDebuggerLike | None,
             frame_info: object,
         ) -> list[dict[str, Any]]:
-            return variable_command_runtime.resolve_variables_for_reference_runtime(
+            def _extract_from_mapping(
+                helper_dbg: DebuggerLike | None,
+                mapping: dict[str, object],
+                frame: object,
+            ) -> list[dict[str, Any]]:
+                return command_handler_helpers.extract_variables_from_mapping(
+                    helper_dbg,
+                    mapping,
+                    frame,
+                    make_variable_fn=_make_variable_fn,
+                )
+
+            return command_handler_helpers.resolve_variables_for_reference(
                 runtime_dbg,
                 frame_info,
-                resolve_variables_helper=command_handler_helpers.resolve_variables_for_reference,
-                extract_variables_from_mapping_helper=command_handler_helpers.extract_variables_from_mapping,
                 make_variable_fn=_make_variable_fn,
+                extract_variables_from_mapping_fn=_extract_from_mapping,
                 var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
             )
 
@@ -350,14 +357,11 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
             value: object,
             frame: object | None,
         ) -> dict[str, Any]:
-            return variable_command_runtime.make_variable_runtime(
+            return command_handler_helpers.make_variable(
                 runtime_dbg,
                 name,
                 value,
                 frame,
-                make_variable_helper=command_handler_helpers.make_variable,
-                fallback_make_variable=_d_shared.make_variable_object,
-                simple_fn_argcount=SIMPLE_FN_ARGCOUNT,
             )
 
         result = variable_handlers.handle_set_variable_command_impl(
@@ -365,19 +369,19 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
             cast("dict[str, Any] | None", arguments),
             dependencies=cast(
                 "variable_handlers.SetVariableCommandDependencies",
-                variable_command_runtime.build_set_variable_dependencies(
-                    convert_value_with_context_fn=convert_value_with_context,
-                    evaluate_with_policy_fn=evaluate_with_policy,
-                    set_object_member_helper=command_handler_helpers.set_object_member_with_dependencies,
-                    set_scope_variable_helper=command_handler_helpers.set_scope_variable_with_dependencies,
-                    assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-                    error_response_fn=command_handler_helpers.error_response,
-                    conversion_error_message=_CONVERSION_ERROR_MESSAGE,
-                    get_state_debugger=_active_debugger,
-                    make_variable_fn=_make_variable_fn,
-                    logger=logger,
-                    var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
-                ),
+                {
+                    "convert_value_with_context_fn": convert_value_with_context,
+                    "evaluate_with_policy_fn": evaluate_with_policy,
+                    "set_object_member_helper": command_handler_helpers.set_object_member_with_dependencies,
+                    "set_scope_variable_helper": command_handler_helpers.set_scope_variable_with_dependencies,
+                    "assign_to_parent_member_fn": command_handler_helpers.assign_to_parent_member,
+                    "error_response_fn": command_handler_helpers.error_response,
+                    "conversion_error_message": _CONVERSION_ERROR_MESSAGE,
+                    "get_state_debugger": _active_debugger,
+                    "make_variable_fn": _make_variable_fn,
+                    "logger": logger,
+                    "var_ref_tuple_size": VAR_REF_TUPLE_SIZE,
+                },
             ),
         )
         if result:
