@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getUri } from './utils.js';
+import { getUri, getNonce } from './utils.js';
 
 export function getWebviewContent(
   webview: vscode.Webview, 
@@ -158,18 +158,20 @@ export function getWebviewContent(
 
       // Handle console input
       const consoleInput = document.querySelector('.console-textfield');
-      consoleInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          const command = consoleInput.value.trim();
-          if (command) {
-            vscode.postMessage({
-              command: 'executeInConsole',
-              code: command
-            });
-            consoleInput.value = '';
+      if (consoleInput) {
+        consoleInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const command = consoleInput.value.trim();
+            if (command) {
+              vscode.postMessage({
+                command: 'executeInConsole',
+                code: command
+              });
+              consoleInput.value = '';
+            }
           }
-        }
-      });
+        });
+      }
 
       // Handle messages from the extension
       window.addEventListener('message', event => {
@@ -189,13 +191,4 @@ export function getWebviewContent(
     </script>
   </body>
   </html>`;
-}
-
-function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

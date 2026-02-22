@@ -14,7 +14,14 @@ export const EnvironmentVariables: React.FC<EnvironmentVariablesProps> = ({
   className = ''
 }) => {
   const handleAddVariable = useCallback(() => {
-    const newVars = { ...variables, '': '' };
+    // Generate a unique placeholder key to avoid overwriting previous empty entries
+    let placeholder = '';
+    let counter = 1;
+    while (placeholder in variables || placeholder === '') {
+      placeholder = `NEW_VAR_${counter}`;
+      counter++;
+    }
+    const newVars = { ...variables, [placeholder]: '' };
     onChange(newVars);
   }, [variables, onChange]);
 

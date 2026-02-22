@@ -55,9 +55,9 @@ export function sanitizeConfig(config: DebugConfiguration): DebugConfiguration {
   // Create a deep copy to avoid mutating the original
   const sanitized = JSON.parse(JSON.stringify(config));
   
-  // Remove undefined, null, and empty string values
+  // Remove undefined and null values (keep empty strings for validation)
   Object.keys(sanitized).forEach(key => {
-    if (sanitized[key] === undefined || sanitized[key] === null || sanitized[key] === '') {
+    if (sanitized[key] === undefined || sanitized[key] === null) {
       delete sanitized[key];
     }
   });

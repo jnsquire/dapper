@@ -1,17 +1,10 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
 import { logger } from '../utils/logger.js';
 import { insertLaunchConfiguration } from '../utils/insertLaunchConfiguration.js';
+import { IViewComponent } from './components/BaseView.js';
 
 // Type for view components
 type ViewType = 'debug' | 'config';
-
-// View component interface
-interface ViewComponent {
-  render(): string;
-  setupMessageHandlers(panel: vscode.WebviewPanel): void;
-}
 
 export class DapperWebview {
   public static currentPanel: DapperWebview | undefined;
@@ -19,7 +12,7 @@ export class DapperWebview {
   private _disposables: vscode.Disposable[] = [];
   private _extensionUri: vscode.Uri;
   private _viewType: ViewType = 'debug';
-  private _viewComponent: ViewComponent | null = null;
+  private _viewComponent: IViewComponent | null = null;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -69,7 +62,6 @@ export class DapperWebview {
     DapperWebview.currentPanel = new DapperWebview(panel, extensionUri);
     await DapperWebview.currentPanel.setViewType(viewType);
     logger.log(`Successfully created and initialized ${viewType} webview`);
-    DapperWebview.currentPanel = DapperWebview.currentPanel;
   }
 
   private async setViewType(viewType: ViewType) {
@@ -90,9 +82,14 @@ export class DapperWebview {
     try {
       // In a real implementation, you would dynamically import the component
       // For now, we'll use a simple switch
-      let component: ViewComponent;
+      let component: IViewComponent;
       
       switch (viewType) {
+        case 'debug':
+          // TODO: Implement debug view component
+          logger.debug('Creating debug view component (falling back to config view)');
+          component = await this.createConfigView();
+          break;
         case 'config':
         default:
           logger.debug('Creating config view component');
@@ -119,7 +116,7 @@ export class DapperWebview {
     }
   }
 
-  private async createConfigView(): Promise<ViewComponent> {
+  private async createConfigView(): Promise<IViewComponent> {
     // In a real implementation, you would import the actual component
     return {
       render: () => `
@@ -194,11 +191,6 @@ export class DapperWebview {
     return this._panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'out', 'compiled', webviewPath)
     );
-  }
-
-  private setupMessageHandlers() {
-    // Global message handlers can be added here
-    // View-specific handlers are now set up in the view components
   }
 
   public dispose() {

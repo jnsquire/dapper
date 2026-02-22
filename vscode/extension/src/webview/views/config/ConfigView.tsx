@@ -4,20 +4,7 @@ import { DebugConfiguration } from '../../types/debug.js';
 import { useWebComponentEvents } from '../../hooks/useWebComponentEvents.js';
 import '@vscode-elements/elements/dist/vscode-elements.js';
 
-// Declare the acquireVsCodeApi function (VS Code webview API)
-declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void;
-  getState(): unknown;
-  setState(state: unknown): void;
-};
-
-declare global {
-  interface Window {
-    vscode: ReturnType<typeof acquireVsCodeApi> | undefined;
-  }
-}
-
-const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : undefined;
+import { vscode } from '../../vscodeApi.js';
 
 type VSCodeComponentProps = {
   id?: string;

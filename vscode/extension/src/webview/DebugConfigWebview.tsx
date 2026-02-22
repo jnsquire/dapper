@@ -1,31 +1,8 @@
 // NOTE: Always use @vscode-elements/elements for UI components in webviews
 // instead of @vscode/webview-ui-toolkit
 import React, { useState, useEffect } from 'react';
-
-// Declare the acquireVsCodeApi function
-declare function acquireVsCodeApi(): {
-  postMessage(message: any): void;
-  getState(): any;
-  setState(state: any): void;
-};
-
-const vscode = acquireVsCodeApi();
-
-interface DebugConfiguration {
-  name: string;
-  type: string;
-  request: string;
-  program: string;
-  args: string[];
-  cwd: string;
-  debugServer: number;
-  useIpc: boolean;
-  ipcTransport: 'tcp' | 'unix' | 'pipe';
-  frameEval: boolean;
-  inProcess: boolean;
-  stopOnEntry: boolean;
-  justMyCode: boolean;
-}
+import { vscode } from './vscodeApi.js';
+import { DebugConfiguration } from './types/debug.js';
 
 export const DebugConfigWebview: React.FC = () => {
   const [config, setConfig] = useState<DebugConfiguration>({
@@ -45,7 +22,7 @@ export const DebugConfigWebview: React.FC = () => {
   });
 
   const handleSave = () => {
-    vscode.postMessage({
+    vscode?.postMessage({
       command: 'saveConfig',
       config: config
     });
@@ -144,7 +121,7 @@ export const DebugConfigWebview: React.FC = () => {
           Save Configuration
         </vscode-button>
         <vscode-button 
-          onClick={() => vscode.postMessage({ command: 'cancelConfig' })} 
+          onClick={() => vscode?.postMessage({ command: 'cancelConfig' })} 
           appearance="secondary"
         >
           Cancel

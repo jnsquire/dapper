@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as React from 'react';
 import * as ReactDOMServer from 'react-dom/server';
 import { VariableInspector } from '../ui/components/VariableInspector.js';
+import { getNonce } from './utils.js';
 
 export class ReactSSRProvider {
   public static readonly viewType = 'dapper.variableInspector';
@@ -44,6 +45,7 @@ export class ReactSSRProvider {
 
       this.panel.onDidDispose(() => {
         this.panel = undefined;
+        ReactSSRProvider.instance = undefined;
       }, null);
     }
 
@@ -56,13 +58,16 @@ export class ReactSSRProvider {
     }
 
     // Render React component to string
+    const nonce = getNonce();
     const html = this.getWebviewContent({
       title: 'Dapper Variable Inspector',
       body: ReactDOMServer.renderToString(
         React.createElement(VariableInspector, { variables: [] })
       ),
       scriptUri: this.getWebviewUri('webview.js'),
-      stylesUri: this.getWebviewUri('styles.css')
+      stylesUri: this.getWebviewUri('styles.css'),
+      nonce,
+      cspSource: this.panel!.webview.cspSource
     });
 
     this.panel.webview.html = html;
@@ -81,6 +86,8 @@ export class ReactSSRProvider {
     body: string;
     scriptUri: vscode.Uri;
     stylesUri: vscode.Uri;
+    nonce: string;
+    cspSource: string;
   }): string {
     return `
       <!DOCTYPE html>
@@ -88,12 +95,19 @@ export class ReactSSRProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Security-Policy" content="
+          default-src 'none';
+          style-src ${params.cspSource} 'unsafe-inline';
+          script-src 'nonce-${params.nonce}';
+          font-src ${params.cspSource};
+          img-src ${params.cspSource} https: data:;
+        ">
         <title>${params.title}</title>
         <link href="${params.stylesUri}" rel="stylesheet">
       </head>
       <body>
         <div id="root">${params.body}</div>
-        <script src="${params.scriptUri}"></script>
+        <script nonce="${params.nonce}" src="${params.scriptUri}"></script>
       </body>
       </html>
     `;
