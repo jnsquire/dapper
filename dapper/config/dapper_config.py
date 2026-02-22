@@ -78,6 +78,11 @@ class DapperConfig:
     # (boolean, default ``True``).
     just_my_code: bool = True
 
+    # Expression watchpoint safety mode.
+    # When True, expression watchpoints are evaluated with token policy checks.
+    # When False (default), expression watchpoints use permissive evaluation.
+    strict_expression_watch_policy: bool = False
+
     @classmethod
     def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
         """Create config from launch request arguments."""
@@ -113,6 +118,7 @@ class DapperConfig:
             mode="launch",
             in_process=_get("inProcess", default=False),
             just_my_code=_get("justMyCode", default=True),
+            strict_expression_watch_policy=_get("strictExpressionWatchPolicy", default=False),
             debuggee=debuggee,
             ipc=ipc,
         )
@@ -144,6 +150,10 @@ class DapperConfig:
         return cls(
             mode="attach",
             just_my_code=_get_attach("justMyCode", default=True),
+            strict_expression_watch_policy=_get_attach(
+                "strictExpressionWatchPolicy",
+                default=False,
+            ),
             ipc=ipc,
         )
 

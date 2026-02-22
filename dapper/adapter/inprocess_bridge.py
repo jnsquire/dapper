@@ -287,12 +287,19 @@ class InProcessBridge:
         self,
         watch_names: list[str],
         watch_meta: list[tuple[str, dict[str, Any]]],
+        watch_expressions: list[str] | None = None,
+        watch_expression_meta: list[tuple[str, dict[str, Any]]] | None = None,
     ) -> None:
         """Register data watches with the underlying debugger if supported."""
         try:
             dbg = getattr(self._inproc, "debugger", None)
             register = getattr(dbg, "register_data_watches", None)
             if callable(register):
-                register(watch_names, watch_meta)
+                register(
+                    watch_names,
+                    watch_meta,
+                    watch_expressions or [],
+                    watch_expression_meta or [],
+                )
         except Exception:
             logger.debug("Failed bridging data watches to BDB", exc_info=True)

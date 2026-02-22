@@ -31,6 +31,12 @@ nav:
     - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
   - Reference:
     - Checklist: reference/checklist.md
+    - Watchpoints: reference/watchpoints.md
+    - Async Debugging: reference/async-debugging.md
+    - Variable Presentation: reference/variable-presentation.md
     - Hot Reload: reference/hot-reload.md
+    - Sys Monitoring Integration: reference/sys-monitoring-integration.md
+    - Telemetry: reference/telemetry.md
+    - Feature Ideas: reference/feature-ideas.md
     - Message Flows: reference/message_flows.md
     - Operational Modes: reference/operational_modes.md

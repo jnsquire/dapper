@@ -385,10 +385,18 @@ class _DataBreakpointMixin:
         self.data_bp_state.data_watches[data_id] = {"accessType": access_type}
 
     def register_data_watches(
-        self, names: list[str], metas: list[tuple[str, dict]] | None = None
+        self,
+        names: list[str],
+        metas: list[tuple[str, dict]] | None = None,
+        expressions: list[str] | None = None,
+        expression_metas: list[tuple[str, dict]] | None = None,
     ) -> None:
         self.register_calls.append((list(names), list(metas or [])))
         self.data_bp_state.register_watches(names, metas)
+        self.data_bp_state.register_expression_watches(
+            expressions or [],
+            expression_metas,
+        )
 
     def clear_all_data_breakpoints(self) -> None:
         self.data_bp_state.data_watches.clear()

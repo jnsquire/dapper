@@ -138,6 +138,11 @@ def parse_args():
         help="Disable just-my-code filtering (step into library frames)",
     )
     parser.add_argument(
+        "--strict-expression-watch-policy",
+        action="store_true",
+        help="Enable strict expression watchpoint policy checks",
+    )
+    parser.add_argument(
         "--ipc",
         choices=["tcp", "unix", "pipe"],
         required=True,
@@ -249,6 +254,7 @@ def configure_debugger(
     stop_on_entry: bool,
     session: Any | None = None,
     just_my_code: bool = True,
+    strict_expression_watch_policy: bool = False,
 ) -> DebuggerBDB:
     """Create and configure the debugger, storing it on shared state."""
     active_session = session if session is not None else debug_shared.get_active_session()
@@ -256,6 +262,7 @@ def configure_debugger(
         send_message=send_debug_message,
         process_commands=active_session.process_queued_commands_launcher,
         just_my_code=just_my_code,
+        strict_expression_watch_policy=strict_expression_watch_policy,
     )
     if stop_on_entry:
         dbg.stepping_controller.stop_on_entry = True
@@ -314,6 +321,7 @@ def main():
         session.stop_at_entry,
         session=session,
         just_my_code=not args.no_just_my_code,
+        strict_expression_watch_policy=getattr(args, "strict_expression_watch_policy", False),
     )
 
     if session.no_debug:

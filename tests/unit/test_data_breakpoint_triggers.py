@@ -54,3 +54,28 @@ def test_data_breakpoint_no_trigger_without_change():
         if c.args and c.args[0] == "stopped"
     ]
     assert "data breakpoint" not in reasons
+
+
+def test_expression_watchpoint_triggers_on_change():
+    mock_send = MagicMock()
+    dbg = DebuggerBDB(send_message=mock_send)
+    dbg.register_data_watches(
+        [],
+        [],
+        ["x + 1"],
+        [("x + 1", {"hit": 0})],
+    )
+
+    frame1 = make_frame("foo.py", 10, {"x": 1})
+    dbg.botframe = frame1
+    dbg.user_line(frame1)
+
+    frame2 = make_frame("foo.py", 11, {"x": 3})
+    dbg.user_line(frame2)
+
+    reasons = [
+        c.kwargs.get("reason")
+        for c in mock_send.call_args_list
+        if c.args and c.args[0] == "stopped"
+    ]
+    assert "data breakpoint" in reasons

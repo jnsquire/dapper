@@ -77,21 +77,29 @@ class _PyDebuggerBreakpointFacade:
         frame_id_parts_expected = 4
         watch_names: set[str] = set()
         watch_meta: list[tuple[str, dict[str, Any]]] = []
+        watch_expressions: set[str] = set()
+        watch_expression_meta: list[tuple[str, dict[str, Any]]] = []
         for bp in breakpoints:
             data_id = bp.get("dataId")
             if not data_id or not isinstance(data_id, str):
                 results.append({"verified": False, "message": "Missing dataId"})
                 continue
             frame_id = None
-            parts = data_id.split(":")
-            if len(parts) >= frame_id_parts_expected and parts[0] == "frame" and parts[2] == "var":
+            parts = data_id.split(":", maxsplit=3)
+            watch_name: str | None = None
+            watch_expression: str | None = None
+            if len(parts) >= frame_id_parts_expected and parts[0] == "frame":
                 try:
                     frame_id = int(parts[1])
                 except ValueError:
                     frame_id = None
-                if len(parts) >= frame_id_parts_expected:
-                    var_name = parts[3]
-                    watch_names.add(var_name)
+                kind = parts[2]
+                payload = parts[3]
+                if kind == "var" and payload:
+                    watch_name = payload
+                elif kind == "expr" and payload:
+                    watch_expression = payload
+
             meta = {
                 "dataId": data_id,
                 "accessType": bp.get("accessType", "write"),
@@ -101,11 +109,12 @@ class _PyDebuggerBreakpointFacade:
                 "verified": True,
             }
             self._debugger.session_facade.set_data_watch(data_id, meta)
-            if "var:" in data_id:
-                try:
-                    watch_meta.append((parts[3], meta))
-                except Exception:  # pragma: no cover - defensive
-                    pass
+            if watch_name:
+                watch_names.add(watch_name)
+                watch_meta.append((watch_name, meta))
+            if watch_expression:
+                watch_expressions.add(watch_expression)
+                watch_expression_meta.append((watch_expression, meta))
             if frame_id is not None:
                 self._debugger.session_facade.add_frame_watch(frame_id, data_id)
             results.append({"verified": True})
@@ -115,7 +124,12 @@ class _PyDebuggerBreakpointFacade:
                 dbg = getattr(inproc, "debugger", None)
                 register = getattr(dbg, "register_data_watches", None)
                 if callable(register):
-                    register(sorted(watch_names), watch_meta)
+                    register(
+                        sorted(watch_names),
+                        watch_meta,
+                        sorted(watch_expressions),
+                        watch_expression_meta,
+                    )
         except Exception:  # pragma: no cover - defensive
             logger.debug("Failed bridging data watches to BDB", exc_info=True)
         return results

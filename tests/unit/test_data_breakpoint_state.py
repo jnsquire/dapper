@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dapper.core.data_breakpoint_state import DataBreakpointState
 
 
@@ -12,6 +14,10 @@ class TestDataBreakpointState:
         assert state.watch_meta == {}
         assert state.last_values_by_frame == {}
         assert state.global_values == {}
+        assert state.watch_expressions == set()
+        assert state.watch_expression_meta == {}
+        assert state.last_expression_values_by_frame == {}
+        assert state.global_expression_values == {}
         assert state.data_watches == {}
         assert state.frame_watches == {}
 
@@ -57,8 +63,11 @@ class TestDataBreakpointState:
     def test_clear(self):
         state = DataBreakpointState()
         state.register_watches(["x", "y"])
+        state.register_expression_watches(["x + 1"])
         state.global_values["x"] = 42
         state.last_values_by_frame[123] = {"x": 1}
+        state.global_expression_values["x + 1"] = 43
+        state.last_expression_values_by_frame[123] = {"x + 1": 2}
         state.data_watches["id1"] = {"name": "x"}
         state.frame_watches[456] = ["id1"]
 
@@ -68,22 +77,85 @@ class TestDataBreakpointState:
         assert state.watch_meta == {}
         assert state.global_values == {}
         assert state.last_values_by_frame == {}
+        assert state.watch_expressions == set()
+        assert state.watch_expression_meta == {}
+        assert state.global_expression_values == {}
+        assert state.last_expression_values_by_frame == {}
         assert state.data_watches == {}
         assert state.frame_watches == {}
 
     def test_clear_value_snapshots(self):
         state = DataBreakpointState()
         state.register_watches(["x"])
+        state.register_expression_watches(["x + 1"])
         state.global_values["x"] = 42
         state.last_values_by_frame[123] = {"x": 1}
+        state.global_expression_values["x + 1"] = 43
+        state.last_expression_values_by_frame[123] = {"x + 1": 2}
 
         state.clear_value_snapshots()
 
         # Watch config preserved
         assert state.watch_names == {"x"}
+        assert state.watch_expressions == {"x + 1"}
         # Values cleared
         assert state.global_values == {}
         assert state.last_values_by_frame == {}
+        assert state.global_expression_values == {}
+        assert state.last_expression_values_by_frame == {}
+
+    def test_register_expression_watches_with_meta(self):
+        state = DataBreakpointState()
+        metas = [
+            ("x + y", {"condition": "x > 1"}),
+            ("x + y", {"hitCondition": ">=2"}),
+        ]
+
+        state.register_expression_watches(["x + y"], metas)
+
+        assert state.watch_expressions == {"x + y"}
+        assert len(state.watch_expression_meta["x + y"]) == 2
+
+    def test_check_expression_changes_detects_change(self):
+        state = DataBreakpointState()
+        state.register_expression_watches(["x + 1"])
+
+        class Frame:
+            def __init__(self, x: int):
+                self.f_globals = {}
+                self.f_locals = {"x": x}
+
+        frame1 = Frame(1)
+        frame2 = Frame(3)
+
+        state.update_expression_snapshots(1, frame1)
+        changed = state.check_expression_changes(1, frame2)
+        assert changed == ["x + 1"]
+
+    def test_expression_watch_evaluation_permissive_by_default(self):
+        state = DataBreakpointState()
+
+        class Frame:
+            def __init__(self):
+                self.f_globals = {}
+                self.f_locals = {"x": 1}
+
+        frame = Frame()
+        value = state.evaluate_expression("x.__class__", frame)
+        assert value is int
+
+    def test_expression_watch_evaluation_strict_blocks_policy_tokens(self):
+        state = DataBreakpointState()
+        state.set_strict_expression_watch_policy(True)
+
+        class Frame:
+            def __init__(self):
+                self.f_globals = {}
+                self.f_locals = {"x": 1}
+
+        frame = Frame()
+        with pytest.raises(ValueError, match="blocked by policy"):
+            state.evaluate_expression("x.__class__", frame)
 
     def test_check_for_changes_no_watches(self):
         state = DataBreakpointState()

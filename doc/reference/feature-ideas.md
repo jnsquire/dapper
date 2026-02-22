@@ -37,7 +37,7 @@ Legend
 
 ## 5. Expression Watchpoints / Set Expression
 
-- [ ] **Persistent expression watchpoints** — re-evaluate a Python expression
+- [x] **Persistent expression watchpoints** — re-evaluate a Python expression
       after every step and break when the value changes.  The frame-eval
       `ConditionEvaluator` already compiles and caches expressions; this
       feature needs a persistent watch list wired to the step dispatch loop.

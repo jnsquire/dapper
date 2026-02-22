@@ -64,7 +64,12 @@ class InProcessDebugger:
         - on_output(category: str, output: str) -> None
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        just_my_code: bool = True,
+        strict_expression_watch_policy: bool = False,
+    ) -> None:
         # Optional event callbacks (set by adapter).
         self.on_stopped = EventEmitter()
         self.on_thread = EventEmitter()
@@ -74,6 +79,8 @@ class InProcessDebugger:
         self.debugger: DebuggerBDB = DebuggerBDB(
             send_message=self._handle_debug_message,
             process_commands=process_queued_commands,
+            just_my_code=just_my_code,
+            strict_expression_watch_policy=strict_expression_watch_policy,
         )
         self.command_lock = threading.RLock()
 

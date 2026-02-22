@@ -263,7 +263,7 @@ class HotReloadService:
 
         suffixes = getattr(machinery, "EXTENSION_SUFFIXES", None)
         if isinstance(suffixes, (list, tuple)):
-            ordered: dict[str, None] = {suffix: None for suffix in default_suffixes}
+            ordered: dict[str, None] = dict.fromkeys(default_suffixes)
             for suffix in suffixes:
                 if suffix:
                     ordered[str(suffix)] = None

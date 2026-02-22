@@ -25,6 +25,59 @@ class _PyDebuggerLifecycleManager:
     def __init__(self, debugger: PyDebugger):
         self._debugger = debugger
 
+    def _build_external_launch_args(self, config: DapperConfig) -> tuple[list[str], TransportConfig]:
+        debug_args = [
+            sys.executable,
+            "-m",
+            "dapper.launcher.debug_launcher",
+            "--program",
+            self._debugger._source_introspection.program_path,
+        ]
+
+        for arg in config.debuggee.args:
+            debug_args.extend(["--arg", arg])
+
+        if config.debuggee.stop_on_entry:
+            debug_args.append("--stop-on-entry")
+        if config.debuggee.no_debug:
+            debug_args.append("--no-debug")
+        if not config.just_my_code:
+            debug_args.append("--no-just-my-code")
+        if config.strict_expression_watch_policy:
+            debug_args.append("--strict-expression-watch-policy")
+
+        transport_config = TransportConfig(
+            transport=config.ipc.transport,
+            pipe_name=config.ipc.pipe_name,
+            host=config.ipc.host,
+            port=config.ipc.port,
+            path=config.ipc.path,
+            use_binary=config.ipc.use_binary,
+        )
+        debug_args.extend(self._debugger.ipc.create_listener(config=transport_config))
+        if transport_config.use_binary:
+            debug_args.append("--ipc-binary")
+
+        return debug_args, transport_config
+
+    async def _start_external_process(self, debug_args: list[str]) -> None:
+        if self._debugger.is_test_mode_enabled():
+            threading.Thread(
+                target=self._debugger._start_debuggee_process,
+                args=(debug_args,),
+                daemon=True,
+            ).start()
+            return
+
+        try:
+            await self._debugger.loop.run_in_executor(
+                None,
+                self._debugger._start_debuggee_process,
+                debug_args,
+            )
+        except Exception:
+            await asyncio.to_thread(self._debugger._start_debuggee_process, debug_args)
+
     async def launch(self, config: DapperConfig) -> None:
         """Launch a new Python program for debugging using centralized configuration."""
         config.validate()
@@ -39,62 +92,16 @@ class _PyDebuggerLifecycleManager:
         self._debugger.in_process = config.in_process
 
         if config.in_process:
-            await self.launch_in_process()
+            await self.launch_in_process(config)
             return
 
-        debug_args = [
-            sys.executable,
-            "-m",
-            "dapper.launcher.debug_launcher",
-            "--program",
-            self._debugger._source_introspection.program_path,
-        ]
-
-        for arg in config.debuggee.args:
-            debug_args.extend(["--arg", arg])
-
-        if config.debuggee.stop_on_entry:
-            debug_args.append("--stop-on-entry")
-
-        if config.debuggee.no_debug:
-            debug_args.append("--no-debug")
-
-        if not config.just_my_code:
-            debug_args.append("--no-just-my-code")
-
         self._debugger.enable_ipc_mode()
-
-        transport_config = TransportConfig(
-            transport=config.ipc.transport,
-            pipe_name=config.ipc.pipe_name,
-            host=config.ipc.host,
-            port=config.ipc.port,
-            path=config.ipc.path,
-            use_binary=config.ipc.use_binary,
-        )
-
-        debug_args.extend(self._debugger.ipc.create_listener(config=transport_config))
-        if transport_config.use_binary:
-            debug_args.append("--ipc-binary")
+        debug_args, _transport_config = self._build_external_launch_args(config)
 
         logger.info("Launching program: %s", self._debugger._source_introspection.program_path)
         logger.debug("Debug command: %s", " ".join(debug_args))
 
-        if self._debugger.is_test_mode_enabled():
-            threading.Thread(
-                target=self._debugger._start_debuggee_process,
-                args=(debug_args,),
-                daemon=True,
-            ).start()
-        else:
-            try:
-                await self._debugger.loop.run_in_executor(
-                    None,
-                    self._debugger._start_debuggee_process,
-                    debug_args,
-                )
-            except Exception:
-                await asyncio.to_thread(self._debugger._start_debuggee_process, debug_args)
+        await self._start_external_process(debug_args)
 
         if self._debugger.ipc.is_enabled:
             self._debugger.start_ipc_reader(accept=True)
@@ -114,10 +121,13 @@ class _PyDebuggerLifecycleManager:
         if self._debugger.stop_on_entry and not self._debugger.no_debug:
             await self._debugger.await_stop_event()
 
-    async def launch_in_process(self) -> None:
+    async def launch_in_process(self, config: DapperConfig) -> None:
         """Initialize in-process debugging bridge and emit process event."""
         self._debugger.in_process = True
-        inproc = InProcessDebugger()
+        inproc = InProcessDebugger(
+            just_my_code=config.just_my_code,
+            strict_expression_watch_policy=config.strict_expression_watch_policy,
+        )
         self._debugger.create_inprocess_bridge(
             inproc,
             on_stopped=self._debugger.handle_event_stopped,

@@ -80,6 +80,7 @@ class DebuggerBDB(bdb.Bdb):
         send_message: Callable[..., Any] = _noop_send_message,
         process_commands: Callable[[], Any] = _noop_process_commands,
         just_my_code: bool = True,
+        strict_expression_watch_policy: bool = False,
     ):
         super().__init__(skip)
         # Use injected callbacks or fall back to no-ops
@@ -127,12 +128,15 @@ class DebuggerBDB(bdb.Bdb):
 
         # Consolidated data breakpoint state
         self.data_bp_state = DataBreakpointState()
+        self.data_bp_state.set_strict_expression_watch_policy(strict_expression_watch_policy)
 
     # ---------------- Data Breakpoint (Watch) Support -----------------
     def register_data_watches(
         self,
         names: list[str],
         metas: list[tuple[str, dict]] | None = None,
+        expressions: list[str] | None = None,
+        expression_metas: list[tuple[str, dict]] | None = None,
     ) -> None:
         """Replace the set of variable names to watch for changes.
 
@@ -141,6 +145,7 @@ class DebuggerBDB(bdb.Bdb):
         Multiple meta entries per variable name are stored in a list.
         """
         self.data_bp_state.register_watches(names, metas)
+        self.data_bp_state.register_expression_watches(expressions or [], expression_metas)
 
     def record_breakpoint(
         self,
@@ -178,11 +183,16 @@ class DebuggerBDB(bdb.Bdb):
             return []
         return self.data_bp_state.check_for_changes(id(frame), frame.f_locals)
 
+    def _check_expression_watch_changes(self, frame: types.FrameType) -> list[str]:
+        """Check for changes in watched expressions and return changed expressions."""
+        return self.data_bp_state.check_expression_changes(id(frame), frame)
+
     def _update_watch_snapshots(self, frame: types.FrameType) -> None:
         """Update snapshots of watched variable values."""
         if not isinstance(frame.f_locals, Mapping):
             return
         self.data_bp_state.update_snapshots(id(frame), frame.f_locals)
+        self.data_bp_state.update_expression_snapshots(id(frame), frame)
 
     # ---------------- Variable object helper -----------------
     def make_variable_object(
@@ -220,6 +230,24 @@ class DebuggerBDB(bdb.Bdb):
                 return True
             # For logpoints on data breakpoints, we still stop (data changed)
             # but the log message was already emitted by the resolver if emit_output was provided
+
+        return False
+
+    def _should_stop_for_expression_breakpoint(
+        self,
+        changed_expression: str,
+        frame: types.FrameType,
+    ) -> bool:
+        """Evaluate conditions and hitConditions for a changed watched expression."""
+        metas = (self.data_bp_state.watch_expression_meta or {}).get(changed_expression, [])
+
+        if not metas:
+            return True
+
+        for m in metas:
+            result = self.breakpoint_resolver.resolve(m, frame)
+            if result.action == ResolveAction.STOP:
+                return True
 
         return False
 
@@ -348,9 +376,10 @@ class DebuggerBDB(bdb.Bdb):
 
         # Check for data watch changes first
         changed_names = self._check_data_watch_changes(frame)
+        changed_expressions = self._check_expression_watch_changes(frame)
         self._update_watch_snapshots(frame)
 
-        if changed_names:
+        if changed_names or changed_expressions:
             for changed_name in changed_names:
                 if self._should_stop_for_data_breakpoint(changed_name, frame):
                     self._ensure_thread_registered(thread_id)
@@ -360,7 +389,16 @@ class DebuggerBDB(bdb.Bdb):
                         "data breakpoint",
                         f"{changed_name} changed",
                     )
-            if changed_names:
+            for changed_expression in changed_expressions:
+                if self._should_stop_for_expression_breakpoint(changed_expression, frame):
+                    self._ensure_thread_registered(thread_id)
+                    self._emit_stopped_event(
+                        frame,
+                        thread_id,
+                        "data breakpoint",
+                        f"{changed_expression} changed",
+                    )
+            if changed_names or changed_expressions:
                 return
 
         # Handle regular breakpoints

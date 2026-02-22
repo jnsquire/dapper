@@ -17,6 +17,9 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
+
+from dapper.shared.value_conversion import evaluate_with_policy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -52,6 +55,12 @@ class DataBreakpointState:
     watch_meta: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     last_values_by_frame: dict[int, dict[str, object]] = field(default_factory=dict)
     global_values: dict[str, object] = field(default_factory=dict)
+    watch_expressions: set[str] = field(default_factory=set)
+    watch_expression_meta: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    last_expression_values_by_frame: dict[int, dict[str, object]] = field(default_factory=dict)
+    global_expression_values: dict[str, object] = field(default_factory=dict)
+    strict_expression_watch_policy: bool = False
+    compiled_expression_cache: dict[str, Any] = field(default_factory=dict)
 
     # Server-style mappings (optional, used by adapter layer)
     data_watches: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -83,6 +92,11 @@ class DataBreakpointState:
         self.watch_meta.clear()
         self.last_values_by_frame.clear()
         self.global_values.clear()
+        self.watch_expressions.clear()
+        self.watch_expression_meta.clear()
+        self.last_expression_values_by_frame.clear()
+        self.global_expression_values.clear()
+        self.compiled_expression_cache.clear()
         self.data_watches.clear()
         self.frame_watches.clear()
 
@@ -90,14 +104,37 @@ class DataBreakpointState:
         """Clear cached values but keep watch configuration."""
         self.last_values_by_frame.clear()
         self.global_values.clear()
+        self.last_expression_values_by_frame.clear()
+        self.global_expression_values.clear()
+
+    def register_expression_watches(
+        self,
+        expressions: list[str],
+        metas: list[tuple[str, dict[str, Any]]] | None = None,
+    ) -> None:
+        """Replace the set of expressions to watch for value changes."""
+        self.watch_expressions = {e for e in expressions if isinstance(e, str) and e.strip()}
+        self.watch_expression_meta = {e: [] for e in self.watch_expressions}
+        for expression in list(self.compiled_expression_cache):
+            if expression not in self.watch_expressions:
+                self.compiled_expression_cache.pop(expression, None)
+
+        if metas:
+            for expression, meta in metas:
+                if expression in self.watch_expression_meta:
+                    self.watch_expression_meta[expression].append(meta)
 
     def get_meta_for_name(self, name: str) -> list[dict[str, Any]]:
         """Get the list of metadata dicts for a watched variable name."""
         return self.watch_meta.get(name, [])
 
+    def get_meta_for_expression(self, expression: str) -> list[dict[str, Any]]:
+        """Get the list of metadata dicts for a watched expression."""
+        return self.watch_expression_meta.get(expression, [])
+
     def has_watches(self) -> bool:
         """Check if any variables are being watched."""
-        return bool(self.watch_names)
+        return bool(self.watch_names or self.watch_expressions)
 
     def is_watching(self, name: str) -> bool:
         """Check if a specific variable is being watched."""
@@ -165,6 +202,74 @@ class DataBreakpointState:
         for n in self.watch_names:
             if n in current_locals:
                 self.global_values[n] = current_locals[n]
+
+    def check_expression_changes(self, frame_id: int, frame: Any) -> list[str]:
+        """Check for changes in watched expressions and return changed expressions."""
+        if not self.watch_expressions:
+            return []
+
+        changed: list[str] = []
+        prior = self.last_expression_values_by_frame.get(frame_id)
+
+        for expression in self.watch_expressions:
+            try:
+                new_val = self.evaluate_expression(expression, frame)
+            except Exception:
+                continue
+
+            old_val = None
+            have_old = False
+
+            if prior is not None and expression in prior:
+                old_val = prior.get(expression, object())
+                have_old = True
+            elif expression in self.global_expression_values:
+                old_val = self.global_expression_values[expression]
+                have_old = True
+
+            if have_old:
+                try:
+                    equal = new_val == old_val
+                except (TypeError, ValueError):  # pragma: no cover - defensive
+                    equal = False
+                if old_val is not new_val and not equal:
+                    changed.append(expression)
+
+        return changed
+
+    def update_expression_snapshots(self, frame_id: int, frame: Any) -> None:
+        """Update snapshots of watched expression values."""
+        if not self.watch_expressions:
+            return
+
+        current_values: dict[str, object] = {}
+        for expression in self.watch_expressions:
+            try:
+                value = self.evaluate_expression(expression, frame)
+            except Exception:
+                continue
+            current_values[expression] = value
+            self.global_expression_values[expression] = value
+
+        self.last_expression_values_by_frame[frame_id] = current_values
+
+    def set_strict_expression_watch_policy(self, strict: bool) -> None:
+        """Set whether expression watchpoints use strict policy checks."""
+        self.strict_expression_watch_policy = bool(strict)
+
+    def evaluate_expression(self, expression: str, frame: Any) -> object:
+        """Evaluate a watched expression according to strict/permissive policy."""
+        if self.strict_expression_watch_policy:
+            return evaluate_with_policy(expression, frame, allow_builtins=True)
+
+        code_obj = self.compiled_expression_cache.get(expression)
+        if code_obj is None:
+            code_obj = compile(expression, "<watch-expression>", "eval")
+            self.compiled_expression_cache[expression] = code_obj
+
+        globals_ctx = getattr(frame, "f_globals", {}) or {}
+        locals_ctx = getattr(frame, "f_locals", {}) or {}
+        return eval(cast("Any", code_obj), globals_ctx, locals_ctx)
 
     def has_data_breakpoint_for_name(
         self,

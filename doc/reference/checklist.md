@@ -48,7 +48,7 @@ Legend
 
 ### Data breakpoints
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
-- 🟡 Runtime watchpoints (trigger on write) — supported when the debugger registers watches (in-process already works; launcher/adapter now register watches so subprocess mode can use this). Read-access detection and broader integration work remain.
+- 🟡 Runtime watchpoints (trigger on write/value change) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`). Read-access detection and broader cross-process integration work remain. See [Watchpoints reference](watchpoints.md).
 
 Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints_controller.md) for design notes and Phase 1 status.
 
@@ -71,7 +71,8 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 
 ### Expression evaluation
 - 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
-- ❌ Set expression / expression-backed watchpoints
+- 🟡 Expression-backed watchpoints via `setDataBreakpoints` (`frame:<id>:expr:<expression>`)
+- ❌ Set expression (`setExpression` DAP request)
 - ✅ Completions / auto-complete for expression editors
 
 Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `doc/architecture/frame-eval/implementation.md`, `doc/architecture/frame-eval/performance.md`.

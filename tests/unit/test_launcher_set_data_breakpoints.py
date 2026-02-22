@@ -18,6 +18,7 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
         "breakpoints": [
             {"dataId": "frame:1:var:x", "accessType": "write"},
             {"dataId": "frame:2:var:y", "accessType": "write", "condition": "x > 1"},
+            {"dataId": "frame:3:expr:x + y", "accessType": "write"},
         ],
     }
 
@@ -29,11 +30,12 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
 
     # handler returns success and body.breakpoint values
     assert result["success"] is True
-    assert len(result["body"]["breakpoints"]) == 2
+    assert len(result["body"]["breakpoints"]) == 3
 
     # set_data_breakpoint called for both
     assert ("frame:1:var:x", "write") in dbg.set_calls
     assert ("frame:2:var:y", "write") in dbg.set_calls
+    assert ("frame:3:expr:x + y", "write") in dbg.set_calls
 
     # register_data_watches called once with names and metas
     assert len(dbg.register_calls) == 1
@@ -41,6 +43,7 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
     assert set(names) == {"x", "y"}
     # verify that metadata contains dataId and accessType keys
     assert any(m["dataId"].endswith(":var:x") for (_, m) in metas)
+    assert "x + y" in dbg.data_bp_state.watch_expressions
 
 
 def test_set_data_breakpoints_when_set_raises_still_registers():

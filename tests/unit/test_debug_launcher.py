@@ -67,6 +67,7 @@ class TestDebugLauncherBasic:
             "--ipc-port",
             "5678",
             "--ipc-binary",
+            "--strict-expression-watch-policy",
             "--arg",
             "arg1",
             "--arg",
@@ -82,6 +83,7 @@ class TestDebugLauncherBasic:
         assert args.program == "script.py"
         assert args.arg == ["arg1", "arg2"]  # Changed from args.args to args.arg
         assert args.ipc_binary is True
+        assert args.strict_expression_watch_policy is True
 
     def test_parse_args_requires_ipc(self) -> None:
         """Test that --ipc is required by the launcher CLI."""
@@ -1102,8 +1104,13 @@ class TestUtilityFunctions:
             del session
             calls.append("listener")
 
-        def _configure_debugger(stop_on_entry, session=None, just_my_code=True):
-            del stop_on_entry, session, just_my_code
+        def _configure_debugger(
+            stop_on_entry,
+            session=None,
+            just_my_code=True,
+            strict_expression_watch_policy=False,
+        ):
+            del stop_on_entry, session, just_my_code, strict_expression_watch_policy
             calls.append("cfg")
 
         monkeypatch.setattr(dl, "parse_args", lambda: args)
@@ -1153,8 +1160,13 @@ class TestUtilityFunctions:
             del session
             calls.append("listener")
 
-        def _configure_debugger(stop_on_entry, session=None, just_my_code=True):
-            del stop_on_entry, session, just_my_code
+        def _configure_debugger(
+            stop_on_entry,
+            session=None,
+            just_my_code=True,
+            strict_expression_watch_policy=False,
+        ):
+            del stop_on_entry, session, just_my_code, strict_expression_watch_policy
             calls.append("cfg")
 
         def _run_with_debugger(program, a, session=None):

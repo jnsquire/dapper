@@ -74,6 +74,9 @@ class SetVariableCommandDependencies(TypedDict):
     var_ref_tuple_size: int
 
 
+_FRAME_DATA_ID_PARTS = 4
+
+
 def format_evaluation_error(
     exc: Exception,
     *,
@@ -318,6 +321,8 @@ def handle_set_data_breakpoints_impl(
 
     watch_names: list[str] = []
     watch_meta: list[tuple[str, Payload]] = []
+    watch_expressions: list[str] = []
+    watch_expression_meta: list[tuple[str, Payload]] = []
 
     results: list[Payload] = []
     for bp in breakpoints:
@@ -325,49 +330,96 @@ def handle_set_data_breakpoints_impl(
         access_type = bp.get("accessType", "readWrite")
         cond = bp.get("condition")
         hit_condition = bp.get("hitCondition")
-
-        verified = False
-
-        set_db = getattr(dbg, "set_data_breakpoint", None)
-        if data_id and callable(set_db):
-            try:
-                set_db(data_id, access_type)
-                verified = True
-            except (AttributeError, RuntimeError, TypeError, ValueError):
-                logger.debug("set_data_breakpoint failed for data_id=%r", data_id, exc_info=True)
-                verified = False
-
-        name_for_watch: str | None = None
-        if isinstance(data_id, str) and data_id:
-            sep = ":var:"
-            idx = data_id.rfind(sep)
-            name_for_watch = data_id[idx + len(sep) :] if idx != -1 else data_id
-
-        if name_for_watch:
-            if name_for_watch not in watch_names:
-                watch_names.append(name_for_watch)
-
-            meta: Payload = {
-                "dataId": data_id,
-                "accessType": access_type,
-            }
-            if cond is not None:
-                meta["condition"] = cond
-            if hit_condition is not None:
-                meta["hitCondition"] = hit_condition
-
-            watch_meta.append((name_for_watch, meta))
-
+        verified = _set_data_breakpoint(dbg, data_id, access_type, logger)
+        name_for_watch, expression_for_watch = _parse_watch_targets(data_id)
+        meta = _build_watch_meta(data_id, access_type, cond, hit_condition)
+        _append_watch_registration(name_for_watch, watch_names, watch_meta, meta)
+        _append_watch_registration(
+            expression_for_watch,
+            watch_expressions,
+            watch_expression_meta,
+            meta,
+        )
         results.append({"verified": verified})
 
     register = getattr(dbg, "register_data_watches", None)
-    if callable(register) and watch_names:
+    if callable(register) and (watch_names or watch_expressions):
         try:
-            register(watch_names, watch_meta)
+            register(watch_names, watch_meta, watch_expressions, watch_expression_meta)
         except (AttributeError, RuntimeError, TypeError, ValueError):
             logger.debug("register_data_watches failed", exc_info=True)
 
     return {"success": True, "body": {"breakpoints": results}}
+
+
+def _set_data_breakpoint(
+    dbg: CommandHandlerDebuggerLike | None,
+    data_id: object,
+    access_type: object,
+    logger: Logger,
+) -> bool:
+    set_db = getattr(dbg, "set_data_breakpoint", None)
+    if not (data_id and callable(set_db)):
+        return False
+
+    try:
+        set_db(data_id, access_type)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        logger.debug("set_data_breakpoint failed for data_id=%r", data_id, exc_info=True)
+        return False
+    else:
+        return True
+
+
+def _parse_watch_targets(data_id: object) -> tuple[str | None, str | None]:
+    if not isinstance(data_id, str) or not data_id:
+        return None, None
+
+    parts = data_id.split(":", maxsplit=3)
+    if len(parts) >= _FRAME_DATA_ID_PARTS and parts[0] == "frame":
+        kind = parts[2]
+        payload = parts[3]
+        if kind == "var" and payload:
+            return payload, None
+        if kind == "expr" and payload:
+            return None, payload
+        return None, None
+
+    sep = ":var:"
+    idx = data_id.rfind(sep)
+    if idx != -1:
+        return data_id[idx + len(sep) :], None
+    return None, None
+
+
+def _build_watch_meta(
+    data_id: object,
+    access_type: object,
+    condition: object,
+    hit_condition: object,
+) -> Payload:
+    meta: Payload = {
+        "dataId": data_id,
+        "accessType": access_type,
+    }
+    if condition is not None:
+        meta["condition"] = condition
+    if hit_condition is not None:
+        meta["hitCondition"] = hit_condition
+    return meta
+
+
+def _append_watch_registration(
+    target: str | None,
+    watch_targets: list[str],
+    watch_meta: list[tuple[str, Payload]],
+    meta: Payload,
+) -> None:
+    if not target:
+        return
+    if target not in watch_targets:
+        watch_targets.append(target)
+    watch_meta.append((target, meta))
 
 
 def handle_data_breakpoint_info_impl(

@@ -24,6 +24,7 @@ class TestDapperConfig:
 
         assert config.mode == "launch"
         assert config.in_process is False
+        assert config.strict_expression_watch_policy is False
         # Transport is resolved from "auto" based on platform
         expected_transport = "pipe" if os.name == "nt" else "unix"
         assert config.ipc.transport == expected_transport
@@ -60,6 +61,7 @@ class TestDapperConfig:
                 "noDebug": False,
                 "stopOnEntry": True,
                 "inProcess": True,
+                "strictExpressionWatchPolicy": True,
                 "useBinaryIpc": False,
                 "ipcTransport": "tcp",
                 "ipcPipeName": "test-pipe",
@@ -75,6 +77,7 @@ class TestDapperConfig:
         assert config.debuggee.stop_on_entry is True
         assert config.debuggee.no_debug is False
         assert config.in_process is True
+        assert config.strict_expression_watch_policy is True
         assert config.ipc.transport == "tcp"
         assert config.ipc.use_binary is False
         assert config.ipc.pipe_name == "test-pipe"
@@ -92,6 +95,7 @@ class TestDapperConfig:
                 "ipcHost": "localhost",
                 "ipcPort": 4711,
                 "useBinaryIpc": True,
+                "strictExpressionWatchPolicy": True,
             },
         }
 
@@ -102,6 +106,7 @@ class TestDapperConfig:
         assert config.ipc.host == "localhost"
         assert config.ipc.port == 4711
         assert config.ipc.use_binary is True
+        assert config.strict_expression_watch_policy is True
 
     def test_validate_launch_missing_program(self) -> None:
         """Test validation fails when program is missing for launch."""
