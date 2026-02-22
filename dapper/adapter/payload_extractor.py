@@ -79,6 +79,18 @@ def _thread(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _hot_reload_result(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "module": data.get("module", ""),
+        "path": data.get("path", ""),
+        "reboundFrames": data.get("reboundFrames", 0),
+        "updatedFrameCodes": data.get("updatedFrameCodes", 0),
+        "patchedInstances": data.get("patchedInstances", 0),
+        "warnings": data.get("warnings", []),
+        "durationMs": data.get("durationMs", 0.0),
+    }
+
+
 _EXTRACTORS: dict[str, Any] = {
     "output": _output,
     "continued": _continued,
@@ -89,6 +101,7 @@ _EXTRACTORS: dict[str, Any] = {
     "loadedSource": _loaded_source,
     "stopped": _stopped,
     "thread": _thread,
+    "dapper/hotReloadResult": _hot_reload_result,
 }
 
 

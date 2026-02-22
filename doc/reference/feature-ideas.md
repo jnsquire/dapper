@@ -26,11 +26,11 @@ Legend
 
 ## 4. Hot Code Reloading During a Debug Session
 
-- [ ] **Reload-and-continue** — when stopped at a breakpoint, allow the user
+- [x] **Reload-and-continue** — when stopped at a breakpoint, allow the user
       to edit source and apply the change without restarting.  Use
       `importlib.reload` + targeted frame-locals rebinding for functions
       already on the call stack.
-- [ ] **`loadedSource` changed event** — emit the DAP event after a reload so
+- [x] **`loadedSource` changed event** — emit the DAP event after a reload so
       the editor refreshes its gutter decorations and breakpoint markers.
 
 ---

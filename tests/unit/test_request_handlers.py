@@ -466,3 +466,73 @@ async def test_evaluate(handler, mock_server):
     assert result["body"]["result"] == "43"
     assert result["body"]["type"] == "int"
     assert result["body"]["variablesReference"] == 0
+
+
+@pytest.mark.asyncio
+async def test_dapper_hot_reload_missing_source_path(handler, mock_server):
+    mock_server.debugger.iter_threads = list
+    mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: True)
+
+    request = {
+        "seq": 90,
+        "type": "request",
+        "command": "dapper/hotReload",
+        "arguments": {"source": {}},
+    }
+
+    result = await handler._handle_dapper_hot_reload(request)
+    assert result["success"] is False
+    assert result["message"] == "Missing source path"
+
+
+@pytest.mark.asyncio
+async def test_dapper_hot_reload_requires_stopped(handler, mock_server):
+    mock_server.debugger.iter_threads = list
+    mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: False)
+
+    request = {
+        "seq": 91,
+        "type": "request",
+        "command": "dapper/hotReload",
+        "arguments": {"source": {"path": "/tmp/example.py"}},
+    }
+
+    result = await handler._handle_dapper_hot_reload(request)
+    assert result["success"] is False
+    assert result["message"] == "Hot reload requires the debugger to be stopped"
+
+
+@pytest.mark.asyncio
+async def test_dapper_hot_reload_success(handler, mock_server):
+    mock_server.debugger.iter_threads = list
+    mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: True)
+    mock_server.debugger.hot_reload = AsyncCallRecorder(
+        return_value={
+            "reloadedModule": "unit_mod",
+            "reloadedPath": "/tmp/unit_mod.py",
+            "reboundFrames": 0,
+            "updatedFrameCodes": 0,
+            "patchedInstances": 0,
+            "warnings": [],
+        },
+    )
+
+    request = {
+        "seq": 92,
+        "type": "request",
+        "command": "dapper/hotReload",
+        "arguments": {
+            "source": {"path": "/tmp/unit_mod.py"},
+            "options": {"invalidatePycache": False},
+        },
+    }
+
+    result = await handler._handle_dapper_hot_reload(request)
+
+    assert result["success"] is True
+    assert result["command"] == "dapper/hotReload"
+    assert result["body"]["reloadedModule"] == "unit_mod"
+    mock_server.debugger.hot_reload.assert_called_once_with(
+        "/tmp/unit_mod.py",
+        {"invalidatePycache": False},
+    )

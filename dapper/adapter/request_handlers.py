@@ -29,6 +29,7 @@ from dapper.protocol.requests import ContinueResponse
 from dapper.protocol.requests import DisconnectResponse
 from dapper.protocol.requests import EvaluateResponse
 from dapper.protocol.requests import ExceptionInfoResponse
+from dapper.protocol.requests import HotReloadResponse
 from dapper.protocol.requests import LaunchResponse
 from dapper.protocol.requests import LoadedSourcesResponse
 from dapper.protocol.requests import ModuleSourceResponse
@@ -62,6 +63,9 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import DisconnectRequest
     from dapper.protocol.requests import EvaluateRequest
     from dapper.protocol.requests import ExceptionInfoRequest
+    from dapper.protocol.requests import HotReloadArguments
+    from dapper.protocol.requests import HotReloadRequest
+    from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import InitializeRequest
     from dapper.protocol.requests import LaunchRequest
     from dapper.protocol.requests import LoadedSourcesRequest
@@ -202,6 +206,7 @@ class RequestHandler:
                 "supportsInstructionBreakpoints": True,
                 "supportsDataBreakpoints": True,
                 "supportsDataBreakpointInfo": True,
+                "supportsHotReload": True,
             },
         }
         await self.server.send_message(response)
@@ -356,6 +361,77 @@ class RequestHandler:
                 TerminateResponse,
                 success=False,
                 message=f"Terminate failed: {e!s}",
+            )
+
+    async def _handle_dapper_hot_reload(
+        self,
+        request: HotReloadRequest,
+    ) -> HotReloadResponse:
+        """Handle the 'dapper/hotReload' custom request.
+
+        Validates preconditions (debugger must be stopped, source path must
+        identify a loaded pure-Python module) and then delegates to
+        PyDebugger.hot_reload().  After a successful reload the standard
+        'loadedSource' (reason: 'changed') event is emitted automatically by
+        the service, followed by a 'dapper/hotReloadResult' event.
+
+        Pre-flight errors are returned as DAP error responses (success=False);
+        non-fatal issues during reload are reported in body.warnings.
+        """
+        args: HotReloadArguments = request.get("arguments", {})
+        source = args.get("source", {})
+        path: str | None = source.get("path") if isinstance(source, dict) else None
+
+        if not path:
+            return self._make_response(
+                request,
+                "dapper/hotReload",
+                HotReloadResponse,
+                success=False,
+                message="Missing source path",
+            )
+
+        # Guard: debugger must be stopped on at least one thread.
+        debugger = self.server.debugger
+        is_stopped = (
+            any(t.is_stopped for _, t in debugger.iter_threads())
+            or debugger.stopped_event.is_set()
+        )
+        if not is_stopped:
+            return self._make_response(
+                request,
+                "dapper/hotReload",
+                HotReloadResponse,
+                success=False,
+                message="Hot reload requires the debugger to be stopped",
+            )
+
+        options = args.get("options") or {}
+
+        try:
+            body: HotReloadResponseBody = await debugger.hot_reload(path, options)
+            return self._make_response(
+                request,
+                "dapper/hotReload",
+                HotReloadResponse,
+                body=body,
+            )
+        except NotImplementedError:
+            return self._make_response(
+                request,
+                "dapper/hotReload",
+                HotReloadResponse,
+                success=False,
+                message="Hot reload service not yet initialised",
+            )
+        except Exception as e:
+            logger.exception("Error handling dapper/hotReload request")
+            return self._make_response(
+                request,
+                "dapper/hotReload",
+                HotReloadResponse,
+                success=False,
+                message=f"Hot reload failed: {e!s}",
             )
 
     async def _handle_restart(self, request: RestartRequest) -> RestartResponse:

@@ -858,3 +858,124 @@ class RestartResponse(TypedDict):
     success: bool
     command: Literal["restart"]
     message: NotRequired[str]
+
+
+# ---------------------------------------------------------------------------
+# Hot Reload (custom extension: dapper/hotReload)
+# ---------------------------------------------------------------------------
+
+
+class HotReloadOptions(TypedDict, total=False):
+    """Per-request behaviour overrides for the 'dapper/hotReload' request.
+
+    All fields are optional; omitting the options block entirely is
+    equivalent to accepting every default listed below.
+    """
+
+    rebindFrameLocals: bool
+    # Default: True.
+    # Scan every live stack frame on stopped threads and replace
+    # references to old function objects with the reloaded versions.
+    # Set to False to apply the reload for future calls only.
+
+    updateFrameCode: bool
+    # Default: True (CPython ≥ 3.12); silently ignored on older runtimes.
+    # Attempt to assign frame.f_code when the new code object is
+    # structurally compatible (same co_varnames, co_freevars, co_argcount).
+    # A warning is added to the response for each incompatible frame.
+
+    patchClassInstances: bool
+    # Default: False.  Experimental.
+    # For every live instance whose __class__.__module__ matches the
+    # reloaded module, update __class__ to the new class object.
+    # Skipped silently for classes that use __slots__.
+
+    invalidatePycache: bool
+    # Default: True.
+    # Delete the matching __pycache__/*.pyc file before calling
+    # importlib.reload() to guarantee that fresh bytecode is compiled.
+
+
+class HotReloadArguments(TypedDict):
+    """Arguments for the 'dapper/hotReload' request."""
+
+    source: Source
+    # The source file to reload.  The 'path' field is required;
+    # 'sourceReference' is ignored (reload always uses the file system).
+
+    options: NotRequired[HotReloadOptions]
+    # Optional behaviour overrides.  Omit to accept all defaults.
+
+
+class HotReloadRequest(TypedDict):
+    """Request to reload a Python module during a paused debug session."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["dapper/hotReload"]
+    arguments: HotReloadArguments
+
+
+class HotReloadResponseBody(TypedDict, total=False):
+    """Body of a successful 'dapper/hotReload' response."""
+
+    reloadedModule: str
+    # Fully-qualified name of the module that was reloaded
+    # (e.g. "mypackage.utils").
+
+    reloadedPath: str
+    # Absolute path of the file that was reloaded.
+
+    reboundFrames: int
+    # Number of live stack frames whose locals were rebound.
+    # 0 when rebindFrameLocals is False or no matching frames existed.
+
+    updatedFrameCodes: int
+    # Number of frames whose f_code was successfully reassigned.
+    # Always 0 on CPython < 3.12.
+
+    patchedInstances: int
+    # Number of live instances whose __class__ was patched.
+    # Always 0 when patchClassInstances is False.
+
+    warnings: list[str]
+    # Non-fatal diagnostic messages explaining skipped or degraded steps.
+
+
+class HotReloadResponse(TypedDict):
+    """Response to the 'dapper/hotReload' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["dapper/hotReload"]
+    message: NotRequired[str]
+    body: NotRequired[HotReloadResponseBody]
+
+
+class HotReloadResultEventBody(TypedDict, total=False):
+    """Body of the 'dapper/hotReloadResult' event.
+
+    Emitted after a successful reload to let clients update the debug
+    console, status bar, or telemetry without correlating request/response
+    pairs.  Fields mirror HotReloadResponseBody plus a timing field.
+    """
+
+    module: str
+    path: str
+    reboundFrames: int
+    updatedFrameCodes: int
+    patchedInstances: int
+    warnings: list[str]
+    durationMs: float
+    # Wall-clock duration of the entire reload operation in milliseconds.
+
+
+class HotReloadResultEvent(TypedDict):
+    """Event emitted after a successful hot reload."""
+
+    seq: int
+    type: Literal["event"]
+    event: Literal["dapper/hotReloadResult"]
+    body: HotReloadResultEventBody

@@ -24,6 +24,7 @@ from dapper.adapter.debugger.runtime import _PyDebuggerRuntimeManager
 from dapper.adapter.debugger.session import _PyDebuggerSessionFacade
 from dapper.adapter.debugger.session_compat import _PyDebuggerSessionCompatMixin
 from dapper.adapter.debugger.state import _PyDebuggerStateManager
+from dapper.adapter.hot_reload import HotReloadService
 from dapper.adapter.source_tracker import LoadedSourceTracker
 from dapper.core.asyncio_task_inspector import AsyncioTaskRegistry
 from dapper.core.breakpoint_manager import BreakpointManager
@@ -61,6 +62,8 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import HotReloadOptions
+    from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import Module
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
@@ -294,6 +297,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self._runtime_manager = _PyDebuggerRuntimeManager(self)
         # Execution-control/lifecycle decomposition
         self._execution_manager = _PyDebuggerExecutionManager(self)
+        self._hot_reload_service = HotReloadService(self)
 
         self.stepping_controller = PyDebuggerSteppingState()
         # Direct assignment - VariableManager is already compatible
@@ -876,6 +880,14 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
     async def restart(self) -> None:
         """Request a session restart by signaling terminated(restart=true)."""
         await self._execution_manager.restart()
+
+    async def hot_reload(
+        self,
+        path: str,
+        options: HotReloadOptions | None = None,
+    ) -> HotReloadResponseBody:
+        """Reload a Python module in-place without restarting the session."""
+        return await self._hot_reload_service.reload_module(path, options)
 
     async def evaluate_expression(
         self,

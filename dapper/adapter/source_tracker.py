@@ -170,6 +170,26 @@ class LoadedSourceTracker:
         self._module_file_cache_count = len(sys.modules)
         yield from self._module_file_cache
 
+    def resolve_module_for_path(self, filename: str | Path) -> tuple[str, Any] | None:
+        """Resolve a loaded module by absolute source path."""
+        resolved = self.resolve_path(filename)
+        if resolved is None:
+            return None
+        resolved_str = str(resolved)
+
+        for module_name, module in list(sys.modules.items()):
+            if module is None:
+                continue
+            module_file = getattr(module, "__file__", None)
+            if not module_file:
+                continue
+            module_path = self.resolve_path(module_file)
+            if module_path is None:
+                continue
+            if str(module_path) == resolved_str:
+                return module_name, module
+        return None
+
     # ------------------------------------------------------------------
     # Main introspection methods
     # ------------------------------------------------------------------

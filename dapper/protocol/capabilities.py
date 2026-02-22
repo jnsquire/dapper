@@ -107,3 +107,5 @@ class Capabilities(TypedDict):
     supportsDataBreakpointBytes: NotRequired[bool]
     breakpointModes: NotRequired[list[Any]]
     supportsANSIStyling: NotRequired[bool]
+    supportsHotReload: NotRequired[bool]
+    # Custom Dapper extension: adapter accepts the 'dapper/hotReload' request.
