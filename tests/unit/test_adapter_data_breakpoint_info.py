@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from dapper.adapter.server import DebugAdapterServer
 from tests.mocks import MockConnection
@@ -18,7 +19,12 @@ def test_server_data_breakpoint_info_includes_type_value():
     out = dbg.data_breakpoint_info(name="z", frame_id=500)
     assert out.get("dataId") == "frame:500:var:z"
     assert out.get("description")
-    assert out.get("accessTypes") == ["write"]
+    expected_access_types = (
+        ["read", "write", "readWrite"]
+        if sys.version_info >= (3, 12) and hasattr(sys, "monitoring")
+        else ["write"]
+    )
+    assert out.get("accessTypes") == expected_access_types
     # enriched fields
     assert out.get("type") == "int"
     assert "42" in out.get("value", "")

@@ -11,6 +11,7 @@ class TestDataBreakpointState:
     def test_initial_state(self):
         state = DataBreakpointState()
         assert state.watch_names == set()
+        assert state.read_watch_names == set()
         assert state.watch_meta == {}
         assert state.last_values_by_frame == {}
         assert state.global_values == {}
@@ -47,6 +48,19 @@ class TestDataBreakpointState:
         assert len(state.watch_meta["x"]) == 2
         assert len(state.watch_meta["y"]) == 1
         assert state.watch_meta["x"][0]["condition"] == "x > 5"
+
+    def test_register_watches_respects_access_types(self):
+        state = DataBreakpointState()
+        metas = [
+            ("x", {"accessType": "read"}),
+            ("y", {"accessType": "write"}),
+            ("z", {"accessType": "readWrite"}),
+        ]
+
+        state.register_watches(["x", "y", "z"], metas)
+
+        assert state.watch_names == {"y", "z"}
+        assert state.read_watch_names == {"x", "z"}
 
     def test_register_watches_filters_invalid(self):
         state = DataBreakpointState()

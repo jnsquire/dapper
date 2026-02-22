@@ -25,7 +25,9 @@ class _PyDebuggerLifecycleManager:
     def __init__(self, debugger: PyDebugger):
         self._debugger = debugger
 
-    def _build_external_launch_args(self, config: DapperConfig) -> tuple[list[str], TransportConfig]:
+    def _build_external_launch_args(
+        self, config: DapperConfig
+    ) -> tuple[list[str], TransportConfig]:
         debug_args = [
             sys.executable,
             "-m",
@@ -86,7 +88,9 @@ class _PyDebuggerLifecycleManager:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
 
-        self._debugger._source_introspection.program_path = str(Path(config.debuggee.program).resolve())
+        self._debugger._source_introspection.program_path = str(
+            Path(config.debuggee.program).resolve()
+        )
         self._debugger.stop_on_entry = config.debuggee.stop_on_entry
         self._debugger.no_debug = config.debuggee.no_debug
         self._debugger.in_process = config.in_process

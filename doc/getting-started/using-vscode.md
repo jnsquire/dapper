@@ -179,7 +179,7 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 
 ## Quality-of-life improvements (Both Paths)
 
-- **Persistent watchpoints:** Dapper supports variable and expression watchpoints through `setDataBreakpoints` (including `frame:<id>:expr:<expression>`). See the [Watchpoints reference](../reference/watchpoints.md) for payload format, behavior, and strict-mode policy restrictions.
+- **Persistent watchpoints:** Dapper supports variable and expression watchpoints through `setDataBreakpoints` (including `frame:<id>:expr:<expression>`). Variable read watchpoints are available on Python 3.12+ (`sys.monitoring`); older versions gracefully fall back to write semantics. See the [Watchpoints reference](../reference/watchpoints.md) for payload format and behavior.
 - **Hot reload while paused:** Use `Dapper: Hot Reload Current File` (default `Ctrl+Alt+R` / `Cmd+Alt+R`) to reload the active Python file during a stopped session. You can also enable automatic reload on save with `dapper.hotReload.autoOnSave`. Current runtime support is in-process sessions.
 - **Reference:** See the [Hot Reload reference](../reference/hot-reload.md) for request/event details, safety checks, limitations, and telemetry counters.
 - **Task integration:** Create a VS Code task that runs `python -m dapper.adapter --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.

@@ -25,6 +25,17 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+def _normalize_access_type(access_type: Any) -> str:
+    if not isinstance(access_type, str):
+        return "write"
+    lowered = access_type.strip().lower()
+    if lowered == "read":
+        return "read"
+    if lowered in {"readwrite", "read_write", "read-write"}:
+        return "readwrite"
+    return "write"
+
+
 @dataclass
 class DataBreakpointState:
     """Consolidated state for data breakpoint (watchpoint) tracking.
@@ -52,6 +63,7 @@ class DataBreakpointState:
     """
 
     watch_names: set[str] = field(default_factory=set)
+    read_watch_names: set[str] = field(default_factory=set)
     watch_meta: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     last_values_by_frame: dict[int, dict[str, object]] = field(default_factory=dict)
     global_values: dict[str, object] = field(default_factory=dict)
@@ -79,16 +91,33 @@ class DataBreakpointState:
                    may contain 'condition', 'hitCondition', etc.
         """
         self.watch_names = {n for n in names if isinstance(n, str) and n}
+        self.read_watch_names = set()
         self.watch_meta = {n: [] for n in self.watch_names}
 
         if metas:
+            names_with_meta: set[str] = set()
+            write_names: set[str] = set()
+            read_names: set[str] = set()
             for name, meta in metas:
                 if name in self.watch_meta:
                     self.watch_meta[name].append(meta)
+                    names_with_meta.add(name)
+                    mode = _normalize_access_type(meta.get("accessType"))
+                    if mode in {"write", "readwrite"}:
+                        write_names.add(name)
+                    if mode in {"read", "readwrite"}:
+                        read_names.add(name)
+
+            # Backward compatibility: if no metadata exists for a name,
+            # preserve historical write-watch behavior.
+            write_names.update(self.watch_names - names_with_meta)
+            self.watch_names = write_names
+            self.read_watch_names = read_names
 
     def clear(self) -> None:
         """Clear all data breakpoint state."""
         self.watch_names.clear()
+        self.read_watch_names.clear()
         self.watch_meta.clear()
         self.last_values_by_frame.clear()
         self.global_values.clear()
@@ -139,6 +168,10 @@ class DataBreakpointState:
     def is_watching(self, name: str) -> bool:
         """Check if a specific variable is being watched."""
         return name in self.watch_names
+
+    def is_read_watching(self, name: str) -> bool:
+        """Check if a specific variable is being watched for read-access."""
+        return name in self.read_watch_names
 
     def check_for_changes(self, frame_id: int, current_locals: Mapping[str, Any]) -> list[str]:
         """Check for changes in watched variables and return all changed names.

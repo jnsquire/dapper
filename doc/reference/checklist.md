@@ -48,7 +48,7 @@ Legend
 
 ### Data breakpoints
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
-- 🟡 Runtime watchpoints (trigger on write/value change) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`). Read-access detection and broader cross-process integration work remain. See [Watchpoints reference](watchpoints.md).
+- 🟡 Runtime watchpoints (trigger on write/value change/read) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`), and read watchpoints are available on Python 3.12+ via `sys.monitoring` (name-read scope). On older versions, read access types gracefully fall back to write semantics. Broader cross-process/read-precision integration work remains. See [Watchpoints reference](watchpoints.md).
 
 Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints_controller.md) for design notes and Phase 1 status.
 
@@ -118,7 +118,7 @@ Phase 3 — advanced features (future)
 
 ---
 
-*Last updated: 2026-02-21*
+*Last updated: 2026-02-22*
 
 
 This document outlines the Debug Adapter Protocol (DAP) features implemented in Dapper, organized by category.

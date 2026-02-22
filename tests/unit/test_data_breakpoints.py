@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -62,7 +63,12 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
     info_body = responses["dataBreakpointInfo"]["body"]
     assert info_body["dataId"] == "frame:42:var:x"
     assert info_body["description"] == "Variable 'x' in frame 42"
-    assert info_body["accessTypes"] == ["write"]
+    expected_access_types = (
+        ["read", "write", "readWrite"]
+        if sys.version_info >= (3, 12) and hasattr(sys, "monitoring")
+        else ["write"]
+    )
+    assert info_body["accessTypes"] == expected_access_types
     assert info_body["canPersist"] is False
 
     assert "setDataBreakpoints" in responses

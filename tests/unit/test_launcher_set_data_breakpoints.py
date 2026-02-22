@@ -4,6 +4,7 @@ from typing import cast
 from unittest.mock import MagicMock
 
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.shared import variable_handlers
 from dapper.shared.variable_handlers import handle_set_data_breakpoints_impl
 from tests.mocks import FakeDebugger
 from tests.mocks import make_real_frame
@@ -69,6 +70,26 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
     assert result["success"] is True
     assert len(result["body"]["breakpoints"]) == 1
     assert result["body"]["breakpoints"][0]["verified"] is False
+
+
+def test_read_access_type_downgrades_to_write_when_monitoring_unavailable(monkeypatch):
+    dbg = FakeDebugger()
+    monkeypatch.setattr(variable_handlers, "_supports_read_watchpoints", lambda: False)
+
+    args = {
+        "breakpoints": [
+            {"dataId": "frame:10:var:a", "accessType": "read"},
+        ],
+    }
+
+    result = handle_set_data_breakpoints_impl(
+        cast("DebuggerLike", dbg),
+        args,
+        logging.getLogger(__name__),
+    )
+
+    assert result["success"] is True
+    assert ("frame:10:var:a", "write") in dbg.set_calls
 
 
 def test_handler_with_real_debugger_triggers_on_change():

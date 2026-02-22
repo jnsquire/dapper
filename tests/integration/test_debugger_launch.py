@@ -136,7 +136,9 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                     # Check that program is running before shutdown
                     assert self.debugger.program_running
                     expected_program_path = str(Path("python").resolve())
-                    assert self.debugger._source_introspection.program_path == expected_program_path
+                    assert (
+                        self.debugger._source_introspection.program_path == expected_program_path
+                    )
 
                     await self.debugger.shutdown()
 

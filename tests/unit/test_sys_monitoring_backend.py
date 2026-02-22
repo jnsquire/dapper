@@ -1,4 +1,5 @@
 # ruff: noqa: PLC0415
+# pyright: reportAttributeAccessIssue=false
 """Phase 2.8 — integration tests for ``SysMonitoringBackend``.
 
 Covers:
@@ -378,6 +379,33 @@ class TestLineCallback:
         before = b._stats["line_disabled"]
         b._on_line(code, 999)
         assert b._stats["line_disabled"] == before + 1  # type: ignore[index]
+
+
+class TestInstructionReadWatchpoints:
+    def test_instruction_read_watch_triggers_debugger_hook(self, backend):
+        b, mock_debugger = backend
+        b._read_watch_names = frozenset({"x"})
+        mock_debugger.handle_read_watch_access = MagicMock(return_value=True)
+
+        code = _make_code("/src/read.py", "target")
+        b._instruction_map_cache[code] = {0: ("LOAD_FAST", "x")}
+
+        result = b._on_instruction(code, 0)
+
+        assert result is None
+        mock_debugger.handle_read_watch_access.assert_called_once()
+        assert b._stats["instruction_hits"] >= 1
+
+    def test_instruction_non_watched_name_returns_disable(self, backend):
+        b, _ = backend
+        b._read_watch_names = frozenset({"x"})
+
+        code = _make_code("/src/read.py", "target")
+        b._instruction_map_cache[code] = {0: ("LOAD_FAST", "y")}
+
+        result = b._on_instruction(code, 0)
+
+        assert result is sys.monitoring.DISABLE
 
 
 # ---------------------------------------------------------------------------

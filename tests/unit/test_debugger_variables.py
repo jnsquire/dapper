@@ -71,8 +71,8 @@ class TestDebuggerVariables(BaseDebuggerTest):
         self.debugger.variable_manager.var_refs[100] = (
             "object",
             [
-            {"name": "x", "value": "42", "type": "int"},
-            {"name": "y", "value": "hello", "type": "str"},
+                {"name": "x", "value": "42", "type": "int"},
+                {"name": "y", "value": "hello", "type": "str"},
             ],
         )
 

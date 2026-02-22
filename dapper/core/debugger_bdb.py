@@ -146,6 +146,10 @@ class DebuggerBDB(bdb.Bdb):
         """
         self.data_bp_state.register_watches(names, metas)
         self.data_bp_state.register_expression_watches(expressions or [], expression_metas)
+        monitoring_backend = getattr(self, "_sys_monitoring_backend", None)
+        sync = getattr(monitoring_backend, "sync_read_watchpoints", None)
+        if callable(sync):
+            sync()
 
     def record_breakpoint(
         self,
@@ -215,7 +219,22 @@ class DebuggerBDB(bdb.Bdb):
             frame=frame,
         )
 
-    def _should_stop_for_data_breakpoint(self, changed_name: str, frame: types.FrameType) -> bool:
+    def _meta_matches_access_type(self, meta: dict[str, Any], access_type: str) -> bool:
+        """Return whether breakpoint metadata applies to the requested access mode."""
+        mode = str(meta.get("accessType", "write") or "write").strip().lower()
+        if mode in {"readwrite", "read_write", "read-write"}:
+            return True
+        if access_type == "read":
+            return mode == "read"
+        return mode == "write"
+
+    def _should_stop_for_data_breakpoint(
+        self,
+        changed_name: str,
+        frame: types.FrameType,
+        *,
+        access_type: str = "write",
+    ) -> bool:
         """Evaluate conditions and hitConditions for a changed variable."""
         metas = (self.data_bp_state.watch_meta or {}).get(changed_name, [])
 
@@ -225,6 +244,8 @@ class DebuggerBDB(bdb.Bdb):
 
         # Check each meta entry - stop if any passes all conditions
         for m in metas:
+            if not self._meta_matches_access_type(m, access_type):
+                continue
             result = self.breakpoint_resolver.resolve(m, frame)
             if result.action == ResolveAction.STOP:
                 return True
@@ -232,6 +253,23 @@ class DebuggerBDB(bdb.Bdb):
             # but the log message was already emitted by the resolver if emit_output was provided
 
         return False
+
+    def handle_read_watch_access(self, name: str, frame: types.FrameType) -> bool:
+        """Handle a read-access watchpoint hit from a monitoring backend callback."""
+        if not self.data_bp_state.is_read_watching(name):
+            return False
+        if not self._should_stop_for_data_breakpoint(name, frame, access_type="read"):
+            return False
+
+        thread_id = threading.get_ident()
+        self._ensure_thread_registered(thread_id)
+        self._emit_stopped_event(
+            frame,
+            thread_id,
+            "data breakpoint",
+            f"{name} read",
+        )
+        return True
 
     def _should_stop_for_expression_breakpoint(
         self,

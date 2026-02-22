@@ -41,6 +41,7 @@ in :mod:`~dapper._frame_eval.frame_eval_main` — they will fall back to
 from __future__ import annotations
 
 from collections import defaultdict
+import dis
 import logging
 import sys
 import threading
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+_DEBUGGER_BACKLINK_ATTR = "_sys_monitoring_backend"
 
 # ---------------------------------------------------------------------------
 # Guard: this module must only be used on Python 3.12+
@@ -110,6 +112,8 @@ class SysMonitoringBackend(TracingBackend):
 
         # Function breakpoint qualified names.
         self._function_breakpoints: frozenset[str] = frozenset()
+        self._read_watch_names: frozenset[str] = frozenset()
+        self._instruction_map_cache: dict[CodeType, dict[int, tuple[str, Any]]] = {}
 
         # Code-object registry: filename → set of seen CodeType objects.
         # Populated by _on_py_start; used to apply set_local_events().
@@ -136,6 +140,9 @@ class SysMonitoringBackend(TracingBackend):
             "py_return_callbacks": 0,
             "condition_evaluations": 0,
             "condition_skips": 0,
+            "instruction_callbacks": 0,
+            "instruction_hits": 0,
+            "instruction_disabled": 0,
         }
 
     # ------------------------------------------------------------------
@@ -167,13 +174,20 @@ class SysMonitoringBackend(TracingBackend):
             _monitoring.register_callback(DEBUGGER_ID, _events.CALL, self._on_call)
             _monitoring.register_callback(DEBUGGER_ID, _events.PY_START, self._on_py_start)
             _monitoring.register_callback(DEBUGGER_ID, _events.PY_RETURN, self._on_py_return)
+            _monitoring.register_callback(
+                DEBUGGER_ID,
+                _events.INSTRUCTION,
+                self._on_instruction,
+            )
 
             # Enable PY_START globally so newly entered functions are
             # discovered and added to the code registry.
             _monitoring.set_events(DEBUGGER_ID, _events.PY_START)
 
             self._debugger = debugger_instance
+            setattr(debugger_instance, _DEBUGGER_BACKLINK_ATTR, self)
             self._installed = True
+            self.sync_read_watchpoints()
             logger.debug("SysMonitoringBackend installed (DEBUGGER_ID=%d)", DEBUGGER_ID)
 
     def shutdown(self) -> None:
@@ -181,6 +195,7 @@ class SysMonitoringBackend(TracingBackend):
         with self._lock:
             if not self._installed:
                 return
+            debugger = self._debugger
             try:
                 _monitoring.set_events(DEBUGGER_ID, _events.NO_EVENTS)
                 # unregister all callbacks in one shot; ignore failures
@@ -190,6 +205,7 @@ class SysMonitoringBackend(TracingBackend):
                         _events.CALL,
                         _events.PY_START,
                         _events.PY_RETURN,
+                        _events.INSTRUCTION,
                     ):
                         _monitoring.register_callback(DEBUGGER_ID, event, None)
                 except Exception:
@@ -204,8 +220,20 @@ class SysMonitoringBackend(TracingBackend):
                 self._breakpoints.clear()
                 self._conditions.clear()
                 self._function_breakpoints = frozenset()
+                self._read_watch_names = frozenset()
+                self._instruction_map_cache.clear()
                 self._step_mode = _CONTINUE
                 self._step_code = None
+                if (
+                    debugger is not None
+                    and getattr(
+                        debugger,
+                        _DEBUGGER_BACKLINK_ATTR,
+                        None,
+                    )
+                    is self
+                ):
+                    setattr(debugger, _DEBUGGER_BACKLINK_ATTR, None)
         logger.debug("SysMonitoringBackend shut down.")
 
     # ------------------------------------------------------------------
@@ -242,6 +270,28 @@ class SysMonitoringBackend(TracingBackend):
             _monitoring.restart_events()
         except Exception as exc:
             logger.debug("restart_events() failed: %s", exc)
+
+    def sync_read_watchpoints(self) -> None:
+        """Sync read-watch names from attached debugger state and refresh event flags."""
+        debugger = self._debugger
+        state = getattr(debugger, "data_bp_state", None)
+        names = getattr(state, "read_watch_names", set()) if state is not None else set()
+        normalized = frozenset(name for name in names if isinstance(name, str) and name)
+
+        with self._lock:
+            if normalized == self._read_watch_names:
+                return
+            self._read_watch_names = normalized
+            current = _monitoring.get_events(DEBUGGER_ID)
+            if normalized:
+                _monitoring.set_events(DEBUGGER_ID, current | _events.INSTRUCTION)
+            else:
+                _monitoring.set_events(DEBUGGER_ID, current & ~_events.INSTRUCTION)
+
+        try:
+            _monitoring.restart_events()
+        except Exception as exc:
+            logger.debug("restart_events() in sync_read_watchpoints failed: %s", exc)
 
     def set_conditions(self, filepath: str, line: int, expression: str | None) -> None:
         """Register (or clear) a condition expression for a specific line.
@@ -567,4 +617,50 @@ class SysMonitoringBackend(TracingBackend):
                     _events.LINE | _events.PY_START | _events.PY_RETURN,
                 )
 
+        return None
+
+    def _instruction_map_for_code(self, code: CodeType) -> dict[int, tuple[str, Any]]:
+        mapping = self._instruction_map_cache.get(code)
+        if mapping is not None:
+            return mapping
+
+        mapping = {
+            instr.offset: (instr.opname, instr.argval) for instr in dis.get_instructions(code)
+        }
+        self._instruction_map_cache[code] = mapping
+        return mapping
+
+    def _on_instruction(self, code: CodeType, instruction_offset: int) -> object:
+        """Handle instruction callbacks and stop on watched variable read accesses."""
+        self._stats["instruction_callbacks"] += 1
+
+        watched_names = self._read_watch_names
+        if not watched_names:
+            self._stats["instruction_disabled"] += 1
+            return _DISABLE
+
+        op = self._instruction_map_for_code(code).get(instruction_offset)
+        if op is None:
+            self._stats["instruction_disabled"] += 1
+            return _DISABLE
+
+        opname, argval = op
+        if opname not in {"LOAD_FAST", "LOAD_NAME", "LOAD_GLOBAL", "LOAD_DEREF"}:
+            self._stats["instruction_disabled"] += 1
+            return _DISABLE
+
+        if not isinstance(argval, str) or argval not in watched_names:
+            self._stats["instruction_disabled"] += 1
+            return _DISABLE
+
+        self._stats["instruction_hits"] += 1
+        debugger = self._debugger
+        if debugger is None or not hasattr(debugger, "handle_read_watch_access"):
+            return None
+
+        frame = sys._getframe(1)  # noqa: SLF001
+        try:
+            debugger.handle_read_watch_access(argval, frame)
+        except Exception as exc:
+            logger.debug("handle_read_watch_access() raised: %s", exc)
         return None

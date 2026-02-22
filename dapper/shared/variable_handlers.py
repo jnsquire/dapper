@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 from typing import Callable
 from typing import Protocol
@@ -75,6 +76,28 @@ class SetVariableCommandDependencies(TypedDict):
 
 
 _FRAME_DATA_ID_PARTS = 4
+
+
+def _supports_read_watchpoints() -> bool:
+    return sys.version_info >= (3, 12) and hasattr(sys, "monitoring")
+
+
+def _normalize_access_type(access_type: object) -> str:
+    if not isinstance(access_type, str):
+        return "write"
+    lowered = access_type.strip().lower()
+    if lowered == "read":
+        return "read"
+    if lowered in {"readwrite", "read_write", "read-write"}:
+        return "readWrite"
+    return "write"
+
+
+def _effective_access_type(access_type: object) -> str:
+    normalized = _normalize_access_type(access_type)
+    if normalized in {"read", "readWrite"} and not _supports_read_watchpoints():
+        return "write"
+    return normalized
 
 
 def format_evaluation_error(
@@ -327,12 +350,14 @@ def handle_set_data_breakpoints_impl(
     results: list[Payload] = []
     for bp in breakpoints:
         data_id = bp.get("dataId")
-        access_type = bp.get("accessType", "readWrite")
+        requested_access_type = bp.get("accessType", "readWrite")
+        access_type = _effective_access_type(requested_access_type)
         cond = bp.get("condition")
         hit_condition = bp.get("hitCondition")
         verified = _set_data_breakpoint(dbg, data_id, access_type, logger)
         name_for_watch, expression_for_watch = _parse_watch_targets(data_id)
         meta = _build_watch_meta(data_id, access_type, cond, hit_condition)
+        meta["requestedAccessType"] = _normalize_access_type(requested_access_type)
         _append_watch_registration(name_for_watch, watch_names, watch_meta, meta)
         _append_watch_registration(
             expression_for_watch,
@@ -439,7 +464,9 @@ def handle_data_breakpoint_info_impl(
     body: Payload = {
         "dataId": data_id,
         "description": f"Data breakpoint for {name}",
-        "accessTypes": ["read", "write", "readWrite"],
+        "accessTypes": ["read", "write", "readWrite"]
+        if _supports_read_watchpoints()
+        else ["write"],
         "canPersist": False,
     }
 

@@ -5,6 +5,8 @@ Dapper supports persistent watchpoints through DAP `setDataBreakpoints`.
 ## What works now
 
 - Variable watchpoints (write-triggered): `frame:<frameId>:var:<name>`
+- Variable read watchpoints (Python 3.12+):
+  `frame:<frameId>:var:<name>` with `accessType: "read"` or `"readWrite"`
 - Expression watchpoints (value-change-triggered): `frame:<frameId>:expr:<expression>`
 - Conditions and hit conditions on watchpoints (`condition`, `hitCondition`)
 - Stop reason emitted as `data breakpoint`
@@ -29,6 +31,33 @@ Set a data breakpoint with an expression payload:
   }
 }
 ```
+
+Set a read watchpoint (Python 3.12+):
+
+```json
+{
+  "command": "setDataBreakpoints",
+  "arguments": {
+    "breakpoints": [
+      {
+        "dataId": "frame:42:var:counter",
+        "accessType": "read"
+      }
+    ]
+  }
+}
+```
+
+## Read-watchpoint behavior matrix
+
+| Python runtime | Requested `accessType` | Effective behavior |
+|---|---|---|
+| 3.12+ (`sys.monitoring` available) | `write` | Write-triggered watchpoint |
+| 3.12+ (`sys.monitoring` available) | `read` | Read-triggered watchpoint (variable-name loads) |
+| 3.12+ (`sys.monitoring` available) | `readWrite` | Read + write-triggered watchpoint |
+| 3.11 and earlier | `write` | Write-triggered watchpoint |
+| 3.11 and earlier | `read` | Graceful fallback to write-triggered semantics |
+| 3.11 and earlier | `readWrite` | Graceful fallback to write-triggered semantics |
 
 ## Strict expression watch policy
 
@@ -80,6 +109,10 @@ Typical blocked examples in strict mode:
 
 ## Current limitations
 
-- Watchpoints are currently write/value-change oriented (no read-access trigger yet).
+- Read watchpoints require Python 3.12+ (`sys.monitoring` backend).
+- On Python 3.11 and earlier, `accessType: "read"` / `"readWrite"` is
+  accepted but gracefully downgraded to write semantics.
+- Read detection is currently limited to variable-name loads (e.g. locals/globals);
+  attribute-read precision (`obj.attr`) is not guaranteed yet.
 - Expression watchpoints are evaluated in the active runtime frame context.
 - External/subprocess parity for expression watchpoint delivery is a follow-up item.

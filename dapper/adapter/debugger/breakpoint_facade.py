@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -22,6 +23,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _supports_read_watchpoints() -> bool:
+    return sys.version_info >= (3, 12) and hasattr(sys, "monitoring")
+
+
+def _normalize_access_type(access_type: Any) -> str:
+    if not isinstance(access_type, str):
+        return "write"
+    lowered = access_type.strip().lower()
+    if lowered == "read":
+        return "read"
+    if lowered in {"readwrite", "read_write", "read-write"}:
+        return "readWrite"
+    return "write"
+
+
+def _effective_access_type(requested_access_type: Any) -> str:
+    normalized = _normalize_access_type(requested_access_type)
+    if normalized in {"read", "readWrite"} and not _supports_read_watchpoints():
+        return "write"
+    return normalized
+
+
 class _PyDebuggerBreakpointFacade:
     """Breakpoint/data-breakpoint logic extracted from PyDebugger."""
 
@@ -34,7 +57,9 @@ class _PyDebuggerBreakpointFacade:
         body: DataBreakpointInfoResponseBody = {
             "dataId": data_id,
             "description": f"Variable '{name}' in frame {frame_id}",
-            "accessTypes": ["write"],
+            "accessTypes": ["read", "write", "readWrite"]
+            if _supports_read_watchpoints()
+            else ["write"],
             "canPersist": False,
         }
 
@@ -102,7 +127,8 @@ class _PyDebuggerBreakpointFacade:
 
             meta = {
                 "dataId": data_id,
-                "accessType": bp.get("accessType", "write"),
+                "accessType": _effective_access_type(bp.get("accessType", "write")),
+                "requestedAccessType": _normalize_access_type(bp.get("accessType", "write")),
                 "condition": bp.get("condition"),
                 "hitCondition": bp.get("hitCondition"),
                 "hit": 0,

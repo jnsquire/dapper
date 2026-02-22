@@ -24,17 +24,6 @@ Legend
 
 ---
 
-## 4. Hot Code Reloading During a Debug Session
-
-- [x] **Reload-and-continue** — when stopped at a breakpoint, allow the user
-      to edit source and apply the change without restarting.  Use
-      `importlib.reload` + targeted frame-locals rebinding for functions
-      already on the call stack.
-- [x] **`loadedSource` changed event** — emit the DAP event after a reload so
-      the editor refreshes its gutter decorations and breakpoint markers.
-
----
-
 ## 5. Expression Watchpoints / Set Expression
 
 - [x] **Persistent expression watchpoints** — re-evaluate a Python expression
@@ -102,16 +91,6 @@ Legend
       "user-unhandled").
 - [ ] **"Just my code" mode** — skip all frames inside site-packages /
       standard library entirely during stepping and stack display.
-
----
-
-## 12. Read-Access Data Watchpoints
-
-- [ ] **Read watchpoints via `sys.monitoring` (Python 3.12+)** — use
-      `sys.monitoring.EVENTS` to detect reads of watched variables on 3.12+
-      with a graceful fallback to the existing write-only watchpoint
-      implementation on older versions.  (Write watchpoints are `🟡`;
-      read-access detection is flagged in the checklist as remaining work.)
 
 ---
 

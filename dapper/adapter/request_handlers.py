@@ -431,10 +431,7 @@ class RequestHandler:
         else:
             thread_items = []
 
-        is_stopped = (
-            any(t.is_stopped for _, t in thread_items)
-            or debugger.stopped_event.is_set()
-        )
+        is_stopped = any(t.is_stopped for _, t in thread_items) or debugger.stopped_event.is_set()
         if not is_stopped:
             return self._make_response(
                 request,
@@ -870,9 +867,7 @@ class RequestHandler:
             exec(assignment, frame.f_globals, frame.f_locals)
 
             # Push updated locals back into the live frame
-            ctypes.pythonapi.PyFrame_LocalsToFast(
-                ctypes.py_object(frame), ctypes.c_int(0)
-            )
+            ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
 
             # Evaluate the expression to get the new value
             result = eval(
@@ -924,12 +919,8 @@ class RequestHandler:
             instructions = list(dis.get_instructions(frame.f_code))
 
             for instr in instructions:
-                if (
-                    "CALL" in instr.opname
-                    and (
-                        instr.starts_line == current_line
-                        or (instr.starts_line is None and targets)
-                    )
+                if "CALL" in instr.opname and (
+                    instr.starts_line == current_line or (instr.starts_line is None and targets)
                 ):
                     label = self._find_call_target_name(instructions, instr.offset)
                     targets.append(
@@ -1157,7 +1148,11 @@ class RequestHandler:
                     return cast("FrameType", frame)
 
         current_frame = getattr(debugger, "current_frame", None)
-        if current_frame is not None and hasattr(current_frame, "f_globals") and hasattr(current_frame, "f_locals"):
+        if (
+            current_frame is not None
+            and hasattr(current_frame, "f_globals")
+            and hasattr(current_frame, "f_locals")
+        ):
             return cast("FrameType", current_frame)
 
         return None
