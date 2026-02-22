@@ -227,7 +227,7 @@ class TestErrorIntegration:
         with pytest.raises(ConfigurationError) as exc_info:
             config.validate()
 
-        assert "Program path is required" in str(exc_info.value)
+        assert "Launch requires either program or module" in str(exc_info.value)
         assert exc_info.value.details["mode"] == "launch"
 
     def test_dap_response_structure(self) -> None:

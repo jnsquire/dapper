@@ -153,6 +153,112 @@ Example:
 }
 ```
 
+### Launch options reference (DAP `launch` request)
+
+The following launch fields are recognized by Dapper in VS Code launch configs:
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `program` | string | Python file path to run. Mutually exclusive with `module`. |
+| `module` | string | Python module name (like `python -m`). Mutually exclusive with `program`. |
+| `moduleSearchPaths` | string[] | Optional extra import search paths. |
+| `venvPath` | string | Optional virtual environment path used for interpreter selection. |
+| `subprocessAutoAttach` | boolean | Auto-attach supported Python child processes. |
+
+- Core target/runtime
+    - `program` (`string`): Python file to launch.
+    - `module` (`string`): Python module to launch (equivalent to `python -m <module>`).
+    - Exactly one of `program` or `module` must be provided.
+    - `moduleSearchPaths` (`string[]`, default `[]`): Extra module-resolution paths prepended to `PYTHONPATH` for module launches.
+    - `venvPath` (`string`, optional): Virtual environment path (or direct Python executable path) used to run the debug launcher/debuggee.
+    - `args` (`string[]`, default `[]`): Arguments passed to the target program.
+    - `cwd` (`string`, optional): Working directory for the debuggee.
+    - `env` (`object`, default `{}`): Environment variables for the debuggee.
+- Debug behavior
+    - `stopOnEntry` (`boolean`, default `false`): Break at entry.
+    - `noDebug` (`boolean`, default `false`): Run without debugger control.
+    - `justMyCode` (`boolean`, default `true`): Filter library/internal frames.
+    - `strictExpressionWatchPolicy` (`boolean`, default `false`): Enforce stricter expression watchpoint checks.
+- Runtime mode
+    - `inProcess` (`boolean`, default `false`): Use in-process backend instead of external debuggee subprocess.
+- IPC/transport
+    - `ipcTransport` (`"auto" | "pipe" | "unix" | "tcp"`, default `auto`): Adapter↔launcher transport selection.
+    - `ipcPipeName` (`string`, optional): Named pipe path when using `pipe`.
+    - `useBinaryIpc` (`boolean`, default `true`): Use binary framing for IPC.
+- Multi-process
+    - `subprocessAutoAttach` (`boolean`, default `false`): Auto-attach Python child processes.
+
+Example with commonly-used advanced options:
+
+```jsonc
+{
+    "type": "dapper",
+    "request": "launch",
+    "name": "Dapper: Advanced Launch",
+    "program": "${file}",
+    "args": ["--verbose"],
+    "cwd": "${workspaceFolder}",
+    "env": {
+        "PYTHONUNBUFFERED": "1"
+    },
+    "stopOnEntry": false,
+    "justMyCode": true,
+    "strictExpressionWatchPolicy": false,
+    "inProcess": false,
+    "ipcTransport": "auto",
+    "useBinaryIpc": true,
+    "subprocessAutoAttach": true
+}
+```
+
+Example: module launch with explicit module search environment
+
+```jsonc
+{
+    "type": "dapper",
+    "request": "launch",
+    "name": "Dapper: Module Launch",
+    "module": "my_app.main",
+    "moduleSearchPaths": [
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/libs"
+    ],
+    "env": {
+        "PYTHONPATH": "${workspaceFolder}/vendor"
+    },
+    "args": ["--port", "8080"]
+}
+```
+
+Example: module launch using a virtual environment directly
+
+```jsonc
+{
+    "type": "dapper",
+    "request": "launch",
+    "name": "Dapper: Module Launch in venv",
+    "module": "my_app.main",
+    "venvPath": "${workspaceFolder}/.venv",
+    "args": ["--port", "8080"]
+}
+```
+
+Tip: prefer `venvPath` when your module dependencies are installed in that
+environment. Use `moduleSearchPaths` when you specifically need extra source
+directories added to resolution.
+
+### Advanced: debug launcher target modes
+
+The internal launcher now supports mutually exclusive target forms:
+
+- `--program <path>`
+- `--module <module>` (like `python -m <module>`)
+- `--code <code>` (like `python -c <code>`)
+- `--module-search-path <path>` (repeatable)
+
+These are mainly used by Dapper internals (notably child-process auto-attach rewrite paths).
+For normal VS Code usage, prefer `launch.json` with `program`.
+
 ## Path B Step 4 – Start debugging
 
 1. Make sure the adapter terminal is still running.

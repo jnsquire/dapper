@@ -92,6 +92,9 @@ class LaunchRequestArguments(TypedDict, total=False):
     """
 
     program: str
+    module: NotRequired[str]
+    moduleSearchPaths: NotRequired[list[str]]
+    venvPath: NotRequired[str]
     args: NotRequired[list[str]]
     noDebug: NotRequired[bool]
     __restart: NotRequired[Any]

@@ -498,13 +498,31 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """Public wrapper for breakpoint-change event forwarding."""
         self._forward_breakpoint_events(storage_list)
 
-    def start_debuggee_process(self, debug_args: list[str]) -> None:
+    def start_debuggee_process(
+        self,
+        debug_args: list[str],
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> None:
         """Public wrapper to start the debuggee process for lifecycle components."""
-        self._runtime_manager.start_debuggee_process(debug_args)
+        self._runtime_manager.start_debuggee_process(
+            debug_args,
+            working_directory=working_directory,
+            environment=environment,
+        )
 
-    def _start_debuggee_process(self, debug_args: list[str]) -> None:
+    def _start_debuggee_process(
+        self,
+        debug_args: list[str],
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> None:
         """Compatibility alias for tests that patch the legacy private method."""
-        self.start_debuggee_process(debug_args)
+        self.start_debuggee_process(
+            debug_args,
+            working_directory=working_directory,
+            environment=environment,
+        )
 
     def schedule_program_exit(self, exit_code: int) -> None:
         """Schedule process-exit handling on the debugger event loop."""

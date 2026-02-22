@@ -25,16 +25,48 @@ class _PyDebuggerLifecycleManager:
     def __init__(self, debugger: PyDebugger):
         self._debugger = debugger
 
+    def _resolve_python_executable(self, config: DapperConfig) -> str:
+        """Resolve Python executable for launching the debuggee/launcher.
+
+        If ``venv_path`` is configured, treat it as either a virtualenv root
+        directory or an explicit Python executable path.
+        """
+        venv_path = config.debuggee.venv_path
+        if not venv_path:
+            return sys.executable
+
+        candidate = Path(venv_path)
+        if candidate.is_file():
+            return str(candidate)
+
+        if os.name == "nt":
+            exe = candidate / "Scripts" / "python.exe"
+        else:
+            exe = candidate / "bin" / "python"
+
+        if exe.exists():
+            return str(exe)
+
+        msg = f"Unable to resolve Python interpreter from venvPath: {venv_path}"
+        raise RuntimeError(msg)
+
     def _build_external_launch_args(
         self, config: DapperConfig
     ) -> tuple[list[str], TransportConfig]:
-        debug_args = [
-            sys.executable,
-            "-m",
-            "dapper.launcher.debug_launcher",
-            "--program",
-            self._debugger._source_introspection.program_path,
-        ]
+        python_executable = self._resolve_python_executable(config)
+        debug_args = [python_executable, "-m", "dapper.launcher.debug_launcher"]
+
+        if config.debuggee.module:
+            debug_args.extend(["--module", config.debuggee.module])
+        else:
+            program_path = self._debugger._source_introspection.program_path
+            if not program_path:
+                msg = "Program path is not set for program launch"
+                raise RuntimeError(msg)
+            debug_args.extend(["--program", program_path])
+
+        for search_path in config.debuggee.module_search_paths:
+            debug_args.extend(["--module-search-path", search_path])
 
         for arg in config.debuggee.args:
             debug_args.extend(["--arg", arg])
@@ -64,13 +96,46 @@ class _PyDebuggerLifecycleManager:
 
         return debug_args, transport_config
 
-    async def _start_external_process(self, debug_args: list[str]) -> None:
+    async def _start_external_process(
+        self,
+        debug_args: list[str],
+        *,
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> None:
+        use_legacy_signature = working_directory is None and environment is None
         if self._debugger.is_test_mode_enabled():
-            threading.Thread(
-                target=self._debugger._start_debuggee_process,
-                args=(debug_args,),
-                daemon=True,
-            ).start()
+            start_target = self._debugger._start_debuggee_process
+            if use_legacy_signature:
+                threading.Thread(
+                    target=start_target,
+                    args=(debug_args,),
+                    daemon=True,
+                ).start()
+            else:
+                threading.Thread(
+                    target=start_target,
+                    kwargs={
+                        "debug_args": debug_args,
+                        "working_directory": working_directory,
+                        "environment": environment,
+                    },
+                    daemon=True,
+                ).start()
+            return
+
+        if use_legacy_signature:
+            try:
+                await self._debugger.loop.run_in_executor(
+                    None,
+                    self._debugger._start_debuggee_process,
+                    debug_args,
+                )
+            except Exception:
+                await asyncio.to_thread(
+                    self._debugger._start_debuggee_process,
+                    debug_args,
+                )
             return
 
         try:
@@ -78,9 +143,16 @@ class _PyDebuggerLifecycleManager:
                 None,
                 self._debugger._start_debuggee_process,
                 debug_args,
+                working_directory,
+                environment,
             )
         except Exception:
-            await asyncio.to_thread(self._debugger._start_debuggee_process, debug_args)
+            await asyncio.to_thread(
+                self._debugger._start_debuggee_process,
+                debug_args,
+                working_directory,
+                environment,
+            )
 
     async def launch(self, config: DapperConfig) -> None:
         """Launch a new Python program for debugging using centralized configuration."""
@@ -90,9 +162,12 @@ class _PyDebuggerLifecycleManager:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
 
-        self._debugger._source_introspection.program_path = str(
-            Path(config.debuggee.program).resolve()
-        )
+        if config.debuggee.program:
+            self._debugger._source_introspection.program_path = str(
+                Path(config.debuggee.program).resolve()
+            )
+        else:
+            self._debugger._source_introspection.program_path = config.debuggee.module
         self._debugger.stop_on_entry = config.debuggee.stop_on_entry
         self._debugger.no_debug = config.debuggee.no_debug
         self._debugger.in_process = config.in_process
@@ -107,7 +182,22 @@ class _PyDebuggerLifecycleManager:
         logger.info("Launching program: %s", self._debugger._source_introspection.program_path)
         logger.debug("Debug command: %s", " ".join(debug_args))
 
-        await self._start_external_process(debug_args)
+        process_env = None
+        if config.debuggee.environment or config.debuggee.module_search_paths:
+            process_env = dict(os.environ)
+            process_env.update(config.debuggee.environment)
+            if config.debuggee.module_search_paths:
+                existing = process_env.get("PYTHONPATH", "")
+                merged = os.pathsep.join(config.debuggee.module_search_paths)
+                process_env["PYTHONPATH"] = (
+                    f"{merged}{os.pathsep}{existing}" if existing else merged
+                )
+
+        await self._start_external_process(
+            debug_args,
+            working_directory=config.debuggee.working_directory,
+            environment=process_env,
+        )
 
         if self._debugger.ipc.is_enabled:
             self._debugger.start_ipc_reader(accept=True)
@@ -116,8 +206,13 @@ class _PyDebuggerLifecycleManager:
 
         self._debugger.program_running = True
 
+        process_name = (
+            Path(self._debugger._source_introspection.program_path).name
+            if config.debuggee.program
+            else config.debuggee.module
+        )
         process_event = {
-            "name": Path(self._debugger._source_introspection.program_path).name,
+            "name": process_name,
             "systemProcessId": self._debugger.process.pid if self._debugger.process else None,
             "isLocalProcess": True,
             "startMethod": "launch",

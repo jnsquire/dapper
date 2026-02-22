@@ -6,7 +6,10 @@ export interface DebugConfiguration {
   name: string;
   type: 'dapper';
   request: 'launch' | 'attach';
-  program: string;
+  program?: string;
+  module?: string;
+  moduleSearchPaths?: string[];
+  venvPath?: string;
   args: string[];
   cwd: string;
   
@@ -42,6 +45,7 @@ export interface DebugConfiguration {
   
   // Subprocess debugging
   subProcess?: boolean;
+  subprocessAutoAttach?: boolean;
   subProcessId?: number;
   subProcessParentId?: number;
   subProcessName?: string;

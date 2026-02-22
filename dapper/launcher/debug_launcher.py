@@ -137,6 +137,12 @@ def parse_args():
         help="Arguments to pass to the debugged program",
     )
     parser.add_argument(
+        "--module-search-path",
+        action="append",
+        default=[],
+        help="Additional module search path entries (repeatable)",
+    )
+    parser.add_argument(
         "--stop-on-entry",
         action="store_true",
         help="Stop at the entry point of the program",
@@ -332,6 +338,9 @@ def run_with_debugger(
 
     if target_kind == "module":
         module_name = target_value
+        for search_path in reversed(getattr(active_session, "module_search_paths", [])):
+            if search_path and search_path not in sys.path:
+                sys.path.insert(0, search_path)
         sys.argv = [module_name, *program_args]
         dbg.run(
             f"import runpy\nrunpy.run_module({module_name!r}, run_name='__main__', alter_sys=True)"
@@ -371,6 +380,7 @@ def main():
     session.no_debug = args.no_debug
     session.session_id = getattr(args, "session_id", None) or uuid.uuid4().hex
     session.parent_session_id = getattr(args, "parent_session_id", None)
+    session.module_search_paths = list(getattr(args, "module_search_path", []))
 
     # Configure logging for debug messages
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
@@ -445,6 +455,10 @@ def run_program(target_value, args, *, target_kind: str = "program"):
 
     if target_kind == "module":
         module_name = target_value
+        active_session = debug_shared.get_active_session()
+        for search_path in reversed(getattr(active_session, "module_search_paths", [])):
+            if search_path and search_path not in sys.path:
+                sys.path.insert(0, search_path)
         sys.argv = [module_name, *args]
         runpy.run_module(module_name, run_name="__main__", alter_sys=True)
         return

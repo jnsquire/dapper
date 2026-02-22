@@ -152,6 +152,33 @@ Force a specific transport when needed:
    "program": "examples/sample_programs/simple_app.py",
    "useIpc": true,
    "ipcTransport": "tcp", // or "pipe" (Windows), "unix" (POSIX)
+   "useBinaryIpc": true,
+   "subprocessAutoAttach": true,
+   "justMyCode": true,
+   "strictExpressionWatchPolicy": false,
+}
+```
+
+```jsonc
+// Example DAP launch arguments (module target)
+{
+   "module": "http.server",
+   "moduleSearchPaths": ["${workspaceFolder}/src"],
+   "env": {
+      "PYTHONPATH": "${workspaceFolder}/vendor"
+   },
+   "args": ["8000"],
+   "useIpc": true
+}
+```
+
+```jsonc
+// Example DAP launch arguments (module target in virtualenv)
+{
+   "module": "my_app.main",
+   "venvPath": "${workspaceFolder}/.venv",
+   "args": ["--port", "8080"],
+   "useIpc": true
 }
 ```
 

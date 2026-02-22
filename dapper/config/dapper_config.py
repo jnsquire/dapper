@@ -45,6 +45,9 @@ class DebuggeeConfig:
     """Debuggee process configuration."""
 
     program: str = ""
+    module: str = ""
+    module_search_paths: list[str] = field(default_factory=list)
+    venv_path: str | None = None
     args: list[str] = field(default_factory=list)
     stop_on_entry: bool = False
     no_debug: bool = False
@@ -102,6 +105,9 @@ class DapperConfig:
         # Debuggee configuration
         debuggee = DebuggeeConfig(
             program=_get("program", default=""),
+            module=_get("module", default=""),
+            module_search_paths=_get("moduleSearchPaths", default=[]),
+            venv_path=_get("venvPath", default=None),
             args=_get("args", default=[]),
             stop_on_entry=_get("stopOnEntry", default=False),
             no_debug=_get("noDebug", default=False),
@@ -170,12 +176,21 @@ class DapperConfig:
                 details={"mode": self.mode, "in_process": self.in_process},
             )
 
-        if self.mode == "launch" and not self.debuggee.program:
-            raise ConfigurationError(
-                "Program path is required for launch mode",
-                config_key="program",
-                details={"mode": self.mode},
-            )
+        if self.mode == "launch":
+            has_program = bool(self.debuggee.program)
+            has_module = bool(self.debuggee.module)
+            if has_program and has_module:
+                raise ConfigurationError(
+                    "Only one launch target is allowed: provide either program or module",
+                    config_key="program/module",
+                    details={"mode": self.mode},
+                )
+            if not has_program and not has_module:
+                raise ConfigurationError(
+                    "Launch requires either program or module",
+                    config_key="program/module",
+                    details={"mode": self.mode},
+                )
 
         if self.mode == "attach":
             if self.ipc.transport == "tcp" and not self.ipc.port:
@@ -201,6 +216,9 @@ class DapperConfig:
         """Convert to keyword arguments for debugger.launch()."""
         kwargs = {
             "program": self.debuggee.program,
+            "module": self.debuggee.module,
+            "moduleSearchPaths": self.debuggee.module_search_paths,
+            "venvPath": self.debuggee.venv_path,
             "args": self.debuggee.args,
             "stopOnEntry": self.debuggee.stop_on_entry,
             "noDebug": self.debuggee.no_debug,

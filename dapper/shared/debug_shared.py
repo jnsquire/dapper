@@ -425,6 +425,7 @@ class DebugSession:
         self.no_debug: bool = False
         self.session_id: str | None = None
         self.parent_session_id: str | None = None
+        self.module_search_paths: list[str] = []
         self.command_queue: queue.Queue[Any] = queue.Queue()
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None

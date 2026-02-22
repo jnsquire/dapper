@@ -50,6 +50,33 @@ npm run package
 }
 ```
 
+### Module launch snippet
+
+```json
+{
+  "type": "dapper",
+  "request": "launch",
+  "name": "Python: Dapper Module",
+  "module": "package.module",
+  "moduleSearchPaths": ["${workspaceFolder}/src"],
+  "venvPath": "${workspaceFolder}/.venv",
+  "subprocessAutoAttach": true,
+  "console": "integratedTerminal"
+}
+```
+
+- Use exactly one launch target: `program` or `module`.
+
+### Launch options quick reference
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `program` | string | Python file path to run. Mutually exclusive with `module`. |
+| `module` | string | Python module name (like `python -m`). Mutually exclusive with `program`. |
+| `moduleSearchPaths` | string[] | Optional extra import search paths. |
+| `venvPath` | string | Optional virtual environment path used for interpreter selection. |
+| `subprocessAutoAttach` | boolean | Auto-attach supported Python child processes. |
+
 ## Commands
 
 - `Dapper: Start Debugging` - Start debugging with the current configuration.

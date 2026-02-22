@@ -54,7 +54,12 @@ class _PyDebuggerRuntimeManager:
             get_next_command_id=self._debugger._get_next_command_id,
         )
 
-    def start_debuggee_process(self, debug_args: list[str]) -> None:
+    def start_debuggee_process(
+        self,
+        debug_args: list[str],
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> None:
         """Start the debuggee process and forward lifecycle/output events."""
         try:
             self._debugger.process = subprocess.Popen(
@@ -64,6 +69,8 @@ class _PyDebuggerRuntimeManager:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                cwd=working_directory,
+                env=environment,
             )
 
             stdout = cast("Any", self._debugger.process.stdout)

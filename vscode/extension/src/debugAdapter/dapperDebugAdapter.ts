@@ -18,7 +18,11 @@ const __dirname = dirname(__filename);
 
 // Define the debug configuration type that we expect
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-  program: string;
+  program?: string;
+  module?: string;
+  moduleSearchPaths?: string[];
+  venvPath?: string;
+  subprocessAutoAttach?: boolean;
   args?: string[];
   stopOnEntry?: boolean;
   console?: 'internalConsole' | 'integratedTerminal' | 'externalTerminal';
@@ -647,11 +651,20 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         // Build arguments: use dapper.debug_launcher CLI
         const args: string[] = ['-m', 'dapper.debug_launcher'];
         const program = config.program as string | undefined;
+        const moduleName = config.module as string | undefined;
         if (program) {
           const programPath = String(program).replace(/\\/g, '/');
           args.push('--program', programPath);
+        } else if (moduleName) {
+          args.push('--module', String(moduleName));
         } else {
-          vscode.window.showWarningMessage('Dapper: launch.program not set; debug launcher expects a program path.');
+          vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
+        }
+
+        if (Array.isArray(config.moduleSearchPaths)) {
+          for (const p of config.moduleSearchPaths) {
+            args.push('--module-search-path', String(p));
+          }
         }
         if (config.args && Array.isArray(config.args)) {
           for (const a of config.args) {

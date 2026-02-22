@@ -40,16 +40,22 @@ describe('validateConfig', () => {
     expect(result.errors).toContain('Configuration name is required');
   });
 
-  it('should fail when program is missing', () => {
+  it('should fail when both program and module are missing', () => {
     const result = validateConfig(makeValidConfig({ program: undefined as any }));
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Program path is required');
+    expect(result.errors).toContain('Program path or module name is required');
   });
 
-  it('should fail when program is empty string', () => {
+  it('should fail when program and module are empty strings', () => {
     const result = validateConfig(makeValidConfig({ program: '' }));
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Program path is required');
+    expect(result.errors).toContain('Program path or module name is required');
+  });
+
+  it('should pass when module is provided without program', () => {
+    const result = validateConfig(makeValidConfig({ program: undefined as any, module: 'pkg.main' }));
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it('should fail when subProcess is true but subProcessName is missing', () => {
@@ -69,7 +75,7 @@ describe('validateConfig', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThanOrEqual(2);
     expect(result.errors).toContain('Configuration name is required');
-    expect(result.errors).toContain('Program path is required');
+    expect(result.errors).toContain('Program path or module name is required');
   });
 
   it('should pass when subProcess is false even without subProcessName', () => {

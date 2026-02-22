@@ -89,8 +89,17 @@
         "runtime": "node",
         "configurationAttributes": {
           "launch": {
-            "required": [
-              "program"
+            "oneOf": [
+              {
+                "required": [
+                  "program"
+                ]
+              },
+              {
+                "required": [
+                  "module"
+                ]
+              }
             ],
             "properties": {
               "program": {
@@ -98,12 +107,33 @@
                 "description": "The Python program to debug.",
                 "default": "${file}"
               },
+              "module": {
+                "type": "string",
+                "description": "Python module name to run (equivalent to `python -m <module>`)."
+              },
+              "moduleSearchPaths": {
+                "type": "array",
+                "description": "Additional directories prepended to module resolution (PYTHONPATH-like).",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "venvPath": {
+                "type": "string",
+                "description": "Path to a virtual environment used to select the Python interpreter for launch."
+              },
               "args": {
                 "type": "array",
                 "description": "Command line arguments passed to the program.",
                 "items": {
                   "type": "string"
                 }
+              },
+              "subprocessAutoAttach": {
+                "type": "boolean",
+                "description": "Automatically attach to supported Python child processes started by the debuggee.",
+                "default": false
               },
               "cwd": {
                 "type": "string",
@@ -230,6 +260,18 @@
               "request": "launch",
               "name": "Python: Dapper Debug",
               "program": "${file}",
+              "console": "integratedTerminal"
+            }
+          },
+          {
+            "label": "Dapper: Launch Python Module",
+            "description": "Debug a Python module by name with Dapper.",
+            "body": {
+              "type": "dapper",
+              "request": "launch",
+              "name": "Python: Dapper Module",
+              "module": "package.module",
+              "args": [],
               "console": "integratedTerminal"
             }
           },

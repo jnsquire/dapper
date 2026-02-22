@@ -23,7 +23,15 @@ describe('DapperConfigurationProvider', () => {
     expect(res.console).toBe('integratedTerminal');
   });
 
-  it('should abort launch when no program can be determined and active editor is not a python file', async () => {
+  it('should allow launch when module is provided without program', async () => {
+    const provider = new DapperConfigurationProvider();
+    const config = { type: 'dapper', request: 'launch', name: 'Module Launch', module: 'pkg.main' };
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
+    expect(res).toBeDefined();
+    expect(res?.module).toBe('pkg.main');
+  });
+
+  it('should abort launch when no target can be determined and active editor is not a python file', async () => {
     const provider = new DapperConfigurationProvider();
     const config = { type: 'dapper', request: 'launch', name: 'No Program' };
     // Ensure no active editor

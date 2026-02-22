@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import { DebugConfiguration, ProviderResult, WorkspaceFolder } from 'vscode';
 
 export class DapperConfigurationProvider implements vscode.DebugConfigurationProvider {
+  private static hasLaunchTarget(config: DebugConfiguration): boolean {
+    return Boolean(config.program || (config as Record<string, unknown>).module);
+  }
+
   provideDebugConfigurations(folder: WorkspaceFolder | undefined): ProviderResult<DebugConfiguration[]> {
     try {
       const saved = vscode.workspace.getConfiguration('dapper').get('debug') as DebugConfiguration | undefined;
@@ -37,9 +41,9 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
       }
     }
 
-    if (!config.program) {
-      vscode.window.showInformationMessage('Cannot find a program to debug');
-      return undefined; // Abort launch
+    if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
+      vscode.window.showInformationMessage('Cannot find a program or module to debug');
+      return undefined;
     }
 
     return config;
@@ -60,13 +64,13 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
     if (!config.type) config.type = 'dapper';
     if (!config.request) config.request = 'launch';
     if (!config.name) config.name = 'Dapper: Launch';
-    if (!config.program) {
-      // If the user didn't provide a program, fall back to active editor or abort
+    if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
+      // If the user didn't provide a launch target, fall back to active editor or abort
       const editor = vscode.window.activeTextEditor;
       if (editor && editor.document.languageId === 'python') config.program = '${file}';
       else {
         // Show an informative message and abort launch
-        await vscode.window.showInformationMessage('Cannot find a program to debug');
+        await vscode.window.showInformationMessage('Cannot find a program or module to debug');
         return undefined;
       }
     }

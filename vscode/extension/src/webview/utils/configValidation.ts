@@ -33,8 +33,10 @@ export function validateConfig(config: Partial<DebugConfiguration>): { valid: bo
     errors.push('Configuration name is required');
   }
 
-  if (!config.program?.trim()) {
-    errors.push('Program path is required');
+  const hasProgram = Boolean(config.program?.trim());
+  const hasModule = Boolean(config.module?.trim());
+  if (!hasProgram && !hasModule) {
+    errors.push('Program path or module name is required');
   }
 
   if (config.subProcess && !config.subProcessName?.trim()) {

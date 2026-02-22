@@ -44,7 +44,23 @@ Quick start with frame evaluation:
     "type": "python", 
     "request": "launch",
     "program": "${file}",
-    "frameEval": true
+    "frameEval": true,
+    "subprocessAutoAttach": true,
+    "justMyCode": true
+}
+```
+
+Module launch example:
+```json
+{
+    "name": "Python: Dapper Module Launch",
+    "type": "python",
+    "request": "launch",
+    "module": "my_app.main",
+    "moduleSearchPaths": ["${workspaceFolder}/src"],
+    "env": {
+        "PYTHONPATH": "${workspaceFolder}/vendor"
+    }
 }
 ```
 

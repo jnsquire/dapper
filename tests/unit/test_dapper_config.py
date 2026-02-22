@@ -32,6 +32,9 @@ class TestDapperConfig:
         assert config.ipc.transport == expected_transport
         assert config.ipc.use_binary is True
         assert config.debuggee.program == ""
+        assert config.debuggee.module == ""
+        assert config.debuggee.module_search_paths == []
+        assert config.debuggee.venv_path is None
         assert config.debuggee.args == []
 
     def test_from_launch_request_minimal(self) -> None:
@@ -119,11 +122,48 @@ class TestDapperConfig:
         assert config.strict_expression_watch_policy is True
 
     def test_validate_launch_missing_program(self) -> None:
-        """Test validation fails when program is missing for launch."""
+        """Test validation fails when no launch target is provided."""
         config = DapperConfig(mode="launch")
 
-        with pytest.raises(ConfigurationError, match="Program path is required"):
+        with pytest.raises(ConfigurationError, match="Launch requires either program or module"):
             config.validate()
+
+    def test_validate_launch_rejects_program_and_module(self) -> None:
+        """Test validation fails when both launch targets are provided."""
+        config = DapperConfig(mode="launch")
+        config.debuggee.program = "app.py"
+        config.debuggee.module = "pkg.app"
+
+        with pytest.raises(
+            ConfigurationError,
+            match="Only one launch target is allowed",
+        ):
+            config.validate()
+
+    def test_from_launch_request_module_target(self) -> None:
+        """Test creating config from launch request using module target."""
+        request = cast(
+            "LaunchRequest",
+            {
+                "seq": 1,
+                "command": "launch",
+                "type": "request",
+                "arguments": {
+                    "module": "http.server",
+                    "moduleSearchPaths": ["/workspace/src", "/workspace/lib"],
+                    "venvPath": "/workspace/.venv",
+                    "args": ["8000"],
+                },
+            },
+        )
+
+        config = DapperConfig.from_launch_request(request)
+
+        assert config.debuggee.program == ""
+        assert config.debuggee.module == "http.server"
+        assert config.debuggee.module_search_paths == ["/workspace/src", "/workspace/lib"]
+        assert config.debuggee.venv_path == "/workspace/.venv"
+        assert config.debuggee.args == ["8000"]
 
     def test_validate_attach_tcp_missing_port(self) -> None:
         """Test validation fails when port is missing for TCP attach."""
@@ -168,7 +208,9 @@ class TestDapperConfig:
     def test_to_launch_kwargs(self) -> None:
         """Test converting config to launch kwargs."""
         config = DapperConfig()
-        config.debuggee.program = "test.py"
+        config.debuggee.module = "pkg.runner"
+        config.debuggee.module_search_paths = ["/workspace/src"]
+        config.debuggee.venv_path = "/workspace/.venv"
         config.debuggee.args = ["--verbose"]
         config.debuggee.stop_on_entry = True
         config.debuggee.no_debug = False
@@ -181,7 +223,10 @@ class TestDapperConfig:
         kwargs = config.to_launch_kwargs()
 
         expected = {
-            "program": "test.py",
+            "program": "",
+            "module": "pkg.runner",
+            "moduleSearchPaths": ["/workspace/src"],
+            "venvPath": "/workspace/.venv",
             "args": ["--verbose"],
             "stopOnEntry": True,
             "noDebug": False,
