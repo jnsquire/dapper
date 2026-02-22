@@ -399,6 +399,4 @@ analyze_performance()
 
 ## See Also
 
-- [Implementation Details](../architecture/frame-eval/implementation.md)
-- [Performance Architecture](../architecture/frame-eval/performance.md)
 - [Build Guide](../architecture/frame-eval/build-guide.md)

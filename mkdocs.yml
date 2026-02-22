@@ -43,8 +43,6 @@ nav:
     - Backend Lifecycle: architecture/backends.md
     - Breakpoints Controller: architecture/breakpoints.md
     - Error Handling: architecture/error-handling.md
-    - Frame Eval Implementation: architecture/frame-eval/implementation.md
-    - Frame Eval Performance: architecture/frame-eval/performance.md
     - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
     - sys.monitoring Integration: architecture/sys-monitoring.md
     - Analysis Notes: architecture/current-analysis.md

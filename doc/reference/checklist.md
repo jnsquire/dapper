@@ -75,7 +75,7 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 - ✅ Set expression (`setExpression` DAP request)
 - ✅ Completions / auto-complete for expression editors
 
-See also: [Frame Eval User Guide](../guides/frame-eval.md), [Implementation](../architecture/frame-eval/implementation.md), [Performance](../architecture/frame-eval/performance.md).
+See also: [Frame Eval User Guide](../guides/frame-eval.md).
 
 ---
 

@@ -8,9 +8,7 @@ Core architecture pages
 - [Overview and architecture details](./overview.md) — high-level architecture, transport and concurrency model, important patterns and design rationale.
 - [Lifecycle management and process guidance](./backends.md) — describes standardized lifecycle/state management for backends and recommended operational practices.
 
-- **Frame Evaluation (architecture)** — implementation & performance details for frame evaluation:
-	- [Implementation & design notes](./frame-eval/implementation.md)
-	- [Performance & benchmarks](./frame-eval/performance.md)
+- **Frame Evaluation (architecture)** — build guide for the frame eval extension:
 	- [Build & developer guide](./frame-eval/build-guide.md)
 
 - Breakpoints & controller — design and responsibilities for breakpoint handling and bookkeeping:
