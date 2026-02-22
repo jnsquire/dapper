@@ -14,6 +14,7 @@ import mimetypes
 from pathlib import Path
 import re
 import sys
+import types
 from typing import TYPE_CHECKING
 from typing import TypeVar
 from typing import cast
@@ -31,6 +32,8 @@ from dapper.protocol.requests import ContinueResponse
 from dapper.protocol.requests import DisconnectResponse
 from dapper.protocol.requests import EvaluateResponse
 from dapper.protocol.requests import ExceptionInfoResponse
+from dapper.protocol.requests import GotoResponse
+from dapper.protocol.requests import GotoTargetsResponse
 from dapper.protocol.requests import HotReloadResponse
 from dapper.protocol.requests import LaunchResponse
 from dapper.protocol.requests import LoadedSourcesResponse
@@ -70,6 +73,10 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import DisconnectRequest
     from dapper.protocol.requests import EvaluateRequest
     from dapper.protocol.requests import ExceptionInfoRequest
+    from dapper.protocol.requests import GotoRequest
+    from dapper.protocol.requests import GotoTarget
+    from dapper.protocol.requests import GotoTargetsRequest
+    from dapper.protocol.requests import GotoTargetsResponseBody
     from dapper.protocol.requests import HotReloadArguments
     from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import HotReloadRequest
@@ -160,6 +167,11 @@ class RequestHandler:
             resp["message"] = message
         return cast("_R", resp)
 
+    @staticmethod
+    def _supports_goto_targets() -> bool:
+        """Return whether gotoTargets/goto should be advertised for this runtime."""
+        return sys.implementation.name == "cpython" and hasattr(types.FrameType, "f_lineno")
+
     async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
         """Handle an unknown request command."""
         return self._make_response(
@@ -211,6 +223,7 @@ class RequestHandler:
                 "supportsSetVariable": True,
                 "supportsSetExpression": True,
                 "supportsSteppingGranularity": True,
+                "supportsGotoTargetsRequest": self._supports_goto_targets(),
                 "supportsDataBreakpoints": True,
                 "supportsDataBreakpointInfo": True,
                 "supportsHotReload": True,
@@ -946,6 +959,69 @@ class RequestHandler:
                 DAPResponse,
                 success=False,
                 message=f"Failed to get step-in targets: {e!s}",
+            )
+
+    async def _handle_goto_targets(self, request: GotoTargetsRequest) -> GotoTargetsResponse:
+        """Handle gotoTargets request."""
+        try:
+            args = request.get("arguments", {})
+            frame_id = args.get("frameId")
+            line = args.get("line")
+            if not isinstance(frame_id, int) or not isinstance(line, int):
+                return self._make_response(
+                    request,
+                    "gotoTargets",
+                    GotoTargetsResponse,
+                    success=False,
+                    message="gotoTargets requires integer frameId and line",
+                )
+
+            targets: list[GotoTarget] = await self.server.debugger.goto_targets(
+                frame_id=frame_id,
+                line=line,
+            )
+            body: GotoTargetsResponseBody = {"targets": targets}
+            return self._make_response(
+                request,
+                "gotoTargets",
+                GotoTargetsResponse,
+                body=body,
+            )
+        except Exception as e:
+            logger.exception("Error handling gotoTargets request")
+            return self._make_response(
+                request,
+                "gotoTargets",
+                GotoTargetsResponse,
+                success=False,
+                message=f"gotoTargets failed: {e!s}",
+            )
+
+    async def _handle_goto(self, request: GotoRequest) -> GotoResponse:
+        """Handle goto request."""
+        try:
+            args = request.get("arguments", {})
+            thread_id = args.get("threadId")
+            target_id = args.get("targetId")
+            if not isinstance(thread_id, int) or not isinstance(target_id, int):
+                return self._make_response(
+                    request,
+                    "goto",
+                    GotoResponse,
+                    success=False,
+                    message="goto requires integer threadId and targetId",
+                )
+
+            await self.server.debugger.goto(thread_id=thread_id, target_id=target_id)
+            return self._make_response(request, "goto", GotoResponse)
+        except Exception as e:
+            logger.exception("Error handling goto request")
+            return self._make_response(
+                request,
+                "goto",
+                GotoResponse,
+                success=False,
+                message=f"goto failed: {e!s}",
             )
 
     @staticmethod

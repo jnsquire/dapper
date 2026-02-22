@@ -26,6 +26,7 @@ from dapper.protocol.requests import ContinueResponseBody
 from dapper.protocol.requests import EvaluateResponseBody
 from dapper.protocol.requests import ExceptionInfoResponseBody
 from dapper.protocol.requests import FunctionBreakpoint
+from dapper.protocol.requests import GotoTarget
 from dapper.protocol.requests import SetVariableResponseBody
 from dapper.protocol.requests import StackTraceResponseBody
 from dapper.protocol.structures import Breakpoint
@@ -340,6 +341,22 @@ class BaseBackend(DebuggerBackend, ABC):
         """Pause execution. Returns True if pause was sent."""
         response = await self._execute_with_timeout("pause", {"thread_id": thread_id})
         return bool(response.get("sent", False))
+
+    async def goto_targets(self, frame_id: int, line: int) -> list[GotoTarget]:
+        """Get goto targets for a source line in a frame."""
+        return await self._execute_and_extract(
+            "goto_targets",
+            {"frame_id": frame_id, "line": line},
+            extract_key="targets",
+            return_type=list[GotoTarget],
+        )
+
+    async def goto(self, thread_id: int, target_id: int) -> None:
+        """Jump to a previously resolved goto target."""
+        await self._execute_with_timeout(
+            "goto",
+            {"thread_id": thread_id, "target_id": target_id},
+        )
 
     async def get_stack_trace(
         self,

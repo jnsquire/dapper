@@ -12,6 +12,8 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 
+from dapper.utils.threadsafe_async import schedule_coroutine_threadsafe
+
 if TYPE_CHECKING:
     from dapper.ipc.connections.base import ConnectionBase
 
@@ -22,8 +24,7 @@ class SyncConnectionAdapter:
     """Wrap a ConnectionBase and expose blocking accept/read/write/close.
 
     This creates a private event loop running in a background thread and
-    uses asyncio.run_coroutine_threadsafe to execute ConnectionBase
-    coroutines.
+    uses shared threadsafe async helpers to execute ConnectionBase coroutines.
     """
 
     def __init__(self, conn: ConnectionBase) -> None:
@@ -51,7 +52,7 @@ class SyncConnectionAdapter:
     def _run_coro(self, coro: Any) -> Any:
         if not self._loop:
             raise RuntimeError("Adapter loop not started")
-        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        fut = schedule_coroutine_threadsafe(coro, self._loop)
         return fut.result()
 
     def accept(self) -> None:

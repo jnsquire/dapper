@@ -9,12 +9,17 @@ This module provides:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING
 from typing import Any
-from typing import Callable
+
+from dapper.utils.threadsafe_async import SendEvent
+from dapper.utils.threadsafe_async import send_event_threadsafe
+
+if TYPE_CHECKING:
+    import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +34,7 @@ class IPCLoggingHandler(logging.Handler):
 
     def __init__(
         self,
-        send_event: Callable[[str, dict[str, Any] | None], Any],
+        send_event: SendEvent[dict[str, Any]],
         loop: asyncio.AbstractEventLoop,
         level: int = logging.INFO,
         namespace: str = "dapper",
@@ -63,10 +68,7 @@ class IPCLoggingHandler(logging.Handler):
                 "logger": record.name,
                 "timestamp": record.created,
             }
-            asyncio.run_coroutine_threadsafe(
-                self._send_event("dapper/log", body),
-                self._loop,
-            )
+            send_event_threadsafe(self._send_event, self._loop, "dapper/log", body)
         except Exception:
             # Don't let logging errors crash the debugger
             self.handleError(record)
@@ -85,7 +87,7 @@ class TelemetryForwarder:
 
     def __init__(
         self,
-        send_event: Callable[[str, dict[str, Any] | None], Any],
+        send_event: SendEvent[dict[str, Any]],
         loop: asyncio.AbstractEventLoop,
         interval_seconds: float = 30.0,
     ):
@@ -138,17 +140,14 @@ class TelemetryForwarder:
                 "snapshot": snapshot.as_dict(),
                 "timestamp": time.time(),
             }
-            asyncio.run_coroutine_threadsafe(
-                self._send_event("dapper/telemetry", body),
-                self._loop,
-            )
+            send_event_threadsafe(self._send_event, self._loop, "dapper/telemetry", body)
         except Exception:
             # Don't let telemetry errors crash the debugger
             logger.debug("Failed to send telemetry snapshot", exc_info=True)
 
 
 def install_log_forwarder(
-    send_event: Callable[[str, dict[str, Any] | None], Any],
+    send_event: SendEvent[dict[str, Any]],
     loop: asyncio.AbstractEventLoop,
     level: int = logging.INFO,
 ) -> IPCLoggingHandler:

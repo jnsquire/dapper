@@ -69,6 +69,8 @@ def mock_server():
         "step_in",
         "step_out",
         "pause",
+        "goto",
+        "goto_targets",
         "get_threads",
         "get_stack_trace",
         "get_scopes",
@@ -194,6 +196,49 @@ async def test_step_out(handler, mock_server):
     # Check the response
     assert result["type"] == "response"
     assert result["request_seq"] == 4
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_goto_targets(handler, mock_server):
+    """Test gotoTargets request handler."""
+    request = {
+        "seq": 41,
+        "type": "request",
+        "command": "gotoTargets",
+        "arguments": {"frameId": 7, "line": 20},
+    }
+
+    mock_server.debugger.goto_targets.return_value = [
+        {"id": 20, "label": "Line 20", "line": 20},
+    ]
+
+    result = await handler._handle_goto_targets(request)
+
+    assert len(mock_server.debugger.goto_targets.calls) == 1
+    called_args, called_kwargs = mock_server.debugger.goto_targets.calls[0]
+    assert called_args == ()
+    assert called_kwargs == {"frame_id": 7, "line": 20}
+    assert result["success"] is True
+    assert result["body"]["targets"][0]["id"] == 20
+
+
+@pytest.mark.asyncio
+async def test_goto(handler, mock_server):
+    """Test goto request handler."""
+    request = {
+        "seq": 42,
+        "type": "request",
+        "command": "goto",
+        "arguments": {"threadId": 1, "targetId": 55},
+    }
+
+    result = await handler._handle_goto(request)
+
+    assert len(mock_server.debugger.goto.calls) == 1
+    called_args, called_kwargs = mock_server.debugger.goto.calls[0]
+    assert called_args == ()
+    assert called_kwargs == {"thread_id": 1, "target_id": 55}
     assert result["success"] is True
 
 

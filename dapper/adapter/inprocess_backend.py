@@ -52,6 +52,8 @@ class InProcessBackend(BaseBackend):
             "step_in": self._handler_step_in,
             "step_out": self._handler_step_out,
             "pause": self._handler_pause,
+            "goto_targets": self._handler_goto_targets,
+            "goto": self._handler_goto,
             "get_stack_trace": self._handler_get_stack_trace,
             "get_variables": self._handler_get_variables,
             "set_variable": self._handler_set_variable,
@@ -105,6 +107,14 @@ class InProcessBackend(BaseBackend):
     async def _handler_pause(self, args: dict[str, Any]) -> dict[str, Any]:
         sent = await self.pause(args.get("thread_id", 1))
         return {"sent": sent}
+
+    async def _handler_goto_targets(self, args: dict[str, Any]) -> dict[str, Any]:
+        targets = await self.goto_targets(args["frame_id"], args["line"])
+        return {"targets": targets}
+
+    async def _handler_goto(self, args: dict[str, Any]) -> dict[str, Any]:
+        await self.goto(args["thread_id"], args["target_id"])
+        return {}
 
     async def _handler_get_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(

@@ -542,6 +542,70 @@ class StepOutResponse(TypedDict):
     body: NotRequired[Any]
 
 
+# GotoTargets
+class GotoTargetsArguments(TypedDict):
+    source: Source
+    line: int
+    column: NotRequired[int]
+    endLine: NotRequired[int]
+    endColumn: NotRequired[int]
+    frameId: NotRequired[int]
+
+
+class GotoTarget(TypedDict):
+    id: int
+    label: str
+    line: int
+    column: NotRequired[int]
+    endLine: NotRequired[int]
+    endColumn: NotRequired[int]
+    instructionPointerReference: NotRequired[str]
+
+
+class GotoTargetsRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["gotoTargets"]
+    arguments: GotoTargetsArguments
+
+
+class GotoTargetsResponseBody(TypedDict):
+    targets: list[GotoTarget]
+
+
+class GotoTargetsResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["gotoTargets"]
+    message: NotRequired[str]
+    body: NotRequired[GotoTargetsResponseBody]
+
+
+# Goto
+class GotoArguments(TypedDict):
+    threadId: int
+    targetId: int
+
+
+class GotoRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["goto"]
+    arguments: GotoArguments
+
+
+class GotoResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["goto"]
+    message: NotRequired[str]
+    body: NotRequired[Any]
+
+
 # Threads
 class ThreadsRequest(TypedDict):
     seq: int

@@ -9,7 +9,6 @@ event loop.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,7 +16,10 @@ from typing import Any
 from typing import Protocol
 from typing import TypeVar
 
+from dapper.utils.threadsafe_async import schedule_coroutine_threadsafe
+
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import Awaitable
     from collections.abc import Coroutine
     from concurrent.futures import Future
@@ -112,7 +114,7 @@ class BreakpointController:
         Returns:
             A Future that will be resolved with the coroutine's result.
         """
-        return asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return schedule_coroutine_threadsafe(coro, self._loop)
 
     # ---- line/source breakpoints
     def set_source(

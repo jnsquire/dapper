@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.requests import VariablesResponseBody
@@ -248,6 +249,16 @@ class InProcessDebugger:
                 dbg.stepping_controller.set_granularity(granularity)
                 if dbg.stepping_controller.current_frame is not None:
                     dbg.set_return(dbg.stepping_controller.current_frame)
+
+    def goto_targets(self, frame_id: int, line: int) -> list[GotoTarget]:
+        """Resolve goto targets for the provided frame and line."""
+        with self.command_lock:
+            return self.debugger.goto_targets(frame_id, line)
+
+    def goto(self, thread_id: int, target_id: int) -> None:
+        """Jump a stopped thread to a goto target."""
+        with self.command_lock:
+            self.debugger.goto(thread_id, target_id)
 
     # Variables/Stack/Evaluate
     # These follow the launcher semantics, but return dicts directly.

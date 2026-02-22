@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     import types
 
     from dapper.protocol.debugger_protocol import Variable as VariableDict
+    from dapper.protocol.requests import GotoTarget
     from dapper.protocol.structures import StackFrame
 
 try:
@@ -150,6 +151,69 @@ class DebuggerBDB(bdb.Bdb):
         sync = getattr(monitoring_backend, "sync_read_watchpoints", None)
         if callable(sync):
             sync()
+
+    def goto_targets(self, frame_id: int, line: int) -> list[GotoTarget]:
+        """Resolve goto targets for a frame/line pair.
+
+        Current implementation exposes a single line-level target when the
+        frame is known and line is positive.
+        """
+        frame = self.thread_tracker.get_frame(int(frame_id))
+        if frame is None:
+            return []
+        try:
+            target_line = int(line)
+        except Exception:
+            return []
+        if target_line <= 0:
+            return []
+        target: GotoTarget = {
+            "id": target_line,
+            "label": f"Line {target_line}",
+            "line": target_line,
+        }
+        return [target]
+
+    def _resolve_top_frame_for_thread(self, thread_id: int) -> types.FrameType | None:
+        """Resolve the top frame for a stopped thread id."""
+        stack = self.thread_tracker.frames_by_thread.get(thread_id) or []
+        if not stack:
+            return None
+        top = stack[0]
+        if not isinstance(top, dict):
+            return None
+        frame_id = top.get("id")
+        if not isinstance(frame_id, int):
+            return None
+        frame = self.thread_tracker.get_frame(frame_id)
+        return frame if frame is not None else None
+
+    def goto(self, thread_id: int, target_id: int) -> None:
+        """Jump a stopped thread to a target line via frame.f_lineno."""
+        frame = self._resolve_top_frame_for_thread(int(thread_id))
+        if frame is None:
+            msg = f"No stopped frame found for thread {thread_id}"
+            raise ValueError(msg)
+
+        target_line = int(target_id)
+        if target_line <= 0:
+            msg = f"Invalid target line {target_line}"
+            raise ValueError(msg)
+
+        try:
+            frame_any: Any = frame
+            frame_any.f_lineno = target_line
+        except Exception as exc:
+            msg = f"Cannot jump to line {target_line}: {exc!s}"
+            raise ValueError(msg) from exc
+
+        self._ensure_thread_registered(int(thread_id))
+        self._emit_stopped_event(
+            frame,
+            int(thread_id),
+            "goto",
+            f"Jumped to line {target_line}",
+        )
 
     def record_breakpoint(
         self,

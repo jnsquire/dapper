@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import Module
@@ -736,6 +737,21 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
     async def pause(self, thread_id: int) -> bool:
         """Pause execution of the specified thread"""
         return await self._execution_manager.pause(thread_id)
+
+    async def goto_targets(self, frame_id: int, line: int) -> list[GotoTarget]:
+        """Resolve goto targets for the requested frame and line."""
+        backend = self.get_active_backend()
+        if backend is None:
+            return []
+        return await backend.goto_targets(frame_id, line)
+
+    async def goto(self, thread_id: int, target_id: int) -> None:
+        """Jump the stopped thread to a goto target."""
+        backend = self.get_active_backend()
+        if backend is None:
+            msg = "No active backend for goto"
+            raise RuntimeError(msg)
+        await backend.goto(thread_id, target_id)
 
     async def get_threads(self) -> list[Thread]:
         """Get all threads"""

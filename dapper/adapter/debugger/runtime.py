@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # ruff: noqa: SLF001
-import asyncio
 import logging
 import subprocess
 import threading
@@ -12,6 +11,7 @@ from typing import cast
 from dapper.adapter.external_backend import ExternalProcessBackend
 from dapper.adapter.inprocess_backend import InProcessBackend
 from dapper.adapter.inprocess_bridge import InProcessBridge
+from dapper.utils.threadsafe_async import run_coroutine_fire_and_forget_threadsafe
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -34,7 +34,7 @@ class _PyDebuggerRuntimeManager:
         def _handle_ipc_message(message: dict[str, Any]) -> None:
             """Handle IPC message that may be already parsed (binary) or string."""
             if isinstance(message, dict):
-                asyncio.run_coroutine_threadsafe(
+                run_coroutine_fire_and_forget_threadsafe(
                     self._debugger.handle_debug_message(message),
                     self._debugger.loop,
                 )

@@ -18,6 +18,8 @@ from dapper.shared.debug_shared import DebugSession
         (handlers._cmd_step_in, {}),
         (handlers._cmd_step_out, {}),
         (handlers._cmd_pause, {}),
+        (handlers._cmd_goto_targets, {}),
+        (handlers._cmd_goto, {}),
         (handlers._cmd_stack_trace, {}),
         (handlers._cmd_threads, {}),
         (handlers._cmd_scopes, {}),

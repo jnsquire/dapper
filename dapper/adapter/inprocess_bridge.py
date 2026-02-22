@@ -201,6 +201,10 @@ class InProcessBridge:
                 "next": lambda: self.next_(_tid()),
                 "stepIn": lambda: self.step_in(_tid()),
                 "stepOut": lambda: self.step_out(_tid()),
+                "gotoTargets": lambda: {
+                    "targets": self.goto_targets(args.get("frameId"), args.get("line")),
+                },
+                "goto": lambda: self.goto(_tid(), args.get("targetId")),
                 "stackTrace": lambda: self.stack_trace(
                     _tid(),
                     args.get("startFrame", 0),

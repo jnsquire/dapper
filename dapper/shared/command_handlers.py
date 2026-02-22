@@ -45,6 +45,10 @@ if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.requests import ContinueArguments
     from dapper.protocol.requests import EvaluateArguments
+    from dapper.protocol.requests import GotoArguments
+    from dapper.protocol.requests import GotoTarget
+    from dapper.protocol.requests import GotoTargetsArguments
+    from dapper.protocol.requests import GotoTargetsResponseBody
     from dapper.protocol.requests import NextArguments
     from dapper.protocol.requests import PauseArguments
     from dapper.protocol.requests import ScopesArguments
@@ -262,6 +266,68 @@ def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
             _safe_send_debug_message,
             logger,
         )
+
+
+@command_handler("gotoTargets")
+def _cmd_goto_targets(
+    arguments: GotoTargetsArguments | dict[str, Any] | None,
+) -> dict[str, Any]:
+    dbg = _active_debugger()
+    if dbg is None:
+        body: GotoTargetsResponseBody = {"targets": []}
+        return {"success": True, "body": body}
+
+    payload = cast("GotoTargetsArguments", arguments or {})
+    frame_id = payload.get("frameId")
+    line = payload.get("line")
+    if not isinstance(frame_id, int) or not isinstance(line, int):
+        return {
+            "success": False,
+            "message": "gotoTargets requires integer frameId and line",
+        }
+
+    resolver = getattr(dbg, "goto_targets", None)
+    if not callable(resolver):
+        body: GotoTargetsResponseBody = {"targets": []}
+        return {"success": True, "body": body}
+
+    try:
+        targets = resolver(frame_id, line)
+    except Exception as exc:
+        logger.exception("Error handling gotoTargets command")
+        return {"success": False, "message": f"gotoTargets failed: {exc!s}"}
+
+    normalized: list[GotoTarget] = targets if isinstance(targets, list) else []
+    body: GotoTargetsResponseBody = {"targets": normalized}
+    return {"success": True, "body": body}
+
+
+@command_handler("goto")
+def _cmd_goto(arguments: GotoArguments | dict[str, Any] | None) -> dict[str, Any]:
+    dbg = _active_debugger()
+    if dbg is None:
+        return {"success": False, "message": "No active debugger"}
+
+    payload = cast("GotoArguments", arguments or {})
+    thread_id = payload.get("threadId")
+    target_id = payload.get("targetId")
+    if not isinstance(thread_id, int) or not isinstance(target_id, int):
+        return {
+            "success": False,
+            "message": "goto requires integer threadId and targetId",
+        }
+
+    goto_fn = getattr(dbg, "goto", None)
+    if not callable(goto_fn):
+        return {"success": False, "message": "goto not supported"}
+
+    try:
+        goto_fn(thread_id, target_id)
+    except Exception as exc:
+        logger.exception("Error handling goto command")
+        return {"success": False, "message": f"goto failed: {exc!s}"}
+
+    return {"success": True, "body": {}}
 
 
 @command_handler("stackTrace")

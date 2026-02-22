@@ -10,6 +10,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from dapper.adapter.base_backend import BaseBackend
 
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
 
     from dapper.config import DapperConfig
     from dapper.ipc.ipc_manager import IPCManager
+    from dapper.protocol.requests import GotoTarget
+    from dapper.protocol.requests import GotoTargetsResponseBody
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,8 @@ class ExternalProcessBackend(BaseBackend):
             "step_in": self._dispatch_step_in,
             "step_out": self._dispatch_step_out,
             "pause": self._dispatch_pause,
+            "goto_targets": self._dispatch_goto_targets,
+            "goto": self._dispatch_goto,
             "get_stack_trace": self._dispatch_stack_trace,
             "get_variables": self._dispatch_variables,
             "set_variable": self._dispatch_set_variable,
@@ -208,6 +213,41 @@ class ExternalProcessBackend(BaseBackend):
         cmd = {"command": "pause", "arguments": {"threadId": args["thread_id"]}}
         await self._send_command(cmd)
         return {"sent": True}
+
+    async def _dispatch_goto_targets(self, args: dict[str, Any]) -> dict[str, Any]:
+        frame_id = int(args["frame_id"])
+        line = int(args["line"])
+        cmd = {
+            "command": "gotoTargets",
+            "arguments": {
+                "frameId": frame_id,
+                "line": line,
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        if not response:
+            return {"targets": []}
+        body = response.get("body", {})
+        if not isinstance(body, dict):
+            return {"targets": []}
+        typed_body = cast("GotoTargetsResponseBody", body)
+        targets = typed_body.get("targets", [])
+        normalized_targets: list[GotoTarget] = targets if isinstance(targets, list) else []
+        return {"targets": normalized_targets}
+
+    async def _dispatch_goto(self, args: dict[str, Any]) -> dict[str, Any]:
+        cmd = {
+            "command": "goto",
+            "arguments": {
+                "threadId": args["thread_id"],
+                "targetId": args["target_id"],
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        if isinstance(response, dict) and response.get("success") is False:
+            msg = str(response.get("message") or "goto failed")
+            raise ValueError(msg)
+        return {}
 
     async def _dispatch_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
         cmd = {

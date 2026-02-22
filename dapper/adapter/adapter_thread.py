@@ -19,7 +19,7 @@ Notes:
 Threading Model:
 - The adapter runs on a dedicated daemon thread with its own asyncio event loop.
 - Shared state (_server, _loop, _loop_tasks, _thread_futures) is protected by _lock.
-- Cross-thread communication uses threading.Event and asyncio.run_coroutine_threadsafe.
+- Cross-thread communication uses threading.Event and shared threadsafe async helpers.
 
 """
 
@@ -37,6 +37,7 @@ from dapper.core.breakpoints_controller import BreakpointController
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.connections.tcp import TCPServerConnection
 from dapper.utils.events import EventEmitter
+from dapper.utils.threadsafe_async import schedule_coroutine_threadsafe
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class AdapterThread:
         # Schedule server.stop() if available
         if server is not None:
             try:
-                fut = asyncio.run_coroutine_threadsafe(server.stop(), loop)
+                fut = schedule_coroutine_threadsafe(server.stop(), loop)
             except Exception:
                 logger.exception("Error scheduling server.stop()")
             else:
@@ -260,7 +261,7 @@ class AdapterThread:
             await asyncio.gather(*tasks, return_exceptions=True)
 
         try:
-            waiter = asyncio.run_coroutine_threadsafe(_wait_for_all(), loop)
+            waiter = schedule_coroutine_threadsafe(_wait_for_all(), loop)
             waiter.result(timeout or 1.0)
         except Exception:
             logger.debug("Timeout or error waiting for background tasks to finish", exc_info=True)

@@ -9,7 +9,6 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 
 import asyncio
 from pathlib import Path
-import threading
 from typing import TypedDict
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -253,29 +252,15 @@ async def test_launch_success(debugger, mock_server):
 
 
 @pytest.mark.asyncio
-async def test_shutdown_fails_pending_commands_cross_loop(debugger):
+async def test_shutdown_fails_pending_commands_cross_loop(
+    debugger,
+    background_event_loop: asyncio.AbstractEventLoop,
+):
     """If a pending Future was created on a different loop (running in
     another thread), shutdown should still cause it to finish with an
     exception. This exercises the cross-loop scheduling path.
     """
-    # Create a new event loop running in a background thread
-    other_loop_ready = threading.Event()
-
-    def _loop_thread_fn(loop, ready_evt):
-        asyncio.set_event_loop(loop)
-        ready_evt.set()
-        loop.run_forever()
-
-    other_loop = asyncio.new_event_loop()
-    thread = threading.Thread(
-        target=_loop_thread_fn,
-        args=(other_loop, other_loop_ready),
-        daemon=True,
-    )
-    thread.start()
-
-    # Wait for the other loop to be ready
-    other_loop_ready.wait(timeout=1.0)
+    other_loop = background_event_loop
 
     # Create an asyncio.Future on the other loop by scheduling a small
     # coroutine that returns a fresh future.
@@ -302,14 +287,6 @@ async def test_shutdown_fails_pending_commands_cross_loop(debugger):
         # reads the future's result; but since the future is already done
         # we can call result() directly.
         fut_async.result()
-
-    # Clean up the other loop
-    other_loop.call_soon_threadsafe(other_loop.stop)
-    thread.join(timeout=1.0)
-    try:
-        other_loop.close()
-    except Exception:
-        pass
 
 
 @pytest.mark.asyncio

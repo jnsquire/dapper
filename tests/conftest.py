@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# isort: skip-file
 import asyncio
 import atexit
 import ctypes
@@ -13,11 +12,15 @@ from pathlib import Path
 import sys
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import pytest
 
 from dapper.utils.dev_tools import JSTestsFailedError
 from dapper.utils.dev_tools import run_js_tests
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +316,41 @@ def event_loop():
             asyncio.set_event_loop(None)
         except Exception:
             logger.exception("Failed to unset event loop")
+
+
+@pytest.fixture
+def background_event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+    """Provide an event loop running in a dedicated background thread."""
+    loop = asyncio.new_event_loop()
+    ready = threading.Event()
+
+    def _run() -> None:
+        asyncio.set_event_loop(loop)
+        ready.set()
+        loop.run_forever()
+
+    thread = threading.Thread(target=_run, daemon=True, name="TestBackgroundLoop")
+    thread.start()
+
+    if not ready.wait(timeout=1.0):
+        try:
+            if not loop.is_closed():
+                loop.close()
+        finally:
+            thread.join(timeout=1.0)
+        raise RuntimeError("Timed out waiting for background event loop to start")
+
+    try:
+        yield loop
+    finally:
+        if not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except Exception:
+                pass
+        thread.join(timeout=1.0)
+        if not loop.is_closed():
+            loop.close()
 
 
 def pytest_sessionfinish(session, exitstatus):

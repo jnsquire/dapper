@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Breakpoint
@@ -107,6 +108,14 @@ class DebuggerBackend(Protocol):
 
     async def pause(self, thread_id: int) -> bool:
         """Pause execution. Returns True if pause was sent."""
+        ...
+
+    async def goto_targets(self, frame_id: int, line: int) -> list[GotoTarget]:
+        """Get goto targets for a source line within a frame."""
+        ...
+
+    async def goto(self, thread_id: int, target_id: int) -> None:
+        """Jump to a previously resolved goto target in a thread."""
         ...
 
     # ------------------------------------------------------------------
