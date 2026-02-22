@@ -39,6 +39,7 @@ from dapper.protocol.requests import PauseResponse
 from dapper.protocol.requests import RestartResponse
 from dapper.protocol.requests import ScopesResponse
 from dapper.protocol.requests import SetBreakpointsResponse
+from dapper.protocol.requests import SetExceptionBreakpointsResponse
 from dapper.protocol.requests import SetFunctionBreakpointsResponse
 from dapper.protocol.requests import SetVariableResponse
 from dapper.protocol.requests import SourceResponse
@@ -78,6 +79,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import RestartRequest
     from dapper.protocol.requests import ScopesRequest
     from dapper.protocol.requests import SetBreakpointsRequest
+    from dapper.protocol.requests import SetExceptionBreakpointsRequest
     from dapper.protocol.requests import SetFunctionBreakpointsRequest
     from dapper.protocol.requests import SetVariableRequest
     from dapper.protocol.requests import SourceRequest
@@ -289,6 +291,30 @@ class RequestHandler:
             "setFunctionBreakpoints",
             SetFunctionBreakpointsResponse,
             body={"breakpoints": verified},
+        )
+
+    async def _handle_set_exception_breakpoints(
+        self,
+        request: SetExceptionBreakpointsRequest,
+    ) -> SetExceptionBreakpointsResponse:
+        """Handle setExceptionBreakpoints request.
+
+        Applies the requested filter IDs to the debugger's exception
+        breakpoint flags.  The two supported filter IDs are ``"raised"``
+        (break on all raised exceptions) and ``"uncaught"`` (break on
+        unhandled exceptions only).  Any filter ID not in this set is
+        silently ignored to allow forward compatibility.
+        """
+        args = request.get("arguments", {})
+        filters: list[str] = args.get("filters", [])
+
+        self.server.debugger.exception_breakpoints_raised = "raised" in filters
+        self.server.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+
+        return self._make_response(
+            request,
+            "setExceptionBreakpoints",
+            SetExceptionBreakpointsResponse,
         )
 
     async def _handle_continue(self, request: ContinueRequest) -> ContinueResponse:

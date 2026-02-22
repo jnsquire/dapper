@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 export class DebugSessionManager implements vscode.Disposable {
   private sessions = new Map<string, vscode.DebugSession>();
+  private _stoppedSessions = new Set<string>();
   private disposables: vscode.Disposable[] = [];
 
   constructor() {
@@ -15,22 +16,36 @@ export class DebugSessionManager implements vscode.Disposable {
   private onDidStartDebugSession(session: vscode.DebugSession): void {
     if (session.type === 'dapper') {
       this.sessions.set(session.id, session);
-      console.log(`Debug session started: ${session.id}`);
     }
   }
 
   private onDidTerminateDebugSession(session: vscode.DebugSession): void {
     if (session.type === 'dapper') {
       this.sessions.delete(session.id);
-      console.log(`Debug session terminated: ${session.id}`);
+      this._stoppedSessions.delete(session.id);
     }
   }
 
   private onDidReceiveCustomEvent(e: vscode.DebugSessionCustomEvent): void {
-    if (e.session.type === 'dapper') {
-      console.log(`Custom event received: ${e.event}`, e.body);
-      // Handle custom events from the debug adapter
+    if (e.session.type !== 'dapper') {
+      return;
     }
+
+    if (e.event === 'stopped') {
+      this._stoppedSessions.add(e.session.id);
+    } else if (e.event === 'continued' || e.event === 'terminated') {
+      this._stoppedSessions.delete(e.session.id);
+    } else if (e.event === 'dapper/hotReloadResult') {
+      const warnings: unknown[] = Array.isArray(e.body?.warnings) ? e.body.warnings : [];
+      if (warnings.length > 0) {
+        const message = `Dapper hot reload warnings: ${warnings.map(String).join('; ')}`;
+        vscode.window.showWarningMessage(message);
+      }
+    }
+  }
+
+  public isSessionStopped(sessionId: string): boolean {
+    return this._stoppedSessions.has(sessionId);
   }
 
   public async startDebugging(
@@ -46,7 +61,6 @@ export class DebugSessionManager implements vscode.Disposable {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Failed to start debugging session:', error);
       vscode.window.showErrorMessage(`Failed to start debugging: ${errorMessage}`);
       return false;
     }
@@ -59,5 +73,6 @@ export class DebugSessionManager implements vscode.Disposable {
   public dispose() {
     this.disposables.forEach(d => d.dispose());
     this.sessions.clear();
+    this._stoppedSessions.clear();
   }
 }

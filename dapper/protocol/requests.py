@@ -802,6 +802,13 @@ class SetExceptionBreakpointsArguments(TypedDict):
     exceptionOptions: NotRequired[list[ExceptionOptions]]
 
 
+class SetExceptionBreakpointsRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setExceptionBreakpoints"]
+    arguments: SetExceptionBreakpointsArguments
+
+
 # Exception info request/response wrappers
 class ExceptionInfoArguments(TypedDict):
     threadId: int

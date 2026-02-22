@@ -3,6 +3,8 @@ import { DebugAdapterDescriptor, DebugAdapterExecutable, DebugAdapterServer } fr
 import {
     LoggingDebugSession,
     InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent,
+    ContinuedEvent, ThreadEvent, BreakpointEvent, LoadedSourceEvent,
+    ModuleEvent, ExitedEvent, Event,
     Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from '@vscode/debugadapter';
 import type { DebugProtocol } from '@vscode/debugprotocol';
@@ -122,14 +124,31 @@ export class DapperDebugSession extends LoggingDebugSession {
   }
 
   private handleGeneralEvent(message: any) {
+    const body = message.body ?? {};
     if (message.event === 'stopped') {
-      this.sendEvent(new StoppedEvent(message.reason, DapperDebugSession.THREAD_ID));
+      this.sendEvent(new StoppedEvent(body.reason ?? message.reason, body.threadId ?? DapperDebugSession.THREAD_ID, body.text));
+    } else if (message.event === 'continued') {
+      this.sendEvent(new ContinuedEvent(body.threadId ?? DapperDebugSession.THREAD_ID, body.allThreadsContinued ?? true));
     } else if (message.event === 'output') {
-      this.sendEvent(new OutputEvent(message.output, message.category));
+      this.sendEvent(new OutputEvent(body.output ?? message.output, body.category ?? message.category));
     } else if (message.event === 'initialized') {
       this.sendEvent(new InitializedEvent());
     } else if (message.event === 'terminated') {
       this.sendEvent(new TerminatedEvent());
+    } else if (message.event === 'exited') {
+      this.sendEvent(new ExitedEvent(body.exitCode ?? 0));
+    } else if (message.event === 'thread') {
+      this.sendEvent(new ThreadEvent(body.reason, body.threadId));
+    } else if (message.event === 'breakpoint') {
+      this.sendEvent(new BreakpointEvent(body.reason, body.breakpoint));
+    } else if (message.event === 'loadedSource') {
+      this.sendEvent(new LoadedSourceEvent(body.reason, body.source));
+    } else if (message.event === 'module') {
+      this.sendEvent(new ModuleEvent(body.reason, body.module));
+    } else if (message.event === 'process') {
+      this.sendEvent(new Event('process', body));
+    } else if (message.event === 'dapper/hotReloadResult') {
+      this.sendEvent(new Event('dapper/hotReloadResult', body));
     }
   }
 
@@ -205,7 +224,13 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: LaunchRequestArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    this._isRunning = true;
+    const result = await this.sendRequestToPython('launch', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Launch failed';
+    } else {
+      this._isRunning = true;
+    }
     this.sendResponse(response);
   }
 
@@ -272,14 +297,235 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    // Send request
-    this.sendCommandToPython('variables', args);
-    
-    // Wait for 'variables' event with matching reference
-    const event = await this.waitForEvent('variables', (e) => e.variablesReference === args.variablesReference);
-    
+    const result = await this.sendRequestToPython('variables', args);
     response.body = {
-      variables: event.variables || []
+      variables: (result.body && result.body.variables) || []
+    };
+    this.sendResponse(response);
+  }
+
+  protected async attachRequest(
+    response: DebugProtocol.AttachResponse,
+    args: DebugProtocol.AttachRequestArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('attach', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Attach failed';
+    }
+    this.sendResponse(response);
+  }
+
+  protected async setFunctionBreakPointsRequest(
+    response: DebugProtocol.SetFunctionBreakpointsResponse,
+    args: DebugProtocol.SetFunctionBreakpointsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('setFunctionBreakpoints', args);
+    response.body = {
+      breakpoints: (result.body && result.body.breakpoints) || []
+    };
+    this.sendResponse(response);
+  }
+
+  protected async setExceptionBreakPointsRequest(
+    response: DebugProtocol.SetExceptionBreakpointsResponse,
+    args: DebugProtocol.SetExceptionBreakpointsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('setExceptionBreakpoints', args);
+    this.sendResponse(response);
+  }
+
+  protected async continueRequest(
+    response: DebugProtocol.ContinueResponse,
+    args: DebugProtocol.ContinueArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('continue', args);
+    response.body = {
+      allThreadsContinued: result.body?.allThreadsContinued ?? true
+    };
+    this.sendResponse(response);
+  }
+
+  protected async nextRequest(
+    response: DebugProtocol.NextResponse,
+    args: DebugProtocol.NextArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('next', args);
+    this.sendResponse(response);
+  }
+
+  protected async stepInRequest(
+    response: DebugProtocol.StepInResponse,
+    args: DebugProtocol.StepInArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('stepIn', args);
+    this.sendResponse(response);
+  }
+
+  protected async stepOutRequest(
+    response: DebugProtocol.StepOutResponse,
+    args: DebugProtocol.StepOutArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('stepOut', args);
+    this.sendResponse(response);
+  }
+
+  protected async pauseRequest(
+    response: DebugProtocol.PauseResponse,
+    args: DebugProtocol.PauseArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('pause', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Pause failed';
+    }
+    this.sendResponse(response);
+  }
+
+  protected async terminateRequest(
+    response: DebugProtocol.TerminateResponse,
+    args: DebugProtocol.TerminateArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('terminate', args);
+    this.sendResponse(response);
+  }
+
+  protected async restartRequest(
+    response: DebugProtocol.RestartResponse,
+    args: DebugProtocol.RestartArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    await this.sendRequestToPython('restart', args);
+    this.sendResponse(response);
+  }
+
+  protected async loadedSourcesRequest(
+    response: DebugProtocol.LoadedSourcesResponse,
+    args: DebugProtocol.LoadedSourcesArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('loadedSources', args);
+    response.body = {
+      sources: (result.body && result.body.sources) || []
+    };
+    this.sendResponse(response);
+  }
+
+  protected async sourceRequest(
+    response: DebugProtocol.SourceResponse,
+    args: DebugProtocol.SourceArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('source', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Source unavailable';
+    } else {
+      response.body = {
+        content: result.body?.content ?? '',
+        mimeType: result.body?.mimeType
+      };
+    }
+    this.sendResponse(response);
+  }
+
+  protected async modulesRequest(
+    response: DebugProtocol.ModulesResponse,
+    args: DebugProtocol.ModulesArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('modules', args);
+    response.body = {
+      modules: (result.body && result.body.modules) || [],
+      totalModules: result.body?.totalModules
+    };
+    this.sendResponse(response);
+  }
+
+  protected async setVariableRequest(
+    response: DebugProtocol.SetVariableResponse,
+    args: DebugProtocol.SetVariableArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('setVariable', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Set variable failed';
+    } else {
+      response.body = result.body ?? {};
+    }
+    this.sendResponse(response);
+  }
+
+  protected async evaluateRequest(
+    response: DebugProtocol.EvaluateResponse,
+    args: DebugProtocol.EvaluateArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('evaluate', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Evaluate failed';
+    } else {
+      response.body = result.body ?? { result: '', variablesReference: 0 };
+    }
+    this.sendResponse(response);
+  }
+
+  protected async dataBreakpointInfoRequest(
+    response: DebugProtocol.DataBreakpointInfoResponse,
+    args: DebugProtocol.DataBreakpointInfoArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('dataBreakpointInfo', args);
+    response.body = result.body ?? { dataId: null, description: 'Unavailable' };
+    this.sendResponse(response);
+  }
+
+  protected async setDataBreakpointsRequest(
+    response: DebugProtocol.SetDataBreakpointsResponse,
+    args: DebugProtocol.SetDataBreakpointsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('setDataBreakpoints', args);
+    response.body = {
+      breakpoints: (result.body && result.body.breakpoints) || []
+    };
+    this.sendResponse(response);
+  }
+
+  protected async exceptionInfoRequest(
+    response: DebugProtocol.ExceptionInfoResponse,
+    args: DebugProtocol.ExceptionInfoArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('exceptionInfo', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = result.message ?? 'Exception info unavailable';
+    } else {
+      response.body = result.body ?? { exceptionId: '', breakMode: 'never' };
+    }
+    this.sendResponse(response);
+  }
+
+  protected async completionsRequest(
+    response: DebugProtocol.CompletionsResponse,
+    args: DebugProtocol.CompletionsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('completions', args);
+    response.body = {
+      targets: (result.body && result.body.targets) || []
     };
     this.sendResponse(response);
   }
@@ -292,6 +538,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private readonly extensionVersion: string;
   private _pythonSocket?: Net.Socket; // Socket connection to Python debug_launcher
   private _currentSession?: DapperDebugSession; // Current debug session
+  private _pythonIpcServer?: Net.Server;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.envManager = new EnvironmentManager(context);
@@ -335,6 +582,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
 
         // Create a second server for Python to connect back with IPC
         const pythonIpcServer = Net.createServer(pythonSocket => {
+          this._pythonIpcServer = pythonIpcServer;
           // This is the IPC connection from Python debug_launcher
           const outChannel = this.envManager.getOutputChannel();
           outChannel.appendLine('[INFO] Python debug adapter connected via IPC');
@@ -418,10 +666,15 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       this.server.close();
       this.server = undefined;
     }
-    
+    if (this._pythonIpcServer) {
+      this._pythonIpcServer.close();
+      this._pythonIpcServer = undefined;
+    }
     if (this.childProcess) {
       this.childProcess.kill();
       this.childProcess = undefined;
     }
+    this._pythonSocket = undefined;
+    this._currentSession = undefined;
   }
 }
