@@ -6,7 +6,6 @@ import ctypes
 import importlib
 import linecache
 from pathlib import Path
-import sys
 import time
 import types
 from typing import TYPE_CHECKING
@@ -157,9 +156,6 @@ class HotReloadService:
         normalized_options: HotReloadOptions = options or {}
         invalidate_pyc = bool(normalized_options.get("invalidatePycache", True))
         update_frame_code = bool(normalized_options.get("updateFrameCode", True))
-        if update_frame_code and sys.version_info < (3, 12):
-            warnings.append("frame.f_code update not available on Python < 3.12")
-            update_frame_code = False
 
         importlib.invalidate_caches()
         linecache.checkcache(str(resolved))
