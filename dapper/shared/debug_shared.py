@@ -423,6 +423,8 @@ class DebugSession:
         self.debugger: DebuggerLike | None = None
         self.stop_at_entry: bool = False
         self.no_debug: bool = False
+        self.session_id: str | None = None
+        self.parent_session_id: str | None = None
         self.command_queue: queue.Queue[Any] = queue.Queue()
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None

@@ -7,7 +7,7 @@
 ### A. Using the Dapper VS Code Extension (managed environment)
 1. Install **Dapper Python Debugger** extension.
 2. (Optional) Configure settings under `dapper.python.*` (e.g. `installMode: wheel`).
-3. Press **F5** on a `dapper` launch configuration. The extension creates a venv in global storage, installs the bundled `dapper` wheel (or PyPI), and launches the debug adapter with `-m dapper.debug_launcher`.
+3. Press **F5** on a `dapper` launch configuration. The extension creates a venv in global storage, installs the bundled `dapper` wheel (or PyPI), and launches the debug adapter with `-m dapper.adapter`.
 
 ### B. Using Dapper Standalone (external adapter)
 1. Install **Python** & **Python Debug** extensions in VS Code.
@@ -133,6 +133,26 @@ What this does:
 
 These extra switches are interpreted by Dapper; VS Code will happily pass them through.
 
+### Dapper-specific launch options (standalone + extension)
+
+- `subprocessAutoAttach` (`boolean`, default `false`):
+    - When `true`, Dapper auto-instruments Python child processes created via
+        `subprocess.Popen(...)` so they can be attached as child debug sessions.
+    - Current scope is Phase 1 (`subprocess.Popen` Python children).
+    - Non-Python children are passed through unchanged.
+
+Example:
+
+```jsonc
+{
+        "type": "dapper",
+        "request": "launch",
+        "name": "Dapper: Launch with child auto-attach",
+        "program": "${file}",
+        "subprocessAutoAttach": true
+}
+```
+
 ## Path B Step 4 – Start debugging
 
 1. Make sure the adapter terminal is still running.
@@ -151,7 +171,7 @@ When using the VS Code extension:
     - Create (or reuse) a virtual environment under the extension's global storage path using `python -m venv`.
     - Install the bundled `dapper-<version>.whl` (or PyPI fallback) via `pip`.
     - Record a manifest (`dapper-env.json`) with installed version and source.
-- The debug adapter factory launches `python -m dapper.debug_launcher` with flags derived from your launch configuration.
+- The debug adapter factory launches `python -m dapper.adapter` with flags derived from your launch configuration.
 - Settings you can tune:
     - `dapper.python.installMode`: `auto | wheel | pypi | workspace`
     - `dapper.python.baseInterpreter`: path to Python used for venv creation.
@@ -170,6 +190,7 @@ Use a debugger type of `dapper` instead of `python`:
     "name": "Dapper: Launch Current File",
     "program": "${file}",
     "stopOnEntry": true,
+    "subprocessAutoAttach": false,
     "args": [],
     "noDebug": false
 }

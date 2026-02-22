@@ -72,7 +72,7 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 ### Expression evaluation
 - 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
 - 🟡 Expression-backed watchpoints via `setDataBreakpoints` (`frame:<id>:expr:<expression>`)
-- ❌ Set expression (`setExpression` DAP request)
+- ✅ Set expression (`setExpression` DAP request)
 - ✅ Completions / auto-complete for expression editors
 
 Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `doc/architecture/frame-eval/implementation.md`, `doc/architecture/frame-eval/performance.md`.
@@ -83,6 +83,7 @@ Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `do
 - ✅ Loaded sources listing (what's present in runtime)
 - ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
 - 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, in-process runtime reload service, frame-local rebinding, and VS Code command/auto-on-save are implemented; external-process runtime support remains. See [Hot Reload reference](hot-reload.md).
+- 🟡 Multi-process child auto-attach (`subprocessAutoAttach`, `dapper/childProcess`, `dapper/childProcessExited`, `dapper/childProcessCandidate`) — Phase 1 + Phase 2 launch-path handling are implemented for Python subprocess script/module/code invocations (including common `multiprocessing`/`ProcessPoolExecutor` worker launch shapes) with session correlation and recursion guardrails; process-tree UX and broader runtime matrix hardening remain.
 - ❌ Goto targets (find jump targets / navigation helpers — planned)
 - ✅ Modules listing
 - ❌ Module source retrieval (not fully supported in all backends)

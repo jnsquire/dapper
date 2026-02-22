@@ -125,6 +125,44 @@ class TestDebugLauncherBasic:
         assert args.ipc == "unix"
         assert args.ipc_path == "/tmp/dapper.sock"
 
+    def test_parse_args_module_target(self) -> None:
+        """Test parsing module target invocation."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "debug_launcher.py",
+                "--module",
+                "http.server",
+                "--ipc",
+                "tcp",
+            ],
+        ):
+            args = dl.parse_args()
+
+        assert args.module == "http.server"
+        assert args.program is None
+        assert args.code is None
+
+    def test_parse_args_code_target(self) -> None:
+        """Test parsing code-string target invocation."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "debug_launcher.py",
+                "--code",
+                "print('x')",
+                "--ipc",
+                "tcp",
+            ],
+        ):
+            args = dl.parse_args()
+
+        assert args.code == "print('x')"
+        assert args.program is None
+        assert args.module is None
+
     @patch("dapper.launcher.debug_launcher.DebuggerBDB")
     def test_configure_debugger(self, mock_debugger_class: MagicMock) -> None:
         """Test debugger configuration."""

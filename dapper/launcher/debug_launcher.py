@@ -10,12 +10,16 @@ import logging
 from multiprocessing import connection as _mpc
 import os
 from pathlib import Path
+import runpy
 import sys
 import threading
 import traceback
 from typing import Any
 from typing import cast
+import uuid
 
+from dapper.adapter.subprocess_manager import SubprocessConfig
+from dapper.adapter.subprocess_manager import SubprocessManager
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import read_exact
@@ -110,11 +114,21 @@ def receive_debug_commands(session: Any | None = None) -> None:
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Python Debug Launcher")
-    parser.add_argument(
+    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument(
         "--program",
         type=str,
-        required=True,
         help="Path to the Python program to debug",
+    )
+    target_group.add_argument(
+        "--module",
+        type=str,
+        help="Python module to run (equivalent to `python -m <module>`)",
+    )
+    target_group.add_argument(
+        "--code",
+        type=str,
+        help="Python code string to run (equivalent to `python -c <code>`)",
     )
     parser.add_argument(
         "--arg",
@@ -159,6 +173,26 @@ def parse_args():
         action="store_true",
         default=True,
         help="Use binary IPC frames (default: True)",
+    )
+    parser.add_argument(
+        "--subprocess",
+        action="store_true",
+        help="Indicates this launcher invocation is for a child subprocess.",
+    )
+    parser.add_argument(
+        "--subprocess-auto-attach",
+        action="store_true",
+        help="Enable automatic debugger injection for Python subprocess children.",
+    )
+    parser.add_argument(
+        "--session-id",
+        type=str,
+        help="Logical session identifier for this launcher process.",
+    )
+    parser.add_argument(
+        "--parent-session-id",
+        type=str,
+        help="Logical parent session identifier for this launcher process.",
     )
     return parser.parse_args()
 
@@ -271,30 +305,47 @@ def configure_debugger(
 
 
 def run_with_debugger(
-    program_path: str,
+    target_value: str,
     program_args: list[str],
     session: Any | None = None,
+    *,
+    target_kind: str = "program",
 ) -> None:
-    """Execute the target program under the debugger instance in state."""
-    sys.argv = [program_path, *program_args]
+    """Execute the target under the debugger instance in state."""
     active_session = session if session is not None else debug_shared.get_active_session()
     dbg = active_session.debugger
     if dbg is None:
         dbg = configure_debugger(False, active_session)
-    # Read the program file and execute it under the debugger. Avoid building
-    # a string that embeds the path (which can mis-handle quotes); instead
-    # read the file contents and pass the source directly to the debugger.
-    program_file = Path(program_path)
-    if program_file.exists():
-        # When the program file exists, read and pass its source to the debugger.
-        with program_file.open("r", encoding="utf-8") as pf:
-            program_code = pf.read()
-        dbg.run(program_code)
-    else:
-        # For testability and backwards-compatibility, if the file does not
-        # exist (tests often supply synthetic paths), preserve the previous
-        # behaviour of passing an exec-string referencing the path.
+
+    if target_kind == "program":
+        program_path = target_value
+        sys.argv = [program_path, *program_args]
+        program_file = Path(program_path)
+        if program_file.exists():
+            with program_file.open("r", encoding="utf-8") as pf:
+                program_code = pf.read()
+            dbg.run(program_code)
+            return
+
         dbg.run(f"exec(Path('{program_path}').open().read())")
+        return
+
+    if target_kind == "module":
+        module_name = target_value
+        sys.argv = [module_name, *program_args]
+        dbg.run(
+            f"import runpy\nrunpy.run_module({module_name!r}, run_name='__main__', alter_sys=True)"
+        )
+        return
+
+    if target_kind == "code":
+        code_string = target_value
+        sys.argv = ["-c", *program_args]
+        dbg.run(code_string)
+        return
+
+    msg = f"Unsupported target kind: {target_kind}"
+    raise RuntimeError(msg)
 
 
 def main():
@@ -302,50 +353,110 @@ def main():
     session = debug_shared.get_active_session()
     # Parse arguments and set module state
     args = parse_args()
-    program_path = args.program
+    target_kind = "program"
+    target_value = args.program
+    if getattr(args, "module", None):
+        target_kind = "module"
+        target_value = args.module
+    elif getattr(args, "code", None):
+        target_kind = "code"
+        target_value = args.code
+
+    if not target_value:
+        msg = "One of --program, --module, or --code is required"
+        raise RuntimeError(msg)
+
     program_args = args.arg
     session.stop_at_entry = args.stop_on_entry
     session.no_debug = args.no_debug
+    session.session_id = getattr(args, "session_id", None) or uuid.uuid4().hex
+    session.parent_session_id = getattr(args, "parent_session_id", None)
 
     # Configure logging for debug messages
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
 
-    # Establish IPC connection if requested
-    setup_ipc_from_args(args, session=session)
+    subprocess_manager: SubprocessManager | None = None
 
-    # Start command listener thread (from IPC or stdin depending on state)
-    start_command_listener(session=session)
+    if getattr(args, "subprocess_auto_attach", False):
+        subprocess_manager = SubprocessManager(
+            send_event=lambda event_name, payload: send_debug_message(event_name, **payload),
+            config=SubprocessConfig(
+                enabled=True,
+                auto_attach=True,
+                ipc_host=args.ipc_host or "127.0.0.1",
+                session_id=session.session_id,
+                parent_session_id=session.parent_session_id,
+            ),
+        )
+        subprocess_manager.enable()
 
-    # Create the debugger and store it on state
-    configure_debugger(
-        session.stop_at_entry,
-        session=session,
-        just_my_code=not args.no_just_my_code,
-        strict_expression_watch_policy=getattr(args, "strict_expression_watch_policy", False),
-    )
+    try:
+        # Establish IPC connection if requested
+        setup_ipc_from_args(args, session=session)
 
-    if session.no_debug:
-        # Just run the program without debugging
-        run_program(program_path, program_args)
-    else:
+        # Start command listener thread (from IPC or stdin depending on state)
+        start_command_listener(session=session)
+
+        # Create the debugger and store it on state
+        configure_debugger(
+            session.stop_at_entry,
+            session=session,
+            just_my_code=not args.no_just_my_code,
+            strict_expression_watch_policy=getattr(args, "strict_expression_watch_policy", False),
+        )
+
+        if session.no_debug:
+            # Just run the program without debugging
+            if target_kind == "program":
+                run_program(target_value, program_args)
+            else:
+                run_program(target_value, program_args, target_kind=target_kind)
         # Run the program with debugging
-        run_with_debugger(program_path, program_args, session=session)
+        elif target_kind == "program":
+            run_with_debugger(target_value, program_args, session=session)
+        else:
+            run_with_debugger(
+                target_value,
+                program_args,
+                session=session,
+                target_kind=target_kind,
+            )
+    finally:
+        if subprocess_manager is not None:
+            subprocess_manager.cleanup()
 
 
-def run_program(program_path, args):
-    """Run the program without debugging"""
-    sys.argv = [program_path, *args]
+def run_program(target_value, args, *, target_kind: str = "program"):
+    """Run the target without debugging."""
+    if target_kind == "program":
+        program_path = target_value
+        sys.argv = [program_path, *args]
 
-    with Path(program_path).open() as f:
-        program_code = f.read()
+        with Path(program_path).open() as f:
+            program_code = f.read()
 
-    # Add the program directory to sys.path
-    program_dir = Path(program_path).resolve().parent
-    if str(program_dir) not in sys.path:
-        sys.path.insert(0, str(program_dir))
+        # Add the program directory to sys.path
+        program_dir = Path(program_path).resolve().parent
+        if str(program_dir) not in sys.path:
+            sys.path.insert(0, str(program_dir))
 
-    # Execute the program
-    exec(program_code, {"__name__": "__main__"})
+        exec(program_code, {"__name__": "__main__"})
+        return
+
+    if target_kind == "module":
+        module_name = target_value
+        sys.argv = [module_name, *args]
+        runpy.run_module(module_name, run_name="__main__", alter_sys=True)
+        return
+
+    if target_kind == "code":
+        code_string = target_value
+        sys.argv = ["-c", *args]
+        exec(compile(code_string, "<string>", "exec"), {"__name__": "__main__"})
+        return
+
+    msg = f"Unsupported target kind: {target_kind}"
+    raise RuntimeError(msg)
 
 
 if __name__ == "__main__":

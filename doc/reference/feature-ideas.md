@@ -26,17 +26,54 @@ Legend
 
 ## 5. Expression Watchpoints / Set Expression
 
-- [x] **Set expression (`setExpression` DAP request)** — currently `❌` in the
-      checklist; complements data breakpoints with expression-backed writes.
+- [x] **Set expression (`setExpression` DAP request)** — complements data
+      breakpoints with expression-backed writes.
 
 ---
 
 ## 6. Multi-Process Debugging
 
-- [ ] **Auto-attach to child processes** — when the debuggee calls
+- [x] **Auto-attach to child processes (Phase 1 scaffold promoted)** — when the debuggee calls
       `subprocess.Popen`, `multiprocessing.Process`, or
       `concurrent.futures.ProcessPoolExecutor`, inject the Dapper launcher
-      before `exec` so child processes are debuggable automatically.
+      before `exec` so child processes are debuggable automatically.  
+      **Current status:** Phase 1 (`subprocess.Popen` Python children) is implemented;
+      Phase 2/3 work remains.
+- [ ] **Auto-attach implementation roadmap (Phase 1–3)**
+  - [x] **Phase 1 (MVP): `subprocess.Popen` for Python children**
+    - [x] Add launch config flag to enable/disable child auto-attach
+          (default off for safety).
+    - [x] Wire `SubprocessManager` into external launch lifecycle
+          (enable on launch, disable on terminate/disconnect).
+    - [x] Intercept Python child commands and rewrite to launcher form,
+          preserving script/module args.
+    - [x] Emit `dapper/childProcess` event with PID, parent PID, command,
+          and IPC endpoint for extension-side attach.
+    - [x] Add tests: detection, arg rewrite, patch/unpatch behavior,
+          event payload, non-Python passthrough.
+      - [x] **Phase 2: `multiprocessing` + `ProcessPoolExecutor` coverage**
+    - [x] Add scaffold-level detection hooks/events for
+          `multiprocessing.Process` / `ProcessPoolExecutor` to support
+          iterative rollout before full launcher injection.
+            - [x] Handle `spawn` / `forkserver` launch paths where command lines are
+          visible and safe to rewrite.
+            - [x] Validate behavior across Linux/macOS/Windows transport defaults.
+            - [x] Add limits/guardrails (max children, recursion prevention).
+                - Validation note: behavior is covered by unit-level launch rewrite tests
+                      and platform transport defaults; expand with full OS matrix runtime
+                      tests in CI as follow-up hardening.
+  - [ ] **Phase 3: process tree + UX polish**
+    - [x] Add process lifecycle events (`started` / `exited`) sufficient for
+          extension-side process tree rendering.
+    - [x] Associate child sessions to parent session IDs for tree grouping.
+      - [x] Document known limitations (non-Python children, shell wrappers,
+          custom launchers).
+      - [x] **Acceptance criteria (for promoting from idea to checklist)**
+            - [x] With auto-attach enabled, Python `subprocess.Popen(...)` children
+          emit attachable child-process events.
+            - [x] With auto-attach disabled, launch behavior is unchanged.
+            - [x] Patching is always cleaned up on session end (no global leakage).
+            - [x] Existing launch/attach flows remain regression-free.
 - [ ] **Process tree view** — expose multiple debuggees in the adapter's event
       stream so a DAP client can show a process tree and switch contexts.
 

@@ -2,6 +2,7 @@
 
 import os
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -25,6 +26,7 @@ class TestDapperConfig:
         assert config.mode == "launch"
         assert config.in_process is False
         assert config.strict_expression_watch_policy is False
+        assert config.subprocess_auto_attach is False
         # Transport is resolved from "auto" based on platform
         expected_transport = "pipe" if os.name == "nt" else "unix"
         assert config.ipc.transport == expected_transport
@@ -51,24 +53,28 @@ class TestDapperConfig:
 
     def test_from_launch_request_full(self) -> None:
         """Test creating config from full launch request."""
-        request: LaunchRequest = {
-            "seq": 1,
-            "command": "launch",
-            "type": "request",
-            "arguments": {
-                "program": "/path/to/program.py",
-                "args": ["--verbose", "--debug"],
-                "noDebug": False,
-                "stopOnEntry": True,
-                "inProcess": True,
-                "strictExpressionWatchPolicy": True,
-                "useBinaryIpc": False,
-                "ipcTransport": "tcp",
-                "ipcPipeName": "test-pipe",
-                "cwd": "/working/dir",
-                "env": {"PATH": "/custom/path"},
+        request = cast(
+            "LaunchRequest",
+            {
+                "seq": 1,
+                "command": "launch",
+                "type": "request",
+                "arguments": {
+                    "program": "/path/to/program.py",
+                    "args": ["--verbose", "--debug"],
+                    "noDebug": False,
+                    "stopOnEntry": True,
+                    "inProcess": True,
+                    "strictExpressionWatchPolicy": True,
+                    "subprocessAutoAttach": True,
+                    "useBinaryIpc": False,
+                    "ipcTransport": "tcp",
+                    "ipcPipeName": "test-pipe",
+                    "cwd": "/working/dir",
+                    "env": {"PATH": "/custom/path"},
+                },
             },
-        }
+        )
         config = DapperConfig.from_launch_request(request)
 
         assert config.mode == "launch"
@@ -78,6 +84,7 @@ class TestDapperConfig:
         assert config.debuggee.no_debug is False
         assert config.in_process is True
         assert config.strict_expression_watch_policy is True
+        assert config.subprocess_auto_attach is True
         assert config.ipc.transport == "tcp"
         assert config.ipc.use_binary is False
         assert config.ipc.pipe_name == "test-pipe"
@@ -86,18 +93,21 @@ class TestDapperConfig:
 
     def test_from_attach_request(self) -> None:
         """Test creating config from attach request."""
-        request: AttachRequest = {
-            "seq": 1,
-            "command": "attach",
-            "type": "request",
-            "arguments": {
-                "ipcTransport": "tcp",
-                "ipcHost": "localhost",
-                "ipcPort": 4711,
-                "useBinaryIpc": True,
-                "strictExpressionWatchPolicy": True,
+        request = cast(
+            "AttachRequest",
+            {
+                "seq": 1,
+                "command": "attach",
+                "type": "request",
+                "arguments": {
+                    "ipcTransport": "tcp",
+                    "ipcHost": "localhost",
+                    "ipcPort": 4711,
+                    "useBinaryIpc": True,
+                    "strictExpressionWatchPolicy": True,
+                },
             },
-        }
+        )
 
         config = DapperConfig.from_attach_request(request)
 
@@ -163,6 +173,7 @@ class TestDapperConfig:
         config.debuggee.stop_on_entry = True
         config.debuggee.no_debug = False
         config.in_process = True
+        config.subprocess_auto_attach = True
         config.ipc.transport = "tcp"
         config.ipc.pipe_name = "test-pipe"
         config.ipc.use_binary = False
@@ -176,6 +187,7 @@ class TestDapperConfig:
             "noDebug": False,
             "inProcess": True,
             "useBinaryIpc": False,
+            "subprocessAutoAttach": True,
             "ipcTransport": "tcp",
             "ipcPipeName": "test-pipe",
         }

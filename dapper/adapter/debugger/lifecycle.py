@@ -47,6 +47,8 @@ class _PyDebuggerLifecycleManager:
             debug_args.append("--no-just-my-code")
         if config.strict_expression_watch_policy:
             debug_args.append("--strict-expression-watch-policy")
+        if config.subprocess_auto_attach:
+            debug_args.append("--subprocess-auto-attach")
 
         transport_config = TransportConfig(
             transport=config.ipc.transport,

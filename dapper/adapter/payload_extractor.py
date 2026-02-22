@@ -91,6 +91,12 @@ def _hot_reload_result(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _passthrough(data: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(data)
+    payload.pop("event", None)
+    return payload
+
+
 _EXTRACTORS: dict[str, Any] = {
     "output": _output,
     "continued": _continued,
@@ -102,6 +108,9 @@ _EXTRACTORS: dict[str, Any] = {
     "stopped": _stopped,
     "thread": _thread,
     "dapper/hotReloadResult": _hot_reload_result,
+    "dapper/childProcess": _passthrough,
+    "dapper/childProcessExited": _passthrough,
+    "dapper/childProcessCandidate": _passthrough,
 }
 
 

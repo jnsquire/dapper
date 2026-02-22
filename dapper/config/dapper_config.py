@@ -83,6 +83,9 @@ class DapperConfig:
     # When False (default), expression watchpoints use permissive evaluation.
     strict_expression_watch_policy: bool = False
 
+    # Auto-attach to Python child processes spawned by the debuggee.
+    subprocess_auto_attach: bool = False
+
     @classmethod
     def from_launch_request(cls, request: LaunchRequest) -> DapperConfig:
         """Create config from launch request arguments."""
@@ -119,6 +122,7 @@ class DapperConfig:
             in_process=_get("inProcess", default=False),
             just_my_code=_get("justMyCode", default=True),
             strict_expression_watch_policy=_get("strictExpressionWatchPolicy", default=False),
+            subprocess_auto_attach=_get("subprocessAutoAttach", default=False),
             debuggee=debuggee,
             ipc=ipc,
         )
@@ -202,6 +206,7 @@ class DapperConfig:
             "noDebug": self.debuggee.no_debug,
             "inProcess": self.in_process,
             "useBinaryIpc": self.ipc.use_binary,
+            "subprocessAutoAttach": self.subprocess_auto_attach,
         }
 
         # Add IPC-specific kwargs
