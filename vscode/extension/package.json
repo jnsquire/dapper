@@ -151,6 +151,74 @@
                 "default": true
               }
             }
+          },
+          "attach": {
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Host address to connect to for remote debugging",
+                "default": "localhost"
+              },
+              "port": {
+                "type": "number",
+                "description": "Port number to connect to for remote debugging",
+                "default": 5678
+              },
+              "processId": {
+                "type": ["number", "string"],
+                "description": "Process ID to attach to, or '${command:pickProcess}' to pick",
+                "default": ""
+              },
+              "debugServer": {
+                "type": "number",
+                "description": "Debug server port",
+                "default": 4711
+              },
+              "useIpc": {
+                "type": "boolean",
+                "description": "Use IPC for communication with the debugger backend",
+                "default": true
+              },
+              "ipcTransport": {
+                "type": "string",
+                "enum": ["tcp", "unix", "pipe"],
+                "description": "IPC transport method",
+                "default": "tcp"
+              },
+              "frameEval": {
+                "type": "boolean",
+                "description": "Enable frame evaluation for faster breakpoints",
+                "default": true
+              },
+              "justMyCode": {
+                "type": "boolean",
+                "description": "Only debug user code (skip library code)",
+                "default": true
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop on the first line of the program",
+                "default": false
+              },
+              "pathMappings": {
+                "type": "array",
+                "description": "Path mappings for remote debugging",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "localRoot": {
+                      "type": "string",
+                      "description": "Local root path"
+                    },
+                    "remoteRoot": {
+                      "type": "string",
+                      "description": "Remote root path"
+                    }
+                  }
+                },
+                "default": []
+              }
+            }
           }
         },
         "configurationSnippets": [
@@ -163,6 +231,18 @@
               "name": "Python: Dapper Debug",
               "program": "${file}",
               "console": "integratedTerminal"
+            }
+          },
+          {
+            "label": "Dapper: Attach",
+            "description": "Attach to a running Python process with Dapper",
+            "body": {
+              "name": "Dapper Attach",
+              "type": "dapper",
+              "request": "attach",
+              "host": "localhost",
+              "port": 5678,
+              "justMyCode": true
             }
           }
         ]
@@ -202,6 +282,16 @@
       {
         "command": "dapper.hotReload",
         "title": "Dapper: Hot Reload Current File",
+        "category": "Dapper"
+      },
+      {
+        "command": "dapper.showDebugPanel",
+        "title": "Dapper: Show Debug Panel",
+        "category": "Dapper"
+      },
+      {
+        "command": "dapper.inspectVariable",
+        "title": "Dapper: Inspect Variable",
         "category": "Dapper"
       }
     ],

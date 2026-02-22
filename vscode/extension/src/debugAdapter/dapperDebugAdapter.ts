@@ -149,7 +149,35 @@ export class DapperDebugSession extends LoggingDebugSession {
       this.sendEvent(new Event('process', body));
     } else if (message.event === 'dapper/hotReloadResult') {
       this.sendEvent(new Event('dapper/hotReloadResult', body));
+    } else if (message.event === 'dapper/log') {
+      // Forward structured log messages to the output channel
+      this.sendEvent(new OutputEvent(
+        body.message || '',
+        body.category || 'console'
+      ));
+    } else if (message.event === 'dapper/telemetry') {
+      // Forward telemetry snapshot as a custom event
+      this.sendEvent(new Event('dapper/telemetry', body));
     }
+  }
+
+  private formatPythonError(result: any): string {
+    if (!result) return 'Unknown error';
+
+    let message = result.message || 'Unknown error';
+
+    // Extract structured error details from Python's error hierarchy
+    const details = result.body?.details || result.body?.error;
+    if (details) {
+      if (details.error_code) {
+        message = `[${details.error_code}] ${message}`;
+      }
+      if (details.cause) {
+        message += ` (caused by: ${details.cause})`;
+      }
+    }
+
+    return message;
   }
 
   private sendRequestToPython(command: string, args: any = {}): Promise<any> {
@@ -227,7 +255,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('launch', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Launch failed';
+      response.message = this.formatPythonError(result);
     } else {
       this._isRunning = true;
     }
@@ -312,7 +340,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('attach', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Attach failed';
+      response.message = this.formatPythonError(result);
     }
     this.sendResponse(response);
   }
@@ -377,6 +405,18 @@ export class DapperDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
+  protected async stepInTargetsRequest(
+    response: DebugProtocol.StepInTargetsResponse,
+    args: DebugProtocol.StepInTargetsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('stepInTargets', args);
+    response.body = {
+      targets: (result.body && result.body.targets) || []
+    };
+    this.sendResponse(response);
+  }
+
   protected async pauseRequest(
     response: DebugProtocol.PauseResponse,
     args: DebugProtocol.PauseArguments,
@@ -385,7 +425,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('pause', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Pause failed';
+      response.message = this.formatPythonError(result);
     }
     this.sendResponse(response);
   }
@@ -428,7 +468,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('source', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Source unavailable';
+      response.message = this.formatPythonError(result);
     } else {
       response.body = {
         content: result.body?.content ?? '',
@@ -459,9 +499,27 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('setVariable', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Set variable failed';
+      response.message = this.formatPythonError(result);
     } else {
       response.body = result.body ?? {};
+    }
+    this.sendResponse(response);
+  }
+
+  protected async setExpressionRequest(
+    response: DebugProtocol.SetExpressionResponse,
+    args: DebugProtocol.SetExpressionArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('setExpression', args);
+    if (result && result.success === false) {
+      response.success = false;
+      response.message = this.formatPythonError(result);
+    } else {
+      response.body = {
+        value: result.body?.value ?? '',
+        type: result.body?.type,
+      };
     }
     this.sendResponse(response);
   }
@@ -474,7 +532,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('evaluate', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Evaluate failed';
+      response.message = this.formatPythonError(result);
     } else {
       response.body = result.body ?? { result: '', variablesReference: 0 };
     }
@@ -511,7 +569,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('exceptionInfo', args);
     if (result && result.success === false) {
       response.success = false;
-      response.message = result.message ?? 'Exception info unavailable';
+      response.message = this.formatPythonError(result);
     } else {
       response.body = result.body ?? { exceptionId: '', breakMode: 'never' };
     }
@@ -527,6 +585,33 @@ export class DapperDebugSession extends LoggingDebugSession {
     response.body = {
       targets: (result.body && result.body.targets) || []
     };
+    this.sendResponse(response);
+  }
+
+  protected async customRequest(
+    command: string,
+    response: DebugProtocol.Response,
+    args: any,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    // Forward all dapper/* custom requests to Python
+    if (command.startsWith('dapper/')) {
+      try {
+        const result = await this.sendRequestToPython(command, args || {});
+        if (result && result.success === false) {
+          response.success = false;
+          response.message = this.formatPythonError(result);
+        } else {
+          response.body = result?.body || {};
+        }
+      } catch (e) {
+        response.success = false;
+        response.message = e instanceof Error ? e.message : String(e);
+      }
+    } else {
+      response.success = false;
+      response.message = `Unrecognized custom request: ${command}`;
+    }
     this.sendResponse(response);
   }
 }

@@ -44,6 +44,13 @@ class DebugAdapterServer:
         self.sequence_number = 0
         self.protocol_handler = ProtocolFactory()
 
+        # Install structured log forwarding to the extension
+        from dapper.adapter.log_forwarder import install_log_forwarder
+        from dapper.adapter.log_forwarder import TelemetryForwarder
+
+        self._log_handler = install_log_forwarder(self.send_event, self.loop)
+        self._telemetry_forwarder = TelemetryForwarder(self.send_event, self.loop)
+
     @property
     def debugger(self):
         """Get the debugger instance."""
@@ -94,6 +101,11 @@ class DebugAdapterServer:
 
     async def _cleanup(self) -> None:
         """Clean up resources"""
+        if hasattr(self, '_telemetry_forwarder'):
+            self._telemetry_forwarder.stop()
+        if hasattr(self, '_log_handler'):
+            self._log_handler.disable()
+
         if self.debugger:
             await self.debugger.shutdown()
 

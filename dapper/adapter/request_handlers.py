@@ -192,7 +192,6 @@ class RequestHandler:
                     },
                 ],
                 "supportsStepInTargetsRequest": True,
-                "supportsGotoTargetsRequest": True,
                 "supportsCompletionsRequest": True,
                 "supportsModulesRequest": True,
                 "supportsLoadedSourcesRequest": True,
@@ -205,9 +204,7 @@ class RequestHandler:
                 "supportsLogPoints": True,
                 "supportsSetVariable": True,
                 "supportsSetExpression": True,
-                "supportsDisassembleRequest": True,
                 "supportsSteppingGranularity": True,
-                "supportsInstructionBreakpoints": True,
                 "supportsDataBreakpoints": True,
                 "supportsDataBreakpointInfo": True,
                 "supportsHotReload": True,
@@ -229,6 +226,10 @@ class RequestHandler:
             await self.server.debugger.launch(config)
         except Exception as e:
             return create_dap_response(e, request["seq"], "launch")
+
+        # Start telemetry forwarding now that the debug session is active
+        if hasattr(self.server, '_telemetry_forwarder'):
+            self.server._telemetry_forwarder.start()
 
         return self._make_response(request, "launch", LaunchResponse)
 
@@ -835,6 +836,138 @@ class RequestHandler:
         result = await self.server.debugger.evaluate(expression, frame_id, context)
         return self._make_response(request, "evaluate", EvaluateResponse, body=result)
 
+    async def _handle_set_expression(self, request: DAPRequest) -> DAPResponse:
+        """Handle setExpression request - assign a value to an arbitrary expression."""
+        try:
+            args = request["arguments"]
+            expression = args.get("expression", "")
+            value = args.get("value", "")
+            frame_id = args.get("frameId")
+
+            frame = self.server.debugger.get_frame(frame_id)
+            if frame is None:
+                return self._make_response(
+                    request,
+                    "setExpression",
+                    DAPResponse,
+                    success=False,
+                    message=f"Frame {frame_id} not found",
+                )
+
+            # Execute the assignment in the frame's context
+            assignment = compile(f"{expression} = {value}", "<setExpression>", "exec")
+            exec(assignment, frame.f_globals, frame.f_locals)  # noqa: S102
+
+            # Push updated locals back into the live frame
+            import ctypes
+
+            ctypes.pythonapi.PyFrame_LocalsToFast(
+                ctypes.py_object(frame), ctypes.c_int(0)
+            )
+
+            # Evaluate the expression to get the new value
+            result = eval(  # noqa: S307
+                compile(expression, "<setExpression>", "eval"),
+                frame.f_globals,
+                frame.f_locals,
+            )
+
+            return self._make_response(
+                request,
+                "setExpression",
+                DAPResponse,
+                body={
+                    "value": repr(result),
+                    "type": type(result).__name__,
+                },
+            )
+        except Exception as e:
+            logger.exception("Error handling setExpression request")
+            return self._make_response(
+                request,
+                "setExpression",
+                DAPResponse,
+                success=False,
+                message=f"Failed to set expression: {e!s}",
+            )
+
+    async def _handle_step_in_targets(self, request: DAPRequest) -> DAPResponse:
+        """Handle stepInTargets request - enumerate callable targets on the current line."""
+        try:
+            args = request["arguments"]
+            frame_id = args.get("frameId")
+
+            frame = self.server.debugger.get_frame(frame_id)
+            if frame is None:
+                return self._make_response(
+                    request,
+                    "stepInTargets",
+                    DAPResponse,
+                    success=False,
+                    message=f"Frame {frame_id} not found",
+                )
+
+            targets: list[dict[str, object]] = []
+            target_id = 0
+            current_line = frame.f_lineno
+
+            # Use dis to inspect bytecode for CALL instructions on the current line
+            import dis
+
+            instructions = list(dis.get_instructions(frame.f_code))
+
+            for instr in instructions:
+                if instr.starts_line == current_line or (
+                    instr.starts_line is None and targets
+                ):
+                    # Look for CALL_FUNCTION, CALL_METHOD, CALL, CALL_FUNCTION_EX, etc.
+                    if "CALL" in instr.opname:
+                        label = self._find_call_target_name(instructions, instr.offset)
+                        targets.append(
+                            {
+                                "id": target_id,
+                                "label": label or f"<call at offset {instr.offset}>",
+                                "line": current_line,
+                            }
+                        )
+                        target_id += 1
+
+            return self._make_response(
+                request,
+                "stepInTargets",
+                DAPResponse,
+                body={"targets": targets},
+            )
+        except Exception as e:
+            logger.exception("Error handling stepInTargets request")
+            return self._make_response(
+                request,
+                "stepInTargets",
+                DAPResponse,
+                success=False,
+                message=f"Failed to get step-in targets: {e!s}",
+            )
+
+    @staticmethod
+    def _find_call_target_name(instructions: list, call_offset: int) -> str | None:
+        """Walk backwards from a CALL instruction to find the name being called."""
+        for i, instr in enumerate(instructions):
+            if instr.offset == call_offset:
+                # Walk backwards to find the most recent LOAD_* with a name
+                for j in range(i - 1, -1, -1):
+                    prev = instructions[j]
+                    if prev.opname in (
+                        "LOAD_NAME",
+                        "LOAD_GLOBAL",
+                        "LOAD_ATTR",
+                        "LOAD_METHOD",
+                        "LOAD_FAST",
+                        "LOAD_DEREF",
+                    ):
+                        return str(prev.argval)
+                break
+        return None
+
     async def _handle_data_breakpoint_info(
         self,
         request: DataBreakpointInfoRequest,
@@ -913,6 +1046,10 @@ class RequestHandler:
                 line=line,
             )
 
+            # Enhance with frame-aware completions when a frameId is provided
+            if frame_id is not None:
+                body = self._enhance_completions_from_frame(body, text, column, frame_id)
+
             return self._make_response(request, "completions", CompletionsResponse, body=body)
         except Exception as e:
             logger.exception("Error handling completions request")
@@ -923,3 +1060,63 @@ class RequestHandler:
                 success=False,
                 message=f"Completions failed: {e!s}",
             )
+
+    def _enhance_completions_from_frame(
+        self,
+        body: dict,
+        text: str,
+        column: int,
+        frame_id: int,
+    ) -> dict:
+        """Merge frame-local and global names into the completions list.
+
+        For dotted expressions (e.g. ``obj.at``), resolve the object in the
+        frame and add ``dir()`` results as candidates.
+        """
+        try:
+            frame = self.server.debugger.get_frame(frame_id)
+            if frame is None:
+                return body
+
+            existing_targets: list[dict[str, object]] = body.get("targets", [])
+            existing_labels = {t.get("label") for t in existing_targets}
+
+            # Determine the prefix being typed (text up to cursor position)
+            prefix = text[: column - 1] if column > 0 else text
+
+            extra: list[dict[str, object]] = []
+
+            if "." in prefix:
+                # Dotted expression – resolve the object part and offer dir()
+                parts = prefix.rsplit(".", 1)
+                obj_expr = parts[0]
+                attr_prefix = parts[1] if len(parts) > 1 else ""
+                try:
+                    obj = eval(  # noqa: S307
+                        compile(obj_expr, "<completions>", "eval"),
+                        frame.f_globals,
+                        frame.f_locals,
+                    )
+                    for name in dir(obj):
+                        if name.startswith(attr_prefix) and name not in existing_labels:
+                            extra.append({"label": name, "type": "property", "length": len(attr_prefix)})
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                # Non-dotted – offer local and global names
+                candidates: set[str] = set()
+                candidates.update(frame.f_locals.keys())
+                candidates.update(frame.f_globals.keys())
+                for name in sorted(candidates):
+                    if name.startswith(prefix) and name not in existing_labels:
+                        extra.append({"label": name, "type": "variable"})
+
+            if extra:
+                body = dict(body)  # shallow copy to avoid mutating the original
+                body["targets"] = list(existing_targets) + extra
+
+        except Exception:  # noqa: BLE001
+            # Never let enhancement logic break the base completions
+            pass
+
+        return body

@@ -148,14 +148,22 @@ describe('DapperDebugSession', () => {
 
         // Verify request sent
         expect(mockSocket.write).toHaveBeenCalled();
+
+        // Extract the request ID from the sent frame so the response can be correlated
+        const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
+        const sentJson = JSON.parse(sentData.subarray(8).toString('utf8'));
+        const requestId = sentJson.id;
         
-        // Simulate 'variables' event from Python
-        const eventPayload = {
-            event: 'variables',
-            variablesReference: 123,
-            variables: [{ name: 'x', value: '1' }]
+        // Simulate a proper response from Python (must use event:'response' + matching id)
+        const responsePayload = {
+            event: 'response',
+            id: requestId,
+            success: true,
+            body: {
+                variables: [{ name: 'x', value: '1' }]
+            }
         };
-        mockSocket.emit('data', createFrame(eventPayload));
+        mockSocket.emit('data', createFrame(responsePayload));
 
         await varsPromise;
 
