@@ -68,6 +68,11 @@
           "type": "string",
           "default": "",
           "description": "Override the expected dapper package version. By default the extension's version is used."
+        },
+        "dapper.hotReload.autoOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically send dapper/hotReload when a saved Python file belongs to the active stopped Dapper debug session."
         }
       }
     },
@@ -193,6 +198,19 @@
         "command": "dapper.startDebugWithSavedConfig",
         "title": "Dapper: Start Debugging with Saved Config",
         "category": "Dapper"
+      },
+      {
+        "command": "dapper.hotReload",
+        "title": "Dapper: Hot Reload Current File",
+        "category": "Dapper"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "dapper.hotReload",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "debugType == 'dapper' && editorLangId == python"
       }
     ],
     "menus": {
@@ -208,6 +226,10 @@
         {
           "command": "dapper.startDebugWithSavedConfig",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "dapper.hotReload",
+          "when": "debugType == 'dapper' && editorLangId == python"
         }
       ],
       "debug/toolbar": [

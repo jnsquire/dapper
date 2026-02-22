@@ -81,7 +81,7 @@ Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `do
 ## Advanced features / code navigation
 - ✅ Loaded sources listing (what's present in runtime)
 - ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
-- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, and in-process runtime reload service implemented (module reload, breakpoint reapply, events); external-process support and frame-local rebinding remain
+- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, in-process runtime reload service, frame-local rebinding, and VS Code command/auto-on-save are implemented; external-process runtime support remains. See [Hot Reload reference](hot-reload.md).
 - ❌ Goto targets (find jump targets / navigation helpers — planned)
 - ✅ Modules listing
 - ❌ Module source retrieval (not fully supported in all backends)

@@ -31,5 +31,6 @@ nav:
     - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
   - Reference:
     - Checklist: reference/checklist.md
+    - Hot Reload: reference/hot-reload.md
     - Message Flows: reference/message_flows.md
     - Operational Modes: reference/operational_modes.md

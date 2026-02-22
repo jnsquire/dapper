@@ -13,8 +13,8 @@ from pathlib import Path
 import re
 import sys
 from typing import TYPE_CHECKING
-from typing import Any
 from typing import TypeVar
+from typing import cast
 
 from dapper.adapter.types import DAPResponse
 from dapper.config import DapperConfig
@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateRequest
     from dapper.protocol.requests import ExceptionInfoRequest
     from dapper.protocol.requests import HotReloadArguments
+    from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import HotReloadRequest
     from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import InitializeRequest
@@ -117,12 +118,12 @@ class RequestHandler:
 
     def _make_response(
         self,
-        request: Any,
+        request: object,
         command: str,
         response_type: type[_R],  # noqa: ARG002
         *,
         success: bool = True,
-        body: Any | None = None,
+        body: object | None = None,
         message: str | None = None,
     ) -> _R:
         """Build a standard DAP response object used across handlers.
@@ -132,10 +133,11 @@ class RequestHandler:
         needing an explicit ``cast``.  The parameter is not used at
         runtime — it exists solely to guide the type checker.
         """
-        resp: dict[str, Any] = {
+        request_seq = cast("int", cast("dict[str, object]", request)["seq"])
+        resp: dict[str, object] = {
             "seq": 0,
             "type": "response",
-            "request_seq": request["seq"],
+            "request_seq": request_seq,
             "success": success,
             "command": command,
         }
@@ -148,7 +150,7 @@ class RequestHandler:
             }
         if message is not None:
             resp["message"] = message
-        return resp  # type: ignore[return-value]
+        return cast("_R", resp)
 
     async def _handle_unknown(self, request: DAPRequest) -> DAPResponse:
         """Handle an unknown request command."""
@@ -378,9 +380,7 @@ class RequestHandler:
         Pre-flight errors are returned as DAP error responses (success=False);
         non-fatal issues during reload are reported in body.warnings.
         """
-        args: HotReloadArguments = request.get("arguments", {})
-        source = args.get("source", {})
-        path: str | None = source.get("path") if isinstance(source, dict) else None
+        path, options = self._extract_hot_reload_request_data(request)
 
         if not path:
             return self._make_response(
@@ -405,8 +405,6 @@ class RequestHandler:
                 success=False,
                 message="Hot reload requires the debugger to be stopped",
             )
-
-        options = args.get("options") or {}
 
         try:
             body: HotReloadResponseBody = await debugger.hot_reload(path, options)
@@ -433,6 +431,33 @@ class RequestHandler:
                 success=False,
                 message=f"Hot reload failed: {e!s}",
             )
+
+    def _extract_hot_reload_request_data(
+        self,
+        request: HotReloadRequest,
+    ) -> tuple[str | None, HotReloadOptions]:
+        args = self._extract_hot_reload_arguments(request)
+        if args is None:
+            return None, {}
+
+        source = args.get("source")
+        if not isinstance(source, dict):
+            return None, {}
+
+        path = source.get("path")
+        if not isinstance(path, str) or not path:
+            return None, {}
+
+        raw_options = args.get("options")
+        options: HotReloadOptions = raw_options if isinstance(raw_options, dict) else {}
+        return path, options
+
+    @staticmethod
+    def _extract_hot_reload_arguments(request: HotReloadRequest) -> HotReloadArguments | None:
+        raw_arguments = request.get("arguments")
+        if not isinstance(raw_arguments, dict):
+            return None
+        return raw_arguments
 
     async def _handle_restart(self, request: RestartRequest) -> RestartResponse:
         """Handle restart request.

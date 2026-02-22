@@ -5,8 +5,99 @@ import { DapperWebview } from './webview/DapperWebview.js';
 import { logger, registerLoggerCommands } from './utils/logger.js';
 import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js';
 
+function normalizeFsPath(path: string): string {
+  return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
 function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
+  const stoppedSessions = new Set<string>();
+  const pendingReloads = new Set<string>();
+  const autoReloadStatusThrottleMs = 1500;
+  let lastAutoReloadStatusAt = 0;
+
+  const showAutoReloadStatus = (document: vscode.TextDocument): void => {
+    const now = Date.now();
+    if (now - lastAutoReloadStatusAt < autoReloadStatusThrottleMs) {
+      return;
+    }
+    lastAutoReloadStatusAt = now;
+
+    const displayPath = vscode.workspace.asRelativePath(document.uri, false);
+    vscode.window.setStatusBarMessage(`Dapper: Auto reloaded ${displayPath}`, 2500);
+  };
+
+  const tryAutoHotReload = async (document: vscode.TextDocument): Promise<void> => {
+    const enabled = vscode.workspace.getConfiguration('dapper').get<boolean>('hotReload.autoOnSave', true);
+    if (!enabled || document.languageId !== 'python' || document.isUntitled) {
+      return;
+    }
+
+    const session = vscode.debug.activeDebugSession;
+    if (!session || session.type !== 'dapper') {
+      return;
+    }
+
+    if (!stoppedSessions.has(session.id)) {
+      return;
+    }
+
+    const sourcePath = document.uri.fsPath;
+    const pendingKey = `${session.id}:${sourcePath}`;
+    if (pendingReloads.has(pendingKey)) {
+      return;
+    }
+
+    try {
+      const loadedSourcesResult = await session.customRequest('loadedSources', {});
+      const loadedSources = Array.isArray(loadedSourcesResult?.sources) ? loadedSourcesResult.sources : [];
+      const normalizedSourcePath = normalizeFsPath(sourcePath);
+      const inSession = loadedSources.some((source: { path?: string }) => {
+        const path = source?.path;
+        return typeof path === 'string' && normalizeFsPath(path) === normalizedSourcePath;
+      });
+      if (!inSession) {
+        return;
+      }
+
+      pendingReloads.add(pendingKey);
+      await session.customRequest('dapper/hotReload', {
+        source: {
+          path: sourcePath,
+        },
+      });
+      logger.log(`Auto hot reload sent for ${sourcePath}`);
+      showAutoReloadStatus(document);
+    } catch (error) {
+      logger.debug('Auto hot reload skipped/failed', { error: String(error) });
+    } finally {
+      pendingReloads.delete(pendingKey);
+    }
+  };
+
+  yield vscode.debug.onDidReceiveDebugSessionCustomEvent((event) => {
+    if (event.session.type !== 'dapper') {
+      return;
+    }
+
+    if (event.event === 'stopped') {
+      stoppedSessions.add(event.session.id);
+      return;
+    }
+
+    if (event.event === 'continued' || event.event === 'terminated') {
+      stoppedSessions.delete(event.session.id);
+    }
+  });
+
+  yield vscode.debug.onDidTerminateDebugSession((session) => {
+    stoppedSessions.delete(session.id);
+  });
+
+  yield vscode.workspace.onDidSaveTextDocument((document) => {
+    void tryAutoHotReload(document);
+  });
+
   // Show Debug Panel Command
   yield vscode.commands.registerCommand('dapper.showDebugPanel', async () => {
     logger.log('Executing command: dapper.showDebugPanel');
@@ -144,6 +235,52 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to inspect variable: ${errorMessage}`);
+    }
+  });
+
+  // Hot Reload Current File Command
+  yield vscode.commands.registerCommand('dapper.hotReload', async () => {
+    try {
+      const session = vscode.debug.activeDebugSession;
+      if (!session) {
+        vscode.window.showErrorMessage('No active debug session');
+        return;
+      }
+
+      if (session.type !== 'dapper') {
+        vscode.window.showErrorMessage('Active debug session is not a Dapper session');
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage('No active editor');
+        return;
+      }
+
+      const document = editor.document;
+      if (document.languageId !== 'python' || document.isUntitled) {
+        vscode.window.showErrorMessage('Hot reload requires a saved Python file');
+        return;
+      }
+
+      await document.save();
+
+      const response = await session.customRequest('dapper/hotReload', {
+        source: {
+          path: document.uri.fsPath,
+        },
+      });
+
+      const moduleName = response?.reloadedModule ?? document.fileName;
+      const reboundFrames = response?.reboundFrames ?? 0;
+      const updatedFrameCodes = response?.updatedFrameCodes ?? 0;
+      vscode.window.showInformationMessage(
+        `Dapper hot reload applied: ${moduleName} (reboundFrames=${reboundFrames}, updatedFrameCodes=${updatedFrameCodes})`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Dapper hot reload failed: ${message}`);
     }
   });
 }

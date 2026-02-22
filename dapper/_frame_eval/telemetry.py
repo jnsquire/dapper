@@ -35,6 +35,8 @@ class FrameEvalReasonCounts:
     bytecode_optimization_file_read_failed: int = 0
     integration_bdb_failed: int = 0
     integration_remove_failed: int = 0
+    hot_reload_failed: int = 0
+    hot_reload_succeeded: int = 0
     py_debugger_breakpoint_hook_failed: int = 0
     py_debugger_integration_failed: int = 0
     py_debugger_trace_hook_failed: int = 0
@@ -47,6 +49,8 @@ class FrameEvalReasonCounts:
             "BYTECODE_INJECTION_FAILED": self.bytecode_injection_failed,
             "BYTECODE_OPTIMIZATION_FAILED": self.bytecode_optimization_failed,
             "BYTECODE_OPTIMIZATION_FILE_READ_FAILED": self.bytecode_optimization_file_read_failed,
+            "HOT_RELOAD_FAILED": self.hot_reload_failed,
+            "HOT_RELOAD_SUCCEEDED": self.hot_reload_succeeded,
             "INTEGRATION_BDB_FAILED": self.integration_bdb_failed,
             "INTEGRATION_REMOVE_FAILED": self.integration_remove_failed,
             "PY_DEBUGGER_BREAKPOINT_HOOK_FAILED": self.py_debugger_breakpoint_hook_failed,
@@ -131,6 +135,12 @@ class FrameEvalTelemetry:
 
     def record_integration_remove_failed(self, **kwargs: Any) -> None:
         self._record("INTEGRATION_REMOVE_FAILED", "integration_remove_failed", **kwargs)
+
+    def record_hot_reload_failed(self, **kwargs: Any) -> None:
+        self._record("HOT_RELOAD_FAILED", "hot_reload_failed", **kwargs)
+
+    def record_hot_reload_succeeded(self, **kwargs: Any) -> None:
+        self._record("HOT_RELOAD_SUCCEEDED", "hot_reload_succeeded", **kwargs)
 
     def record_py_debugger_breakpoint_hook_failed(self, **kwargs: Any) -> None:
         self._record(

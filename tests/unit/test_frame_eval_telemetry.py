@@ -63,3 +63,19 @@ def test_snapshot_as_json() -> None:
     obj = json.loads(j)
     assert "reason_counts" in obj
     assert "recent_events" in obj
+
+
+def test_telemetry_records_hot_reload_metrics() -> None:
+    """Hot-reload telemetry records both success and failure counters."""
+    reset_frame_eval_telemetry()
+
+    telemetry.record_hot_reload_succeeded(module="mod", duration_ms=4.2)
+    telemetry.record_hot_reload_failed(module="mod", error_type="ValueError")
+
+    snap = get_frame_eval_telemetry()
+    assert snap.reason_counts.hot_reload_succeeded == 1
+    assert snap.reason_counts.hot_reload_failed == 1
+
+    assert len(snap.recent_events) == 2
+    assert snap.recent_events[0].reason_code == "HOT_RELOAD_SUCCEEDED"
+    assert snap.recent_events[1].reason_code == "HOT_RELOAD_FAILED"

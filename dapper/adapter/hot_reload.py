@@ -6,10 +6,15 @@ import ctypes
 import importlib
 import linecache
 from pathlib import Path
+import sys
 import time
 import types
 from typing import TYPE_CHECKING
-from typing import Any
+from typing import NoReturn
+from typing import Protocol
+from typing import cast
+
+from dapper._frame_eval.telemetry import telemetry
 
 try:
     from dapper._frame_eval.cache_manager import invalidate_breakpoints as _invalidate_breakpoints
@@ -28,6 +33,17 @@ if TYPE_CHECKING:
     from dapper.protocol.structures import SourceBreakpoint
 
 
+ModuleType = types.ModuleType
+FunctionType = types.FunctionType
+MethodType = types.MethodType
+CodeType = types.CodeType
+RebindMap = dict[int, FunctionType]
+
+
+class _SupportsFrameCodeUpdate(Protocol):
+    f_code: CodeType
+
+
 class HotReloadService:
     """Executes reload-and-continue operations for a paused debugger."""
 
@@ -41,26 +57,109 @@ class HotReloadService:
     ) -> HotReloadResponseBody:
         start = time.perf_counter()
         warnings: list[str] = []
+        module_name = "<unresolved>"
+        resolved_path = str(Path(path))
+        body: HotReloadResponseBody
 
+        try:
+            resolved, module_name, module = self._resolve_reload_target(path)
+            resolved_path = str(resolved)
+            reloaded, rebound_frames, updated_frame_codes = await self._perform_reload(
+                resolved,
+                module_name,
+                module,
+                options,
+                warnings,
+            )
+
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self._emit_reload_events(
+                resolved,
+                module_name,
+                rebound_frames,
+                updated_frame_codes,
+                warnings,
+                duration_ms,
+            )
+            self._record_hot_reload_success(
+                module_name=module_name,
+                path=str(resolved),
+                rebound_frames=rebound_frames,
+                updated_frame_codes=updated_frame_codes,
+                warning_count=len(warnings),
+                duration_ms=duration_ms,
+            )
+
+            body = {
+                "reloadedModule": getattr(reloaded, "__name__", module_name),
+                "reloadedPath": str(resolved),
+                "reboundFrames": rebound_frames,
+                "updatedFrameCodes": updated_frame_codes,
+                "patchedInstances": 0,
+                "warnings": warnings,
+            }
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self._record_hot_reload_failure(
+                module_name=module_name,
+                path=resolved_path,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                duration_ms=duration_ms,
+            )
+            raise
+
+        return body
+
+    def _resolve_reload_target(self, path: str) -> tuple[Path, str, ModuleType]:
         resolved = Path(path).resolve(strict=True)
-        if resolved.suffix.lower() not in (".py", ".pyw"):
-            msg = f"Not a Python source file: {resolved}"
-            raise ValueError(msg)
+        self._assert_reloadable_source(resolved)
 
         backend = self._debugger.get_inprocess_backend()
         if backend is None:
-            msg = "Hot reload currently requires an in-process debug session"
-            raise RuntimeError(msg)
+            self._raise_runtime_error("Hot reload currently requires an in-process debug session")
 
         found = self._debugger._source_introspection.resolve_module_for_path(str(resolved))  # noqa: SLF001
         if found is None:
-            msg = f"Module not loaded: {resolved}"
-            raise ValueError(msg)
+            self._raise_value_error(f"Module not loaded: {resolved}")
+
         module_name, module = found
+        return resolved, module_name, module
+
+    def _assert_reloadable_source(self, resolved: Path) -> None:
+        extension_suffixes = self._extension_suffixes()
+        if extension_suffixes and any(
+            str(resolved).endswith(suffix) for suffix in extension_suffixes
+        ):
+            self._raise_value_error("Cannot reload C extension module")
+
+        if resolved.suffix.lower() not in (".py", ".pyw"):
+            self._raise_value_error(f"Not a Python source file: {resolved}")
+
+    @staticmethod
+    def _raise_value_error(message: str) -> NoReturn:
+        raise ValueError(message)
+
+    @staticmethod
+    def _raise_runtime_error(message: str) -> NoReturn:
+        raise RuntimeError(message)
+
+    async def _perform_reload(
+        self,
+        resolved: Path,
+        module_name: str,
+        module: ModuleType,
+        options: HotReloadOptions | None,
+        warnings: list[str],
+    ) -> tuple[ModuleType, int, int]:
         old_functions = self._collect_module_functions(module)
 
         normalized_options: HotReloadOptions = options or {}
         invalidate_pyc = bool(normalized_options.get("invalidatePycache", True))
+        update_frame_code = bool(normalized_options.get("updateFrameCode", True))
+        if update_frame_code and sys.version_info < (3, 12):
+            warnings.append("frame.f_code update not available on Python < 3.12")
+            update_frame_code = False
 
         importlib.invalidate_caches()
         linecache.checkcache(str(resolved))
@@ -74,15 +173,31 @@ class HotReloadService:
         rebind_map = self._build_rebind_map(
             old_functions, self._collect_module_functions(reloaded)
         )
-        rebound_frames = self._rebind_stack_functions(rebind_map, warnings)
+        rebound_frames, updated_frame_codes = self._rebind_stack_functions(
+            rebind_map,
+            warnings,
+            module_name=module_name,
+            update_frame_code=update_frame_code,
+        )
+        self._invalidate_variable_caches(warnings)
 
         self._invalidate_frame_eval_cache(str(resolved), warnings)
 
         breakpoint_lines = await self._reapply_breakpoints(str(resolved))
-
         if breakpoint_lines:
             self._update_frame_eval_breakpoints(str(resolved), breakpoint_lines, warnings)
 
+        return reloaded, rebound_frames, updated_frame_codes
+
+    def _emit_reload_events(
+        self,
+        resolved: Path,
+        module_name: str,
+        rebound_frames: int,
+        updated_frame_codes: int,
+        warnings: list[str],
+        duration_ms: float,
+    ) -> None:
         source = self._debugger._source_introspection.make_source(  # noqa: SLF001
             resolved,
             origin=f"module:{module_name}",
@@ -90,48 +205,88 @@ class HotReloadService:
         )
         self._debugger.emit_event("loadedSource", {"reason": "changed", "source": source})
 
-        duration_ms = (time.perf_counter() - start) * 1000.0
         event_payload = {
             "module": module_name,
             "path": str(resolved),
             "reboundFrames": rebound_frames,
-            "updatedFrameCodes": 0,
+            "updatedFrameCodes": updated_frame_codes,
             "patchedInstances": 0,
             "warnings": warnings,
             "durationMs": duration_ms,
         }
         self._debugger.emit_event("dapper/hotReloadResult", event_payload)
 
-        body: HotReloadResponseBody = {
-            "reloadedModule": getattr(reloaded, "__name__", module_name),
-            "reloadedPath": str(resolved),
-            "reboundFrames": rebound_frames,
-            "updatedFrameCodes": 0,
-            "patchedInstances": 0,
-            "warnings": warnings,
-        }
-        return body
+    def _record_hot_reload_success(
+        self,
+        *,
+        module_name: str,
+        path: str,
+        rebound_frames: int,
+        updated_frame_codes: int,
+        warning_count: int,
+        duration_ms: float,
+    ) -> None:
+        try:
+            telemetry.record_hot_reload_succeeded(
+                module=module_name,
+                path=path,
+                rebound_frames=rebound_frames,
+                updated_frame_codes=updated_frame_codes,
+                warning_count=warning_count,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
 
-    def _collect_module_functions(self, module: object) -> dict[str, Any]:
+    def _record_hot_reload_failure(
+        self,
+        *,
+        module_name: str,
+        path: str,
+        error_type: str,
+        error_message: str,
+        duration_ms: float,
+    ) -> None:
+        try:
+            telemetry.record_hot_reload_failed(
+                module=module_name,
+                path=path,
+                error_type=error_type,
+                error_message=error_message,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
+
+    def _extension_suffixes(self) -> tuple[str, ...]:
+        """Return importlib extension suffixes with backwards-compatible fallback."""
+        machinery = getattr(importlib, "machinery", None)
+        if machinery is None:
+            return (".so", ".pyd", ".dll", ".dylib")
+
+        suffixes = getattr(machinery, "EXTENSION_SUFFIXES", None)
+        if isinstance(suffixes, (list, tuple)):
+            return tuple(str(s) for s in suffixes if s)
+        return (".so", ".pyd", ".dll", ".dylib")
+
+    def _collect_module_functions(self, module: ModuleType) -> dict[str, FunctionType]:
         module_dict = getattr(module, "__dict__", {})
         if not isinstance(module_dict, dict):
             return {}
 
         return {
-            name: value
-            for name, value in module_dict.items()
-            if callable(value) and hasattr(value, "__code__")
+            name: value for name, value in module_dict.items() if isinstance(value, FunctionType)
         }
 
     def _build_rebind_map(
         self,
-        old_functions: dict[str, Any],
-        new_functions: dict[str, Any],
-    ) -> dict[int, Any]:
-        mapping: dict[int, Any] = {}
+        old_functions: dict[str, FunctionType],
+        new_functions: dict[str, FunctionType],
+    ) -> RebindMap:
+        mapping: RebindMap = {}
         for name, old_function in old_functions.items():
             new_function = new_functions.get(name)
-            if new_function is None or not hasattr(new_function, "__code__"):
+            if new_function is None:
                 continue
             mapping[id(old_function)] = new_function
             old_code = getattr(old_function, "__code__", None)
@@ -139,18 +294,33 @@ class HotReloadService:
                 mapping[id(old_code)] = new_function
         return mapping
 
-    def _rebind_stack_functions(self, rebind_map: dict[int, Any], warnings: list[str]) -> int:
+    def _rebind_stack_functions(
+        self,
+        rebind_map: RebindMap,
+        warnings: list[str],
+        *,
+        module_name: str,
+        update_frame_code: bool,
+    ) -> tuple[int, int]:
         if not rebind_map:
-            return 0
+            return 0, 0
 
         rebound_frames = 0
+        updated_frame_codes = 0
+        closure_warnings: set[str] = set()
         for frame in self._iter_live_frames():
+            if self._maybe_update_frame_code(frame, rebind_map, warnings, update_frame_code):
+                updated_frame_codes += 1
+
             locals_map = getattr(frame, "f_locals", None)
             if not isinstance(locals_map, dict):
                 continue
 
             changed = False
             for local_name, local_value in list(locals_map.items()):
+                if self._warn_if_closure(local_value, module_name, warnings, closure_warnings):
+                    continue
+
                 replacement = self._replacement_for_value(local_value, rebind_map)
                 if replacement is None:
                     continue
@@ -167,26 +337,136 @@ class HotReloadService:
                 rebound_frames += 1
                 self._flush_frame_locals(frame, warnings)
 
-        return rebound_frames
+        return rebound_frames, updated_frame_codes
 
-    def _replacement_for_value(self, value: Any, rebind_map: dict[int, Any]) -> Any | None:
-        if isinstance(value, types.FunctionType):
+    def _maybe_update_frame_code(
+        self,
+        frame: object,
+        rebind_map: RebindMap,
+        warnings: list[str],
+        update_frame_code: bool,
+    ) -> bool:
+        if not update_frame_code:
+            return False
+
+        current_code = getattr(frame, "f_code", None)
+        replacement_function = (
+            rebind_map.get(id(current_code)) if current_code is not None else None
+        )
+        new_code = (
+            getattr(replacement_function, "__code__", None)
+            if replacement_function is not None
+            else None
+        )
+        if (
+            not isinstance(current_code, CodeType)
+            or replacement_function is None
+            or not isinstance(new_code, CodeType)
+        ):
+            return False
+
+        if self._is_closure_function(replacement_function):
+            code_name = getattr(current_code, "co_name", "<unknown>")
+            warnings.append(
+                f"Closure function {code_name}() skipped: captured cell variables cannot be safely rebound",
+            )
+            return False
+
+        compatible, reason = self._is_code_compatible(current_code, new_code)
+        if not compatible:
+            code_name = getattr(current_code, "co_name", "<unknown>")
+            warnings.append(f"frame.f_code update skipped for {code_name}(): {reason}")
+            return False
+
+        updated = False
+        try:
+            frame_with_code = cast("_SupportsFrameCodeUpdate", frame)
+            frame_with_code.f_code = new_code
+        except Exception as exc:
+            warnings.append(f"Failed to update frame.f_code: {exc!s}")
+        else:
+            updated = True
+
+        return updated
+
+    def _warn_if_closure(
+        self,
+        value: object,
+        module_name: str,
+        warnings: list[str],
+        warned: set[str],
+    ) -> bool:
+        function = self._extract_function(value)
+        if function is None:
+            return False
+        if getattr(function, "__module__", None) != module_name:
+            return False
+        if not self._is_closure_function(function):
+            return False
+
+        function_name = getattr(function, "__name__", "<closure>")
+        if function_name not in warned:
+            warned.add(function_name)
+            warnings.append(
+                f"Closure function {function_name}() skipped: captured cell variables cannot be safely rebound",
+            )
+        return True
+
+    def _extract_function(self, value: object) -> FunctionType | None:
+        if isinstance(value, FunctionType):
+            return value
+        if isinstance(value, MethodType):
+            return value.__func__
+        return None
+
+    def _is_closure_function(self, value: FunctionType) -> bool:
+        return bool(getattr(value, "__closure__", None))
+
+    def _is_code_compatible(self, old_code: CodeType, new_code: CodeType) -> tuple[bool, str]:
+        for attr in ("co_argcount", "co_posonlyargcount", "co_kwonlyargcount", "co_nlocals"):
+            old_value = getattr(old_code, attr, None)
+            new_value = getattr(new_code, attr, None)
+            if old_value != new_value:
+                return False, f"{attr} changed from {old_value} to {new_value}"
+
+        old_varnames = tuple(getattr(old_code, "co_varnames", ()))
+        new_varnames = tuple(getattr(new_code, "co_varnames", ()))
+        if len(old_varnames) != len(new_varnames):
+            return (
+                False,
+                f"co_varnames length changed from {len(old_varnames)} to {len(new_varnames)}",
+            )
+
+        old_freevars = tuple(getattr(old_code, "co_freevars", ()))
+        new_freevars = tuple(getattr(new_code, "co_freevars", ()))
+        if old_freevars != new_freevars:
+            return False, "co_freevars changed"
+
+        old_cellvars = tuple(getattr(old_code, "co_cellvars", ()))
+        new_cellvars = tuple(getattr(new_code, "co_cellvars", ()))
+        if old_cellvars != new_cellvars:
+            return False, "co_cellvars changed"
+
+        return True, ""
+
+    def _replacement_for_value(self, value: object, rebind_map: RebindMap) -> object | None:
+        if isinstance(value, FunctionType):
             by_function = rebind_map.get(id(value))
             if by_function is not None:
                 return by_function
             return rebind_map.get(id(value.__code__))
 
-        if isinstance(value, types.MethodType):
+        if isinstance(value, MethodType):
             by_function = rebind_map.get(id(value.__func__))
             if by_function is not None:
-                return types.MethodType(by_function, value.__self__)
+                return MethodType(by_function, value.__self__)
             by_code = rebind_map.get(id(value.__func__.__code__))
             if by_code is not None:
-                return types.MethodType(by_code, value.__self__)
+                return MethodType(by_code, value.__self__)
 
         return None
 
-    def _iter_live_frames(self) -> list[Any]:
+    def _iter_live_frames(self) -> list[object]:
         backend = self._debugger.get_inprocess_backend()
         if backend is None:
             return []
@@ -197,7 +477,7 @@ class HotReloadService:
         if bdb is None:
             return []
 
-        frames: list[Any] = []
+        frames: list[object] = []
         try:
             frame_map = getattr(bdb.thread_tracker, "frame_id_to_frame", {})
             frames.extend(frame_map.values())
@@ -208,7 +488,7 @@ class HotReloadService:
         if current_frame is not None:
             frames.append(current_frame)
 
-        unique_frames: list[Any] = []
+        unique_frames: list[object] = []
         seen: set[int] = set()
         for frame in frames:
             frame_id = id(frame)
@@ -218,7 +498,7 @@ class HotReloadService:
             unique_frames.append(frame)
         return unique_frames
 
-    def _flush_frame_locals(self, frame: Any, warnings: list[str]) -> None:
+    def _flush_frame_locals(self, frame: object, warnings: list[str]) -> None:
         if not hasattr(types, "FrameType") or not isinstance(frame, types.FrameType):
             return
 
@@ -229,6 +509,17 @@ class HotReloadService:
             locals_to_fast(frame, 1)
         except Exception as exc:
             warnings.append(f"Failed to flush frame locals for live frame: {exc!s}")
+
+    def _invalidate_variable_caches(self, warnings: list[str]) -> None:
+        try:
+            self._debugger.variable_manager.clear()
+        except Exception as exc:
+            warnings.append(f"Failed to clear variable references: {exc!s}")
+
+        try:
+            self._debugger.current_stack_frames.clear()
+        except Exception as exc:
+            warnings.append(f"Failed to clear cached stack frames: {exc!s}")
 
     def _delete_stale_pyc(self, source_path: Path) -> list[str]:
         warnings: list[str] = []

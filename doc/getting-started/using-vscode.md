@@ -179,6 +179,8 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 
 ## Quality-of-life improvements (Both Paths)
 
+- **Hot reload while paused:** Use `Dapper: Hot Reload Current File` (default `Ctrl+Alt+R` / `Cmd+Alt+R`) to reload the active Python file during a stopped session. You can also enable automatic reload on save with `dapper.hotReload.autoOnSave`. Current runtime support is in-process sessions.
+- **Reference:** See the [Hot Reload reference](../reference/hot-reload.md) for request/event details, safety checks, limitations, and telemetry counters.
 - **Task integration:** Create a VS Code task that runs `python -m dapper.adapter --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
 - **multi-root workspaces:** Include one adapter task per workspace folder, each with its own port, and set `debugServer` accordingly.
 - **Version pinning:** If you rely on specific Dapper features, add `dapper==<version>` to your `requirements.txt` to keep teammates in sync.
@@ -204,8 +206,8 @@ Still stuck? The [`Manual Testing` guide](manual-testing.md) lists end-to-end fl
 
 ## Next steps
 
--- Explore the [examples](../examples/README.md) for creative ways to embed Dapper into scripts and services.
--- Skim the [architecture overview](../architecture/overview.md) if you want to extend or customize the adapter.
+- Explore the [examples](../examples/README.md) for creative ways to embed Dapper into scripts and services.
+- Skim the [architecture overview](../architecture/overview.md) if you want to extend or customize the adapter.
 - File issues or share your hacks—Dapper is open-source and eager for contributions!
 
 Happy debugging—whether via the managed extension or standalone adapter! 🎯

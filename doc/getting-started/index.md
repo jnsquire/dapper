@@ -9,6 +9,7 @@ This section gathers onboarding material and practical workflows to help develop
 
 - **Reference guides**
 	- [Async / Concurrency Debugging](../reference/async-debugging.md) — asyncio task inspector, async-aware stepping, dynamic thread names
+	- [Hot Reload](../reference/hot-reload.md) — reload changed Python modules while paused, with VS Code command and auto-on-save support
 	- [Variable Presentation](../reference/variable-presentation.md) — rich variable display: dataclasses, namedtuples, Pydantic, presentation hints
 
 - **Frame Evaluation** — high-performance expression/frame evaluation for debugging:
