@@ -59,6 +59,6 @@ Dapper advertises non-standard capabilities in the `initialize` response body al
 
 ## See Also
 
-- [Message Flows](../reference/message-flows.md)
+- [Message Flows](../development/message-flows.md)
 - [Architecture Overview](../architecture/overview.md)
 - [Hot Reload Roadmap](../roadmap/dep-001-hot-reload.md)

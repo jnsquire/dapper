@@ -19,4 +19,4 @@ Core architecture pages
   - [IPC Design Guide](./ipc.md)
 
 - **Protocol & Message Flows** — DAP protocol flows and message sequences:
-  - [DAP Message Flow Diagrams](../reference/message-flows.md) — sequence diagrams for launch, attach, breakpoints, and session lifecycle flows.
+  - [DAP Message Flow Diagrams](../development/message-flows.md) — sequence diagrams for launch, attach, breakpoints, and session lifecycle flows.

@@ -61,8 +61,8 @@ def render_diagrams(force: bool) -> None:
             "npx not found; please install Node.js or run the provided render scripts"
         )
 
-    diagrams = list((ROOT / "doc" / "reference" / "diagrams").glob("*.mmd"))
-    outdir = ROOT / "doc" / "reference" / "images"
+    diagrams = list((ROOT / "doc" / "development" / "diagrams").glob("*.mmd"))
+    outdir = ROOT / "doc" / "development" / "images"
     outdir.mkdir(parents=True, exist_ok=True)
     for m in diagrams:
         out = outdir / (m.stem + ".svg")
