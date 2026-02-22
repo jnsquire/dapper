@@ -91,6 +91,6 @@ restart required.
 
 ## Related
 
-- [Frame Evaluation](../getting-started/frame-eval/index.md) — high-performance
+- [Frame Evaluation](frame-eval.md) — high-performance
   tracing that is also async-aware.
-- [Debugger Features Checklist](checklist.md) — full implementation status matrix.
+- [Debugger Features Checklist](../reference/checklist.md) — full implementation status matrix.

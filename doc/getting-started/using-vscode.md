@@ -131,6 +131,46 @@ What this does:
 }
 ```
 
+```jsonc
+// Attach via TCP to a running debuggee
+{
+    "name": "Dapper: Attach (tcp)",
+    "type": "python",
+    "request": "attach",
+    "debugServer": 4711,
+    "useIpc": true,
+    "ipcTransport": "tcp",
+    "ipcHost": "127.0.0.1",
+    "ipcPort": 5000
+}
+```
+
+```jsonc
+// Attach via Unix domain socket (POSIX)
+{
+    "name": "Dapper: Attach (unix)",
+    "type": "python",
+    "request": "attach",
+    "debugServer": 4711,
+    "useIpc": true,
+    "ipcTransport": "unix",
+    "ipcPath": "/tmp/dapper.sock"
+}
+```
+
+```jsonc
+// Attach via Windows named pipe
+{
+    "name": "Dapper: Attach (pipe)",
+    "type": "python",
+    "request": "attach",
+    "debugServer": 4711,
+    "useIpc": true,
+    "ipcTransport": "pipe",
+    "ipcPipeName": "\\\\.\\pipe\\dapper-demo"
+}
+```
+
 These extra switches are interpreted by Dapper; VS Code will happily pass them through.
 
 ### Dapper-specific launch options (standalone + extension)
@@ -306,9 +346,9 @@ Breakpoints, stack inspection, variables, and evaluation flow through the extens
 
 ## Quality-of-life improvements (Both Paths)
 
-- **Persistent watchpoints:** Dapper supports variable and expression watchpoints through `setDataBreakpoints` (including `frame:<id>:expr:<expression>`). Variable read watchpoints are available on Python 3.12+ (`sys.monitoring`); older versions gracefully fall back to write semantics. See the [Watchpoints reference](../reference/watchpoints.md) for payload format and behavior.
+- **Persistent watchpoints:** Dapper supports variable and expression watchpoints through `setDataBreakpoints` (including `frame:<id>:expr:<expression>`). Variable read watchpoints are available on Python 3.12+ (`sys.monitoring`); older versions gracefully fall back to write semantics. See the [Watchpoints reference](../guides/watchpoints.md) for payload format and behavior.
 - **Hot reload while paused:** Use `Dapper: Hot Reload Current File` (default `Ctrl+Alt+R` / `Cmd+Alt+R`) to reload the active Python file during a stopped session. You can also enable automatic reload on save with `dapper.hotReload.autoOnSave`. Current runtime support is in-process sessions.
-- **Reference:** See the [Hot Reload reference](../reference/hot-reload.md) for request/event details, safety checks, limitations, and telemetry counters.
+- **Reference:** See the [Hot Reload reference](../guides/hot-reload.md) for request/event details, safety checks, limitations, and telemetry counters.
 - **Task integration:** Create a VS Code task that runs `python -m dapper.adapter --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
 - **multi-root workspaces:** Include one adapter task per workspace folder, each with its own port, and set `debugServer` accordingly.
 - **Version pinning:** If you rely on specific Dapper features, add `dapper==<version>` to your `requirements.txt` to keep teammates in sync.

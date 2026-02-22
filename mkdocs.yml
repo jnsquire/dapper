@@ -3,40 +3,61 @@ docs_dir: doc
 theme:
   name: mkdocs
 
+hooks:
+  - scripts/mkdocs_hooks.py
+
 plugins:
   - search
   - mermaid2
+
+markdown_extensions:
+  - attr_list
+  - admonition
 
 nav:
   - Home: README.md
   - Getting Started:
     - Overview: getting-started/index.md
-    - Development: getting-started/development.md
-    - Manual Testing: getting-started/manual-testing.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
     - Using VS Code: getting-started/using-vscode.md
+    - Manual Testing: getting-started/manual-testing.md
+  - User Guides:
+    - Async Debugging: guides/async-debugging.md
+    - Variable Presentation: guides/variable-presentation.md
+    - Frame Evaluation: guides/frame-eval.md
+    - Hot Reload: guides/hot-reload.md
+    - Watchpoints: guides/watchpoints.md
+    - Troubleshooting: guides/troubleshooting.md
+  - Reference:
+    - Configuration: reference/configuration.md
+    - Feature Checklist: reference/checklist.md
+    - DAP Message Flows: reference/message-flows.md
+    - Operational Modes: reference/operational-modes.md
+    - Custom DAP Extensions: reference/dap-extensions.md
+    - Telemetry: reference/telemetry.md
   - Architecture:
     - Overview: architecture/overview.md
-    - Analysis: architecture/current-analysis.md
-    - Lifecycle: architecture/lifecycle-management.md
+    - Concurrency Model: architecture/concurrency.md
+    - IPC Design: architecture/ipc.md
+    - Backend Lifecycle: architecture/backends.md
+    - Breakpoints Controller: architecture/breakpoints.md
     - Error Handling: architecture/error-handling.md
-    - IPC Refactor Guide: architecture/ipc-refactoring.md
-  - Debugging:
-    - Operational Modes: reference/operational_modes.md
-    - Breakpoints Controller: architecture/breakpoints_controller.md
-  - IPC & Frame Eval:
-    - Frame Eval User Guide: getting-started/frame-eval/index.md
-    - Frame Eval Troubleshooting: getting-started/frame-eval/troubleshooting.md
     - Frame Eval Implementation: architecture/frame-eval/implementation.md
     - Frame Eval Performance: architecture/frame-eval/performance.md
     - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
-  - Reference:
-    - Checklist: reference/checklist.md
-    - Watchpoints: reference/watchpoints.md
-    - Async Debugging: reference/async-debugging.md
-    - Variable Presentation: reference/variable-presentation.md
-    - Hot Reload: reference/hot-reload.md
-    - Sys Monitoring Integration: reference/sys-monitoring-integration.md
-    - Telemetry: reference/telemetry.md
-    - Feature Ideas: reference/feature-ideas.md
-    - Message Flows: reference/message_flows.md
-    - Operational Modes: reference/operational_modes.md
+    - sys.monitoring Integration: architecture/sys-monitoring.md
+    - Analysis Notes: architecture/current-analysis.md
+    - Architecture Index: architecture/index.md
+  - Development:
+    - Setup: development/setup.md
+    - Testing: development/testing.md
+    - Contributing: development/contributing.md
+    - VS Code Extension: development/vscode-extension.md
+    - Documentation: development/docs.md
+    - BDB Mock Audit: development/bdb-mock-audit.md
+  - Roadmap:
+    - Feature Ideas: roadmap/feature-ideas.md
+    - "DEP-001: Hot Reload Protocol": roadmap/dep-001-hot-reload.md
+    - Hot Reload Plan: roadmap/hot-reload-plan.md
+  - Examples: examples/README.md

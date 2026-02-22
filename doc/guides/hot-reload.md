@@ -103,4 +103,4 @@ If a reload request fails:
 - Check response/event warnings for compatibility skips.
 - For C-extension modules, restart-based workflows are required.
 
-See also: [Frame-eval telemetry reference](telemetry.md).
+See also: [Frame-eval telemetry reference](../reference/telemetry.md).

@@ -136,5 +136,5 @@ Click the expand arrow in the Variables panel to fetch child variables on demand
 ## Related
 
 - [Async Debugging](async-debugging.md) — asyncio task inspector and async-aware stepping.  
-- [Debugger Features Checklist](checklist.md) — full implementation status matrix.
-- [Frame Evaluation Guide](../getting-started/frame-eval/index.md) — expression evaluation during debugging.
+- [Debugger Features Checklist](../reference/checklist.md) — full implementation status matrix.
+- [Frame Evaluation Guide](frame-eval.md) — expression evaluation during debugging.

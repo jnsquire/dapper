@@ -29,8 +29,8 @@ This page documents the design and responsibilities of the *Breakpoints Controll
 ## See also
 
 - Checklist & status: [CHECKLIST & status](../reference/checklist.md)
-- Frame evaluation (usage & guidance): [Frame Evaluation user guide](../getting-started/frame-eval/index.md)
-- Operational modes & diagrams: [Operational modes (reference)](../reference/operational_modes.md)
+- Frame evaluation (usage & guidance): [Frame Evaluation user guide](../guides/frame-eval.md)
+- Operational modes & diagrams: [Operational modes (reference)](../reference/operational-modes.md)
 
 ### Code & tests
 

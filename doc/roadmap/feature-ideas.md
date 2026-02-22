@@ -2,7 +2,7 @@
 
 Ideas generated from a full codebase review, organised by theme.
 Each item is unchecked and intended to be promoted into the main
-[checklist](checklist.md) or a phase roadmap as work begins.
+[checklist](../reference/checklist.md) or a phase roadmap as work begins.
 
 Legend
 - [ ] Not started
@@ -127,6 +127,68 @@ Legend
 
 ---
 
+## 12. Documentation Screenshot Infrastructure
+
+Ideas for building automated, reproducible screenshot capture for the docs.
+
+### Tier 1 — Manual Capture (immediate)
+
+- [ ] **Install Flameshot for Linux** — `sudo apt install flameshot`.  Run
+      `flameshot gui -p doc/img/vscode/` to capture annotated screenshots
+      (arrows, highlights, blur) directly into the docs image directory.
+- [ ] **ImageMagick post-processing script** — `scripts/process-screenshot.sh`
+      that applies a consistent drop shadow and white border to all PNGs so
+      every image looks uniform in the rendered site.
+- [ ] **`doc/img/vscode/` directory** — centralised home for all VS Code UI
+      screenshots.  Use the naming convention
+      `vscode-{context}-{element}-{state}.png`
+      (e.g. `vscode-debug-breakpoint-hit.png`).
+- [ ] **Initial screenshot batch for [using-vscode.md](../getting-started/using-vscode.md)** — eight
+      key captures: launch.json config, adapter terminal, breakpoint hit,
+      Variables panel, Threads/async view, Call Stack, extension install, Debug
+      Console.
+
+### Tier 2 — Automated / CI-Driven Capture
+
+- [ ] **`scripts/capture-screenshots.py` via Playwright + code-server** —
+      launch `code-server` pointing at the dapper workspace, use Playwright to
+      navigate to each debug state (open file → set breakpoint → start
+      debugging → step), capture `page.screenshot()` for each panel.  Saves
+      deterministic PNGs that can be regenerated after any UI change.
+      ```bash
+      pip install playwright && playwright install chromium
+      npm install -g code-server
+      python scripts/capture-screenshots.py
+      ```
+- [ ] **`@vscode/test-electron` + Electron capture (alternative)** — for
+      pixel-perfect desktop VS Code screenshots (not web), use the existing
+      `@vscode/test-electron` integration test harness together with
+      Electron's `webContents.capturePage()`.  Run headlessly with
+      `xvfb-run` in CI.
+- [ ] **`xvfb-run` GitHub Actions job** — add a CI workflow step that runs
+      `scripts/capture-screenshots.py` and commits updated images when the
+      dapper version bumps, ensuring docs screenshots track releases
+      automatically.
+- [ ] **Stale-screenshot detection** — a `scripts/check-doc-images.sh` script
+      that verifies every `![]()` image reference in the Markdown files points
+      to an existing file, and optionally checks image mtimes against the
+      last-modified date of the doc page that references them.
+- [ ] **Baseline comparison with `pixelmatch`** — after an automated capture
+      run, compare new PNGs against the committed baseline; fail CI only if
+      the diff exceeds a configurable pixel-change threshold (to tolerate minor
+      font rendering differences across OS versions).
+
+### MkDocs image support
+
+- [ ] **Add `glightbox` plugin** — `pip install mkdocs-glightbox`; add to
+      `mkdocs.yml` so readers can click any screenshot to see it full-size.
+- [ ] **Add `attr_list` extension** — enables `{ width="600" }` syntax on
+      image references for responsive sizing without raw HTML.
+- [ ] **Upgrade theme to `material`** (optional but unlocks image captions,
+      dark mode, admonitions, and better overall DX).
+
+---
+
 ## Priority Summary
 
 | # | Area | User Impact | Estimated Effort |
@@ -144,7 +206,9 @@ Legend
 | 11 | goto / jump-to-line | Medium | Low |
 | 12 | Execution event log | Medium | Low–Medium |
 | 13 | Read-access watchpoints | Medium | Medium |
+| 14 | Doc screenshot capture (Tier 1 manual) | High | Low |
+| 15 | Doc screenshot automation / CI (Tier 2) | Medium | Medium |
 
 ---
 
-*Generated: 2026-02-20*
+*Generated: 2026-02-20; updated: 2026-02-22*

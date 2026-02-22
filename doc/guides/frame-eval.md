@@ -1,4 +1,4 @@
-<!-- Frame evaluation user guide moved here from doc/FRAME_EVAL_USER_GUIDE.md -->
+<!-- Frame evaluation user guide — merged from doc/getting-started/frame-eval/index.md and doc/getting-started/frame-eval/troubleshooting.md -->
 # Frame Evaluation — User Guide
 
 This guide explains how to enable and use Dapper's frame evaluation system for high-performance debugging.
@@ -191,13 +191,111 @@ config = {
 
 ## Troubleshooting
 
+### Quick Diagnosis
+
+Use this script to quickly check frame evaluation health:
+
+```python
+#!/usr/bin/env python3
+"""Frame evaluation health check"""
+
+import sys
+from dapper._frame_eval.debugger_integration import (
+    DebuggerFrameEvalBridge,
+    get_integration_statistics,
+)
+
+def health_check():
+    """Perform comprehensive health check"""
+    print("Frame Evaluation Health Check")
+    print("=" * 50)
+
+    # Check 1: Module imports
+    try:
+        from dapper._frame_eval._frame_evaluator import (
+            frame_eval_func, stop_frame_eval, get_thread_info
+        )
+        print("OK  Core modules imported successfully")
+    except ImportError as e:
+        print(f"FAIL  Core module import failed: {e}")
+        return False
+
+    # Check 2: Cython compilation
+    try:
+        thread_info = get_thread_info()
+        print(f"OK  Cython functions working: {type(thread_info).__name__}")
+    except Exception as e:
+        print(f"FAIL  Cython functions failed: {e}")
+        return False
+
+    # Check 3: Integration bridge
+    try:
+        bridge = DebuggerFrameEvalBridge()
+        print("OK  Integration bridge created")
+    except Exception as e:
+        print(f"FAIL  Integration bridge failed: {e}")
+        return False
+
+    # Check 4: Statistics
+    try:
+        stats = get_integration_statistics()
+        print(f"OK  Statistics available: {len(stats)} sections")
+    except Exception as e:
+        print(f"FAIL  Statistics failed: {e}")
+        return False
+
+    # Check 5: Frame evaluation activation
+    try:
+        frame_eval_func()
+        stats = get_integration_statistics()
+        if stats['config']['enabled']:
+            print("OK  Frame evaluation activated successfully")
+        else:
+            print("WARN  Frame evaluation not enabled")
+    except Exception as e:
+        print(f"FAIL  Frame evaluation activation failed: {e}")
+        return False
+
+    print("\nAll health checks passed!")
+    return True
+
+if __name__ == "__main__":
+    success = health_check()
+    sys.exit(0 if success else 1)
+```
+
 ### Common Issues
 
 #### Frame Evaluation Not Working
 
-**Symptoms**: No performance improvement, high tracing overhead
+**Symptoms**: No performance improvement, high tracing overhead, breakpoints not triggering efficiently.
+
+**Diagnosis**:
+```python
+from dapper._frame_eval.debugger_integration import get_integration_statistics
+
+def diagnose_not_working():
+    stats = get_integration_statistics()
+
+    print("Diagnosis:")
+    print(f"  Enabled: {stats['config']['enabled']}")
+    print(f"  Integrations: {stats['integration_stats']['integrations_enabled']}")
+    print(f"  Errors: {stats['integration_stats']['errors_handled']}")
+
+    if not stats['config']['enabled']:
+        print("Frame evaluation is disabled")
+    elif stats['integration_stats']['errors_handled'] > 0:
+        print("Errors detected, check logs")
+    elif stats['integration_stats']['integrations_enabled'] == 0:
+        print("No integrations active")
+    else:
+        print("Frame evaluation appears to be working")
+
+diagnose_not_working()
+```
 
 **Solutions**:
+
 1. Verify frame evaluation is enabled:
    ```python
    from dapper._frame_eval.debugger_integration import get_integration_statistics
@@ -212,17 +310,17 @@ config = {
        print("Frame evaluation errors detected")
    ```
 
-3. Ensure breakpoints are set correctly:
+3. Ensure breakpoints are set correctly — frame evaluation only helps when breakpoints exist:
    ```python
-   # Frame evaluation only helps when breakpoints exist
    debugger.set_breakpoint('file.py', 10)
    ```
 
 #### High Memory Usage
 
-**Symptoms**: Memory usage increases significantly during debugging
+**Symptoms**: Memory usage increases significantly during debugging.
 
 **Solutions**:
+
 1. Reduce cache size:
    ```python
    config = {'max_cache_size': 500}  # Reduce from default 1000
@@ -242,9 +340,10 @@ config = {
 
 #### Compatibility Issues
 
-**Symptoms**: Crashes, strange behavior, or debugging not working
+**Symptoms**: Crashes, strange behavior, or debugging not working as expected.
 
 **Solutions**:
+
 1. Enable fallback mode:
    ```python
    config = {'fallback_on_error': True}
@@ -255,7 +354,7 @@ config = {
    config = {'bytecode_optimization': False}
    ```
 
-3. Use traditional tracing:
+3. Revert to traditional tracing entirely:
    ```python
    config = {'enabled': False}
    ```
@@ -281,7 +380,7 @@ from dapper._frame_eval.debugger_integration import get_integration_statistics
 
 def analyze_performance():
     stats = get_integration_statistics()
-    
+
     print("Frame Evaluation Performance Analysis")
     print("=" * 50)
     print(f"Enabled: {stats['config']['enabled']}")
@@ -289,138 +388,17 @@ def analyze_performance():
     print(f"Breakpoints Optimized: {stats['integration_stats']['breakpoints_optimized']}")
     print(f"Trace Calls Saved: {stats['integration_stats']['trace_calls_saved']}")
     print(f"Errors Handled: {stats['integration_stats']['errors_handled']}")
-    
+
     if stats['performance_data']:
         perf = stats['performance_data']
         print(f"Trace Function Calls: {perf['trace_function_calls']}")
         print(f"Frame Eval Calls: {perf['frame_eval_calls']}")
 
-# Run analysis
 analyze_performance()
 ```
 
-## Advanced Topics
+## See Also
 
-### Custom Integration
-
-For advanced use cases, you can integrate frame evaluation manually:
-
-```python
-from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
-from dapper._frame_eval._frame_evaluator import frame_eval_func, stop_frame_eval
-
-class CustomDebugger:
-    def __init__(self):
-        self.bridge = DebuggerFrameEvalBridge()
-        self.bridge.integrate_debugger_bdb(self)
-    
-    def start_debugging(self):
-        # Enable frame evaluation
-        frame_eval_func()
-        
-        # Set breakpoints
-        self.set_breakpoint('app.py', 100)
-        
-        # Start debugging
-        self.run_program()
-    
-    def stop_debugging(self):
-        # Disable frame evaluation
-        stop_frame_eval()
-        self.bridge.cleanup()
-
-# Usage
-debugger = CustomDebugger()
-debugger.start_debugging()
-```
-
-### Performance Tuning
-
-Fine-tune performance for your specific use case:
-
-```python
-# High-performance configuration for large codebases
-high_perf_config = {
-    'enabled': True,
-    'selective_tracing': True,
-    'bytecode_optimization': True,
-    'cache_enabled': True,
-    'max_cache_size': 2000,  # Larger cache
-    'cache_ttl': 600,  # 10 minutes
-    'performance_monitoring': False,  # Minimal overhead
-    'trace_overhead_threshold': 0.02,  # 2% threshold
-    'fallback_on_error': True
-}
-
-# Memory-efficient configuration for resource-constrained environments
-memory_efficient_config = {
-    'enabled': True,
-    'selective_tracing': True,
-    'bytecode_optimization': False,  # Less memory usage
-    'cache_enabled': True,
-    'max_cache_size': 100,  # Smaller cache
-    'cache_ttl': 60,  # 1 minute
-    'performance_monitoring': False,
-    'fallback_on_error': True
-}
-```
-
-## Migration Guide
-
-### From Traditional Tracing
-
-Migrating from traditional tracing to frame evaluation:
-
-1. **Enable Frame Evaluation**:
-   ```python
-   # Old way
-   debugger.set_trace()
-   
-   # New way
-   from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
-   bridge = DebuggerFrameEvalBridge()
-   bridge.auto_integrate_debugger(debugger)
-   ```
-
-2. **Update Configuration**:
-   ```python
-   # Add to your existing configuration
-   config = debugger.get_config()
-   config.update({
-       'frameEval': True,
-       'frameEvalConfig': {
-           'enabled': True,
-           'selective_tracing': True
-       }
-   })
-   ```
-
-3. **Monitor Performance**:
-   ```python
-   # Verify improvements
-   stats = get_integration_statistics()
-   assert stats['integration_stats']['trace_calls_saved'] > 0
-   ```
-
-### Compatibility Considerations
-
-- **Python Versions**: Works with Python 3.9-3.13
-- **Third-party Libraries**: Compatible with most libraries including gevent, asyncio
-- **Debugging Features**: All standard debugging features work with frame evaluation
-- **Performance**: Significant improvements in most scenarios, minimal overhead in edge cases
-
-## Support
-
-If you encounter issues with frame evaluation:
-
-1. Check the [troubleshooting guide](troubleshooting.md)
-2. Enable debug logging and collect performance statistics
-3. File an issue with the following information:
-   - Python version
-   - Dapper version
-   - Configuration used
-   - Performance statistics
-   - Any error messages or logs
-
-For more information, see the [Frame Evaluation Implementation Details](../../architecture/frame-eval/implementation.md) and [Architecture Documentation](../../architecture/overview.md).
-
+- [Implementation Details](../architecture/frame-eval/implementation.md)
+- [Performance Architecture](../architecture/frame-eval/performance.md)
+- [Build Guide](../architecture/frame-eval/build-guide.md)

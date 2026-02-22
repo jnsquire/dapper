@@ -1,4 +1,4 @@
-# Dapper AI Debugger Features Checklist
+# Dapper Debugger — Features Checklist
 
 A compact status matrix for Dapper's Debug Adapter Protocol (DAP) features and the near-term roadmap.
 
@@ -24,7 +24,7 @@ Legend
 - ✅ Next (step over)
 - ✅ Step In
 - ✅ Step Out
-- ✅ Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`); see [Async Debugging reference](async-debugging.md)
+- ✅ Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`); see [Async Debugging reference](../guides/async-debugging.md)
 - ❌ Reverse Continue (reverse debugging)
 - ✅ Step granularity (instruction-level stepping) — `StepGranularity` enum; `line`/`statement`/`instruction` forwarded end-to-end; `user_opcode` + `f_trace_opcodes` for instruction stepping
 
@@ -48,9 +48,9 @@ Legend
 
 ### Data breakpoints
 - 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
-- 🟡 Runtime watchpoints (trigger on write/value change/read) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`), and read watchpoints are available on Python 3.12+ via `sys.monitoring` (name-read scope). On older versions, read access types gracefully fall back to write semantics. Broader cross-process/read-precision integration work remains. See [Watchpoints reference](watchpoints.md).
+- 🟡 Runtime watchpoints (trigger on write/value change/read) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`), and read watchpoints are available on Python 3.12+ via `sys.monitoring` (name-read scope). On older versions, read access types gracefully fall back to write semantics. Broader cross-process/read-precision integration work remains. See [Watchpoints reference](../guides/watchpoints.md).
 
-Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints_controller.md) for design notes and Phase 1 status.
+Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints.md) for design notes and Phase 1 status.
 
 ---
 
@@ -67,22 +67,22 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 - ✅ Scopes (locals/globals)
 - ✅ Variables listing
 - ✅ Set variable (support for complex types and conversions)
-- ✅ Variable presentation / presentationHint — see [Variable Presentation reference](variable-presentation.md)
+- ✅ Variable presentation / presentationHint — see [Variable Presentation reference](../guides/variable-presentation.md)
 
 ### Expression evaluation
-- 🟡 Evaluate expressions in-frame (existing Frame Evaluation support; see FRAME_EVAL docs)
+- 🟡 Evaluate expressions in-frame — [Frame Evaluation](../guides/frame-eval.md) backend; partial support
 - 🟡 Expression-backed watchpoints via `setDataBreakpoints` (`frame:<id>:expr:<expression>`)
 - ✅ Set expression (`setExpression` DAP request)
 - ✅ Completions / auto-complete for expression editors
 
-Useful links: frame-eval docs — `doc/getting-started/frame-eval/index.md`, `doc/architecture/frame-eval/implementation.md`, `doc/architecture/frame-eval/performance.md`.
+See also: [Frame Eval User Guide](../guides/frame-eval.md), [Implementation](../architecture/frame-eval/implementation.md), [Performance](../architecture/frame-eval/performance.md).
 
 ---
 
 ## Advanced features / code navigation
 - ✅ Loaded sources listing (what's present in runtime)
 - ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
-- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, in-process runtime reload service, frame-local rebinding, and VS Code command/auto-on-save are implemented; external-process runtime support remains. See [Hot Reload reference](hot-reload.md).
+- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, in-process runtime reload service, frame-local rebinding, and VS Code command/auto-on-save are implemented; external-process runtime support remains. See [Hot Reload reference](../guides/hot-reload.md).
 - 🟡 Multi-process child auto-attach (`subprocessAutoAttach`, `dapper/childProcess`, `dapper/childProcessExited`, `dapper/childProcessCandidate`) — Phase 1 + Phase 2 launch-path handling are implemented for Python subprocess script/module/code invocations (including common `multiprocessing`/`ProcessPoolExecutor` worker launch shapes) with session correlation and recursion guardrails; process-tree UX and broader runtime matrix hardening remain.
 - ❌ Goto targets (find jump targets / navigation helpers — planned)
 - ✅ Modules listing
@@ -96,30 +96,15 @@ Dapper provides a stable, functional core debugger experience: program control, 
 
 ---
 
-## Priorities & roadmap (high-level)
+## Roadmap (near-term)
 
-Phase 1 — core polish (current)
-- ✅ Improve expression evaluation ergonomics (completions implemented, evaluate works). See: `doc/getting-started/frame-eval/index.md` and `doc/architecture/frame-eval/implementation.md`.
+- Source navigation & goto targets — tests and partial `source` handling exist; goto targets planned
+- Runtime watchpoints — bookkeeping and runtime triggers implemented; read-access detection, per-address watches, and cross-process robustness remain
+- Hot reload for external-process sessions — in-process path complete; external-process runtime support remains
+- Process-tree UX for multi-process attach — Phase 1 + 2 launch-path handling done; tree view and runtime matrix hardening remain
+- Reverse debugging / time-travel (future)
+- Performance profiling integration (future)
 
-Phase 2 — enhanced debugging experience (in-progress)
-- ✅ Asyncio task inspector and async-aware stepping (complete). See: [Async Debugging reference](async-debugging.md).
-- ✅ Structured variable rendering — dataclasses, namedtuples, Pydantic (complete). See: [Variable Presentation reference](variable-presentation.md).
-- Improve source navigation & request-level support (goto targets, richer `source` handling). Tests & partial support already present (see `architecture/breakpoints_controller.md` and existing adapter handlers).
-
-Phase 3 — advanced features (future)
-- Runtime watchpoints / data breakpoint triggers (Phase 1 bookkeeping implemented; runtime triggers are now supported when watches are registered — further work remains for read-access detection, per-address watches, and cross-process robustness)
-- Reverse debugging / time-travel
-- Performance profiling integration and tooling
-
----
-
-## Tests & coverage snapshot
-- Tests exercise core DAP features extensively (adapter + launcher + core components).
-- Areas flagged for additional unit/integration coverage: some breakpoint edge cases and runtime watchpoint behaviors.
-
----
+For a fuller list of ideas and proposed work, see the [Roadmap](../roadmap/feature-ideas.md).
 
 *Last updated: 2026-02-22*
-
-
-This document outlines the Debug Adapter Protocol (DAP) features implemented in Dapper, organized by category.

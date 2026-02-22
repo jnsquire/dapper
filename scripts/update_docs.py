@@ -131,10 +131,7 @@ def main() -> int:
         print("Rendering step failed:", e)
         return 2
 
-    backups = {}
     try:
-        print("Preparing docs for build (copying READMEs, patching links)...")
-        backups = prepare_docs_for_build()
         build_mkdocs()
     except subprocess.CalledProcessError as e:
         print("MkDocs build failed:", e)
@@ -142,9 +139,6 @@ def main() -> int:
     except Exception as e:
         print(f"Unexpected error during build: {e}")
         return 4
-    finally:
-        print("Cleaning up temporary doc files...")
-        cleanup_docs(backups)
 
     print("Docs updated in ./site/")
     return 0
