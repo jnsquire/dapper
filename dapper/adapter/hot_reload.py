@@ -256,14 +256,19 @@ class HotReloadService:
 
     def _extension_suffixes(self) -> tuple[str, ...]:
         """Return importlib extension suffixes with backwards-compatible fallback."""
+        default_suffixes: tuple[str, ...] = (".so", ".pyd", ".dll", ".dylib")
         machinery = getattr(importlib, "machinery", None)
         if machinery is None:
-            return (".so", ".pyd", ".dll", ".dylib")
+            return default_suffixes
 
         suffixes = getattr(machinery, "EXTENSION_SUFFIXES", None)
         if isinstance(suffixes, (list, tuple)):
-            return tuple(str(s) for s in suffixes if s)
-        return (".so", ".pyd", ".dll", ".dylib")
+            ordered: dict[str, None] = {suffix: None for suffix in default_suffixes}
+            for suffix in suffixes:
+                if suffix:
+                    ordered[str(suffix)] = None
+            return tuple(ordered)
+        return default_suffixes
 
     def _collect_module_functions(self, module: ModuleType) -> dict[str, FunctionType]:
         module_dict = getattr(module, "__dict__", {})
