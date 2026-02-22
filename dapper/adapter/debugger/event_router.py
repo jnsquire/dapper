@@ -27,10 +27,10 @@ class _PyDebuggerEventRouter:
         reason = data.get("reason", "breakpoint")
 
         with self._debugger.lock:
-            thread = self._debugger.get_thread(thread_id)
+            thread = self._debugger.session_facade.get_thread(thread_id)
             if thread is None:
                 thread = PyDebuggerThread(thread_id, f"Thread {thread_id}")
-                self._debugger.set_thread(thread_id, thread)
+                self._debugger.session_facade.set_thread(thread_id, thread)
             thread.is_stopped = True
             thread.stop_reason = reason
 
@@ -50,13 +50,16 @@ class _PyDebuggerEventRouter:
 
         if reason == "started":
             with self._debugger.lock:
-                if self._debugger.get_thread(thread_id) is None:
+                if self._debugger.session_facade.get_thread(thread_id) is None:
                     default_name = f"Thread {thread_id}"
                     thread_name = data.get("name", default_name)
-                    self._debugger.set_thread(thread_id, PyDebuggerThread(thread_id, thread_name))
+                    self._debugger.session_facade.set_thread(
+                        thread_id,
+                        PyDebuggerThread(thread_id, thread_name),
+                    )
         else:
             with self._debugger.lock:
-                self._debugger.remove_thread(thread_id)
+                self._debugger.session_facade.remove_thread(thread_id)
 
     def handle_event_exited(self, data: dict[str, Any]) -> None:
         """Handle debuggee exited event and schedule cleanup."""
@@ -69,14 +72,14 @@ class _PyDebuggerEventRouter:
         thread_id = data.get("threadId", 1)
         stack_frames = data.get("stackFrames", [])
         with self._debugger.lock:
-            self._debugger.cache_stack_frames(thread_id, stack_frames)
+            self._debugger.session_facade.cache_stack_frames(thread_id, stack_frames)
 
     def handle_event_variables(self, data: dict[str, Any]) -> None:
         """Cache variables payload from the debuggee."""
         var_ref = data.get("variablesReference", 0)
         variables = data.get("variables", [])
         with self._debugger.lock:
-            self._debugger.cache_var_ref(var_ref, variables)
+            self._debugger.variable_manager.var_refs[var_ref] = ("object", variables)
 
     def handle_debug_message(self, message: str) -> None:
         """Handle a debug protocol message from the debuggee."""

@@ -470,7 +470,7 @@ async def test_evaluate(handler, mock_server):
 
 @pytest.mark.asyncio
 async def test_dapper_hot_reload_missing_source_path(handler, mock_server):
-    mock_server.debugger.iter_threads = list
+    mock_server.debugger._session_facade = types.SimpleNamespace(iter_threads=list)
     mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: True)
 
     request = {
@@ -487,7 +487,7 @@ async def test_dapper_hot_reload_missing_source_path(handler, mock_server):
 
 @pytest.mark.asyncio
 async def test_dapper_hot_reload_requires_stopped(handler, mock_server):
-    mock_server.debugger.iter_threads = list
+    mock_server.debugger._session_facade = types.SimpleNamespace(iter_threads=list)
     mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: False)
 
     request = {
@@ -504,7 +504,7 @@ async def test_dapper_hot_reload_requires_stopped(handler, mock_server):
 
 @pytest.mark.asyncio
 async def test_dapper_hot_reload_success(handler, mock_server):
-    mock_server.debugger.iter_threads = list
+    mock_server.debugger._session_facade = types.SimpleNamespace(iter_threads=list)
     mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: True)
     mock_server.debugger.hot_reload = AsyncCallRecorder(
         return_value={

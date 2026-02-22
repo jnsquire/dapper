@@ -33,7 +33,7 @@ class _PyDebuggerLifecycleManager:
             msg = "A program is already being debugged"
             raise RuntimeError(msg)
 
-        self._debugger.program_path = str(Path(config.debuggee.program).resolve())
+        self._debugger._source_introspection.program_path = str(Path(config.debuggee.program).resolve())
         self._debugger.stop_on_entry = config.debuggee.stop_on_entry
         self._debugger.no_debug = config.debuggee.no_debug
         self._debugger.in_process = config.in_process
@@ -47,7 +47,7 @@ class _PyDebuggerLifecycleManager:
             "-m",
             "dapper.launcher.debug_launcher",
             "--program",
-            self._debugger.program_path,
+            self._debugger._source_introspection.program_path,
         ]
 
         for arg in config.debuggee.args:
@@ -77,7 +77,7 @@ class _PyDebuggerLifecycleManager:
         if transport_config.use_binary:
             debug_args.append("--ipc-binary")
 
-        logger.info("Launching program: %s", self._debugger.program_path)
+        logger.info("Launching program: %s", self._debugger._source_introspection.program_path)
         logger.debug("Debug command: %s", " ".join(debug_args))
 
         if self._debugger.is_test_mode_enabled():
@@ -104,7 +104,7 @@ class _PyDebuggerLifecycleManager:
         self._debugger.program_running = True
 
         process_event = {
-            "name": Path(self._debugger.program_path).name,
+            "name": Path(self._debugger._source_introspection.program_path).name,
             "systemProcessId": self._debugger.process.pid if self._debugger.process else None,
             "isLocalProcess": True,
             "startMethod": "launch",
@@ -129,7 +129,7 @@ class _PyDebuggerLifecycleManager:
 
         self._debugger.program_running = True
         proc_event = {
-            "name": Path(self._debugger.program_path or "").name,
+            "name": Path(self._debugger._source_introspection.program_path or "").name,
             "systemProcessId": os.getpid(),
             "isLocalProcess": True,
             "startMethod": "launch",
@@ -157,7 +157,7 @@ class _PyDebuggerLifecycleManager:
         await self._debugger.server.send_event(
             "process",
             {
-                "name": self._debugger.program_path or "attached",
+                "name": self._debugger._source_introspection.program_path or "attached",
                 "isLocalProcess": True,
                 "startMethod": "attach",
             },

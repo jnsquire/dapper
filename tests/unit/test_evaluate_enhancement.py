@@ -79,7 +79,7 @@ async def test_response_handling_resolves_future():
     # Prepare pending command future
     command_id = 42
     fut = dbg.loop.create_future()
-    dbg._pending_commands = {command_id: fut}
+    dbg._session_facade.pending_commands = {command_id: fut}
 
     message = json.dumps({"id": command_id, "body": {"result": "ok"}})
 
@@ -88,4 +88,4 @@ async def test_response_handling_resolves_future():
 
     assert fut.done()
     assert fut.result()["id"] == command_id
-    assert command_id not in dbg._pending_commands
+    assert command_id not in dbg._session_facade.pending_commands

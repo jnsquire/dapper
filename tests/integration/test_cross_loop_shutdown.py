@@ -45,7 +45,7 @@ async def test_cross_loop_future_is_failed_on_shutdown() -> None:
     dbg = PyDebugger(None)
 
     cmd_id = 999_999
-    dbg._pending_commands[cmd_id] = fut
+    dbg._session_facade.pending_commands[cmd_id] = fut
 
     # Call shutdown which should attempt to fail pending futures.
     await dbg.shutdown()

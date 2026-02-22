@@ -207,14 +207,14 @@ class TestDebuggerEvents(BaseDebuggerTest):
         self.debugger.server.send_event = AsyncRecorder()
 
         # Add a thread first
-        self.debugger.threads[1] = PyDebuggerThread(1, "Thread 1")
+        self.debugger._session_facade.threads[1] = PyDebuggerThread(1, "Thread 1")
 
         message = '{"event": "thread", "threadId": 1, "reason": "exited"}'
         self.debugger._handle_debug_message(message)
         _run_loop_once(self.debugger)
 
         # Check that thread was removed
-        assert 1 not in self.debugger.threads
+        assert 1 not in self.debugger._session_facade.threads
 
         # Check that event was sent
         self.debugger.server.send_event.assert_called_once_with(
@@ -231,8 +231,8 @@ class TestDebuggerEvents(BaseDebuggerTest):
         _run_loop_once(self.debugger)
 
         # Check that thread was added
-        assert 2 in self.debugger.threads
-        assert self.debugger.threads[2].id == 2
+        assert 2 in self.debugger._session_facade.threads
+        assert self.debugger._session_facade.threads[2].id == 2
 
         # Check that event was sent
         self.debugger.server.send_event.assert_called_once_with(

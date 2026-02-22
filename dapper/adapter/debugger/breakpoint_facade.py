@@ -71,7 +71,7 @@ class _PyDebuggerBreakpointFacade:
 
     def set_data_breakpoints(self, breakpoints: list[dict[str, Any]]) -> list[Breakpoint]:
         """Register a set of data breakpoints (bookkeeping only)."""
-        self._debugger.clear_data_watch_containers()
+        self._debugger.session_facade.clear_data_watch_containers()
 
         results: list[Breakpoint] = []
         frame_id_parts_expected = 4
@@ -100,14 +100,14 @@ class _PyDebuggerBreakpointFacade:
                 "hit": 0,
                 "verified": True,
             }
-            self._debugger.set_data_watch(data_id, meta)
+            self._debugger.session_facade.set_data_watch(data_id, meta)
             if "var:" in data_id:
                 try:
                     watch_meta.append((parts[3], meta))
                 except Exception:  # pragma: no cover - defensive
                     pass
             if frame_id is not None:
-                self._debugger.add_frame_watch(frame_id, data_id)
+                self._debugger.session_facade.add_frame_watch(frame_id, data_id)
             results.append({"verified": True})
         try:
             inproc = getattr(self._debugger, "_inproc", None)
@@ -166,8 +166,12 @@ class _PyDebuggerBreakpointFacade:
         """Set breakpoints for functions."""
         spec_funcs: list[FunctionBreakpoint] = []
         storage_funcs: list[FunctionBreakpoint] = []
+        names: list[str] = []
+        meta_by_name: dict[str, dict[str, Any]] = {}
+
         for bp in breakpoints:
             name = str(bp.get("name", ""))
+
             spec_entry: FunctionBreakpoint = {"name": name}
             cond = bp.get("condition")
             if cond is not None:
@@ -184,7 +188,12 @@ class _PyDebuggerBreakpointFacade:
                 storage_entry["hitCondition"] = str(hc)
             storage_funcs.append(storage_entry)
 
-        self._debugger.function_breakpoints = storage_funcs
+            if not name:
+                continue
+            names.append(name)
+            meta_by_name[name] = {k: v for k, v in storage_entry.items() if k != "name"}
+
+        self._debugger.breakpoint_manager.set_function_breakpoints(names, meta_by_name)
 
         backend = self._debugger.get_active_backend()
         if backend is not None:

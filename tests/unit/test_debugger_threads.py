@@ -23,8 +23,8 @@ class TestDebuggerThreads(BaseDebuggerTest):
     async def test_get_threads(self):
         """Test getting thread information"""
         # Add some threads
-        self.debugger.threads[1] = PyDebuggerThread(1, "Main Thread")
-        self.debugger.threads[2] = PyDebuggerThread(2, "Worker Thread")
+        self.debugger._session_facade.threads[1] = PyDebuggerThread(1, "Main Thread")
+        self.debugger._session_facade.threads[2] = PyDebuggerThread(2, "Worker Thread")
 
         result = await self.debugger.get_threads()
 

@@ -39,7 +39,30 @@ class _PyDebuggerStateManager:
         path = str(Path(path).resolve())
 
         spec_list, storage_list = self._debugger.process_breakpoints(breakpoints)
-        self._debugger.set_breakpoints_for_path(path, storage_list)
+        self._debugger.breakpoint_manager.clear_line_meta_for_file(path)
+        for bp in storage_list:
+            line = bp.get("line")
+            if line is None:
+                continue
+
+            condition = bp.get("condition")
+            hit_condition = bp.get("hitCondition")
+            log_message = bp.get("logMessage")
+
+            extra_meta = {
+                k: v
+                for k, v in bp.items()
+                if k not in ("line", "condition", "hitCondition", "logMessage")
+            }
+
+            self._debugger.breakpoint_manager.record_line_breakpoint(
+                path,
+                int(line),
+                condition=condition,
+                hit_condition=hit_condition,
+                log_message=log_message,
+                **extra_meta,
+            )
 
         backend = self._debugger.get_active_backend()
         if backend is None:
@@ -140,7 +163,7 @@ class _PyDebuggerStateManager:
         total_frames = 0
 
         with self._debugger.lock:
-            frames = self._debugger.get_cached_stack_frames(thread_id)
+            frames = self._debugger.session_facade.get_cached_stack_frames(thread_id)
             if frames is not None:
                 total_frames = len(frames)
 
@@ -189,7 +212,14 @@ class _PyDebuggerStateManager:
 
         variables: list[Variable] = []
         with self._debugger.lock:
-            var_entry = self._debugger.get_var_ref(variables_reference)
+            var_entry = self._debugger.variable_manager.get_ref(variables_reference)
+            object_tuple_len = 2
+            if (
+                isinstance(var_entry, tuple)
+                and len(var_entry) == object_tuple_len
+                and var_entry[0] == "object"
+            ):
+                var_entry = var_entry[1]
             if isinstance(var_entry, list):
                 variables = cast("list[Variable]", var_entry)
 
@@ -198,14 +228,19 @@ class _PyDebuggerStateManager:
     async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value in the specified scope."""
         with self._debugger.lock:
-            if not self._debugger.has_var_ref(var_ref):
+            if not self._debugger.variable_manager.has_ref(var_ref):
                 msg = f"Invalid variable reference: {var_ref}"
                 raise ValueError(msg)
 
-            ref_info = self._debugger.get_var_ref(var_ref)
+            ref_info = self._debugger.variable_manager.get_ref(var_ref)
 
         scope_ref_tuple_len = 2
-        if isinstance(ref_info, tuple) and len(ref_info) == scope_ref_tuple_len:
+        if (
+            isinstance(ref_info, tuple)
+            and len(ref_info) == scope_ref_tuple_len
+            and isinstance(ref_info[0], int)
+            and ref_info[1] in ("locals", "globals")
+        ):
             backend = self._debugger.get_active_backend()
             if backend is not None:
                 return await backend.set_variable(var_ref, name, value)

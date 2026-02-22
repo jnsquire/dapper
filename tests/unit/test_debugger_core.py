@@ -21,20 +21,20 @@ class TestDebuggerCore(BaseDebuggerTest):
     async def test_shutdown(self):
         """Test the shutdown process of the debugger"""
         # Add some test data
-        self.debugger.breakpoints["test.py"] = [{"line": 1}]
-        self.debugger.function_breakpoints = [{"name": "test"}]
-        self.debugger.threads[1] = MagicMock()
-        self.debugger.var_refs[1] = "test"
-        self.debugger.current_stack_frames[1] = [{"id": 1}]
+        self.debugger.breakpoint_manager.record_line_breakpoint("test.py", 1)
+        self.debugger.breakpoint_manager.set_function_breakpoints(["test"], {"test": {}})
+        self.debugger._session_facade.threads[1] = MagicMock()
+        self.debugger.variable_manager.var_refs[1] = ("object", "test")
+        self.debugger._session_facade.current_stack_frames[1] = [{"id": 1}]
 
         await self.debugger.shutdown()
 
         # Check that data structures are cleared
-        assert len(self.debugger.breakpoints) == 0
-        assert len(self.debugger.function_breakpoints) == 0
-        assert len(self.debugger.threads) == 0
-        assert len(self.debugger.var_refs) == 0
-        assert len(self.debugger.current_stack_frames) == 0
+        assert len(self.debugger.breakpoint_manager.line_meta) == 0
+        assert len(self.debugger.breakpoint_manager.function_names) == 0
+        assert len(self.debugger._session_facade.threads) == 0
+        assert len(self.debugger.variable_manager.var_refs) == 0
+        assert len(self.debugger._session_facade.current_stack_frames) == 0
 
 
 if __name__ == "__main__":

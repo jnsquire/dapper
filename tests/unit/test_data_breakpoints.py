@@ -25,7 +25,7 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
     mock_debugger.evaluate = dummy_eval  # type: ignore[assignment]
 
     # Use real implementations for our added helper methods by attaching attributes
-    real_dbg = RealDebugger(None, asyncio.get_event_loop())
+    real_dbg = RealDebugger(None, asyncio.get_event_loop())  # type: ignore[arg-type]
     mock_debugger.data_breakpoint_info = real_dbg.data_breakpoint_info  # type: ignore[assignment]
     mock_debugger.set_data_breakpoints = real_dbg.set_data_breakpoints  # type: ignore[assignment]
 
@@ -70,4 +70,4 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
     assert sdb_body["breakpoints"][0]["verified"] is True
 
     # Ensure the watch was registered in the debugger's internal mapping
-    assert "frame:42:var:x" in real_dbg._data_watches  # type: ignore[attr-defined]
+    assert "frame:42:var:x" in real_dbg._session_facade.data_watches  # type: ignore[attr-defined]

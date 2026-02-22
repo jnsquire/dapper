@@ -135,13 +135,13 @@ async def test_hot_reload_clears_variable_caches(tmp_path: Path) -> None:
     var_ref = debugger.variable_manager.allocate_ref({"x": 1})
     assert var_ref != 0
     assert debugger.variable_manager.var_refs
-    debugger.current_stack_frames[1] = [{"id": 1, "name": "frame"}]
+    debugger._session_facade.current_stack_frames[1] = [{"id": 1, "name": "frame"}]
 
     await debugger.hot_reload(str(module_file.resolve()), {"invalidatePycache": False})
 
     assert debugger.variable_manager.var_refs == {}
     assert debugger.variable_manager.next_var_ref == debugger.variable_manager.DEFAULT_START_REF
-    assert debugger.current_stack_frames == {}
+    assert debugger._session_facade.current_stack_frames == {}
 
     sys.modules.pop(module_name, None)
 

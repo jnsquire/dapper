@@ -6,6 +6,8 @@ Debug Adapter Protocol requests and routes them to appropriate handlers.
 
 from __future__ import annotations
 
+import ctypes
+import dis
 import inspect
 import logging
 import mimetypes
@@ -52,13 +54,17 @@ from dapper.protocol.requests import VariablesResponse
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from dapper.adapter.server_core import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.protocol.data_breakpoints import DataBreakpointInfoRequest
     from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
     from dapper.protocol.data_breakpoints import SetDataBreakpointsRequest
     from dapper.protocol.requests import AttachRequest
+    from dapper.protocol.requests import CompletionItem
     from dapper.protocol.requests import CompletionsRequest
+    from dapper.protocol.requests import CompletionsResponseBody
     from dapper.protocol.requests import ConfigurationDoneRequest
     from dapper.protocol.requests import ContinueRequest
     from dapper.protocol.requests import DisconnectRequest
@@ -228,8 +234,7 @@ class RequestHandler:
             return create_dap_response(e, request["seq"], "launch")
 
         # Start telemetry forwarding now that the debug session is active
-        if hasattr(self.server, '_telemetry_forwarder'):
-            self.server._telemetry_forwarder.start()
+        self.server.start_telemetry_forwarding()
 
         return self._make_response(request, "launch", LaunchResponse)
 
@@ -420,8 +425,14 @@ class RequestHandler:
 
         # Guard: debugger must be stopped on at least one thread.
         debugger = self.server.debugger
+        session_facade = getattr(debugger, "_session_facade", None)
+        if session_facade is not None and callable(getattr(session_facade, "iter_threads", None)):
+            thread_items = session_facade.iter_threads()
+        else:
+            thread_items = []
+
         is_stopped = (
-            any(t.is_stopped for _, t in debugger.iter_threads())
+            any(t.is_stopped for _, t in thread_items)
             or debugger.stopped_event.is_set()
         )
         if not is_stopped:
@@ -839,12 +850,12 @@ class RequestHandler:
     async def _handle_set_expression(self, request: DAPRequest) -> DAPResponse:
         """Handle setExpression request - assign a value to an arbitrary expression."""
         try:
-            args = request["arguments"]
+            args = request.get("arguments", {})
             expression = args.get("expression", "")
             value = args.get("value", "")
             frame_id = args.get("frameId")
 
-            frame = self.server.debugger.get_frame(frame_id)
+            frame = self._resolve_runtime_frame(frame_id)
             if frame is None:
                 return self._make_response(
                     request,
@@ -856,17 +867,15 @@ class RequestHandler:
 
             # Execute the assignment in the frame's context
             assignment = compile(f"{expression} = {value}", "<setExpression>", "exec")
-            exec(assignment, frame.f_globals, frame.f_locals)  # noqa: S102
+            exec(assignment, frame.f_globals, frame.f_locals)
 
             # Push updated locals back into the live frame
-            import ctypes
-
             ctypes.pythonapi.PyFrame_LocalsToFast(
                 ctypes.py_object(frame), ctypes.c_int(0)
             )
 
             # Evaluate the expression to get the new value
-            result = eval(  # noqa: S307
+            result = eval(
                 compile(expression, "<setExpression>", "eval"),
                 frame.f_globals,
                 frame.f_locals,
@@ -894,10 +903,10 @@ class RequestHandler:
     async def _handle_step_in_targets(self, request: DAPRequest) -> DAPResponse:
         """Handle stepInTargets request - enumerate callable targets on the current line."""
         try:
-            args = request["arguments"]
+            args = request.get("arguments", {})
             frame_id = args.get("frameId")
 
-            frame = self.server.debugger.get_frame(frame_id)
+            frame = self._resolve_runtime_frame(frame_id)
             if frame is None:
                 return self._make_response(
                     request,
@@ -912,25 +921,25 @@ class RequestHandler:
             current_line = frame.f_lineno
 
             # Use dis to inspect bytecode for CALL instructions on the current line
-            import dis
-
             instructions = list(dis.get_instructions(frame.f_code))
 
             for instr in instructions:
-                if instr.starts_line == current_line or (
-                    instr.starts_line is None and targets
+                if (
+                    "CALL" in instr.opname
+                    and (
+                        instr.starts_line == current_line
+                        or (instr.starts_line is None and targets)
+                    )
                 ):
-                    # Look for CALL_FUNCTION, CALL_METHOD, CALL, CALL_FUNCTION_EX, etc.
-                    if "CALL" in instr.opname:
-                        label = self._find_call_target_name(instructions, instr.offset)
-                        targets.append(
-                            {
-                                "id": target_id,
-                                "label": label or f"<call at offset {instr.offset}>",
-                                "line": current_line,
-                            }
-                        )
-                        target_id += 1
+                    label = self._find_call_target_name(instructions, instr.offset)
+                    targets.append(
+                        {
+                            "id": target_id,
+                            "label": label or f"<call at offset {instr.offset}>",
+                            "line": current_line,
+                        }
+                    )
+                    target_id += 1
 
             return self._make_response(
                 request,
@@ -1063,60 +1072,92 @@ class RequestHandler:
 
     def _enhance_completions_from_frame(
         self,
-        body: dict,
+        body: CompletionsResponseBody,
         text: str,
         column: int,
         frame_id: int,
-    ) -> dict:
+    ) -> CompletionsResponseBody:
         """Merge frame-local and global names into the completions list.
 
         For dotted expressions (e.g. ``obj.at``), resolve the object in the
         frame and add ``dir()`` results as candidates.
         """
         try:
-            frame = self.server.debugger.get_frame(frame_id)
+            frame = self._resolve_runtime_frame(frame_id)
             if frame is None:
                 return body
 
-            existing_targets: list[dict[str, object]] = body.get("targets", [])
+            existing_targets: list[CompletionItem] = body.get("targets", [])
             existing_labels = {t.get("label") for t in existing_targets}
 
             # Determine the prefix being typed (text up to cursor position)
             prefix = text[: column - 1] if column > 0 else text
 
-            extra: list[dict[str, object]] = []
+            extra: list[CompletionItem] = []
 
             if "." in prefix:
-                # Dotted expression – resolve the object part and offer dir()
+                # Dotted expression - resolve the object part and offer dir()
                 parts = prefix.rsplit(".", 1)
                 obj_expr = parts[0]
                 attr_prefix = parts[1] if len(parts) > 1 else ""
                 try:
-                    obj = eval(  # noqa: S307
+                    obj = eval(
                         compile(obj_expr, "<completions>", "eval"),
                         frame.f_globals,
                         frame.f_locals,
                     )
-                    for name in dir(obj):
-                        if name.startswith(attr_prefix) and name not in existing_labels:
-                            extra.append({"label": name, "type": "property", "length": len(attr_prefix)})
-                except Exception:  # noqa: BLE001
+                    extra.extend(
+                        {
+                            "label": name,
+                            "type": "property",
+                            "length": len(attr_prefix),
+                        }
+                        for name in dir(obj)
+                        if name.startswith(attr_prefix) and name not in existing_labels
+                    )
+                except Exception:
                     pass
             else:
-                # Non-dotted – offer local and global names
+                # Non-dotted - offer local and global names
                 candidates: set[str] = set()
                 candidates.update(frame.f_locals.keys())
                 candidates.update(frame.f_globals.keys())
-                for name in sorted(candidates):
-                    if name.startswith(prefix) and name not in existing_labels:
-                        extra.append({"label": name, "type": "variable"})
+                extra.extend(
+                    {"label": name, "type": "variable"}
+                    for name in sorted(candidates)
+                    if name.startswith(prefix) and name not in existing_labels
+                )
 
             if extra:
-                body = dict(body)  # shallow copy to avoid mutating the original
-                body["targets"] = list(existing_targets) + extra
+                merged: CompletionsResponseBody = {
+                    **body,
+                    "targets": list(existing_targets) + extra,
+                }
+                body = merged
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Never let enhancement logic break the base completions
             pass
 
         return body
+
+    def _resolve_runtime_frame(self, frame_id: object | None) -> FrameType | None:
+        """Resolve a live Python frame object for expression/set/completion helpers."""
+        if not isinstance(frame_id, int):
+            return None
+
+        debugger = self.server.debugger
+
+        thread_tracker = getattr(debugger, "thread_tracker", None)
+        if thread_tracker is not None:
+            frame_map = getattr(thread_tracker, "frame_id_to_frame", None)
+            if isinstance(frame_map, dict):
+                frame = frame_map.get(frame_id)
+                if frame is not None:
+                    return cast("FrameType", frame)
+
+        current_frame = getattr(debugger, "current_frame", None)
+        if current_frame is not None and hasattr(current_frame, "f_globals") and hasattr(current_frame, "f_locals"):
+            return cast("FrameType", current_frame)
+
+        return None

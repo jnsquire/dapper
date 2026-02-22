@@ -49,7 +49,7 @@ class _PyDebuggerRuntimeManager:
             ipc=self._debugger.ipc,
             loop=self._debugger.loop,
             get_process_state=self._debugger._get_process_state,
-            pending_commands=self._debugger._pending_commands,
+            pending_commands=self._debugger._session_facade.pending_commands,
             lock=self._debugger.lock,
             get_next_command_id=self._debugger._get_next_command_id,
         )

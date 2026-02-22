@@ -20,9 +20,9 @@ from dapper.adapter.debugger.breakpoint_facade import _PyDebuggerBreakpointFacad
 from dapper.adapter.debugger.event_router import _PyDebuggerEventRouter
 from dapper.adapter.debugger.execution import _PyDebuggerExecutionManager
 from dapper.adapter.debugger.lifecycle import _PyDebuggerLifecycleManager
+from dapper.adapter.debugger.py_debugger_compat import _PyDebuggerSessionCompatMixin
 from dapper.adapter.debugger.runtime import _PyDebuggerRuntimeManager
 from dapper.adapter.debugger.session import _PyDebuggerSessionFacade
-from dapper.adapter.debugger.session_compat import _PyDebuggerSessionCompatMixin
 from dapper.adapter.debugger.state import _PyDebuggerStateManager
 from dapper.adapter.hot_reload import HotReloadService
 from dapper.adapter.source_tracker import LoadedSourceTracker
@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from dapper.adapter.types import BreakpointResponse
     from dapper.adapter.types import CompletionsResponseBody
     from dapper.adapter.types import DebuggerServerProtocol
-    from dapper.adapter.types import PyDebuggerThread
     from dapper.adapter.types import SourceDict
     from dapper.config import DapperConfig
     from dapper.core.inprocess_debugger import InProcessDebugger
@@ -206,7 +205,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
     and communicates back to the DebugAdapterServer.
     """
 
-    def __init__(  # noqa: PLR0915
+    def __init__(
         self,
         server: DebuggerServerProtocol,
         loop: asyncio.AbstractEventLoop | None = None,
@@ -235,7 +234,6 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self._session_facade = _PyDebuggerSessionFacade(self.lock, self.loop)
 
         # Core state
-        self.threads: dict[int, PyDebuggerThread] = {}
         self.main_thread_id: int | None = None
         self.next_thread_id: int = 1
         self.variable_manager = VariableManager()
@@ -249,9 +247,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self.program_running: bool = False
         self.stop_on_entry: bool = False
         self.no_debug: bool = False
-        self.current_stack_frames: dict[int, list] = {}
         self._source_introspection = LoadedSourceTracker()
-        self.thread_exit_events: dict[int, object] = {}
         # Use thread-safe Event objects for synchronization. Tests and
         # asyncio code may await these — the helper `_await_event` will
         # bridge the synchronous wait to an awaitable when needed.
@@ -264,9 +260,6 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         # Test mode flag (used by tests to start debuggee in a real thread)
         self._test_mode: bool = False
 
-        # Command tracking for request/response
-        self._next_command_id: int = 1
-        self._pending_commands: dict[int, asyncio.Future[dict[str, Any]]] = {}
         # In-process debugging support (optional/opt-in)
         self.in_process: bool = False
         self._inproc_bridge: InProcessBridge | None = None
@@ -279,9 +272,6 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self._use_ipc: bool = False
         self.ipc: IPCManager = IPCManager()
 
-        # Data breakpoint containers
-        self._data_watches: dict[str, dict[str, Any]] = {}  # dataId -> watch metadata
-        self._frame_watches: dict[int, list[str]] = {}  # frameId -> list of dataIds
         # Optional current frame reference for runtime helpers and tests
         # May hold a real frame (types.FrameType) or a frame-like object used in tests
         self.current_frame: Any | None = None
@@ -321,21 +311,26 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """
         return self._task_registry
 
+    @property
+    def session_facade(self) -> _PyDebuggerSessionFacade:
+        """Return the session facade for debugger state interactions."""
+        return self._session_facade
+
     def get_data_watch_keys(self) -> list[str]:
         """Return a snapshot of data-watch keys."""
-        return list(self._data_watches.keys())
+        return list(self._session_facade.data_watches.keys())
 
     def get_data_watch_items(self) -> list[tuple[str, dict[str, Any]]]:
         """Return a snapshot of data-watch metadata entries."""
-        return list(self._data_watches.items())
+        return list(self._session_facade.data_watches.items())
 
     def get_data_watch_map(self) -> dict[str, dict[str, Any]]:
         """Return data-watch metadata mapping."""
-        return self._data_watches
+        return self._session_facade.data_watches
 
     def get_frame_watch_map(self) -> dict[int, list[str]]:
         """Return frame-to-data-watch index mapping."""
-        return self._frame_watches
+        return self._session_facade.frame_watches
 
     def spawn_threadsafe(self, callback: Callable[[], Any]) -> None:
         """Schedule a (possibly coroutine-producing) callback on the debugger loop.
@@ -444,7 +439,9 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
 
     def get_active_backend(self) -> InProcessBackend | ExternalProcessBackend | None:
         """Return the currently active backend (in-process preferred)."""
-        return self._backend
+        if self._inproc_backend is not None:
+            return self._inproc_backend
+        return self._external_backend
 
     def get_inprocess_backend(self) -> InProcessBackend | None:
         """Return in-process backend when active."""
@@ -647,39 +644,8 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self,
         breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
-        """Set breakpoints for functions"""
-        names: list[str] = []
-        meta: dict[str, dict[str, Any]] = {}
-        spec_funcs: list[FunctionBreakpoint] = []
-
-        for bp in breakpoints:
-            name = str(bp.get("name", ""))
-            spec_entry: FunctionBreakpoint = {"name": name}
-            bp_meta: dict[str, Any] = {}
-
-            cond = bp.get("condition")
-            if cond is not None:
-                cond_str = str(cond)
-                spec_entry["condition"] = cond_str
-                bp_meta["condition"] = cond_str
-
-            hc = bp.get("hitCondition")
-            if hc is not None:
-                hc_str = str(hc)
-                spec_entry["hitCondition"] = hc_str
-                bp_meta["hitCondition"] = hc_str
-
-            spec_funcs.append(spec_entry)
-            names.append(name)
-            meta[name] = bp_meta
-
-        self.breakpoint_manager.set_function_breakpoints(names, meta)
-
-        backend = self.get_active_backend()
-        if backend is not None:
-            return await backend.set_function_breakpoints(spec_funcs)
-
-        return [{"verified": True} for _ in spec_funcs]
+        """Set breakpoints for functions."""
+        return await self._breakpoint_facade.set_function_breakpoints(breakpoints)
 
     async def set_exception_breakpoints(
         self,
@@ -852,8 +818,9 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             CompletionsResponseBody with list of completion targets
 
         """
-        if self._backend is not None:
-            result = await self._backend.completions(text, column, frame_id, line)
+        backend = self.get_active_backend()
+        if backend is not None:
+            result = await backend.completions(text, column, frame_id, line)
             return cast("CompletionsResponseBody", result)
         return {"targets": []}
 

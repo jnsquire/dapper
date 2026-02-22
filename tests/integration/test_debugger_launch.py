@@ -92,7 +92,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
         # Instead, verify that the launch method completed without hanging
         assert self.debugger.program_running
         expected_program_path = str(Path("python").resolve())
-        assert self.debugger.program_path == expected_program_path
+        assert self.debugger._source_introspection.program_path == expected_program_path
 
     async def test_launch_with_args(self):
         """Test launch with various arguments"""
@@ -136,7 +136,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                     # Check that program is running before shutdown
                     assert self.debugger.program_running
                     expected_program_path = str(Path("python").resolve())
-                    assert self.debugger.program_path == expected_program_path
+                    assert self.debugger._source_introspection.program_path == expected_program_path
 
                     await self.debugger.shutdown()
 

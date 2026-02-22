@@ -11,6 +11,8 @@ from typing import cast
 
 from dapper.adapter.debugger.py_debugger import PyDebugger
 from dapper.adapter.debugger.py_debugger import _acquire_event_loop
+from dapper.adapter.log_forwarder import TelemetryForwarder
+from dapper.adapter.log_forwarder import install_log_forwarder
 from dapper.adapter.request_handlers import RequestHandler
 from dapper.protocol.protocol import ProtocolFactory
 
@@ -45,9 +47,6 @@ class DebugAdapterServer:
         self.protocol_handler = ProtocolFactory()
 
         # Install structured log forwarding to the extension
-        from dapper.adapter.log_forwarder import install_log_forwarder
-        from dapper.adapter.log_forwarder import TelemetryForwarder
-
         self._log_handler = install_log_forwarder(self.send_event, self.loop)
         self._telemetry_forwarder = TelemetryForwarder(self.send_event, self.loop)
 
@@ -101,9 +100,9 @@ class DebugAdapterServer:
 
     async def _cleanup(self) -> None:
         """Clean up resources"""
-        if hasattr(self, '_telemetry_forwarder'):
+        if hasattr(self, "_telemetry_forwarder"):
             self._telemetry_forwarder.stop()
-        if hasattr(self, '_log_handler'):
+        if hasattr(self, "_log_handler"):
             self._log_handler.disable()
 
         if self.debugger:
@@ -111,6 +110,11 @@ class DebugAdapterServer:
 
         if self.connection and self.connection.is_connected:
             await self.connection.close()
+
+    def start_telemetry_forwarding(self) -> None:
+        """Start telemetry forwarding if the forwarder is available."""
+        if hasattr(self, "_telemetry_forwarder"):
+            self._telemetry_forwarder.start()
 
     async def _message_loop(self) -> None:
         """Main message processing loop"""

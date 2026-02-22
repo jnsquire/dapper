@@ -35,12 +35,13 @@ class _PyDebuggerExecutionManager:
             pass
 
         with self._debugger.lock:
-            thread = self._debugger.get_thread(thread_id)
+            thread = self._debugger._session_facade.get_thread(thread_id)
             if thread is not None:
                 thread.is_stopped = False
 
-        if self._debugger._backend is not None:
-            return await self._debugger._backend.continue_(thread_id)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            return await backend.continue_(thread_id)
 
         return {"allThreadsContinued": False}
 
@@ -55,8 +56,9 @@ class _PyDebuggerExecutionManager:
         except Exception:
             pass
 
-        if self._debugger._backend is not None:
-            await self._debugger._backend.next_(thread_id, granularity=granularity)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            await backend.next_(thread_id, granularity=granularity)
 
     async def step_in(
         self,
@@ -75,8 +77,9 @@ class _PyDebuggerExecutionManager:
         except Exception:
             pass
 
-        if self._debugger._backend is not None:
-            await self._debugger._backend.step_in(thread_id, target_id, granularity=granularity)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            await backend.step_in(thread_id, target_id, granularity=granularity)
 
     async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         if not self._debugger.program_running or self._debugger.is_terminated:
@@ -89,20 +92,22 @@ class _PyDebuggerExecutionManager:
         except Exception:
             pass
 
-        if self._debugger._backend is not None:
-            await self._debugger._backend.step_out(thread_id, granularity=granularity)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            await backend.step_out(thread_id, granularity=granularity)
 
     async def pause(self, thread_id: int) -> bool:
         if not self._debugger.program_running or self._debugger.is_terminated:
             return False
 
-        if self._debugger._backend is not None:
-            return await self._debugger._backend.pause(thread_id)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            return await backend.pause(thread_id)
         return False
 
     async def get_threads(self) -> list[Thread]:
         threads: list[Thread] = []
-        for thread_id, thread in self._debugger.iter_threads():
+        for thread_id, thread in self._debugger._session_facade.iter_threads():
             threads.append({"id": thread_id, "name": thread.name})
 
         # Append asyncio task pseudo-threads from the task registry.
@@ -117,8 +122,9 @@ class _PyDebuggerExecutionManager:
         return threads
 
     async def exception_info(self, thread_id: int) -> ExceptionInfoResponseBody:
-        if self._debugger._backend is not None:
-            return await self._debugger._backend.exception_info(thread_id)
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            return await backend.exception_info(thread_id)
 
         exception_details: ExceptionDetails = {
             "message": "Exception information not available",
@@ -138,8 +144,9 @@ class _PyDebuggerExecutionManager:
     async def configuration_done_request(self) -> None:
         self._debugger.configuration_done.set()
 
-        if self._debugger._backend is not None:
-            await self._debugger._backend.configuration_done()
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            await backend.configuration_done()
 
     async def disconnect(self, terminate_debuggee: bool = False) -> None:
         if self._debugger.program_running:
@@ -157,8 +164,9 @@ class _PyDebuggerExecutionManager:
         await self._debugger.shutdown()
 
     async def terminate(self) -> None:
-        if self._debugger._backend is not None:
-            await self._debugger._backend.terminate()
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            await backend.terminate()
 
         if self._debugger.in_process:
             try:

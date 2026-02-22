@@ -130,7 +130,7 @@ def setup_external_backend(debugger):
         ipc=debugger.ipc,
         loop=debugger.loop,
         get_process_state=debugger._get_process_state,
-        pending_commands=debugger._pending_commands,
+        pending_commands=debugger._session_facade.pending_commands,
         lock=debugger.lock,
         get_next_command_id=debugger._get_next_command_id,
     )
@@ -153,20 +153,20 @@ async def test_initialization(debugger, mock_server):
 async def test_shutdown(debugger):
     """Test the shutdown process of the debugger"""
     # Add some test data
-    debugger.breakpoints["test.py"] = [{"line": 1}]
-    debugger.function_breakpoints = [{"name": "test"}]
-    debugger.threads[1] = MagicMock()
-    debugger.var_refs[1] = "test"
-    debugger.current_stack_frames[1] = [{"id": 1}]
+    debugger.breakpoint_manager.record_line_breakpoint("test.py", 1)
+    debugger.breakpoint_manager.set_function_breakpoints(["test"], {"test": {}})
+    debugger._session_facade.threads[1] = MagicMock()
+    debugger.variable_manager.var_refs[1] = ("object", "test")
+    debugger._session_facade.current_stack_frames[1] = [{"id": 1}]
 
     await debugger.shutdown()
 
     # Check that data structures are cleared
-    assert len(debugger.breakpoints) == 0
-    assert len(debugger.function_breakpoints) == 0
-    assert len(debugger.threads) == 0
-    assert len(debugger.var_refs) == 0
-    assert len(debugger.current_stack_frames) == 0
+    assert len(debugger.breakpoint_manager.line_meta) == 0
+    assert len(debugger.breakpoint_manager.function_names) == 0
+    assert len(debugger._session_facade.threads) == 0
+    assert len(debugger.variable_manager.var_refs) == 0
+    assert len(debugger._session_facade.current_stack_frames) == 0
 
 
 @pytest.mark.asyncio
@@ -178,7 +178,7 @@ async def test_shutdown_fails_pending_commands(debugger):
     fut = loop.create_future()
 
     # Inject into the debugger pending map
-    debugger._pending_commands[cmd_id] = fut
+    debugger._session_facade.pending_commands[cmd_id] = fut
 
     # Call shutdown
     await debugger.shutdown()
@@ -286,7 +286,7 @@ async def test_shutdown_fails_pending_commands_cross_loop(debugger):
 
     # Mark the future as pending by not completing it; inject into pending
     cmd_id = 99999
-    debugger._pending_commands[cmd_id] = fut_async
+    debugger._session_facade.pending_commands[cmd_id] = fut_async
 
     # Call shutdown on the debugger
     await debugger.shutdown()
@@ -556,17 +556,17 @@ async def test_set_breakpoints(debugger: PyDebugger) -> None:
 
     # Check that breakpoints were stored
     expected_path = str(Path("/path/to/test.py").resolve())
-    assert expected_path in debugger.breakpoints
-    assert len(debugger.breakpoints[expected_path]) == 2
+    assert expected_path in debugger.breakpoint_manager._line_meta_by_path
+    assert len(debugger.breakpoint_manager._line_meta_by_path[expected_path]) == 2
 
-    # Check breakpoint properties using get() for safe TypedDict access
-    bp1 = debugger.breakpoints[expected_path][0]
-    assert bp1.get("line") == DEFAULT_BREAKPOINT_LINE
+    # Check breakpoint properties using manager metadata
+    bp1 = debugger.breakpoint_manager.get_line_meta(expected_path, DEFAULT_BREAKPOINT_LINE)
+    assert bp1 is not None
     assert bp1.get("condition") == f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}"
     assert bp1.get("verified") is True
 
-    bp2 = debugger.breakpoints[expected_path][1]
-    assert bp2.get("line") == TEST_ALT_LINE_1
+    bp2 = debugger.breakpoint_manager.get_line_meta(expected_path, TEST_ALT_LINE_1)
+    assert bp2 is not None
     assert bp2.get("verified") is True
 
     # Check return value structure
@@ -602,7 +602,7 @@ async def test_set_breakpoints_with_valid_path(debugger):
     assert result[0]["verified"] is True
     assert result[1]["verified"] is True
     expected_path = str(Path("/valid/path/test.py").resolve())
-    assert expected_path in debugger.breakpoints
+    assert expected_path in debugger.breakpoint_manager._line_meta_by_path
 
 
 @pytest.mark.asyncio
@@ -663,7 +663,7 @@ async def test_get_threads(debugger):
     thread2.thread_id = 2
     thread2.name = "WorkerThread"
 
-    debugger.threads = {1: thread1, 2: thread2}
+    debugger._session_facade.threads = {1: thread1, 2: thread2}
 
     # Prevent asyncio tasks from the test environment leaking into results
     debugger._task_registry.snapshot_threads = MagicMock(return_value=[])
@@ -699,8 +699,8 @@ async def test_get_stack_trace(debugger):
     """Test getting stack trace"""
     # Add mock thread and stack frames
     thread = PyDebuggerThread(1, "MainThread")
-    debugger.threads = {1: thread}
-    debugger.current_stack_frames = {
+    debugger._session_facade.threads = {1: thread}
+    debugger._session_facade.current_stack_frames = {
         1: [
             {"id": 1, "name": "main", "line": 10, "column": 1},
             {"id": 2, "name": "helper", "line": 5, "column": 1},
@@ -726,7 +726,7 @@ async def test_get_scopes(debugger):
     # Add mock thread with frames
     thread = PyDebuggerThread(1, "MainThread")
     thread.frames = [{"id": 1, "name": "main", "line": 10}]
-    debugger.threads = {1: thread}
+    debugger._session_facade.threads = {1: thread}
 
     result = await debugger.get_scopes(frame_id=1)
 
@@ -739,10 +739,13 @@ async def test_get_scopes(debugger):
 async def test_get_variables(debugger):
     """Test getting variables from a scope"""
     # Mock the variable reference
-    debugger.var_refs[1001] = [
-        {"name": "x", "value": "42", "type": "int"},
-        {"name": "y", "value": "hello", "type": "str"},
-    ]
+    debugger.variable_manager.var_refs[1001] = (
+        "object",
+        [
+            {"name": "x", "value": "42", "type": "int"},
+            {"name": "y", "value": "hello", "type": "str"},
+        ],
+    )
 
     result = await debugger.get_variables(1001, filter_type="named", start=0, count=100)
 
@@ -759,7 +762,7 @@ async def test_evaluate_expression(debugger):
     # Mock the frame and thread
     thread = PyDebuggerThread(1, "MainThread")
     thread.frames = [{"id": 1, "name": "main", "line": 10}]
-    debugger.threads = {1: thread}
+    debugger._session_facade.threads = {1: thread}
 
     result = await debugger.evaluate_expression("x + 1", frame_id=1, context="watch")
 
@@ -819,8 +822,8 @@ async def test_handle_debug_message_thread_started(mock_server):
     await asyncio.sleep(0)
 
     # Check that thread was added
-    assert 2 in debugger.threads
-    assert isinstance(debugger.threads[2], PyDebuggerThread)
+    assert 2 in debugger._session_facade.threads
+    assert isinstance(debugger._session_facade.threads[2], PyDebuggerThread)
 
     # Check that server event was sent
     mock_server.send_event.assert_called_with("thread", {"reason": "started", "threadId": 2})
@@ -834,7 +837,7 @@ async def test_handle_debug_message_thread_exited(mock_server):
     debugger = PyDebugger(mock_server, loop)
 
     # Add a thread first
-    debugger.threads[1] = PyDebuggerThread(1, "MainThread")
+    debugger._session_facade.threads[1] = PyDebuggerThread(1, "MainThread")
 
     message = {"event": "thread", "reason": "exited", "threadId": 1}
 
@@ -843,7 +846,7 @@ async def test_handle_debug_message_thread_exited(mock_server):
     await asyncio.sleep(0)
 
     # Check that thread was removed
-    assert 1 not in debugger.threads
+    assert 1 not in debugger._session_facade.threads
 
     # Check that server event was sent
     mock_server.send_event.assert_called_with("thread", {"reason": "exited", "threadId": 1})
@@ -878,8 +881,8 @@ async def test_handle_debug_message_stack_trace_event(debugger):
     await debugger.handle_debug_message(message)
 
     # Check that stack frames were stored
-    assert 1 in debugger.current_stack_frames
-    assert len(debugger.current_stack_frames[1]) == 2
+    assert 1 in debugger._session_facade.current_stack_frames
+    assert len(debugger._session_facade.current_stack_frames[1]) == 2
 
 
 @pytest.mark.asyncio
@@ -898,8 +901,8 @@ async def test_handle_debug_message_variables_event(debugger):
     await debugger.handle_debug_message(message)
 
     # Check that variables were stored
-    assert 1001 in debugger.var_refs
-    assert len(debugger.var_refs[1001]) == 2
+    assert 1001 in debugger.variable_manager.var_refs
+    assert len(debugger.variable_manager.var_refs[1001][1]) == 2
 
 
 @pytest.mark.asyncio

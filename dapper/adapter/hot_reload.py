@@ -517,7 +517,7 @@ class HotReloadService:
             warnings.append(f"Failed to clear variable references: {exc!s}")
 
         try:
-            self._debugger.current_stack_frames.clear()
+            self._debugger.session_facade.current_stack_frames.clear()
         except Exception as exc:
             warnings.append(f"Failed to clear cached stack frames: {exc!s}")
 

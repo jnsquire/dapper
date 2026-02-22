@@ -53,7 +53,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
         self.debugger.is_terminated = False
 
         # Mock a stack frame
-        self.debugger.current_stack_frames[1] = [
+        self.debugger._session_facade.current_stack_frames[1] = [
             {"id": 1, "name": "main", "line": 10, "column": 5},
         ]
 
@@ -68,10 +68,13 @@ class TestDebuggerVariables(BaseDebuggerTest):
     async def test_get_variables(self):
         """Test getting variables"""
         # Set up variable reference
-        self.debugger.var_refs[100] = [
+        self.debugger.variable_manager.var_refs[100] = (
+            "object",
+            [
             {"name": "x", "value": "42", "type": "int"},
             {"name": "y", "value": "hello", "type": "str"},
-        ]
+            ],
+        )
 
         result = await self.debugger.get_variables(100)
 

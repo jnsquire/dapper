@@ -15,7 +15,6 @@ import threading
 import time
 from typing import Any
 from typing import Callable
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +92,7 @@ class TelemetryForwarder:
         self._send_event = send_event
         self._loop = loop
         self._interval = interval_seconds
-        self._timer: Optional[threading.Timer] = None
+        self._timer: threading.Timer | None = None
         self._running = False
 
     def start(self) -> None:
@@ -132,7 +131,7 @@ class TelemetryForwarder:
     def _send_snapshot(self) -> None:
         try:
             # Import here to avoid circular imports
-            from dapper._frame_eval.telemetry import telemetry
+            from dapper._frame_eval.telemetry import telemetry  # noqa: PLC0415
 
             snapshot = telemetry.snapshot()
             body: dict[str, Any] = {
