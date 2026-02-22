@@ -6,7 +6,6 @@ Debug Adapter Protocol requests and routes them to appropriate handlers.
 
 from __future__ import annotations
 
-import ctypes
 import dis
 import inspect
 import logging
@@ -45,6 +44,7 @@ from dapper.protocol.requests import RestartResponse
 from dapper.protocol.requests import ScopesResponse
 from dapper.protocol.requests import SetBreakpointsResponse
 from dapper.protocol.requests import SetExceptionBreakpointsResponse
+from dapper.protocol.requests import SetExpressionResponse
 from dapper.protocol.requests import SetFunctionBreakpointsResponse
 from dapper.protocol.requests import SetVariableResponse
 from dapper.protocol.requests import SourceResponse
@@ -93,6 +93,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import ScopesRequest
     from dapper.protocol.requests import SetBreakpointsRequest
     from dapper.protocol.requests import SetExceptionBreakpointsRequest
+    from dapper.protocol.requests import SetExpressionRequest
     from dapper.protocol.requests import SetFunctionBreakpointsRequest
     from dapper.protocol.requests import SetVariableRequest
     from dapper.protocol.requests import SourceRequest
@@ -857,53 +858,30 @@ class RequestHandler:
         result = await self.server.debugger.evaluate(expression, frame_id, context)
         return self._make_response(request, "evaluate", EvaluateResponse, body=result)
 
-    async def _handle_set_expression(self, request: DAPRequest) -> DAPResponse:
+    async def _handle_set_expression(
+        self,
+        request: SetExpressionRequest,
+    ) -> SetExpressionResponse:
         """Handle setExpression request - assign a value to an arbitrary expression."""
         try:
-            args = request.get("arguments", {})
-            expression = args.get("expression", "")
-            value = args.get("value", "")
+            args = request["arguments"]
+            expression = args["expression"]
+            value = args["value"]
             frame_id = args.get("frameId")
-
-            frame = self._resolve_runtime_frame(frame_id)
-            if frame is None:
-                return self._make_response(
-                    request,
-                    "setExpression",
-                    DAPResponse,
-                    success=False,
-                    message=f"Frame {frame_id} not found",
-                )
-
-            # Execute the assignment in the frame's context
-            assignment = compile(f"{expression} = {value}", "<setExpression>", "exec")
-            exec(assignment, frame.f_globals, frame.f_locals)
-
-            # Push updated locals back into the live frame
-            ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
-
-            # Evaluate the expression to get the new value
-            result = eval(
-                compile(expression, "<setExpression>", "eval"),
-                frame.f_globals,
-                frame.f_locals,
-            )
+            result = await self.server.debugger.set_expression(expression, value, frame_id)
 
             return self._make_response(
                 request,
                 "setExpression",
-                DAPResponse,
-                body={
-                    "value": repr(result),
-                    "type": type(result).__name__,
-                },
+                SetExpressionResponse,
+                body=result,
             )
         except Exception as e:
             logger.exception("Error handling setExpression request")
             return self._make_response(
                 request,
                 "setExpression",
-                DAPResponse,
+                SetExpressionResponse,
                 success=False,
                 message=f"Failed to set expression: {e!s}",
             )
@@ -1213,22 +1191,4 @@ class RequestHandler:
         if not isinstance(frame_id, int):
             return None
 
-        debugger = self.server.debugger
-
-        thread_tracker = getattr(debugger, "thread_tracker", None)
-        if thread_tracker is not None:
-            frame_map = getattr(thread_tracker, "frame_id_to_frame", None)
-            if isinstance(frame_map, dict):
-                frame = frame_map.get(frame_id)
-                if frame is not None:
-                    return cast("FrameType", frame)
-
-        current_frame = getattr(debugger, "current_frame", None)
-        if (
-            current_frame is not None
-            and hasattr(current_frame, "f_globals")
-            and hasattr(current_frame, "f_locals")
-        ):
-            return cast("FrameType", current_frame)
-
-        return None
+        return cast("FrameType | None", self.server.debugger.resolve_runtime_frame(frame_id))

@@ -9,6 +9,7 @@ stdout. It is intended to be called by `PyDebugger` directly when running in
 from __future__ import annotations
 
 import builtins
+import ctypes
 import inspect
 import logging
 import threading
@@ -20,6 +21,7 @@ from typing import cast
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.stepping_controller import StepGranularity
 from dapper.ipc.ipc_receiver import process_queued_commands
+from dapper.shared.value_conversion import _enforce_eval_policy
 from dapper.shared.value_conversion import evaluate_with_policy
 from dapper.utils.events import EventEmitter
 
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.requests import GotoTarget
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.requests import VariablesResponseBody
@@ -50,6 +53,15 @@ logger = logging.getLogger(__name__)
 
 # Threshold for considering a string 'raw' (long/multiline)
 STRING_RAW_THRESHOLD = 80
+
+
+def _coerce_frame_like(frame: object | None) -> types.FrameType | None:
+    """Return a frame or frame-like object with f_locals/f_globals, else None."""
+    if isinstance(frame, types.FrameType):
+        return frame
+    if frame is not None and hasattr(frame, "f_locals") and hasattr(frame, "f_globals"):
+        return cast("types.FrameType", frame)
+    return None
 
 
 class InProcessDebugger:
@@ -260,6 +272,35 @@ class InProcessDebugger:
         with self.command_lock:
             self.debugger.goto(thread_id, target_id)
 
+    def _frame_by_id(self, frame_id: int) -> types.FrameType | None:
+        """Resolve a frame id for both real debugger and lightweight test doubles."""
+        dbg = self.debugger
+        try:
+            return _coerce_frame_like(dbg.get_frame_by_id(frame_id))
+        except AttributeError:
+            pass
+
+        frame_map = dbg.thread_tracker.frame_id_to_frame
+        return _coerce_frame_like(frame_map.get(frame_id))
+
+    def _current_frame(self) -> types.FrameType | None:
+        """Resolve current frame for both real debugger and lightweight test doubles."""
+        dbg = self.debugger
+        try:
+            return _coerce_frame_like(dbg.get_current_frame())
+        except AttributeError:
+            pass
+
+        return _coerce_frame_like(dbg.stepping_controller.current_frame)
+
+    def _resolve_frame(self, frame_id: int | None = None) -> types.FrameType | None:
+        """Resolve a frame from frame id or current stepping context."""
+        if isinstance(frame_id, int):
+            frame = self._frame_by_id(frame_id)
+            if frame is not None:
+                return frame
+        return self._current_frame()
+
     # Variables/Stack/Evaluate
     # These follow the launcher semantics, but return dicts directly.
 
@@ -270,8 +311,7 @@ class InProcessDebugger:
         levels: int = 0,
     ) -> StackTraceResponseBody:
         dbg = self.debugger
-        thread_tracker = getattr(dbg, "thread_tracker", None)
-        frames_by_thread = getattr(thread_tracker, "frames_by_thread", {})
+        frames_by_thread = dbg.thread_tracker.frames_by_thread
         if thread_id not in frames_by_thread:
             return cast("StackTraceResponseBody", {"stackFrames": [], "totalFrames": 0})
 
@@ -307,11 +347,7 @@ class InProcessDebugger:
         # scope ref is a tuple of (frame_id, scope)
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = None
-            if isinstance(frame_id, int):
-                frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                    frame_id,
-                )
+            frame = self._frame_by_id(frame_id) if isinstance(frame_id, int) else None
             variables: list[Variable] = []
             if frame and scope == "locals":
                 for name, value in frame.f_locals.items():
@@ -340,11 +376,7 @@ class InProcessDebugger:
         frame_info = dbg.var_manager.var_refs[var_ref]
         if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
             frame_id, scope = frame_info
-            frame = None
-            if isinstance(frame_id, int):
-                frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                    frame_id,
-                )
+            frame = self._frame_by_id(frame_id) if isinstance(frame_id, int) else None
             if not frame:
                 return {"success": False, "message": "Frame not found"}
             try:
@@ -366,12 +398,7 @@ class InProcessDebugger:
         frame_id: int | None = None,
         _context: str | None = None,
     ) -> EvaluateResponseBody:
-        dbg = self.debugger
-        frame = None
-        if isinstance(frame_id, int):
-            frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                frame_id,
-            )
+        frame = self._resolve_frame(frame_id)
         if not frame:
             return {
                 "result": f"<evaluation of '{expression}' not available>",
@@ -391,6 +418,44 @@ class InProcessDebugger:
                 "type": "error",
                 "variablesReference": 0,
             }
+
+    def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        frame = self._resolve_frame(frame_id)
+        if frame is None:
+            msg = "Frame not found"
+            raise ValueError(msg)
+
+        expr = expression.strip()
+        value_expr = value.strip()
+        if not expr:
+            msg = "expression cannot be empty"
+            raise ValueError(msg)
+        if not value_expr:
+            msg = "value cannot be empty"
+            raise ValueError(msg)
+
+        _enforce_eval_policy(expr)
+        _enforce_eval_policy(value_expr)
+
+        assignment_code = compile(f"{expr} = {value_expr}", "<setExpression>", "exec")
+        exec(assignment_code, frame.f_globals, frame.f_locals)
+
+        pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
+        pyframe_locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
+        pyframe_locals_to_fast.restype = None
+        pyframe_locals_to_fast(frame, 0)
+
+        result = evaluate_with_policy(expr, frame, allow_builtins=True)
+        return {
+            "value": repr(result),
+            "type": type(result).__name__,
+            "variablesReference": 0,
+        }
 
     def completions(
         self,

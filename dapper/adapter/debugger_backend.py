@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.requests import GotoTarget
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Breakpoint
@@ -142,6 +143,15 @@ class DebuggerBackend(Protocol):
 
     async def set_variable(self, var_ref: int, name: str, value: str) -> SetVariableResponseBody:
         """Set a variable value."""
+        ...
+
+    async def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an expression."""
         ...
 
     async def evaluate(

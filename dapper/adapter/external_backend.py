@@ -10,6 +10,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import TypedDict
 from typing import cast
 
 from dapper.adapter.base_backend import BaseBackend
@@ -23,8 +24,15 @@ if TYPE_CHECKING:
     from dapper.ipc.ipc_manager import IPCManager
     from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import GotoTargetsResponseBody
+    from dapper.protocol.requests import SetExpressionResponseBody
 
 logger = logging.getLogger(__name__)
+
+
+class _SetExpressionDispatchArgs(TypedDict):
+    expression: str
+    value: str
+    frame_id: int | None
 
 
 class ExternalProcessBackend(BaseBackend):
@@ -83,6 +91,7 @@ class ExternalProcessBackend(BaseBackend):
             "get_stack_trace": self._dispatch_stack_trace,
             "get_variables": self._dispatch_variables,
             "set_variable": self._dispatch_set_variable,
+            "set_expression": self._dispatch_set_expression,
             "evaluate": self._dispatch_evaluate,
             "completions": self._dispatch_completions,
             "exception_info": self._dispatch_exception_info,
@@ -294,6 +303,27 @@ class ExternalProcessBackend(BaseBackend):
         return self._extract_body(
             response,
             {"value": args["value"], "type": "string", "variablesReference": 0},
+        )
+
+    async def _dispatch_set_expression(
+        self,
+        args: _SetExpressionDispatchArgs,
+    ) -> SetExpressionResponseBody:
+        cmd = {
+            "command": "setExpression",
+            "arguments": {
+                "expression": args["expression"],
+                "value": args["value"],
+                "frameId": args.get("frame_id"),
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        return cast(
+            "SetExpressionResponseBody",
+            self._extract_body(
+                response,
+                {"value": args["value"], "type": "string", "variablesReference": 0},
+            ),
         )
 
     async def _dispatch_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:

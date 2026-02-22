@@ -714,6 +714,15 @@ class SetVariableResponseBody(TypedDict):
     variablesReference: NotRequired[int]
 
 
+class SetExpressionResponseBody(TypedDict):
+    value: str
+    type: NotRequired[str]
+    presentationHint: NotRequired[VariablePresentationHint]
+    variablesReference: NotRequired[int]
+    namedVariables: NotRequired[int]
+    indexedVariables: NotRequired[int]
+
+
 class StackTraceResponseBody(TypedDict):
     stackFrames: list[StackFrame]
     totalFrames: NotRequired[int]
@@ -818,6 +827,30 @@ class SetVariableResponse(TypedDict):
     command: Literal["setVariable"]
     message: NotRequired[str]
     body: NotRequired[SetVariableResponseBody]
+
+
+class SetExpressionArguments(TypedDict):
+    expression: str
+    value: str
+    frameId: NotRequired[int]
+    format: NotRequired[str]
+
+
+class SetExpressionRequest(TypedDict):
+    seq: int
+    type: Literal["request"]
+    command: Literal["setExpression"]
+    arguments: SetExpressionArguments
+
+
+class SetExpressionResponse(TypedDict):
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["setExpression"]
+    message: NotRequired[str]
+    body: NotRequired[SetExpressionResponseBody]
 
 
 class SourceArguments(TypedDict):

@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import contextlib
 import logging
 import threading
+import types
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -27,8 +28,6 @@ from dapper.core.variable_manager import VariableManager
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
 
 if TYPE_CHECKING:
-    import types
-
     from dapper.protocol.debugger_protocol import Variable as VariableDict
     from dapper.protocol.requests import GotoTarget
     from dapper.protocol.structures import StackFrame
@@ -74,6 +73,10 @@ def _noop_process_commands():
 
 
 class DebuggerBDB(bdb.Bdb):
+    stepping_controller: SteppingController
+    thread_tracker: ThreadTracker
+    var_manager: VariableManager
+
     def __init__(
         self,
         skip=None,
@@ -130,6 +133,20 @@ class DebuggerBDB(bdb.Bdb):
         # Consolidated data breakpoint state
         self.data_bp_state = DataBreakpointState()
         self.data_bp_state.set_strict_expression_watch_policy(strict_expression_watch_policy)
+
+    def get_frame_by_id(self, frame_id: int) -> types.FrameType | None:
+        """Return a live frame for a tracked frame id, if present."""
+        frame = self.thread_tracker.get_frame(frame_id)
+        if isinstance(frame, types.FrameType):
+            return frame
+        return None
+
+    def get_current_frame(self) -> types.FrameType | None:
+        """Return the current stepping frame, if available."""
+        frame = self.stepping_controller.current_frame
+        if isinstance(frame, types.FrameType):
+            return frame
+        return None
 
     # ---------------- Data Breakpoint (Watch) Support -----------------
     def register_data_watches(

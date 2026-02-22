@@ -12,6 +12,7 @@ import inspect
 import json
 import logging
 import threading
+import types
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import Module
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Breakpoint
@@ -448,6 +450,43 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """Return in-process backend when active."""
         return self._inproc_backend
 
+    def resolve_runtime_frame(self, frame_id: int | None) -> types.FrameType | None:
+        """Resolve a live runtime frame from an id or current frame fallback."""
+        if isinstance(frame_id, int):
+            backend = self._inproc_backend
+            if backend is not None:
+                frame = backend.bridge.debugger.debugger.get_frame_by_id(frame_id)
+                if frame is not None:
+                    return frame
+
+        current_frame = self.current_frame
+        if isinstance(current_frame, types.FrameType):
+            return current_frame
+        return None
+
+    def iter_live_frames(self) -> list[types.FrameType]:
+        """Return unique live in-process frames for runtime maintenance tasks."""
+        backend = self._inproc_backend
+        if backend is None:
+            return []
+
+        bdb = backend.bridge.debugger.debugger
+        frames: list[types.FrameType] = list(bdb.thread_tracker.frame_id_to_frame.values())
+
+        current_frame = bdb.get_current_frame()
+        if current_frame is not None:
+            frames.append(current_frame)
+
+        unique_frames: list[types.FrameType] = []
+        seen: set[int] = set()
+        for frame in frames:
+            frame_identity = id(frame)
+            if frame_identity in seen:
+                continue
+            seen.add(frame_identity)
+            unique_frames.append(frame)
+        return unique_frames
+
     def process_breakpoints(
         self,
         breakpoints: Sequence[SourceBreakpoint],
@@ -801,6 +840,15 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
     ) -> SetVariableResponseBody:
         """Set a variable value in the specified scope."""
         return await self._state_manager.set_variable(var_ref, name, value)
+
+    async def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an arbitrary expression in frame context."""
+        return await self._state_manager.set_expression(expression, value, frame_id)
 
     async def evaluate(
         self,

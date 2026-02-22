@@ -27,6 +27,7 @@ from dapper.protocol.requests import EvaluateResponseBody
 from dapper.protocol.requests import ExceptionInfoResponseBody
 from dapper.protocol.requests import FunctionBreakpoint
 from dapper.protocol.requests import GotoTarget
+from dapper.protocol.requests import SetExpressionResponseBody
 from dapper.protocol.requests import SetVariableResponseBody
 from dapper.protocol.requests import StackTraceResponseBody
 from dapper.protocol.structures import Breakpoint
@@ -410,6 +411,23 @@ class BaseBackend(DebuggerBackend, ABC):
                 "value": value,
             },
             return_type=SetVariableResponseBody,
+        )
+
+    async def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an expression."""
+        return await self._execute_and_extract(
+            "set_expression",
+            {
+                "expression": expression,
+                "value": value,
+                "frame_id": frame_id,
+            },
+            return_type=SetExpressionResponseBody,
         )
 
     @async_handle_backend_errors("evaluate")

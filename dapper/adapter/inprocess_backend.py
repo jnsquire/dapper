@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import TypedDict
 
 from dapper.adapter.base_backend import BaseBackend
 
@@ -21,12 +22,19 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Breakpoint
     from dapper.protocol.structures import SourceBreakpoint
 
 logger = logging.getLogger(__name__)
+
+
+class _SetExpressionDispatchArgs(TypedDict):
+    expression: str
+    value: str
+    frame_id: int | None
 
 
 class InProcessBackend(BaseBackend):
@@ -57,6 +65,7 @@ class InProcessBackend(BaseBackend):
             "get_stack_trace": self._handler_get_stack_trace,
             "get_variables": self._handler_get_variables,
             "set_variable": self._handler_set_variable,
+            "set_expression": self._handler_set_expression,
             "evaluate": self._handler_evaluate,
             "completions": self._handler_completions,
             "exception_info": self._handler_exception_info,
@@ -137,6 +146,16 @@ class InProcessBackend(BaseBackend):
     async def _handler_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
             await self.set_variable(args["variables_reference"], args["name"], args["value"]),
+        )
+
+    async def _handler_set_expression(
+        self,
+        args: _SetExpressionDispatchArgs,
+    ) -> SetExpressionResponseBody:
+        return await self.set_expression(
+            args["expression"],
+            args["value"],
+            args.get("frame_id"),
         )
 
     async def _handler_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -332,6 +351,19 @@ class InProcessBackend(BaseBackend):
             return self._bridge.set_variable(var_ref, name, value)
         except Exception:
             logger.exception("in-process set_variable failed")
+            return {"value": value, "type": "string", "variablesReference": 0}
+
+    async def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an expression."""
+        try:
+            return self._bridge.set_expression(expression, value, frame_id)
+        except Exception:
+            logger.exception("in-process set_expression failed")
             return {"value": value, "type": "string", "variablesReference": 0}
 
     async def evaluate(

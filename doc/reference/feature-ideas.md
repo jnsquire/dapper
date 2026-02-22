@@ -26,11 +26,7 @@ Legend
 
 ## 5. Expression Watchpoints / Set Expression
 
-- [x] **Persistent expression watchpoints** — re-evaluate a Python expression
-      after every step and break when the value changes.  The frame-eval
-      `ConditionEvaluator` already compiles and caches expressions; this
-      feature needs a persistent watch list wired to the step dispatch loop.
-- [ ] **Set expression (`setExpression` DAP request)** — currently `❌` in the
+- [x] **Set expression (`setExpression` DAP request)** — currently `❌` in the
       checklist; complements data breakpoints with expression-backed writes.
 
 ---
@@ -91,16 +87,6 @@ Legend
       "user-unhandled").
 - [ ] **"Just my code" mode** — skip all frames inside site-packages /
       standard library entirely during stepping and stack display.
-
----
-
-## 13. `goto` / Jump to Line
-
-- [ ] **`gotoTargets` + `goto` DAP requests** — let the user drag the yellow
-      execution arrow to an arbitrary line.  Python supports this via
-      `frame.f_lineno` assignment for many (not all) cases; the adapter should
-      validate feasibility and report it to the client.  (Currently `❌` in
-      checklist.)
 
 ---
 

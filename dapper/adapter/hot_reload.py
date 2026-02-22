@@ -468,36 +468,7 @@ class HotReloadService:
         return None
 
     def _iter_live_frames(self) -> list[object]:
-        backend = self._debugger.get_inprocess_backend()
-        if backend is None:
-            return []
-
-        bridge = getattr(backend, "bridge", None)
-        inproc = getattr(bridge, "debugger", None)
-        bdb = getattr(inproc, "debugger", None)
-        if bdb is None:
-            return []
-
-        frames: list[object] = []
-        try:
-            frame_map = getattr(bdb.thread_tracker, "frame_id_to_frame", {})
-            frames.extend(frame_map.values())
-        except Exception:
-            pass
-
-        current_frame = getattr(getattr(bdb, "stepping_controller", None), "current_frame", None)
-        if current_frame is not None:
-            frames.append(current_frame)
-
-        unique_frames: list[object] = []
-        seen: set[int] = set()
-        for frame in frames:
-            frame_id = id(frame)
-            if frame_id in seen:
-                continue
-            seen.add(frame_id)
-            unique_frames.append(frame)
-        return unique_frames
+        return list(self._debugger.iter_live_frames())
 
     def _flush_frame_locals(self, frame: object, warnings: list[str]) -> None:
         if not hasattr(types, "FrameType") or not isinstance(frame, types.FrameType):

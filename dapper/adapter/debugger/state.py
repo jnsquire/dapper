@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from dapper.adapter.types import SourceDict
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
     from dapper.protocol.structures import Scope
@@ -248,6 +249,22 @@ class _PyDebuggerStateManager:
 
         msg = f"Cannot set variable in reference type: {type(ref_info)}"
         raise ValueError(msg)
+
+    async def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an arbitrary expression in frame context."""
+        backend = self._debugger.get_active_backend()
+        if backend is not None:
+            return await backend.set_expression(expression, value, frame_id)
+        return {
+            "value": value,
+            "type": "string",
+            "variablesReference": 0,
+        }
 
     async def evaluate(
         self,

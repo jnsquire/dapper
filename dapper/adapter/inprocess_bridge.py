@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import CompletionsResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
+    from dapper.protocol.requests import SetExpressionResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.structures import Breakpoint
 
@@ -155,6 +156,18 @@ class InProcessBridge:
         """Set a variable value."""
         return cast("SetVariableResponseBody", self._inproc.set_variable(var_ref, name, value))
 
+    def set_expression(
+        self,
+        expression: str,
+        value: str,
+        frame_id: int | None = None,
+    ) -> SetExpressionResponseBody:
+        """Assign a value to an expression."""
+        return cast(
+            "SetExpressionResponseBody",
+            self._inproc.set_expression(expression, value, frame_id),
+        )
+
     def completions(
         self,
         text: str,
@@ -220,6 +233,11 @@ class InProcessBridge:
                     args.get("variablesReference"),
                     args.get("name"),
                     args.get("value"),
+                ),
+                "setExpression": lambda: self.set_expression(
+                    args.get("expression", ""),
+                    args.get("value", ""),
+                    args.get("frameId"),
                 ),
                 "evaluate": lambda: self.evaluate(
                     args.get("expression", ""),
