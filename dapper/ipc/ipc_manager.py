@@ -64,6 +64,7 @@ class IPCManager:
 
         Returns:
             List of command-line arguments for the launcher
+
         """
         if self._connection:
             raise RuntimeError("IPC connection already exists")
@@ -77,6 +78,7 @@ class IPCManager:
 
         Args:
             config: Transport configuration
+
         """
         if self._connection:
             raise RuntimeError("IPC connection already exists")
@@ -85,13 +87,16 @@ class IPCManager:
         self._enabled = True
 
     def start_reader(
-        self, message_handler: Callable[[dict[str, Any]], None], accept: bool = True
+        self,
+        message_handler: Callable[[dict[str, Any]], None],
+        accept: bool = True,
     ) -> None:
         """Start the reader thread for incoming messages.
 
         Args:
             message_handler: Function to handle incoming messages (expects dict)
             accept: Whether to accept a client connection (for listeners)
+
         """
         if not self._connection:
             raise RuntimeError("No IPC connection available")
@@ -104,7 +109,9 @@ class IPCManager:
 
         # Start reader thread
         self._reader_thread = threading.Thread(
-            target=self._read_messages, daemon=True, name="IPC-Reader"
+            target=self._read_messages,
+            daemon=True,
+            name="IPC-Reader",
         )
         self._reader_thread.start()
 
@@ -113,6 +120,7 @@ class IPCManager:
 
         Args:
             message: Message to send
+
         """
         if not self._connection:
             raise RuntimeError("No IPC connection available")
@@ -222,7 +230,10 @@ class IPCManager:
         return self
 
     def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: object
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
     ) -> None:
         """Context manager exit - automatically cleanup."""
         self.cleanup()

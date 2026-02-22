@@ -172,8 +172,7 @@ class FrameEvaluator:
         self._config = new_config
 
     def should_skip_frame(self, frame: FrameType) -> bool:
-        """
-        Determine if a frame should be skipped during frame evaluation.
+        """Determine if a frame should be skipped during frame evaluation.
 
         Args:
             frame: The frame to check
@@ -189,7 +188,8 @@ class FrameEvaluator:
 
         # Skip frames from standard library
         if self.path_handler.is_standard_library_path(
-            filename, self.config.standard_library_paths
+            filename,
+            self.config.standard_library_paths,
         ):
             return True
 
@@ -201,8 +201,7 @@ class FrameEvaluator:
         return self.path_handler.is_generated_code(filename)
 
     def is_debugger_frame(self, frame: FrameType) -> bool:
-        """
-        Check if a frame belongs to the debugger itself.
+        """Check if a frame belongs to the debugger itself.
 
         Args:
             frame: The frame to check
@@ -215,7 +214,8 @@ class FrameEvaluator:
 
         # Check debugger module paths
         if self.path_handler.is_debugger_path(
-            filename, self.config.debugger_paths[:4]
+            filename,
+            self.config.debugger_paths[:4],
         ):  # Only core debugger paths
             return True
 
@@ -253,8 +253,7 @@ class CodeWrapper:
         return self._template
 
     def create_wrapper(self, line: int) -> str:
-        """
-        Create a code wrapper for debugging at a specific line.
+        """Create a code wrapper for debugging at a specific line.
 
         Args:
             line: The line number to create a wrapper for
@@ -277,8 +276,7 @@ class CacheManager:
         return (id(code_obj), code_obj.co_filename, code_obj.co_firstlineno)
 
     def invalidate_code_cache(self, code_obj: CodeType) -> None:
-        """
-        Invalidate cached information for a code object.
+        """Invalidate cached information for a code object.
 
         Args:
             code_obj: The code object to invalidate cache for
@@ -304,8 +302,7 @@ _cache_manager = CacheManager()
 
 
 def create_pydev_trace_code_wrapper(line: int) -> str:
-    """
-    Create a code wrapper for debugging at a specific line.
+    """Create a code wrapper for debugging at a specific line.
 
     Args:
         line: The line number to create a wrapper for
@@ -317,8 +314,7 @@ def create_pydev_trace_code_wrapper(line: int) -> str:
 
 
 def update_globals_dict(globals_dict: dict[str, Any]) -> None:
-    """
-    Update the globals dictionary with debugging utilities.
+    """Update the globals dictionary with debugging utilities.
 
     Args:
         globals_dict: The globals dictionary to update
@@ -330,13 +326,12 @@ def update_globals_dict(globals_dict: dict[str, Any]) -> None:
             "_pydevd_frame_eval_active": True,  # For backward compatibility
             "_pydevd_frame_eval_line": None,
             "_pydevd_frame_eval_filename": None,
-        }
+        },
     )
 
 
 def should_skip_frame(frame: FrameType) -> bool:
-    """
-    Determine if a frame should be skipped during frame evaluation.
+    """Determine if a frame should be skipped during frame evaluation.
 
     Args:
         frame: The frame to check
@@ -348,8 +343,7 @@ def should_skip_frame(frame: FrameType) -> bool:
 
 
 def get_frame_filename(frame: FrameType) -> str:
-    """
-    Get the normalized filename for a frame.
+    """Get the normalized filename for a frame.
 
     Args:
         frame: The frame to get the filename for
@@ -361,8 +355,7 @@ def get_frame_filename(frame: FrameType) -> str:
 
 
 def is_debugger_frame(frame: FrameType) -> bool:
-    """
-    Check if a frame belongs to the debugger itself.
+    """Check if a frame belongs to the debugger itself.
 
     Args:
         frame: The frame to check
@@ -374,8 +367,7 @@ def is_debugger_frame(frame: FrameType) -> bool:
 
 
 def get_frame_info(frame: FrameType) -> FrameInfo:
-    """
-    Extract relevant information from a frame for debugging.
+    """Extract relevant information from a frame for debugging.
 
     Args:
         frame: The frame to extract info from
@@ -424,8 +416,7 @@ def get_frame_info(frame: FrameType) -> FrameInfo:
 
 
 def create_trace_function_wrapper(original_trace: Callable) -> Callable:
-    """
-    Create a wrapper for trace functions that integrates with frame evaluation.
+    """Create a wrapper for trace functions that integrates with frame evaluation.
 
     Args:
         original_trace: The original trace function to wrap
@@ -457,8 +448,7 @@ def create_trace_function_wrapper(original_trace: Callable) -> Callable:
 
 
 def invalidate_code_cache(code_obj: CodeType) -> None:
-    """
-    Invalidate cached information for a code object.
+    """Invalidate cached information for a code object.
 
     Args:
         code_obj: The code object to invalidate cache for
@@ -467,8 +457,7 @@ def invalidate_code_cache(code_obj: CodeType) -> None:
 
 
 def get_breakpoint_lines_for_file(filename: str) -> set[int]:
-    """
-    Get all breakpoint lines for a given file.
+    """Get all breakpoint lines for a given file.
 
     Args:
         filename: The filename to get breakpoints for
@@ -484,8 +473,7 @@ def get_breakpoint_lines_for_file(filename: str) -> set[int]:
 
 
 def optimize_code_for_debugging(code_obj: type) -> type:
-    """
-    Optimize a code object for debugging with frame evaluation.
+    """Optimize a code object for debugging with frame evaluation.
 
     Args:
         code_obj: The code object to optimize
@@ -499,8 +487,7 @@ def optimize_code_for_debugging(code_obj: type) -> type:
 
 
 def setup_frame_tracing(config: dict[str, Any]) -> bool:
-    """
-    Set up frame tracing with the given configuration.
+    """Set up frame tracing with the given configuration.
 
     Args:
         config: Configuration dictionary

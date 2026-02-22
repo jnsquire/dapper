@@ -1,5 +1,4 @@
-"""
-Test cases for log point functionality in the debug adapter.
+"""Test cases for log point functionality in the debug adapter.
 
 Log points allow setting breakpoints that output formatted messages
 without stopping execution, supporting expression interpolation.
@@ -157,7 +156,9 @@ print("Done")
 
             # Verify that send_debug_message was called with correct output
             self.mock_send.assert_called_with(
-                "output", category="console", output="Calculating: x=10, y=20, result=30"
+                "output",
+                category="console",
+                output="Calculating: x=10, y=20, result=30",
             )
 
             # Verify that execution continued (set_continue was called)
@@ -196,7 +197,9 @@ for i in range(5):
 
             # Should log since condition is met
             self.mock_send.assert_called_with(
-                "output", category="console", output="Loop iteration: i=3, x=6"
+                "output",
+                category="console",
+                output="Loop iteration: i=3, x=6",
             )
 
         finally:
@@ -227,7 +230,9 @@ for i in range(10):
             # Simulate multiple hits
             for hit_count in range(1, 7):  # Hits 1-6
                 frame = make_real_frame(
-                    {"i": hit_count - 1, "x": hit_count - 1}, filename=test_file, lineno=3
+                    {"i": hit_count - 1, "x": hit_count - 1},
+                    filename=test_file,
+                    lineno=3,
                 )
 
                 # Manually set the hit count in metadata
@@ -272,7 +277,9 @@ y = None  # Line 3
 
             # Should still output something, with <error> for failed expression
             self.mock_send.assert_called_with(
-                "output", category="console", output="x=10, length of y=<error>"
+                "output",
+                category="console",
+                output="x=10, length of y=<error>",
             )
 
         finally:
@@ -298,12 +305,13 @@ class TestFunctionLogPoints(unittest.TestCase):
                 "condition": None,
                 "hitCondition": None,
                 "logMessage": "Called function: {function_name} with args: {args}",
-            }
+            },
         }
 
         # Create a real frame for function call
         frame = make_real_frame(
-            {"args": "(1, 2)", "function_name": function_name}, func_name=function_name
+            {"args": "(1, 2)", "function_name": function_name},
+            func_name=function_name,
         )
 
         self.debugger.set_continue = MagicMock()
@@ -313,7 +321,9 @@ class TestFunctionLogPoints(unittest.TestCase):
 
         # Verify log message was sent
         self.mock_send.assert_called_with(
-            "output", category="console", output="Called function: test_function with args: (1, 2)"
+            "output",
+            category="console",
+            output="Called function: test_function with args: (1, 2)",
         )
 
 
@@ -326,7 +336,7 @@ async def test_log_points_server_integration():
         mock_debugger.launch = AsyncCallRecorder(return_value=None)
         mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
         mock_debugger.set_breakpoints = AsyncCallRecorder(
-            return_value=[{"verified": True, "line": 10}]
+            return_value=[{"verified": True, "line": 10}],
         )
 
         # Create server with patched debugger

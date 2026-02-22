@@ -257,7 +257,9 @@ class TestVariableHandling:
 
         # Mock make_variable_object to return a simple variable object
         def mock_make_var(
-            name, val, _frame=None
+            name,
+            val,
+            _frame=None,
         ):  # _frame is unused but required by the interface
             return {"name": name, "value": str(val), "type": type(val).__name__}
 
@@ -408,7 +410,9 @@ def test_recv_binary_from_stream_empty_payload_exits(monkeypatch: pytest.MonkeyP
     )
 
     monkeypatch.setattr(
-        dl, "_handle_command_bytes", lambda payload, _session=None: handled.append(payload)
+        dl,
+        "_handle_command_bytes",
+        lambda payload, _session=None: handled.append(payload),
     )
     dl._recv_binary_from_stream(stream, session=session)
 
@@ -1107,10 +1111,14 @@ class TestUtilityFunctions:
         monkeypatch.setattr(dl, "start_command_listener", _start_command_listener)
         monkeypatch.setattr(dl, "configure_debugger", _configure_debugger)
         monkeypatch.setattr(
-            dl, "run_program", lambda program, a: calls.append(f"run:{program}:{a}")
+            dl,
+            "run_program",
+            lambda program, a: calls.append(f"run:{program}:{a}"),
         )
         monkeypatch.setattr(
-            dl, "run_with_debugger", lambda *_args, **_kwargs: calls.append("debug")
+            dl,
+            "run_with_debugger",
+            lambda *_args, **_kwargs: calls.append("debug"),
         )
 
         dl.main()
@@ -1118,7 +1126,8 @@ class TestUtilityFunctions:
         assert calls == ["ipc", "listener", "cfg", "run:/tmp/demo.py:['--x']"]
 
     def test_main_routes_to_run_with_debugger_when_debug_enabled(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         calls: list[str] = []
 

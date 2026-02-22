@@ -1,5 +1,4 @@
-"""
-Frame evaluation optimization module for Dapper debugger.
+"""Frame evaluation optimization module for Dapper debugger.
 
 This module provides Cython-based frame evaluation to minimize the performance
 overhead of Python's sys.settrace() mechanism by:
@@ -157,8 +156,7 @@ def is_frame_eval_enabled() -> bool:
 
 
 def enable_frame_eval() -> bool:
-    """
-    Enable frame evaluation if available.
+    """Enable frame evaluation if available.
 
     Returns:
         bool: True if frame evaluation was successfully enabled, False otherwise.
@@ -178,8 +176,7 @@ def enable_frame_eval() -> bool:
 
 
 def disable_frame_eval() -> bool:
-    """
-    Disable frame evaluation if currently enabled.
+    """Disable frame evaluation if currently enabled.
 
     Returns:
         bool: True if frame evaluation was successfully disabled, False otherwise.
@@ -198,8 +195,7 @@ def disable_frame_eval() -> bool:
 
 
 def get_frame_eval_status() -> dict[str, Any]:
-    """
-    Get the current status of frame evaluation.
+    """Get the current status of frame evaluation.
 
     Returns:
         dict: Status information including availability, enabled state, and Python version.
@@ -220,8 +216,7 @@ def initialize_frame_eval() -> None:
 
 
 def initialize_with_config(config: dict[str, Any]) -> bool:
-    """
-    Initialize frame evaluation with a specific configuration.
+    """Initialize frame evaluation with a specific configuration.
 
     Args:
         config: Configuration dictionary for frame evaluation
@@ -243,8 +238,7 @@ initialize_frame_eval()
 
 
 def get_frame_eval_stats() -> dict[str, Any]:
-    """
-    Get statistics about frame evaluation performance.
+    """Get statistics about frame evaluation performance.
 
     Returns:
         dict: Statistics including active status, code extra index, etc.
@@ -263,8 +257,7 @@ def unmark_thread_as_pydevd() -> None:
 
 
 def set_thread_skip_all(skip: bool) -> None:
-    """
-    Set whether current thread should skip all frames.
+    """Set whether current thread should skip all frames.
 
     Args:
         skip: True to skip all frames in this thread

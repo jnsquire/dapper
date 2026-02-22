@@ -172,7 +172,10 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     debugger._test_mode = True  # type: ignore[attr-defined]
 
     monkeypatch.setattr(
-        server_module.PyDebugger, "_start_debuggee_process", fake_start, raising=False
+        server_module.PyDebugger,
+        "_start_debuggee_process",
+        fake_start,
+        raising=False,
     )
 
     # Patch the IPCManager reader to be a no-op (it would block waiting for connection)
@@ -213,14 +216,8 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
 @patch("dapper.adapter.server_core.PyDebugger")
 async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
     """
-
-    from pathlib import Path
-
-    # Add the project root to the Python path
-    project_root = str(Path(__file__).parent.parent.parent)
-    if project_root not in sys.path:
-
-    Server should forward useBinaryIpc to debugger.launch as use_binary_ipc."""
+    Server should forward useBinaryIpc to debugger.launch as use_binary_ipc.
+    """
     # Setup the mock debugger
     mock_debugger = mock_debugger_class.return_value
     mock_debugger.launch = AsyncCallRecorder(return_value=None)

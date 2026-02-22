@@ -1,5 +1,4 @@
 """
-
 Test to verify the terminate request handler is implemented and working.
 """
 

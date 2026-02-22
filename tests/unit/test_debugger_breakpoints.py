@@ -47,8 +47,7 @@ class AsyncCallRecorder:
 
 @pytest.mark.asyncio
 class TestDebuggerBreakpoints(BaseDebuggerTest):
-    """
-    Test cases for debugger breakpoint management"""
+    """Test cases for debugger breakpoint management"""
 
     async def test_set_breakpoints_no_path(self):
         """Test set_breakpoints with source that has no path"""
@@ -85,7 +84,7 @@ class TestDebuggerBreakpoints(BaseDebuggerTest):
             return_value=[
                 {"verified": True, "line": 10},
                 {"verified": True, "line": 20},
-            ]
+            ],
         )
         self.debugger._external_backend = mock_backend
 

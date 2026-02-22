@@ -1,5 +1,4 @@
-"""
-BreakpointResolver: Unified evaluation of breakpoint conditions, hit counts, and log messages.
+"""BreakpointResolver: Unified evaluation of breakpoint conditions, hit counts, and log messages.
 
 This module consolidates the common logic for evaluating whether a breakpoint
 should cause execution to stop, including:

@@ -542,6 +542,44 @@ def get_integration_statistics() -> IntegrationStatistics:
     return _integration_bridge.get_integration_statistics()
 
 
+def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
+    """Wire *debugger_instance* to *backend* using the appropriate path.
+
+    For :class:`~dapper._frame_eval.monitoring_backend.SysMonitoringBackend`:
+    calls ``backend.install(debugger_instance)`` directly and returns
+    ``True``.  The ``sys.monitoring`` path does **not** wrap ``user_line``
+    or install ``sys.settrace``; the backend's callbacks handle everything.
+
+    For :class:`~dapper._frame_eval.settrace_backend.SettraceBackend` (or
+    any other :class:`~dapper._frame_eval.tracing_backend.TracingBackend`):
+    falls back to :func:`integrate_debugger_bdb`.
+
+    Args:
+        backend: The active :class:`~dapper._frame_eval.tracing_backend.TracingBackend`.
+        debugger_instance: The debugger to wire up.
+
+    Returns:
+        ``True`` if integration succeeded.
+
+    """
+    try:
+        # Importing here keeps the dependency optional; ruff PLC0415 is
+        # suppressed because this is intentional.
+        from dapper._frame_eval.monitoring_backend import SysMonitoringBackend  # noqa: PLC0415
+
+        if isinstance(backend, SysMonitoringBackend):
+            try:
+                backend.install(debugger_instance)
+                return True
+            except Exception:
+                telemetry.record_integration_bdb_failed()
+                return False
+    except ImportError:
+        pass
+
+    return integrate_debugger_bdb(debugger_instance)
+
+
 def auto_integrate_debugger(debugger_instance) -> bool:
     """
     Automatically detect debugger type and integrate frame evaluation.

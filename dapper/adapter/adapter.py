@@ -1,6 +1,4 @@
-"""
-Main Debug Adapter entry point
-"""
+"""Main Debug Adapter entry point"""
 
 from __future__ import annotations
 
@@ -41,6 +39,7 @@ async def create_connection(
 
     Returns:
         A ConnectionBase instance or None if the connection type is unknown.
+
     """
     if connection_type == "tcp":
         return TCPServerConnection(host=host, port=port if port is not None else DEFAULT_DAP_PORT)
@@ -58,9 +57,7 @@ async def start_server(
     port: int | None = None,
     pipe_name: str | None = None,
 ) -> None:
-    """
-    Start the debug adapter server with the specified connection type
-    """
+    """Start the debug adapter server with the specified connection type"""
     logger.info("Starting debug adapter with %s connection", connection_type)
 
     connection = await create_connection(
@@ -89,9 +86,7 @@ NAME_TO_LEVEL: dict[str, int] = {
 
 
 def main() -> None:
-    """
-    Main entry point for the debug adapter
-    """
+    """Main entry point for the debug adapter"""
     # Configure logging only when the adapter is executed as a script.
     # Configure console logging only. Avoid creating a FileHandler here so
     # tests that patch the module logger don't cause the test runner to open
@@ -142,7 +137,7 @@ def main() -> None:
                 args.host,
                 port,
                 pipe_name,
-            )
+            ),
         )
     except KeyboardInterrupt:
         logger.info("Debug adapter stopped by user")

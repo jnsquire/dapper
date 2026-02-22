@@ -73,7 +73,7 @@ class SupportedProvider:
 def test_unknown_command_with_id_sends_response_error(capture_messages, use_debug_session):
     use_debug_session.dispatch_debug_command({"id": 1, "command": "nope", "arguments": {}})
     assert capture_messages == [
-        ("response", {"id": 1, "success": False, "message": "Unknown command: nope"})
+        ("response", {"id": 1, "success": False, "message": "Unknown command: nope"}),
     ]
 
 
@@ -152,7 +152,7 @@ def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages, us
     use_debug_session.register_command_provider(second, priority=0)
     use_debug_session.dispatch_debug_command({"id": 123, "command": "ping", "arguments": {}})
     assert capture_messages == [
-        ("response", {"id": 123, "success": True, "body": {"who": "second"}})
+        ("response", {"id": 123, "success": True, "body": {"who": "second"}}),
     ]
 
 
@@ -182,7 +182,7 @@ def test_unregister_removes_provider(capture_messages, use_debug_session):
     use_debug_session.unregister_command_provider(prov)
     use_debug_session.dispatch_debug_command({"id": 1, "command": "ping", "arguments": {}})
     assert capture_messages == [
-        ("response", {"id": 1, "success": False, "message": "Unknown command: ping"})
+        ("response", {"id": 1, "success": False, "message": "Unknown command: ping"}),
     ]
 
 
@@ -203,7 +203,7 @@ def test_can_handle_overrides_supported_commands(capture_messages, use_debug_ses
     use_debug_session.register_command_provider(fallback, priority=0)
     use_debug_session.dispatch_debug_command({"id": 2, "command": "ping", "arguments": {}})
     assert capture_messages == [
-        ("response", {"id": 2, "success": True, "body": {"who": "fallback"}})
+        ("response", {"id": 2, "success": True, "body": {"who": "fallback"}}),
     ]
 
 
@@ -246,7 +246,9 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages, use_debug_sess
 
 @pytest.mark.usefixtures("isolated_registry")
 def test_pipe_and_socket_dispatch_initialize_emit_same_payload(
-    capture_messages, monkeypatch, use_debug_session
+    capture_messages,
+    monkeypatch,
+    use_debug_session,
 ):
     def capture_send(event_type: str, **kwargs):
         capture_messages.append((event_type, kwargs))
@@ -254,7 +256,8 @@ def test_pipe_and_socket_dispatch_initialize_emit_same_payload(
     monkeypatch.setattr(ch, "send_debug_message", capture_send)
 
     use_debug_session.register_command_provider(
-        cast("Any", DapMappingProvider(COMMAND_HANDLERS)), priority=100
+        cast("Any", DapMappingProvider(COMMAND_HANDLERS)),
+        priority=100,
     )
 
     command = {"command": "initialize", "arguments": {}}

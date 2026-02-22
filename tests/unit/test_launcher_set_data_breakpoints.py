@@ -18,11 +18,13 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
         "breakpoints": [
             {"dataId": "frame:1:var:x", "accessType": "write"},
             {"dataId": "frame:2:var:y", "accessType": "write", "condition": "x > 1"},
-        ]
+        ],
     }
 
     result = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+        cast("DebuggerLike", dbg),
+        args,
+        logging.getLogger(__name__),
     )
 
     # handler returns success and body.breakpoint values
@@ -46,11 +48,13 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
     args = {
         "breakpoints": [
             {"dataId": "frame:10:var:a", "accessType": "write"},
-        ]
+        ],
     }
 
     result = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+        cast("DebuggerLike", dbg),
+        args,
+        logging.getLogger(__name__),
     )
 
     # set_data_breakpoint attempted and raised, but register still called
@@ -73,7 +77,9 @@ def test_handler_with_real_debugger_triggers_on_change():
     args = {"breakpoints": [{"dataId": "frame:100:var:x", "accessType": "write"}]}
 
     res = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg), args, logging.getLogger(__name__)
+        cast("DebuggerLike", dbg),
+        args,
+        logging.getLogger(__name__),
     )
     assert res["success"] is True
 

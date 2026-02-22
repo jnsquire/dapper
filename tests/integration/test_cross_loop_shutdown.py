@@ -14,11 +14,7 @@ def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
 
 @pytest.mark.asyncio
 async def test_cross_loop_future_is_failed_on_shutdown() -> None:
-    """
-
-
-    A future created on another loop is failed during shutdown."""
-
+    """A future created on another loop is failed during shutdown."""
     other_loop_ready = threading.Event()
 
     def _loop_thread_fn(loop, ready_evt):

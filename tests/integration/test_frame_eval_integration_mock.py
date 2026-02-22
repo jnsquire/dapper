@@ -56,7 +56,7 @@ class MockDebuggerBDB:
     def set_breakpoints(self, source, breakpoints, **kwargs):
         """Mock set_breakpoints method."""
         self.set_breakpoints_calls.append(
-            {"source": source, "breakpoints": breakpoints, "kwargs": kwargs}
+            {"source": source, "breakpoints": breakpoints, "kwargs": kwargs},
         )
 
     def _mock_user_line(self, frame):
@@ -186,7 +186,7 @@ class MockPyDebugger:
     def set_breakpoints(self, source, breakpoints, **kwargs):
         """Mock set_breakpoints method."""
         self.set_breakpoints_calls.append(
-            {"source": source, "breakpoints": breakpoints, "kwargs": kwargs}
+            {"source": source, "breakpoints": breakpoints, "kwargs": kwargs},
         )
 
         # Store breakpoints
@@ -281,7 +281,7 @@ class MockPyDebugger:
                 "filename": frame.f_code.co_filename,
                 "lineno": frame.f_lineno,
                 "function": frame.f_code.co_name,
-            }
+            },
         )
 
     def _mock_user_line(self, frame):
@@ -291,7 +291,7 @@ class MockPyDebugger:
                 "filename": frame.f_code.co_filename,
                 "lineno": frame.f_lineno,
                 "function": frame.f_code.co_name,
-            }
+            },
         )
 
 
@@ -378,7 +378,7 @@ class TestDebuggerBDBIntegration:
         mock_trace_instance.dispatcher = Mock()
         mock_trace_instance.dispatcher.analyzer = Mock()
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.side_effect = Exception(
-            "Test error"
+            "Test error",
         )
         mock_trace_manager.return_value = mock_trace_instance
 
@@ -484,7 +484,7 @@ class TestPyDebuggerIntegration:
 
             # Verify the trace function was enhanced (it should be different from the initial no-op)
             assert self.mock_debugger._trace_function != original_trace_value or callable(
-                current_trace
+                current_trace,
             )
 
         finally:
@@ -534,7 +534,8 @@ def test_function():
         with (
             patch("pathlib.Path", return_value=mock_path) as mock_path_class,
             patch(
-                "dapper._frame_eval.debugger_integration.compile", return_value=Mock()
+                "dapper._frame_eval.debugger_integration.compile",
+                return_value=Mock(),
             ) as mock_compile,
         ):
             # Call set_breakpoints which should trigger bytecode optimization
@@ -688,7 +689,9 @@ class TestIntegrationErrorRecovery:
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
     def test_debugger_method_failure_recovery(
-        self, mock_enable_selective_tracing, mock_get_trace_manager
+        self,
+        mock_enable_selective_tracing,
+        mock_get_trace_manager,
     ):
         """Test recovery when debugger methods fail."""
         # Verify the mock is called with the correct arguments
@@ -755,7 +758,7 @@ class TestIntegrationErrorRecovery:
                 side_effect=Exception("Tracing error"),
             ) as mock_enable_tracing,
             patch(
-                "dapper._frame_eval.debugger_integration.get_trace_manager"
+                "dapper._frame_eval.debugger_integration.get_trace_manager",
             ) as mock_get_trace_manager,
         ):
             # Setup the mock trace manager

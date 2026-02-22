@@ -68,7 +68,8 @@ def mock_server():
 
     class AsyncRecorder:
         """Minimal async callable that records calls and provides
-        basic assert helpers used by tests."""
+        basic assert helpers used by tests.
+        """
 
         def __init__(self):
             self.calls = []
@@ -610,7 +611,8 @@ async def test_set_function_breakpoints(debugger):
     breakpoints = [
         FunctionBreakpoint(name="main"),
         FunctionBreakpoint(
-            name="helper", condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}"
+            name="helper",
+            condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}",
         ),
     ]
 
@@ -702,7 +704,7 @@ async def test_get_stack_trace(debugger):
         1: [
             {"id": 1, "name": "main", "line": 10, "column": 1},
             {"id": 2, "name": "helper", "line": 5, "column": 1},
-        ]
+        ],
     }
 
     result = await debugger.get_stack_trace(thread_id=1, start_frame=0, levels=20)

@@ -20,8 +20,7 @@ from tests.mocks import MockConnection
 
 @pytest.mark.asyncio
 async def test_launch_inprocess_sends_process_event():
-    """
-    Launch with in_process=True should send 'process' event and not
+    """Launch with in_process=True should send 'process' event and not
     spawn a subprocess.
     """
     # Prepare server with mock connection
@@ -63,8 +62,7 @@ async def test_launch_inprocess_sends_process_event():
 
 @pytest.mark.asyncio
 async def test_inprocess_variables_bridge():
-    """
-    get_variables should call bridge with _filter/_start/_count and
+    """get_variables should call bridge with _filter/_start/_count and
     return values.
     """
     # Prepare a debugger instance directly to test variables path
@@ -102,7 +100,8 @@ async def test_inprocess_variables_bridge():
 @pytest.mark.asyncio
 async def test_inprocess_dispatch_map_reused_and_build_not_called() -> None:
     """Ensure InProcessBackend uses a reusable dispatch map and does not
-    rebuild nested wrapper functions on every call."""
+    rebuild nested wrapper functions on every call.
+    """
 
     class FakeBridge:
         def __init__(self):
@@ -122,17 +121,19 @@ async def test_inprocess_dispatch_map_reused_and_build_not_called() -> None:
     # Replace _build_dispatch_table with a sentinel to ensure it's not used
     def _bad_builder(_args: dict[str, Any]):
         raise AssertionError(
-            "_build_dispatch_table should not be called when _dispatch_map is present"
+            "_build_dispatch_table should not be called when _dispatch_map is present",
         )
 
     backend._build_dispatch_table = _bad_builder  # type: ignore[assignment]
 
     # Call command twice
     res1 = await backend._execute_command(
-        "set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 1}]}
+        "set_breakpoints",
+        {"path": "/file.py", "breakpoints": [{"line": 1}]},
     )
     res2 = await backend._execute_command(
-        "set_breakpoints", {"path": "/file.py", "breakpoints": [{"line": 2}]}
+        "set_breakpoints",
+        {"path": "/file.py", "breakpoints": [{"line": 2}]},
     )
 
     assert id(backend._dispatch_map) == old_id

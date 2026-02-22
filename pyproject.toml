@@ -129,7 +129,7 @@ select = [
 ]
 
 # Only ignore specific rules that we want to keep
-ignore = ["E501", "E741", "SIM105", "G004", "T201", "TRY003", "EM101"]
+ignore = ["E501", "E741", "SIM105", "G004", "T201", "TRY003", "EM101", "COM812"]  # allow lists and other literals without trailing commas
 
 # Allow autofix for all enabled rules (when `--fix`) is provided
 fixable = ["ALL"]
@@ -151,6 +151,12 @@ allow-dict-calls-with-keyword-arguments = true
 # Add quotes around type annotations, if doing so would allow
 # an import to be moved into a type-checking block.
 quote-annotations = true
+
+[tool.ruff.lint.pydocstyle]
+# Use the Google-style docstring convention so that leading blank lines
+# are flagged and can be auto-fixed (D212).  The default `pep257` convention
+# does not enable that rule.
+convention = "google"
 
 [tool.ruff.lint.pylint]
 max-args = 10

@@ -186,14 +186,16 @@ class TestDebuggerBDBIntegration:
     @patch("dapper._frame_eval.debugger_integration.get_trace_manager")
     @patch("dapper._frame_eval.debugger_integration.enable_selective_tracing")
     def test_integrate_with_debugger_bdb_success(
-        self, mock_enable_selective_tracing, mock_get_trace_manager
+        self,
+        mock_enable_selective_tracing,
+        mock_get_trace_manager,
     ):
         """Test successful DebuggerBDB integration."""
         # Setup mocks
         mock_trace_instance = Mock()
         mock_trace_instance.is_enabled.return_value = True
         mock_trace_instance.dispatcher.analyzer.should_trace_frame.return_value = {
-            "should_trace": True
+            "should_trace": True,
         }
         mock_get_trace_manager.return_value = mock_trace_instance
         mock_enable_selective_tracing.return_value = True
@@ -355,13 +357,15 @@ class TestGlobalFunctions:
         mock_bridge.integrate_with_py_debugger.assert_called_once_with(mock_debugger)
 
     @patch(
-        "dapper._frame_eval.debugger_integration._integration_bridge.integrate_with_debugger_bdb"
+        "dapper._frame_eval.debugger_integration._integration_bridge.integrate_with_debugger_bdb",
     )
     @patch(
-        "dapper._frame_eval.debugger_integration._integration_bridge.integrate_with_py_debugger"
+        "dapper._frame_eval.debugger_integration._integration_bridge.integrate_with_py_debugger",
     )
     def test_auto_integrate_debugger(
-        self, mock_bridge_py_integration, mock_bridge_bdb_integration
+        self,
+        mock_bridge_py_integration,
+        mock_bridge_bdb_integration,
     ):
         """Test automatic debugger detection and integration."""
         # Test DebuggerBDB detection (has user_line and breakpoints)

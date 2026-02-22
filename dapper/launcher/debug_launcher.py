@@ -1,5 +1,4 @@
-"""
-Debug launcher for Python programs.
+"""Debug launcher for Python programs.
 This is used to start the debuggee process with the debugger attached.
 """
 
@@ -93,8 +92,7 @@ def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
 
 
 def receive_debug_commands(session: Any | None = None) -> None:
-    """
-    Listen for commands from the debug adapter via IPC.
+    """Listen for commands from the debug adapter via IPC.
 
     IPC is mandatory; the launcher will not fall back to stdio.
     """
@@ -266,7 +264,9 @@ def configure_debugger(
 
 
 def run_with_debugger(
-    program_path: str, program_args: list[str], session: Any | None = None
+    program_path: str,
+    program_args: list[str],
+    session: Any | None = None,
 ) -> None:
     """Execute the target program under the debugger instance in state."""
     sys.argv = [program_path, *program_args]

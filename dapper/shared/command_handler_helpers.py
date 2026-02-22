@@ -71,7 +71,11 @@ class FrameLike(Protocol):
 
 class EvaluateWithPolicyFn(Protocol):
     def __call__(
-        self, expression: str, frame: Any | None, *, allow_builtins: bool = False
+        self,
+        expression: str,
+        frame: Any | None,
+        *,
+        allow_builtins: bool = False,
     ) -> object: ...
 
 
@@ -189,7 +193,8 @@ def resolve_variables_for_reference(  # noqa: PLR0912
     *,
     make_variable_fn: MakeVariableFn,
     extract_variables_from_mapping_fn: Callable[
-        [DebuggerLike | None, dict[str, object], object], list[Payload]
+        [DebuggerLike | None, dict[str, object], object],
+        list[Payload],
     ],
     var_ref_tuple_size: int,
 ) -> list[Payload]:

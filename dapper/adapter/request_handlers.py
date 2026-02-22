@@ -93,8 +93,7 @@ logger = logging.getLogger(__name__)
 
 
 class RequestHandler:
-    """
-    Handles incoming requests from the DAP client and routes them to the
+    """Handles incoming requests from the DAP client and routes them to the
     appropriate handler methods.
     """
 
@@ -102,9 +101,7 @@ class RequestHandler:
         self.server = server
 
     async def handle_request(self, request: DAPRequest) -> DAPResponse | None:
-        """
-        Handle a DAP request and return a response.
-        """
+        """Handle a DAP request and return a response."""
         command = request["command"]
         handler_method = getattr(self, f"_handle_{command}", None)
         if handler_method is None:
@@ -248,7 +245,8 @@ class RequestHandler:
         return self._make_response(request, "attach", AttachResponse)
 
     async def _handle_set_breakpoints(
-        self, request: SetBreakpointsRequest
+        self,
+        request: SetBreakpointsRequest,
     ) -> SetBreakpointsResponse:
         """Handle setBreakpoints request."""
         args = request.get("arguments", {})
@@ -266,7 +264,8 @@ class RequestHandler:
         )
 
     async def _handle_set_function_breakpoints(
-        self, request: SetFunctionBreakpointsRequest
+        self,
+        request: SetFunctionBreakpointsRequest,
     ) -> SetFunctionBreakpointsResponse:
         """Handle setFunctionBreakpoints request.
 
@@ -332,7 +331,11 @@ class RequestHandler:
         except Exception as e:  # pragma: no cover - defensive
             logger.exception("Error handling pause request")
             return self._make_response(
-                request, "pause", PauseResponse, success=False, message=f"Pause failed: {e!s}"
+                request,
+                "pause",
+                PauseResponse,
+                success=False,
+                message=f"Pause failed: {e!s}",
             )
 
     async def _handle_disconnect(self, request: DisconnectRequest) -> DisconnectResponse:
@@ -377,7 +380,8 @@ class RequestHandler:
             )
 
     async def _handle_configuration_done(
-        self, request: ConfigurationDoneRequest
+        self,
+        request: ConfigurationDoneRequest,
     ) -> ConfigurationDoneResponse:
         """Handle configurationDone request."""
         try:
@@ -402,7 +406,10 @@ class RequestHandler:
         """Handle loadedSources request."""
         loaded_sources = await self.server.debugger.get_loaded_sources()
         return self._make_response(
-            request, "loadedSources", LoadedSourcesResponse, body={"sources": loaded_sources}
+            request,
+            "loadedSources",
+            LoadedSourcesResponse,
+            body={"sources": loaded_sources},
         )
 
     async def _resolve_by_ref(self, source_reference: int) -> tuple[str | None, str | None]:
@@ -554,7 +561,8 @@ class RequestHandler:
         )
 
     def _prepare_module_source_body(
-        self, module_id: str | int | None
+        self,
+        module_id: str | int | None,
     ) -> tuple[ModuleSourceResponseBody | None, str | None]:
         if not module_id:
             return None, "Missing moduleId"
@@ -658,7 +666,10 @@ class RequestHandler:
         start = args.get("start", 0)
         count = args.get("count", 0)
         variables = await self.server.debugger.get_variables(
-            variables_reference, filter_, start, count
+            variables_reference,
+            filter_,
+            start,
+            count,
         )
         return self._make_response(
             request,
@@ -698,7 +709,8 @@ class RequestHandler:
         return self._make_response(request, "evaluate", EvaluateResponse, body=result)
 
     async def _handle_data_breakpoint_info(
-        self, request: DataBreakpointInfoRequest
+        self,
+        request: DataBreakpointInfoRequest,
     ) -> DataBreakpointInfoResponse:
         """Handle dataBreakpointInfo request (subset: variable name + frameId)."""
         args = request.get("arguments", {})
@@ -714,11 +726,15 @@ class RequestHandler:
         else:
             body = self.server.debugger.data_breakpoint_info(name=name, frame_id=frame_id)
         return self._make_response(
-            request, "dataBreakpointInfo", DataBreakpointInfoResponse, body=body
+            request,
+            "dataBreakpointInfo",
+            DataBreakpointInfoResponse,
+            body=body,
         )
 
     async def _handle_set_data_breakpoints(
-        self, request: SetDataBreakpointsRequest
+        self,
+        request: SetDataBreakpointsRequest,
     ) -> SetDataBreakpointsResponse:
         """Handle setDataBreakpoints request (full replace)."""
         args = request.get("arguments", {})

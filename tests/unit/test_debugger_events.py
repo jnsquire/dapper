@@ -73,7 +73,8 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         # Check that continued event was sent
         self.debugger.server.send_event.assert_called_once_with(
-            "continued", {"threadId": 1, "allThreadsContinued": True}
+            "continued",
+            {"threadId": 1, "allThreadsContinued": True},
         )
 
     def test_handle_debug_message_exception_event(self):
@@ -217,7 +218,8 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         # Check that event was sent
         self.debugger.server.send_event.assert_called_once_with(
-            "thread", {"reason": "exited", "threadId": 1}
+            "thread",
+            {"reason": "exited", "threadId": 1},
         )
 
     def test_handle_debug_message_thread_started(self):
@@ -234,7 +236,8 @@ class TestDebuggerEvents(BaseDebuggerTest):
 
         # Check that event was sent
         self.debugger.server.send_event.assert_called_once_with(
-            "thread", {"reason": "started", "threadId": 2}
+            "thread",
+            {"reason": "started", "threadId": 2},
         )
 
     def test_handle_debug_message_invalid_json(self):

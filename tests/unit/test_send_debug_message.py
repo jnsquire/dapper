@@ -29,7 +29,7 @@ def test_send_debug_message_requires_ipc_but_still_emits(monkeypatch, use_debug_
     use_debug_session.ipc_enabled = False
     captured = []
     use_debug_session.on_debug_message.add_listener(
-        lambda event_type, **kw: captured.append((event_type, kw))
+        lambda event_type, **kw: captured.append((event_type, kw)),
     )
 
     logged = []

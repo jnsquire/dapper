@@ -105,7 +105,9 @@ class TestInsertCode(TestCase):
         assert success
         assert result is mock_modified_code
         mock_inject.assert_called_once_with(
-            self.test_code, set(self.breakpoint_lines), debug_mode=True
+            self.test_code,
+            set(self.breakpoint_lines),
+            debug_mode=True,
         )
 
     def test_insert_code_failure(self):

@@ -193,7 +193,12 @@ def test_setup_ipc_socket_with_connector(use_debug_session):
 
     # Test unix path
     debug_launcher._setup_ipc_socket(
-        "unix", None, None, "/tmp/x", ipc_binary=False, connector=connector
+        "unix",
+        None,
+        None,
+        "/tmp/x",
+        ipc_binary=False,
+        connector=connector,
     )
     assert session.ipc_enabled is True
 
@@ -205,6 +210,11 @@ def test_setup_ipc_socket_with_connector(use_debug_session):
 
     # Test tcp path
     debug_launcher._setup_ipc_socket(
-        "tcp", "127.0.0.1", 12345, None, ipc_binary=False, connector=connector
+        "tcp",
+        "127.0.0.1",
+        12345,
+        None,
+        ipc_binary=False,
+        connector=connector,
     )
     assert session.ipc_enabled is True

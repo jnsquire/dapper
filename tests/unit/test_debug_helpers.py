@@ -48,7 +48,7 @@ def test_frame_has_ast_handler_positive_and_negative(tmp_path):
 
         def bar():
             pass
-        """
+        """,
     )
 
     p = tmp_path / "mod_with_try.py"

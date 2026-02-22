@@ -1,5 +1,4 @@
-"""
-Core protocol message types and generic runtime shapes.
+"""Core protocol message types and generic runtime shapes.
 
 This module contains the base Message/Request/Response/Event TypedDicts and
 lightweight Generic* runtime-friendly shapes for the ProtocolHandler.

@@ -151,6 +151,7 @@ def handle_adapter_errors(
 
     Returns:
         Decorated function
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -192,6 +193,7 @@ def handle_backend_errors(
 
     Returns:
         Decorated function
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -233,6 +235,7 @@ def handle_debugger_errors(
 
     Returns:
         Decorated function
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -244,7 +247,10 @@ def handle_debugger_errors(
                 error_msg = f"Error in debugger operation {operation or func.__name__}: {e!s}"
 
                 wrapped_error = DebuggerError(
-                    error_msg, operation=operation or func.__name__, thread_id=thread_id, cause=e
+                    error_msg,
+                    operation=operation or func.__name__,
+                    thread_id=thread_id,
+                    cause=e,
                 )
 
                 logger.log(log_level, error_msg, exc_info=True)
@@ -277,6 +283,7 @@ def handle_protocol_errors(
 
     Returns:
         Decorated function
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -288,7 +295,10 @@ def handle_protocol_errors(
                 error_msg = f"Error in protocol command {command or func.__name__}: {e!s}"
 
                 wrapped_error = ProtocolError(
-                    error_msg, command=command, sequence=sequence, cause=e
+                    error_msg,
+                    command=command,
+                    sequence=sequence,
+                    cause=e,
                 )
 
                 logger.log(log_level, error_msg, exc_info=True)
@@ -338,7 +348,8 @@ def async_handle_backend_errors(
     reraise: bool = False,
     log_level: int = logging.ERROR,
 ) -> Callable[
-    [Callable[..., CoroutineType[Any, Any, R]]], Callable[..., CoroutineType[Any, Any, R]]
+    [Callable[..., CoroutineType[Any, Any, R]]],
+    Callable[..., CoroutineType[Any, Any, R]],
 ]:
     """Async version of handle_backend_errors."""
 
@@ -384,7 +395,10 @@ def async_handle_debugger_errors(
                 error_msg = f"Error in debugger operation {operation or func.__name__}: {e!s}"
 
                 wrapped_error = DebuggerError(
-                    error_msg, operation=operation or func.__name__, thread_id=thread_id, cause=e
+                    error_msg,
+                    operation=operation or func.__name__,
+                    thread_id=thread_id,
+                    cause=e,
                 )
 
                 logger.log(log_level, error_msg, exc_info=True)

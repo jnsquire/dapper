@@ -35,7 +35,9 @@ def handle_set_breakpoints_impl(
                     dbg.clear_break_meta_for_file(path)
                 except (AttributeError, TypeError, ValueError):
                     logger.debug(
-                        "Failed to clear existing breakpoints for %s", path, exc_info=True
+                        "Failed to clear existing breakpoints for %s",
+                        path,
+                        exc_info=True,
                     )
 
         verified_bps: list[Payload] = []

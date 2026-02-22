@@ -1,5 +1,4 @@
-"""
-Debug Adapter Protocol message parsing and handling.
+"""Debug Adapter Protocol message parsing and handling.
 
 This module provides classes for working with the Debug Adapter Protocol (DAP)
 messages, including parsing, validation, and construction of messages.
@@ -38,8 +37,7 @@ class ProtocolError(Exception):
 
 
 class ProtocolFactory:
-    """
-    Builds Debug Adapter Protocol messages.
+    """Builds Debug Adapter Protocol messages.
 
     This class owns the sequencing for created messages and provides helpers
     for constructing requests, responses (including error responses), and
@@ -58,12 +56,18 @@ class ProtocolFactory:
 
     @overload
     def create_request(
-        self, command: str, arguments: dict[str, Any] | None = None
+        self,
+        command: str,
+        arguments: dict[str, Any] | None = None,
     ) -> GenericRequest: ...
 
     @overload
     def create_request(
-        self, command: str, arguments: dict[str, Any] | None = None, *, return_type: type[RequestT]
+        self,
+        command: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        return_type: type[RequestT],
     ) -> RequestT: ...
 
     def create_request(
@@ -131,12 +135,18 @@ class ProtocolFactory:
 
     @overload
     def create_error_response(
-        self, request: GenericRequest, error_message: str
+        self,
+        request: GenericRequest,
+        error_message: str,
     ) -> ErrorResponse: ...
 
     @overload
     def create_error_response(
-        self, request: GenericRequest, error_message: str, *, return_type: type[ResponseT]
+        self,
+        request: GenericRequest,
+        error_message: str,
+        *,
+        return_type: type[ResponseT],
     ) -> ResponseT: ...
 
     def create_error_response(
@@ -157,12 +167,18 @@ class ProtocolFactory:
 
     @overload
     def create_event(
-        self, event_type: str, body: dict[str, Any] | None = None
+        self,
+        event_type: str,
+        body: dict[str, Any] | None = None,
     ) -> GenericEvent: ...
 
     @overload
     def create_event(
-        self, event_type: str, body: dict[str, Any] | None = None, *, return_type: type[EventT]
+        self,
+        event_type: str,
+        body: dict[str, Any] | None = None,
+        *,
+        return_type: type[EventT],
     ) -> EventT: ...
 
     def create_event(
@@ -200,7 +216,10 @@ class ProtocolFactory:
         return cast("GenericRequest", request)
 
     def create_launch_request(
-        self, program: str, args: list | None = None, no_debug: bool = False
+        self,
+        program: str,
+        args: list | None = None,
+        no_debug: bool = False,
     ) -> GenericRequest:
         launch_args = {"program": program, "noDebug": no_debug}
         if args is not None:
@@ -213,7 +232,9 @@ class ProtocolFactory:
         return cast("GenericRequest", request)
 
     def create_set_breakpoints_request(
-        self, source: dict[str, Any], breakpoints: list
+        self,
+        source: dict[str, Any],
+        breakpoints: list,
     ) -> GenericRequest:
         args = {"source": source, "breakpoints": breakpoints}
         request = self.create_request("setBreakpoints", args)
@@ -231,6 +252,7 @@ class ProtocolFactory:
             thread_id: The thread to step.
             granularity: DAP stepGranularity — ``"line"``, ``"statement"``, or
                 ``"instruction"`` (default ``"line"``).
+
         """
         args: dict[str, Any] = {"threadId": thread_id}
         if granularity != "line":
@@ -250,6 +272,7 @@ class ProtocolFactory:
             thread_id: The thread to step into.
             target_id: Optional step-in target from ``stepInTargets``.
             granularity: DAP stepGranularity (default ``"line"``).
+
         """
         args: dict[str, Any] = {"threadId": thread_id}
         if target_id is not None:
@@ -265,6 +288,7 @@ class ProtocolFactory:
         Args:
             thread_id: The thread to step out from.
             granularity: DAP stepGranularity (default ``"line"``).
+
         """
         args: dict[str, Any] = {"threadId": thread_id}
         if granularity != "line":
@@ -277,7 +301,10 @@ class ProtocolFactory:
         return cast("GenericRequest", request)
 
     def create_stack_trace_request(
-        self, thread_id: int, start_frame: int = 0, levels: int = 20
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 20,
     ) -> GenericRequest:
         args = {"threadId": thread_id, "startFrame": start_frame, "levels": levels}
         request = self.create_request("stackTrace", args)
@@ -294,7 +321,9 @@ class ProtocolFactory:
         return cast("GenericRequest", request)
 
     def create_evaluate_request(
-        self, expression: str, frame_id: int | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
     ) -> GenericRequest:
         args = {"expression": expression}
         if frame_id is not None:
@@ -310,7 +339,10 @@ class ProtocolFactory:
         return cast("GenericEvent", event)
 
     def create_stopped_event(
-        self, reason: str, thread_id: int, text: str | None = None
+        self,
+        reason: str,
+        thread_id: int,
+        text: str | None = None,
     ) -> GenericEvent:
         body = {"reason": reason, "threadId": thread_id, "allThreadsStopped": False}
         if text is not None:
@@ -341,7 +373,9 @@ class ProtocolFactory:
         return cast("GenericEvent", event)
 
     def create_breakpoint_event(
-        self, reason: str, breakpoint_info: dict[str, Any]
+        self,
+        reason: str,
+        breakpoint_info: dict[str, Any],
     ) -> GenericEvent:
         body = {"reason": reason, "breakpoint": breakpoint_info}
         event = self.create_event("breakpoint", body)
@@ -351,8 +385,7 @@ class ProtocolFactory:
 
     def parse_message(self, message_json: str):
         # -> Union[Request, Response, Event]:
-        """
-        Parse a JSON message into a protocol message object.
+        """Parse a JSON message into a protocol message object.
 
         Args:
             message_json: JSON string containing the protocol message
@@ -362,8 +395,8 @@ class ProtocolFactory:
 
         Raises:
             ProtocolError: If the message is invalid or cannot be parsed
-        """
 
+        """
         try:
             message = json.loads(message_json)
         except json.JSONDecodeError as e:

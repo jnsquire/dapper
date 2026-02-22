@@ -1,7 +1,4 @@
-"""
-
-Test for setVariable functionality in debug_launcher.py
-"""
+"""Test for setVariable functionality in debug_launcher.py"""
 
 from types import SimpleNamespace
 import unittest

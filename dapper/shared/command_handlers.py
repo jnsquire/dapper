@@ -1,5 +1,4 @@
-"""
-Canonical DAP command handler implementations and registry for the debuggee process.
+"""Canonical DAP command handler implementations and registry for the debuggee process.
 
 This module provides:
 1. The `COMMAND_HANDLERS` registry populated via the `@command_handler` decorator

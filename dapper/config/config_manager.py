@@ -69,6 +69,7 @@ class ConfigManager:
 
         Returns:
             Tuple of (original_config, new_config).
+
         """
         with self._lock:
             original = self._current_config
@@ -109,6 +110,7 @@ def get_config() -> DapperConfig:
 
     Returns:
         The current DapperConfig instance
+
     """
     return _config_manager.get_config()
 
@@ -118,6 +120,7 @@ def set_config(config: DapperConfig) -> None:
 
     Args:
         config: The new configuration to set
+
     """
     _config_manager.set_config(config)
 
@@ -127,6 +130,7 @@ def update_config(**kwargs: Any) -> None:
 
     Args:
         **kwargs: Configuration values to update
+
     """
     _config_manager.update_config(**kwargs)
 
@@ -148,6 +152,7 @@ class ConfigContext:
 
         Args:
             **kwargs: Configuration values to temporarily modify
+
         """
         self._manager = _config_manager
         self._changes = kwargs

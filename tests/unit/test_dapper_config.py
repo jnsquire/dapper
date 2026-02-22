@@ -135,7 +135,8 @@ class TestDapperConfig:
         config.ipc.pipe_name = None
 
         with pytest.raises(
-            ConfigurationError, match="Pipe name is required for named pipe attach"
+            ConfigurationError,
+            match="Pipe name is required for named pipe attach",
         ):
             config.validate()
 
@@ -144,7 +145,8 @@ class TestDapperConfig:
         config = DapperConfig(mode="attach", in_process=True)
 
         with pytest.raises(
-            ConfigurationError, match="In-process mode is not compatible with attach"
+            ConfigurationError,
+            match="In-process mode is not compatible with attach",
         ):
             config.validate()
 

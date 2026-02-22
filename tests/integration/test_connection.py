@@ -1,6 +1,4 @@
-"""
-
-Pytest-style tests for the DAP connection classes.
+"""Pytest-style tests for the DAP connection classes.
 
 Converted from unittest.TestCase to plain pytest functions with
 fixtures to reduce boilerplate and align with modern pytest patterns.
@@ -61,7 +59,8 @@ async def test_tcp_connection_initialization():
 @pytest.mark.asyncio
 async def test_tcp_accept_message_flow():
     """Test TCP connection accept, message sending and receiving using an
-    OS-assigned ephemeral port to avoid race conditions."""
+    OS-assigned ephemeral port to avoid race conditions.
+    """
     conn = TCPServerConnection(port=0)
 
     try:

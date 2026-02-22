@@ -1,6 +1,7 @@
 """Configuration for frame evaluation."""
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 from typing import ClassVar
 
@@ -35,6 +36,16 @@ class FrameEvalConfig:
     conditional_breakpoints_enabled: bool = True
     condition_budget_s: float = 0.1
 
+    # Tracing backend selection: AUTO will choose sys.monitoring on
+    # supported interpreters (Python 3.12+), otherwise fall back to
+    # the settrace-based backend.
+    class TracingBackendKind(Enum):
+        AUTO = "auto"
+        SETTRACE = "settrace"
+        SYS_MONITORING = "sys_monitoring"
+
+    tracing_backend: TracingBackendKind = TracingBackendKind.AUTO
+
     def __post_init__(self):
         """Initialize the configuration and handle any unknown fields."""
         # This method will be called by dataclass after __init__
@@ -54,6 +65,7 @@ class FrameEvalConfig:
             "timeout": self.timeout,
             "conditional_breakpoints_enabled": self.conditional_breakpoints_enabled,
             "condition_budget_s": self.condition_budget_s,
+            "tracing_backend": self.tracing_backend.name,
         }
 
     @classmethod
@@ -74,6 +86,18 @@ class FrameEvalConfig:
 
         # Only include keys that are valid field names
         filtered_dict = {k: v for k, v in config_dict.items() if k in valid_fields}
+
+        # Handle tracing_backend enum if present
+        if "tracing_backend" in filtered_dict:
+            val = filtered_dict["tracing_backend"]
+            try:
+                filtered_dict["tracing_backend"] = cls.TracingBackendKind[val]
+            except Exception:
+                # Accept either name or direct enum value; ignore invalid
+                try:
+                    filtered_dict["tracing_backend"] = cls.TracingBackendKind(val)
+                except Exception:
+                    filtered_dict.pop("tracing_backend", None)
 
         return cls(**filtered_dict)
 

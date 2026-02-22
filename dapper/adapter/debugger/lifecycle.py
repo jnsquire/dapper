@@ -89,7 +89,9 @@ class _PyDebuggerLifecycleManager:
         else:
             try:
                 await self._debugger.loop.run_in_executor(
-                    None, self._debugger._start_debuggee_process, debug_args
+                    None,
+                    self._debugger._start_debuggee_process,
+                    debug_args,
                 )
             except Exception:
                 await asyncio.to_thread(self._debugger._start_debuggee_process, debug_args)

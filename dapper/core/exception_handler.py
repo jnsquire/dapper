@@ -1,5 +1,4 @@
-"""
-ExceptionHandler: Centralized exception breakpoint handling.
+"""ExceptionHandler: Centralized exception breakpoint handling.
 
 This module provides logic for:
 1. Determining whether to break on an exception
@@ -30,6 +29,7 @@ class ExceptionBreakpointConfig:
     Attributes:
         break_on_raised: Break when any exception is raised.
         break_on_uncaught: Break only on uncaught exceptions.
+
     """
 
     break_on_raised: bool = False
@@ -44,6 +44,7 @@ class ExceptionBreakpointConfig:
 
         Args:
             filters: List of filter IDs like ["raised", "uncaught"].
+
         """
         self.break_on_raised = "raised" in filters
         self.break_on_uncaught = "uncaught" in filters
@@ -63,6 +64,7 @@ class ExceptionHandler:
     Attributes:
         config: Exception breakpoint configuration.
         exception_info_by_thread: Per-thread exception info storage.
+
     """
 
     config: ExceptionBreakpointConfig = field(default_factory=ExceptionBreakpointConfig)
@@ -79,6 +81,7 @@ class ExceptionHandler:
 
         Returns:
             True if we should break on this exception.
+
         """
         if not self.config.is_enabled():
             return False
@@ -101,6 +104,7 @@ class ExceptionHandler:
 
         Returns:
             "always" if break_on_raised, "unhandled" otherwise.
+
         """
         return "always" if self.config.break_on_raised else "unhandled"
 
@@ -117,6 +121,7 @@ class ExceptionHandler:
 
         Returns:
             ExceptionInfo dict suitable for DAP protocol.
+
         """
         exc_type, exc_value, exc_traceback = exc_info
         stack_trace = traceback.format_exception(exc_type, exc_value, exc_traceback)
@@ -145,6 +150,7 @@ class ExceptionHandler:
 
         Returns:
             String like "ValueError: invalid value".
+
         """
         exc_type, exc_value, _ = exc_info
         return f"{exc_type.__name__}: {exc_value!s}"
@@ -155,6 +161,7 @@ class ExceptionHandler:
         Args:
             thread_id: The thread ID.
             info: The ExceptionInfo to store.
+
         """
         self.exception_info_by_thread[thread_id] = info
 
@@ -166,6 +173,7 @@ class ExceptionHandler:
 
         Returns:
             The stored ExceptionInfo, or None if not found.
+
         """
         return self.exception_info_by_thread.get(thread_id)
 
@@ -174,6 +182,7 @@ class ExceptionHandler:
 
         Args:
             thread_id: The thread ID.
+
         """
         self.exception_info_by_thread.pop(thread_id, None)
 

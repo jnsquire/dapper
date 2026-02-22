@@ -58,7 +58,7 @@ except ImportError:
             fully_initialized=True,
             is_pydevd_thread=False,
             skip_all_frames=False,
-        )
+        ),
     )
     stop_frame_eval = Mock()  # type: ignore[assignment]
 
@@ -143,13 +143,16 @@ def mock_cython_functions(monkeypatch):
 
     # Apply the mocks
     monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.frame_eval_func", mock_frame_eval_func
+        "dapper._frame_eval._frame_evaluator.frame_eval_func",
+        mock_frame_eval_func,
     )
     monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.get_frame_eval_stats", mock_get_frame_eval_stats
+        "dapper._frame_eval._frame_evaluator.get_frame_eval_stats",
+        mock_get_frame_eval_stats,
     )
     monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.get_thread_info", mock_get_thread_info
+        "dapper._frame_eval._frame_evaluator.get_thread_info",
+        mock_get_thread_info,
     )
     monkeypatch.setattr("dapper._frame_eval._frame_evaluator.stop_frame_eval", lambda: None)
 
@@ -559,7 +562,10 @@ class TestGlobalFunctions:
         # Create a mock that doesn't have the expected attributes
         # Configure it to not have any of the debugger-specific attributes
         unknown_debugger.configure_mock(
-            user_line=None, breakpoints=None, set_breakpoints=None, threads=None
+            user_line=None,
+            breakpoints=None,
+            set_breakpoints=None,
+            threads=None,
         )
 
         # The function currently returns True for unknown debugger types

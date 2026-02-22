@@ -39,7 +39,8 @@ from tests.mocks import make_real_frame
 
 class TestConfigManagerGlobal:
     """Verify set_config / update_config / reset_config / ConfigContext
-    actually persist their changes to the module-level global."""
+    actually persist their changes to the module-level global.
+    """
 
     def setup_method(self) -> None:
         reset_config()
@@ -117,7 +118,8 @@ class TestSocketConnectorAFUnix:
 
     def test_connect_unix_uses_socket_module(self) -> None:
         """If socket.AF_UNIX exists, it should be used to create the socket.
-        Previously this looked at os.AF_UNIX which is always None."""
+        Previously this looked at os.AF_UNIX which is always None.
+        """
         with patch("dapper.launcher.launcher_ipc.socket") as mock_socket_mod:
             mock_socket_mod.AF_UNIX = getattr(socket, "AF_UNIX", 1)
             mock_socket_mod.SOCK_STREAM = socket.SOCK_STREAM
@@ -129,7 +131,8 @@ class TestSocketConnectorAFUnix:
 
             assert result is mock_sock
             mock_socket_mod.socket.assert_called_once_with(
-                mock_socket_mod.AF_UNIX, mock_socket_mod.SOCK_STREAM
+                mock_socket_mod.AF_UNIX,
+                mock_socket_mod.SOCK_STREAM,
             )
 
     def test_connect_unix_returns_none_without_af_unix(self) -> None:
@@ -149,11 +152,13 @@ class TestSocketConnectorAFUnix:
 
 class TestCompletionsNoDuplicateCall:
     """Verify that completions only calls _get_runtime_completions once
-    on the fallback path (no frame)."""
+    on the fallback path (no frame).
+    """
 
     def test_fallback_completions_called_once(self) -> None:
         """Without a frame, _get_runtime_completions should be called exactly
-        once, not twice (the copy-paste bug)."""
+        once, not twice (the copy-paste bug).
+        """
         ip = InProcessDebugger()
         call_count = 0
         original = ip._get_runtime_completions
@@ -184,7 +189,8 @@ class TestCompletionsNoDuplicateCall:
 
 class TestHandleRegularBreakpointReturnValue:
     """Verify that _handle_regular_breakpoint returns True and emits a
-    'breakpoint' stopped event when the breakpoint resolver says STOP."""
+    'breakpoint' stopped event when the breakpoint resolver says STOP.
+    """
 
     def _make_test_file(self) -> str:
         """Create a real temp file so bdb.set_break succeeds."""
@@ -194,7 +200,8 @@ class TestHandleRegularBreakpointReturnValue:
 
     def test_returns_true_on_stop(self) -> None:
         """When the resolver returns STOP, the method should return True
-        (meaning 'handled') and emit a stopped event with reason 'breakpoint'."""
+        (meaning 'handled') and emit a stopped event with reason 'breakpoint'.
+        """
         mock_send = MagicMock()
         dbg = DebuggerBDB(send_message=mock_send)
 
@@ -229,7 +236,8 @@ class TestHandleRegularBreakpointReturnValue:
 
     def test_returns_true_on_continue(self) -> None:
         """When the resolver returns CONTINUE, the method should also
-        return True (handled — skipped due to condition)."""
+        return True (handled — skipped due to condition).
+        """
         dbg = DebuggerBDB(send_message=MagicMock())
 
         test_file = self._make_test_file()
@@ -238,7 +246,7 @@ class TestHandleRegularBreakpointReturnValue:
 
             dbg.breakpoint_resolver = MagicMock()
             dbg.breakpoint_resolver.resolve.return_value = ResolveResult(
-                action=ResolveAction.CONTINUE
+                action=ResolveAction.CONTINUE,
             )
             dbg.set_continue = MagicMock()
 
@@ -266,12 +274,14 @@ class TestHandleRegularBreakpointReturnValue:
 class TestExternalBackendDispatchNoRecursion:
     """Verify that _execute_command's dispatch table does NOT route through
     the public BaseBackend methods (which would cause infinite recursion
-    via _execute_with_timeout → _execute_command)."""
+    via _execute_with_timeout → _execute_command).
+    """
 
     @pytest.mark.asyncio
     async def test_set_breakpoints_dispatch_uses_send_command(self) -> None:
         """The 'set_breakpoints' dispatch entry should call _send_command
-        directly, not self.set_breakpoints."""
+        directly, not self.set_breakpoints.
+        """
         mock_ipc = MagicMock()
 
         async def noop_send(*a: Any, **kw: Any) -> None:
@@ -368,7 +378,7 @@ class TestExternalBackendDispatchNoRecursion:
         # Replace _build_dispatch_table with a sentinel that would fail if called
         def _bad_builder(_args: dict[str, Any]):
             raise AssertionError(
-                "_build_dispatch_table should not be called when _dispatch_map is present"
+                "_build_dispatch_table should not be called when _dispatch_map is present",
             )
 
         backend._build_dispatch_table = _bad_builder  # type: ignore[assignment]

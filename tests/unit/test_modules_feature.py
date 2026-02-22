@@ -74,7 +74,7 @@ async def test_get_modules_user_code_flag(tmp_path, monkeypatch):
             available_modules = [m["name"] for m in modules if m["name"]]
             pytest.skip(
                 f"{module_name} not found in modules list. "
-                f"Available modules: {available_modules[:20]}..."
+                f"Available modules: {available_modules[:20]}...",
             )
 
         # Check if it's marked as user code

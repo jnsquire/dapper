@@ -24,6 +24,8 @@ from dapper._frame_eval.runtime import FrameEvalRuntime
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from dapper._frame_eval.tracing_backend import TracingBackend
+
 
 class FrameEvalManager:
     """
@@ -65,7 +67,7 @@ class FrameEvalManager:
         self._frame_eval_config = FrameEvalConfig()
         self._compatibility_policy = FrameEvalCompatibilityPolicy(
             min_python=(3, 9),
-            max_python=(3, 13),
+            max_python=(3, 14),
             supported_platforms=tuple(self.SUPPORTED_PLATFORMS),
             supported_architectures=tuple(self.SUPPORTED_ARCHITECTURES),
             incompatible_debuggers=tuple(self.INCOMPATIBLE_DEBUGGERS),
@@ -74,6 +76,7 @@ class FrameEvalManager:
         )
         self._is_initialized = False
         self._runtime = FrameEvalRuntime(self._frame_eval_config)
+        self._active_backend: TracingBackend | None = None
         self._compatibility_cache: dict[tuple, dict[str, Any]] = {}
         self._logger = logging.getLogger(__name__)
 
@@ -83,6 +86,55 @@ class FrameEvalManager:
         self._frame_eval_config.optimize = True
         self._frame_eval_config.cache_size = 1000
         self._frame_eval_config.timeout = 30.0
+
+    @property
+    def active_backend(self) -> TracingBackend | None:
+        """The currently active tracing backend, or None if not yet set up."""
+        return self._active_backend
+
+    def _create_backend(self, config: FrameEvalConfig) -> TracingBackend:
+        """Factory: instantiate the correct TracingBackend for *config*.
+
+        Selection logic:
+        - ``AUTO``:  use ``SysMonitoringBackend`` when the running interpreter
+          supports ``sys.monitoring`` (≥ 3.12); otherwise ``SettraceBackend``.
+        - ``SYS_MONITORING``: always ``SysMonitoringBackend``.
+        - ``SETTRACE``: always ``SettraceBackend``.
+        """
+        kind = config.tracing_backend
+        backend_kind = FrameEvalConfig.TracingBackendKind  # local alias
+
+        # SettraceBackend is always available
+        from dapper._frame_eval.settrace_backend import SettraceBackend  # noqa: PLC0415
+
+        if kind is backend_kind.SETTRACE:
+            return SettraceBackend()
+
+        if kind is backend_kind.SYS_MONITORING:
+            try:
+                from dapper._frame_eval.monitoring_backend import (  # noqa: PLC0415
+                    SysMonitoringBackend,
+                )
+
+                return SysMonitoringBackend()
+            except ImportError:
+                self._logger.warning(
+                    "SysMonitoringBackend not available; falling back to SettraceBackend",
+                )
+                return SettraceBackend()
+
+        # AUTO: pick monitoring when supported, settrace otherwise
+        if self._compatibility_policy.supports_sys_monitoring():
+            try:
+                from dapper._frame_eval.monitoring_backend import (  # noqa: PLC0415
+                    SysMonitoringBackend,
+                )
+
+                return SysMonitoringBackend()
+            except ImportError:
+                pass
+
+        return SettraceBackend()
 
     @property
     def is_initialized(self) -> bool:
@@ -314,8 +366,7 @@ class FrameEvalManager:
         }
 
     def _initialize_components(self) -> bool:
-        """
-        Initialize frame evaluation components.
+        """Initialize frame evaluation components.
 
         Returns:
             bool: True if initialization was successful
@@ -325,6 +376,10 @@ class FrameEvalManager:
             if not self._runtime.initialize(self._frame_eval_config.to_dict()):
                 self._logger.warning("Runtime initialization returned False")
                 return False
+
+            # Create and store the active tracing backend.
+            self._active_backend = self._create_backend(self._frame_eval_config)
+            self._logger.debug("Tracing backend selected: %s", type(self._active_backend).__name__)
             self._logger.debug("Initializing frame evaluation components")
         except Exception:
             self._logger.exception("Failed to initialize frame evaluation components")
@@ -340,6 +395,11 @@ class FrameEvalManager:
         and ensures proper resource deallocation.
         """
         try:
+            # Shut down the active tracing backend first.
+            if self._active_backend is not None:
+                self._active_backend.shutdown()
+                self._active_backend = None
+
             # Delegate component cleanup to the runtime composition root.
             self._runtime.shutdown()
             self._logger.debug("Cleaning up frame evaluation components")

@@ -50,6 +50,7 @@ class InProcessBridge:
             on_thread: Handler for thread events
             on_exited: Handler for exited events
             on_output: Handler for output events (async or sync)
+
         """
         self._inproc = inproc
         self._on_stopped = on_stopped
@@ -117,7 +118,8 @@ class InProcessBridge:
     # Breakpoint operations
     # ------------------------------------------------------------------
     def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
         """Set function breakpoints."""
         return list(self._inproc.set_function_breakpoints(breakpoints))
@@ -162,14 +164,17 @@ class InProcessBridge:
     ) -> CompletionsResponseBody:
         """Get expression completions."""
         return cast(
-            "CompletionsResponseBody", self._inproc.completions(text, column, frame_id, line)
+            "CompletionsResponseBody",
+            self._inproc.completions(text, column, frame_id, line),
         )
 
     # ------------------------------------------------------------------
     # Command dispatch (for _send_command_to_debuggee compatibility)
     # ------------------------------------------------------------------
     def dispatch_command(
-        self, command: dict[str, Any], expect_response: bool = False
+        self,
+        command: dict[str, Any],
+        expect_response: bool = False,
     ) -> dict[str, Any] | None:
         """Dispatch a command dict to the in-process debugger.
 
@@ -182,6 +187,7 @@ class InProcessBridge:
 
         Returns:
             Response dict with 'body' key if expect_response, else None
+
         """
         try:
             cmd_key = command.get("command", "")
@@ -278,7 +284,9 @@ class InProcessBridge:
             return None
 
     def register_data_watches(
-        self, watch_names: list[str], watch_meta: list[tuple[str, dict[str, Any]]]
+        self,
+        watch_names: list[str],
+        watch_meta: list[tuple[str, dict[str, Any]]],
     ) -> None:
         """Register data watches with the underlying debugger if supported."""
         try:

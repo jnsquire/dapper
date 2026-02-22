@@ -103,7 +103,8 @@ def get_model_fields(value: Any) -> list[tuple[str, Any]]:
 
     # --- Pydantic v2 ---
     if hasattr(type(value), "model_fields") and isinstance(
-        getattr(type(value), "model_fields", None), dict
+        getattr(type(value), "model_fields", None),
+        dict,
     ):
         try:
             return [(name, getattr(value, name)) for name in type(value).model_fields]

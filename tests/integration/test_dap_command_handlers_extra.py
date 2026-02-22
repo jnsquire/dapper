@@ -129,7 +129,9 @@ def test_set_breakpoints_and_state(monkeypatch):
     try:
         cleared_lines: list[int] = []
         monkeypatch.setattr(
-            dbg, "clear_break", lambda _path, line: cleared_lines.append(int(line))
+            dbg,
+            "clear_break",
+            lambda _path, line: cleared_lines.append(int(line)),
         )
         dbg.breaks = {source_path: [5]}  # type: ignore[attr-defined]
 

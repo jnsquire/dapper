@@ -1,5 +1,4 @@
-"""
-Run the Debug Adapter server on a background thread.
+"""Run the Debug Adapter server on a background thread.
 
 This helper lets an application (the debugee) remain the main
 thread/process while the DAP adapter runs on its own asyncio event loop
@@ -21,6 +20,7 @@ Threading Model:
 - The adapter runs on a dedicated daemon thread with its own asyncio event loop.
 - Shared state (_server, _loop, _loop_tasks, _thread_futures) is protected by _lock.
 - Cross-thread communication uses threading.Event and asyncio.run_coroutine_threadsafe.
+
 """
 
 from __future__ import annotations

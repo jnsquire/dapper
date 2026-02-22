@@ -277,7 +277,8 @@ def test_create_pipe_listener_sync_mocked_windows(monkeypatch):
     fake_listener = MagicMock()
     monkeypatch.setattr("dapper.ipc.transport_factory._is_windows", lambda: True)
     monkeypatch.setattr(
-        "dapper.ipc.transport_factory.mp_conn.Listener", lambda **_kw: fake_listener
+        "dapper.ipc.transport_factory.mp_conn.Listener",
+        lambda **_kw: fake_listener,
     )
 
     listener, args = TransportFactory.create_pipe_listener_sync("my-pipe")
@@ -301,10 +302,12 @@ def test_create_pipe_listener_and_connection_routes_mocked_windows(monkeypatch):
     fake_pipe_client = MagicMock()
 
     monkeypatch.setattr(
-        "dapper.ipc.transport_factory.mp_conn.Listener", lambda **_kw: fake_listener
+        "dapper.ipc.transport_factory.mp_conn.Listener",
+        lambda **_kw: fake_listener,
     )
     monkeypatch.setattr(
-        "dapper.ipc.transport_factory.mp_conn.Client", lambda **_kw: fake_pipe_client
+        "dapper.ipc.transport_factory.mp_conn.Client",
+        lambda **_kw: fake_pipe_client,
     )
 
     listener_conn, args = TransportFactory.create_listener(TransportConfig(transport="pipe"))
@@ -312,7 +315,7 @@ def test_create_pipe_listener_and_connection_routes_mocked_windows(monkeypatch):
     assert getattr(listener_conn, "listener", None) is fake_listener
 
     client_conn = TransportFactory.create_connection(
-        TransportConfig(transport="pipe", pipe_name=r"\\.\pipe\my-pipe")
+        TransportConfig(transport="pipe", pipe_name=r"\\.\pipe\my-pipe"),
     )
     assert getattr(client_conn, "client", None) is fake_pipe_client
 
@@ -339,7 +342,7 @@ def test_create_pipe_connection_wraps_client_exceptions(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Failed to connect to pipe"):
         TransportFactory._create_pipe_connection(
-            TransportConfig(transport="pipe", pipe_name=r"\\.\pipe\missing")
+            TransportConfig(transport="pipe", pipe_name=r"\\.\pipe\missing"),
         )
 
 

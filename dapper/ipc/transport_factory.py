@@ -71,6 +71,7 @@ class TransportFactory:
 
         Returns:
             Tuple of (connection, launcher_args)
+
         """
         transport = TransportFactory.resolve_transport(config.transport)
 
@@ -93,6 +94,7 @@ class TransportFactory:
 
         Returns:
             Connection instance
+
         """
         transport = TransportFactory.resolve_transport(config.transport)
 

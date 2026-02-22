@@ -1,13 +1,10 @@
-"""
-Test for the _convert_string_to_value function in debug_launcher.py
-"""
+"""Test for the _convert_string_to_value function in debug_launcher.py"""
 
 from dapper.shared.value_conversion import convert_value_with_context
 
 
 def test_convert_string_to_value():
     """Test the string to value conversion function"""
-
     # Test None
     assert convert_value_with_context("None") is None
     assert convert_value_with_context("none") is None

@@ -49,6 +49,7 @@ class ExternalProcessBackend(BaseBackend):
             pending_commands: Dict of pending command futures (shared with PyDebugger)
             lock: Threading lock for synchronization
             get_next_command_id: Callable to get next command ID
+
         """
         super().__init__()
         self._ipc = ipc
@@ -111,7 +112,9 @@ class ExternalProcessBackend(BaseBackend):
         return process is not None and not is_terminated
 
     def _extract_body(
-        self, response: dict[str, Any] | None, default: dict[str, Any]
+        self,
+        response: dict[str, Any] | None,
+        default: dict[str, Any],
     ) -> dict[str, Any]:
         """Extract the body from a response, returning default if unavailable."""
         if not response:
@@ -146,7 +149,7 @@ class ExternalProcessBackend(BaseBackend):
         return {
             "breakpoints": [
                 {"verified": True, "line": bp.get("line")} for bp in args["breakpoints"]
-            ]
+            ],
         }
 
     async def _dispatch_set_function_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -156,7 +159,7 @@ class ExternalProcessBackend(BaseBackend):
         }
         await self._send_command(cmd)
         return {
-            "breakpoints": [{"verified": bp.get("verified", True)} for bp in args["breakpoints"]]
+            "breakpoints": [{"verified": bp.get("verified", True)} for bp in args["breakpoints"]],
         }
 
     async def _dispatch_set_exception_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -313,7 +316,9 @@ class ExternalProcessBackend(BaseBackend):
         return await super()._execute_command(command, args, **kwargs)
 
     async def _send_command(
-        self, command: dict[str, Any], expect_response: bool = False
+        self,
+        command: dict[str, Any],
+        expect_response: bool = False,
     ) -> dict[str, Any] | None:
         """Send a command to the debuggee process."""
         if not self.is_available():

@@ -138,7 +138,9 @@ class _PyDebuggerSessionFacade:
             return self._pending_commands.pop(command_id, None)
 
     def resolve_pending_response(
-        self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
+        self,
+        future: asyncio.Future[dict[str, Any]],
+        data: dict[str, Any],
     ) -> None:
         if future.done():
             return

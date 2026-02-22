@@ -76,7 +76,6 @@ class TestCacheComponents:
 
     def test_func_code_cache_creation(self):
         """Test FuncCodeInfoCache creation."""
-
         # Create the cache instance
         with patch("weakref.WeakValueDictionary") as mock_weak_dict:
             # Mock the WeakValueDictionary to return an empty dict
@@ -614,7 +613,6 @@ class TestBytecodeSafetyLayer:
 
     def _make_simple_code(self) -> types.CodeType:
         """Return a trivial compiled code object for testing."""
-
         return compile("x = 1 + 2", "<test>", "exec")
 
     def test_valid_code_passes_validation(self):
@@ -635,7 +633,9 @@ class TestBytecodeSafetyLayer:
             pytest.skip("code.replace(co_code=...) not supported on this Python version")
 
         result = validate_code_object(
-            code, bad_code, {"validate_decodable": True, "validate_stacksize": False}
+            code,
+            bad_code,
+            {"validate_decodable": True, "validate_stacksize": False},
         )
         # We allow valid=True if dis tolerates the bytes (some versions do), but
         # the important thing is no exception is raised from validate_code_object.
@@ -653,7 +653,9 @@ class TestBytecodeSafetyLayer:
             pytest.skip("stacksize could not be forced lower (co_stacksize already 0)")
 
         result = validate_code_object(
-            code, bad_code, {"validate_decodable": False, "validate_stacksize": True}
+            code,
+            bad_code,
+            {"validate_decodable": False, "validate_stacksize": True},
         )
         assert not result.valid
         assert any("decreased" in e for e in result.errors)

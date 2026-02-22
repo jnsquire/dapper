@@ -40,13 +40,17 @@ class _PyDebuggerBreakpointFacade:
 
         try:
             frame = getattr(self._debugger, "current_frame", None) or getattr(
-                self._debugger, "botframe", None
+                self._debugger,
+                "botframe",
+                None,
             )
             if frame is None and getattr(self._debugger, "_inproc_bridge", None) is not None:
                 bridge = getattr(self._debugger, "_inproc_bridge", None)
                 inproc_dbg = getattr(bridge, "debugger", None)
                 frame = getattr(inproc_dbg, "current_frame", None) or getattr(
-                    inproc_dbg, "botframe", None
+                    inproc_dbg,
+                    "botframe",
+                    None,
                 )
             if frame is not None:
                 locals_map = getattr(frame, "f_locals", None)
@@ -117,7 +121,8 @@ class _PyDebuggerBreakpointFacade:
         return results
 
     def process_breakpoints(
-        self, breakpoints: Sequence[SourceBreakpoint]
+        self,
+        breakpoints: Sequence[SourceBreakpoint],
     ) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
         """Process breakpoints into spec and storage lists."""
         spec_list: list[SourceBreakpoint] = []
@@ -155,7 +160,8 @@ class _PyDebuggerBreakpointFacade:
             logger.debug("Failed to forward breakpoint events")
 
     async def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
         """Set breakpoints for functions."""
         spec_funcs: list[FunctionBreakpoint] = []

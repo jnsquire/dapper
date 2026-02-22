@@ -24,7 +24,9 @@ class FakeFrame:
     """Minimal frame mock for testing."""
 
     def __init__(
-        self, locals_: dict[str, Any] | None = None, globals_: dict[str, Any] | None = None
+        self,
+        locals_: dict[str, Any] | None = None,
+        globals_: dict[str, Any] | None = None,
     ):
         self.f_locals = locals_ or {}
         self.f_globals = globals_ or {}

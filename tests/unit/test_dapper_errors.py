@@ -109,7 +109,9 @@ class TestSpecificErrors:
     def test_timeout_error(self) -> None:
         """Test DapperTimeoutError."""
         error = DapperTimeoutError(
-            "Operation timed out", timeout_seconds=30.0, operation="connect"
+            "Operation timed out",
+            timeout_seconds=30.0,
+            operation="connect",
         )
 
         assert error.error_code == "TimeoutError"
@@ -220,7 +222,6 @@ class TestErrorIntegration:
 
     def test_error_in_config_validation(self) -> None:
         """Test that configuration validation uses proper errors."""
-
         config = DapperConfig(mode="launch")  # No program set
 
         with pytest.raises(ConfigurationError) as exc_info:

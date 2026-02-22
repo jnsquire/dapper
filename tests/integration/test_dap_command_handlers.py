@@ -54,7 +54,9 @@ def _active_session_with_debugger(dbg: Any) -> tuple[debug_shared.DebugSession, 
 
 
 def _try_test_convert(
-    value_str: str, frame: Any | None = None, parent_obj: Any | None = None
+    value_str: str,
+    frame: Any | None = None,
+    parent_obj: Any | None = None,
 ) -> Any:
     try:
         return convert_value_with_context(value_str, frame, parent_obj)
@@ -73,7 +75,9 @@ def _make_variable_for_tests(dbg: Any, name: str, value: Any, frame: Any | None)
 
 def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
     def _extract_from_mapping(
-        helper_dbg: Any, mapping: dict[str, Any], frame: Any
+        helper_dbg: Any,
+        mapping: dict[str, Any],
+        frame: Any,
     ) -> list[dict[str, Any]]:
         return command_handler_helpers.extract_variables_from_mapping(
             helper_dbg,
@@ -109,7 +113,10 @@ def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None
         )
 
     def _set_scope_variable_direct(
-        frame: Any, scope: str, name: str, value: str
+        frame: Any,
+        scope: str,
+        name: str,
+        value: str,
     ) -> dict[str, Any]:
         return command_handler_helpers.set_scope_variable(
             frame,
@@ -203,7 +210,10 @@ def test_set_object_member_dict_list_tuple_and_attribute():
 
 def test_set_scope_variable_locals_and_globals():
     def _set_scope_variable_direct(
-        frame: Any, scope: str, name: str, value: str
+        frame: Any,
+        scope: str,
+        name: str,
+        value: str,
     ) -> dict[str, Any]:
         return command_handler_helpers.set_scope_variable(
             frame,
@@ -291,7 +301,9 @@ def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
     try:
         cleared_lines: list[int] = []
         monkeypatch.setattr(
-            dbg, "clear_break", lambda _path, line: cleared_lines.append(int(line))
+            dbg,
+            "clear_break",
+            lambda _path, line: cleared_lines.append(int(line)),
         )
         dbg.breaks = {source_path: [7]}  # type: ignore[attr-defined]
 
@@ -331,17 +343,26 @@ def test_continue_next_step_out(monkeypatch):
     assert dbg._continued is True
 
     stepping_handlers.handle_next_impl(
-        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+        dbg,
+        {"threadId": tid},
+        dch._get_thread_ident,
+        dch._set_dbg_stepping_flag,
     )
     assert dbg.stepping is True
 
     stepping_handlers.handle_step_in_impl(
-        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+        dbg,
+        {"threadId": tid},
+        dch._get_thread_ident,
+        dch._set_dbg_stepping_flag,
     )
     assert getattr(dbg, "_step", True) is True
 
     stepping_handlers.handle_step_out_impl(
-        dbg, {"threadId": tid}, dch._get_thread_ident, dch._set_dbg_stepping_flag
+        dbg,
+        {"threadId": tid},
+        dch._get_thread_ident,
+        dch._set_dbg_stepping_flag,
     )
     assert getattr(dbg, "_return", None) is not None
 
@@ -388,7 +409,8 @@ def test_variables_and_set_variable(monkeypatch):
         )
 
     def _resolve_with_fake_make_variable(
-        runtime_dbg: Any, frame_info: Any
+        runtime_dbg: Any,
+        frame_info: Any,
     ) -> list[dict[str, Any]]:
         return command_handler_helpers.resolve_variables_for_reference(
             runtime_dbg,
@@ -518,7 +540,9 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
         return "print(1)"
 
     monkeypatch.setattr(
-        dch._active_session(), "get_source_content_by_path", get_source_content_by_path
+        dch._active_session(),
+        "get_source_content_by_path",
+        get_source_content_by_path,
     )
     calls = []
 
@@ -663,12 +687,18 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
     # override returns dict
     class DbgWithMake(DummyDebugger):
         def make_variable_object(
-            self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+            self,
+            name: Any,
+            value: Any,
+            frame: Any | None = None,
+            *,
+            max_string_length: int = 1000,
         ):
             # reference parameters to satisfy linters and preserve protocol shape
             _ = (name, frame, max_string_length)
             return cast(
-                "Variable", {"value": f"dbg:{value}", "type": "int", "variablesReference": 0}
+                "Variable",
+                {"value": f"dbg:{value}", "type": "int", "variablesReference": 0},
             )
 
     _session, dbg = _active_session_with_debugger(DbgWithMake())
@@ -679,7 +709,12 @@ def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
     # make_variable_object raises -> fallback to module helper
     class DbgBad(DummyDebugger):
         def make_variable_object(
-            self, name: Any, value: Any, frame: Any | None = None, *, max_string_length: int = 1000
+            self,
+            name: Any,
+            value: Any,
+            frame: Any | None = None,
+            *,
+            max_string_length: int = 1000,
         ):
             # reference parameters to satisfy linters and preserve protocol shape
             _ = (name, value, frame, max_string_length)
@@ -749,7 +784,8 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
     # modules with paging
     calls.clear()
     source_handlers.handle_modules(
-        {"startModule": 0, "moduleCount": 1}, dch._safe_send_debug_message
+        {"startModule": 0, "moduleCount": 1},
+        dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "response"

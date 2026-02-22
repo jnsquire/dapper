@@ -1,6 +1,4 @@
-"""
-Data breakpoints / watchpoints protocol types.
-"""
+"""Data breakpoints / watchpoints protocol types."""
 
 from __future__ import annotations
 

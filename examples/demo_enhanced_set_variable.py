@@ -32,7 +32,6 @@ class Person:
 
 def demo_enhanced_set_variable():
     """Demo function showing various setVariable scenarios"""
-
     # Variables that can be modified via setVariable
     name = "Alice"
     age = 30
@@ -102,7 +101,6 @@ def demo_enhanced_set_variable():
 
 def test_type_conversions():
     """Test automatic type conversions"""
-
     # String values
     text = "hello"
 

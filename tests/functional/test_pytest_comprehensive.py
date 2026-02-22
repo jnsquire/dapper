@@ -49,7 +49,6 @@ class TestCacheManager:
 
     def test_thread_info_recursion_tracking(self):
         """Test thread info recursion depth tracking."""
-
         thread_info = get_thread_info()
         initial_depth = thread_info.recursion_depth
         initial_eval = thread_info.inside_frame_eval
@@ -65,7 +64,6 @@ class TestCacheManager:
 
     def test_breakpoint_cache_with_real_file(self):
         """Test breakpoint cache with actual file operations."""
-
         # Create temporary file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("# Test file\nx = 42\n")
@@ -89,7 +87,6 @@ class TestCacheManager:
 
     def test_cache_statistics_structure(self):
         """Test cache statistics return proper structure."""
-
         stats = get_cache_statistics()
 
         # Verify structure
@@ -126,7 +123,6 @@ class TestSelectiveTracer:
 
     def test_frame_analyzer_file_filtering(self):
         """Test frame analyzer file filtering logic."""
-
         analyzer = FrameTraceAnalyzer()
 
         # Test user files
@@ -165,7 +161,6 @@ class TestSelectiveTracer:
 
     def test_breakpoint_management(self):
         """Test breakpoint add/remove/management."""
-
         manager = get_trace_manager()
 
         test_file = "test_sample.py"
@@ -192,7 +187,6 @@ class TestSelectiveTracer:
 
     def test_trace_function_dispatch(self):
         """Test trace function dispatch logic."""
-
         dispatcher = SelectiveTraceDispatcher()
         mock_trace = Mock()
 
@@ -300,10 +294,11 @@ class TestDebuggerIntegration:
 
     def test_configuration_management(self):
         """Test configuration updates and validation."""
-
         # Test configuration updates
         configure_integration(
-            selective_tracing=False, bytecode_optimization=False, performance_monitoring=True
+            selective_tracing=False,
+            bytecode_optimization=False,
+            performance_monitoring=True,
         )
 
         bridge = get_integration_bridge()

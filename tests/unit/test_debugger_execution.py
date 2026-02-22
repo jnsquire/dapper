@@ -11,8 +11,7 @@ from .test_debugger_base import BaseDebuggerTest
 
 # Local async recorder
 class AsyncCallRecorder:
-    """
-    Replacement for AsyncMock used in these tests.
+    """Replacement for AsyncMock used in these tests.
 
     Records calls synchronously and returns a noop coroutine so callers can
     safely await the result without creating orphaned coroutine warnings.

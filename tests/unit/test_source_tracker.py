@@ -55,7 +55,8 @@ def test_iter_python_module_files_uses_debounce_cache(monkeypatch, tmp_path: Pat
 
 
 def test_iter_python_module_files_refreshes_when_module_count_changes(
-    monkeypatch, tmp_path: Path
+    monkeypatch,
+    tmp_path: Path,
 ) -> None:
     tracker = LoadedSourceTracker()
 

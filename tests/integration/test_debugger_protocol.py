@@ -225,7 +225,7 @@ def test_debugger_like_protocol_var_ref_types():
             "type": "str",
             "variablesReference": 0,
             "presentationHint": {},
-        }
+        },
     ]
     dbg.var_refs[3] = var_ref_list
     assert len(dbg.var_refs[3]) == 1
@@ -273,7 +273,11 @@ def test_debugger_like_protocol_breakpoint_methods():
 
     # Test record_breakpoint
     dbg.record_breakpoint(
-        "test.py", 15, condition="y == 10", hit_condition=None, log_message="Hit breakpoint"
+        "test.py",
+        15,
+        condition="y == 10",
+        hit_condition=None,
+        log_message="Hit breakpoint",
     )
     assert len(dbg.recorded) == 1
     assert dbg.recorded[0] == (

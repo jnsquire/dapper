@@ -54,6 +54,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
         Args:
             timeout_seconds: Default timeout for operations
+
         """
         self._timeout_seconds = timeout_seconds
         self._lock = asyncio.Lock()
@@ -71,6 +72,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
         Returns:
             Mapping of command name to async handler callable.
+
         """
         ...
 
@@ -95,6 +97,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
         Returns:
             The command response
+
         """
         if args is None:
             args = {}
@@ -140,6 +143,7 @@ class BaseBackend(DebuggerBackend, ABC):
         Raises:
             TimeoutError: If the command times out
             BackendError: If the command fails
+
         """
         async with self._lifecycle.operation_context(f"execute_{command}"):
             timeout = timeout or self._timeout_seconds
@@ -193,8 +197,8 @@ class BaseBackend(DebuggerBackend, ABC):
         if isinstance(payload, dict):
             return {
                 "allThreadsContinued": bool(
-                    payload.get("allThreadsContinued", default_all_threads_continued)
-                )
+                    payload.get("allThreadsContinued", default_all_threads_continued),
+                ),
             }
         if isinstance(payload, bool):
             return {"allThreadsContinued": payload}
@@ -246,6 +250,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
         Returns:
             The extracted field or full response, optionally cast to return_type
+
         """
         response = await self._execute_with_timeout(command, args, timeout=timeout)
 
@@ -307,11 +312,16 @@ class BaseBackend(DebuggerBackend, ABC):
     async def next_(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step over."""
         await self._execute_with_timeout(
-            "next", {"thread_id": thread_id, "granularity": granularity}
+            "next",
+            {"thread_id": thread_id, "granularity": granularity},
         )
 
     async def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         """Step into."""
         args: dict[str, object] = {"thread_id": thread_id, "granularity": granularity}
@@ -322,7 +332,8 @@ class BaseBackend(DebuggerBackend, ABC):
     async def step_out(self, thread_id: int, *, granularity: str = "line") -> None:
         """Step out."""
         await self._execute_with_timeout(
-            "step_out", {"thread_id": thread_id, "granularity": granularity}
+            "step_out",
+            {"thread_id": thread_id, "granularity": granularity},
         )
 
     async def pause(self, thread_id: int) -> bool:
@@ -420,6 +431,7 @@ class BaseBackend(DebuggerBackend, ABC):
 
         Returns:
             Dict with 'targets' key containing list of completion items
+
         """
         return await self._execute_and_extract(
             "completions",

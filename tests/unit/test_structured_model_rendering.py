@@ -241,7 +241,10 @@ class TestStructuredModelLabel:
 
 
 def _simple_make_var(
-    dbg: object, name: str, value: object, frame: object | None
+    dbg: object,
+    name: str,
+    value: object,
+    frame: object | None,
 ) -> dict[str, object]:
     """Minimal make_variable_fn for tests (no debugger needed)."""
     mgr = VariableManager()
@@ -252,7 +255,10 @@ class TestExtractVariablesStructuredModels:
     def test_dataclass_fields_are_properties(self):
         out: list = []
         command_handler_helpers.extract_variables(
-            None, out, Point(1.0, 2.0), make_variable_fn=_simple_make_var
+            None,
+            out,
+            Point(1.0, 2.0),
+            make_variable_fn=_simple_make_var,
         )
         assert {v["name"] for v in out} == {"x", "y"}
         for v in out:
@@ -263,7 +269,10 @@ class TestExtractVariablesStructuredModels:
     def test_dataclass_expansion_has_no_dunder_attrs(self):
         out: list = []
         command_handler_helpers.extract_variables(
-            None, out, Config(), make_variable_fn=_simple_make_var
+            None,
+            out,
+            Config(),
+            make_variable_fn=_simple_make_var,
         )
         names = {v["name"] for v in out}
         assert all(not n.startswith("_") for n in names)
@@ -273,7 +282,10 @@ class TestExtractVariablesStructuredModels:
     def test_namedtuple_fields_are_properties(self):
         out: list = []
         command_handler_helpers.extract_variables(
-            None, out, TypedNT("hello", 7), make_variable_fn=_simple_make_var
+            None,
+            out,
+            TypedNT("hello", 7),
+            make_variable_fn=_simple_make_var,
         )
         names = [v["name"] for v in out]
         assert names == ["name", "value"]
@@ -284,7 +296,10 @@ class TestExtractVariablesStructuredModels:
         """Plain tuples should NOT be treated as structured models."""
         out: list = []
         command_handler_helpers.extract_variables(
-            None, out, (10, 20, 30), make_variable_fn=_simple_make_var
+            None,
+            out,
+            (10, 20, 30),
+            make_variable_fn=_simple_make_var,
         )
         names = [v["name"] for v in out]
         assert names == ["0", "1", "2"]

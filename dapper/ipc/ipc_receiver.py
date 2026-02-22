@@ -1,5 +1,4 @@
-"""
-IPC receiver for debug adapter commands.
+"""IPC receiver for debug adapter commands.
 
 This module handles receiving and dispatching debug commands from the
 IPC channel (socket or pipe) established between the debug adapter and
@@ -134,8 +133,7 @@ def receive_debug_commands(
     *,
     error_sender: ErrorSender | None = None,
 ) -> None:
-    """
-    Continuously reads debug commands from the IPC channel, parses them,
+    """Continuously reads debug commands from the IPC channel, parses them,
     and dispatches them for processing until termination is requested.
 
     IPC is mandatory; raises RuntimeError if IPC is not enabled.

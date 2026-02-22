@@ -109,8 +109,10 @@ class InProcessBackend(BaseBackend):
     async def _handler_get_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
             await self.get_stack_trace(
-                args["thread_id"], args.get("start_frame", 0), args.get("levels", 0)
-            )
+                args["thread_id"],
+                args.get("start_frame", 0),
+                args.get("levels", 0),
+            ),
         )
 
     async def _handler_get_variables(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -124,19 +126,22 @@ class InProcessBackend(BaseBackend):
 
     async def _handler_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
-            await self.set_variable(args["variables_reference"], args["name"], args["value"])
+            await self.set_variable(args["variables_reference"], args["name"], args["value"]),
         )
 
     async def _handler_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
-            await self.evaluate(args["expression"], args.get("frame_id"), args.get("context"))
+            await self.evaluate(args["expression"], args.get("frame_id"), args.get("context")),
         )
 
     async def _handler_completions(self, args: dict[str, Any]) -> dict[str, Any]:
         return dict(
             await self.completions(
-                args["text"], args["column"], args.get("frame_id"), args.get("line", 1)
-            )
+                args["text"],
+                args["column"],
+                args.get("frame_id"),
+                args.get("line", 1),
+            ),
         )
 
     async def _handler_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -190,7 +195,9 @@ class InProcessBackend(BaseBackend):
     # Breakpoint operations
     # ------------------------------------------------------------------
     async def set_breakpoints(
-        self, path: str, breakpoints: list[SourceBreakpoint]
+        self,
+        path: str,
+        breakpoints: list[SourceBreakpoint],
     ) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         try:
@@ -200,7 +207,8 @@ class InProcessBackend(BaseBackend):
             return [{"verified": False} for _ in breakpoints]
 
     async def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
         """Set function breakpoints."""
         try:
@@ -250,7 +258,11 @@ class InProcessBackend(BaseBackend):
             logger.exception("in-process next failed")
 
     async def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         """Step into."""
         try:
@@ -273,7 +285,10 @@ class InProcessBackend(BaseBackend):
     # Inspection operations
     # ------------------------------------------------------------------
     async def get_stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
         try:
@@ -310,7 +325,10 @@ class InProcessBackend(BaseBackend):
             return {"value": value, "type": "string", "variablesReference": 0}
 
     async def evaluate(
-        self, expression: str, frame_id: int | None = None, context: str | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        context: str | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
         try:
@@ -324,7 +342,11 @@ class InProcessBackend(BaseBackend):
             }
 
     async def completions(
-        self, text: str, column: int, frame_id: int | None = None, line: int = 1
+        self,
+        text: str,
+        column: int,
+        frame_id: int | None = None,
+        line: int = 1,
     ) -> CompletionsResponseBody:
         """Get completions for an expression."""
         try:
@@ -356,7 +378,8 @@ class InProcessBackend(BaseBackend):
                             "fullTypeName": exception_info.get("exceptionId", "Unknown"),
                             "source": "in-process debugger",
                             "stackTrace": exception_info.get(
-                                "stackTrace", ["Stack trace available"]
+                                "stackTrace",
+                                ["Stack trace available"],
                             ),
                         },
                     ),

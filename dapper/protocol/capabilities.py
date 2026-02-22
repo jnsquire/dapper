@@ -1,6 +1,4 @@
-"""
-Adapter capability types and exception-related TypedDicts.
-"""
+"""Adapter capability types and exception-related TypedDicts."""
 
 from __future__ import annotations
 

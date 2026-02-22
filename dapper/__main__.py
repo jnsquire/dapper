@@ -1,5 +1,4 @@
-"""
-Dapper debuggee launcher — ``python -m dapper``.
+"""Dapper debuggee launcher — ``python -m dapper``.
 
 This module is the entry point for the **debuggee launcher**, the subprocess
 that runs the user's Python program under the debugger.  It is spawned by

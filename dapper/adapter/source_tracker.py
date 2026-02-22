@@ -35,6 +35,7 @@ class LoadedSourceTracker:
 
         Args:
             program_path: Path to the main program being debugged
+
         """
         self._program_path = program_path
         self._module_file_cache: list[tuple[str, Path, str]] = []
@@ -78,6 +79,7 @@ class LoadedSourceTracker:
 
         Returns:
             A DAP Source dictionary
+
         """
         src: dict[str, Any] = {
             "name": name or path.name,
@@ -109,6 +111,7 @@ class LoadedSourceTracker:
             origin: Origin string for the source
             name: Optional display name
             check_exists: If True, verify the file exists before adding
+
         """
         if not self.is_python_source_file(filename):
             return
@@ -125,6 +128,7 @@ class LoadedSourceTracker:
 
         Yields:
             Tuples of (module_name, resolved_path, origin_string)
+
         """
         now = time.monotonic()
         current_count = len(sys.modules)
@@ -174,6 +178,7 @@ class LoadedSourceTracker:
 
         Returns:
             List of DAP Source objects for all loaded Python files
+
         """
         loaded_sources: list[Source] = []
         seen_paths: set[str] = set()
@@ -217,6 +222,7 @@ class LoadedSourceTracker:
 
         Returns:
             List of DAP Module objects for all loaded modules
+
         """
         all_modules: list[Module] = []
 

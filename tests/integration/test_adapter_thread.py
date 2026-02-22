@@ -186,7 +186,6 @@ def test_cancel_thread_futures_cancelled_future_does_not_raise():
     """Verify that AdapterThread._cancel_thread_futures handles cancelled
     futures without raising an error.
     """
-
     # Create an adapter runner instance but do not start it. We just need the
     # instance to call the private helper.
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", port=None)

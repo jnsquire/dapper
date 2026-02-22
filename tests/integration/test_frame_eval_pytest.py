@@ -1,6 +1,4 @@
-"""
-Pytest-style tests for frame evaluation system.
-"""
+"""Pytest-style tests for frame evaluation system."""
 
 from pathlib import Path
 import sys
@@ -25,7 +23,7 @@ from dapper._frame_eval.selective_tracer import get_trace_manager
 
 # Disable import order warnings for this test file
 pytestmark = pytest.mark.filterwarnings(
-    "ignore:import should be at the top-level of a file:RuntimeWarning"
+    "ignore:import should be at the top-level of a file:RuntimeWarning",
 )
 
 
@@ -145,7 +143,6 @@ def test_breakpoint_cache():
 
 def test_selective_tracer():
     """Test selective tracer functionality."""
-
     # Test trace manager
     manager = get_trace_manager()
     assert manager is not None
@@ -170,7 +167,6 @@ def test_selective_tracer():
 
 def test_debugger_integration():
     """Test debugger integration functionality."""
-
     # Test integration bridge
     bridge = get_integration_bridge()
     assert bridge is not None
@@ -281,7 +277,6 @@ def test_debugger_integration():
 
 def test_performance_monitoring():
     """Test performance monitoring functionality."""
-
     bridge = get_integration_bridge()
 
     # Test performance monitoring
@@ -310,10 +305,11 @@ def test_performance_monitoring():
 
 def test_configuration():
     """Test configuration management."""
-
     # Test configuration updates
     configure_integration(
-        selective_tracing=False, bytecode_optimization=False, performance_monitoring=True
+        selective_tracing=False,
+        bytecode_optimization=False,
+        performance_monitoring=True,
     )
 
     bridge = get_integration_bridge()
@@ -348,7 +344,6 @@ def test_file_tracking_patterns(test_file: str, should_track: bool) -> None:
 
 def test_cache_statistics():
     """Test cache statistics functionality."""
-
     # Get initial statistics
     stats = get_cache_statistics()
     assert isinstance(stats, dict)

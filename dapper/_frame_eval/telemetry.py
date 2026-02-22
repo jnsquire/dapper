@@ -93,13 +93,17 @@ class FrameEvalTelemetry:
     def _record(self, reason_code: str, attr_name: str, **kwargs: Any) -> None:
         """Record a reason-code event with optional context."""
         event = FrameEvalTelemetryEvent(
-            timestamp=time.time(), reason_code=reason_code, context=kwargs
+            timestamp=time.time(),
+            reason_code=reason_code,
+            context=kwargs,
         )
 
         with self._lock:
             if hasattr(self._reason_counts, attr_name):
                 setattr(
-                    self._reason_counts, attr_name, getattr(self._reason_counts, attr_name) + 1
+                    self._reason_counts,
+                    attr_name,
+                    getattr(self._reason_counts, attr_name) + 1,
                 )
 
             self._recent_events.append(event)
@@ -130,7 +134,9 @@ class FrameEvalTelemetry:
 
     def record_py_debugger_breakpoint_hook_failed(self, **kwargs: Any) -> None:
         self._record(
-            "PY_DEBUGGER_BREAKPOINT_HOOK_FAILED", "py_debugger_breakpoint_hook_failed", **kwargs
+            "PY_DEBUGGER_BREAKPOINT_HOOK_FAILED",
+            "py_debugger_breakpoint_hook_failed",
+            **kwargs,
         )
 
     def record_py_debugger_integration_failed(self, **kwargs: Any) -> None:
@@ -141,7 +147,9 @@ class FrameEvalTelemetry:
 
     def record_selective_tracing_analysis_failed(self, **kwargs: Any) -> None:
         self._record(
-            "SELECTIVE_TRACING_ANALYSIS_FAILED", "selective_tracing_analysis_failed", **kwargs
+            "SELECTIVE_TRACING_ANALYSIS_FAILED",
+            "selective_tracing_analysis_failed",
+            **kwargs,
         )
 
     def snapshot(self) -> FrameEvalTelemetrySnapshot:

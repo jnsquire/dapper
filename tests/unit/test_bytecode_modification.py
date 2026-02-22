@@ -12,7 +12,7 @@ import pytest
 
 # Disable import order warnings for this test file
 pytestmark = pytest.mark.filterwarnings(
-    "ignore:import should be at the top-level of a file:RuntimeWarning"
+    "ignore:import should be at the top-level of a file:RuntimeWarning",
 )
 
 # Local application imports
@@ -102,7 +102,7 @@ def _build_code_args(code_attrs: dict) -> list:
                 code_attrs.get("co_qualname", ""),
                 code_attrs.get("co_linetable", b""),
                 code_attrs.get("co_exceptiontable", b"") if sys.version_info >= (3, 11) else b"",
-            ]
+            ],
         )
     else:
         args.extend(
@@ -110,7 +110,7 @@ def _build_code_args(code_attrs: dict) -> list:
                 code_attrs.get("co_lnotab", b""),
                 code_attrs.get("co_freevars", ()),
                 code_attrs.get("co_cellvars", ()),
-            ]
+            ],
         )
 
     return args
@@ -264,12 +264,15 @@ def test_cache_key_is_stable_across_code_object_identity(
 
 
 def test_breakpoint_injection(
-    bytecode_modifier: BytecodeModifier, original_code: types.CodeType
+    bytecode_modifier: BytecodeModifier,
+    original_code: types.CodeType,
 ) -> None:
     """Test breakpoint injection with debug mode."""
     breakpoint_lines = {2, 3, 4}
     success, modified_code = bytecode_modifier.inject_breakpoints(
-        original_code, breakpoint_lines, debug_mode=True
+        original_code,
+        breakpoint_lines,
+        debug_mode=True,
     )
     assert success
     assert modified_code is not None
@@ -300,7 +303,8 @@ def test_rebuild_code_object_prefers_replace(
 
 
 def test_optimization_toggle(
-    bytecode_modifier: BytecodeModifier, original_code: types.CodeType
+    bytecode_modifier: BytecodeModifier,
+    original_code: types.CodeType,
 ) -> None:
     """Test optimization toggle functionality."""
     # First disable optimization
@@ -308,7 +312,9 @@ def test_optimization_toggle(
 
     # Inject breakpoints and optimize
     success, modified_code = bytecode_modifier.inject_breakpoints(
-        original_code, {3, 5}, debug_mode=True
+        original_code,
+        {3, 5},
+        debug_mode=True,
     )
     assert success
     assert modified_code is not None
@@ -381,7 +387,8 @@ def test_breakpoint_sequence_detection(bytecode_modifier: BytecodeModifier) -> N
 
 
 def test_injection_point_finding(
-    bytecode_modifier: BytecodeModifier, original_code: types.CodeType
+    bytecode_modifier: BytecodeModifier,
+    original_code: types.CodeType,
 ) -> None:
     """Test finding injection points in bytecode."""
     instructions = list(dis.get_instructions(original_code))

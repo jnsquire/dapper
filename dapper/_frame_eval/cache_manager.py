@@ -1,5 +1,4 @@
-"""
-Advanced caching system for frame evaluation.
+"""Advanced caching system for frame evaluation.
 
 This module provides efficient caching mechanisms for FuncCodeInfo objects
 and thread-local data using Python's _PyCode_SetExtra API and optimized
@@ -206,16 +205,14 @@ class CacheManager:
 
 
 class FuncCodeInfoCache:
-    """
-    High-performance cache for FuncCodeInfo objects.
+    """High-performance cache for FuncCodeInfo objects.
 
     Uses a hybrid approach with both code object extra data and
     an LRU cache for fallback and statistics.
     """
 
     def __init__(self, max_size: int = 1000, ttl: int = 300):
-        """
-        Initialize the cache.
+        """Initialize the cache.
 
         Args:
             max_size: Maximum number of entries in the LRU cache
@@ -236,8 +233,7 @@ class FuncCodeInfoCache:
         self._lock = threading.RLock()
 
     def get(self, code_obj: Any) -> Any | None:
-        """
-        Get cached FuncCodeInfo for a code object.
+        """Get cached FuncCodeInfo for a code object.
 
         Args:
             code_obj: The code object to get cached info for
@@ -258,8 +254,7 @@ class FuncCodeInfoCache:
             return None
 
     def set(self, code_obj: Any, info: Any) -> None:
-        """
-        Cache FuncCodeInfo for a code object.
+        """Cache FuncCodeInfo for a code object.
 
         Args:
             code_obj: The code object to cache info for
@@ -385,7 +380,6 @@ class FuncCodeInfoCache:
 
         Returns True if an entry was removed, False otherwise.
         """
-
         removed = False
 
         # Remove any LRU/weak entries (if present). This is a simple pop
@@ -419,8 +413,7 @@ class FuncCodeInfoCache:
             CacheManager._cache_stats["memory_usage"] = 0
 
     def cleanup_expired(self) -> int:
-        """
-        Remove expired entries from the cache.
+        """Remove expired entries from the cache.
 
         Returns:
             Number of entries removed
@@ -473,8 +466,7 @@ class FuncCodeInfoCache:
 
 
 class ThreadLocalCache:
-    """
-    Thread-local cache for frame evaluation data.
+    """Thread-local cache for frame evaluation data.
 
     Provides fast access to thread-specific debugging information
     without the overhead of global locks.
@@ -597,8 +589,7 @@ class ThreadInfo:
 
 
 class BreakpointCache:
-    """
-    Specialized cache for breakpoint information.
+    """Specialized cache for breakpoint information.
 
     Provides fast lookup of breakpoints by file path with
     intelligent invalidation and update mechanisms.
@@ -615,8 +606,7 @@ class BreakpointCache:
         self._access_order = OrderedDict()
 
     def get_breakpoints(self, filepath: str | os.PathLike) -> set[int] | None:
-        """
-        Get cached breakpoints for a file.
+        """Get cached breakpoints for a file.
 
         Args:
             filepath: Path to the source file (PathLike)
@@ -654,8 +644,7 @@ class BreakpointCache:
             return None
 
     def set_breakpoints(self, filepath: str | os.PathLike, lines: Iterable[int]) -> None:
-        """
-        Cache breakpoints for a file.
+        """Cache breakpoints for a file.
 
         Args:
             filepath: Path to the source file (PathLike)
@@ -891,8 +880,7 @@ def configure_caches(
     func_code_ttl: int = 300,
     breakpoint_max_size: int = 500,
 ) -> None:
-    """
-    Configure cache parameters.
+    """Configure cache parameters.
 
     Args:
         func_code_max_size: Maximum size of FuncCodeInfo cache

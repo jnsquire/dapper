@@ -217,7 +217,12 @@ class SupportsBreakpointCommands(Protocol):
     exception_handler: ExceptionHandlerLike
 
     def set_break(
-        self, filename: str, lineno: int, *, cond: str | None = ..., **kwargs: Any
+        self,
+        filename: str,
+        lineno: int,
+        *,
+        cond: str | None = ...,
+        **kwargs: Any,
     ) -> Any: ...
 
     def clear_break(self, filename: str, lineno: int = ...) -> Any: ...

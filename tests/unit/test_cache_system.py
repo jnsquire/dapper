@@ -44,6 +44,7 @@ class MockFuncCodeInfo:
         Args:
             filename: The filename to associate with this code info.
             has_breakpoints: Whether this code has breakpoints.
+
         """
         self.filename = filename
         self.has_breakpoints = has_breakpoints
@@ -167,7 +168,9 @@ def worker_thread(thread_id: int, results: list[dict[str, Any]]) -> None:
 
     # Use FuncCodeInfo cache
     code_obj = compile(
-        f"def worker_{thread_id}(): return {thread_id}", f"worker_{thread_id}.py", "exec"
+        f"def worker_{thread_id}(): return {thread_id}",
+        f"worker_{thread_id}.py",
+        "exec",
     )
     info = MockFuncCodeInfo(f"worker_{thread_id}.py", True)
 
@@ -182,7 +185,7 @@ def worker_thread(thread_id: int, results: list[dict[str, Any]]) -> None:
             "thread_id": thread_id,
             "cache_hit": cached_info is info,
             "frame_eval_count": thread_info.inside_frame_eval,
-        }
+        },
     )
 
 

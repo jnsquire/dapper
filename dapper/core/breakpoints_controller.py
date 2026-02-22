@@ -51,11 +51,15 @@ class _SupportsBreakpointManagement(Protocol):
     def set_exception_breakpoints(self, filters: list[str]) -> Awaitable[list[Breakpoint]]: ...
 
     def data_breakpoint_info(
-        self, *, name: str, frame_id: int
+        self,
+        *,
+        name: str,
+        frame_id: int,
     ) -> DataBreakpointInfoResponseBody: ...
 
     def set_data_breakpoints(
-        self, breakpoints: list[DataBreakpointPayload]
+        self,
+        breakpoints: list[DataBreakpointPayload],
     ) -> list[Breakpoint]: ...
 
 
@@ -91,7 +95,9 @@ class BreakpointController:
     """
 
     def __init__(
-        self, loop: asyncio.AbstractEventLoop, debugger: _SupportsBreakpointManagement
+        self,
+        loop: asyncio.AbstractEventLoop,
+        debugger: _SupportsBreakpointManagement,
     ) -> None:
         self._loop = loop
         self._debugger = debugger
@@ -117,7 +123,9 @@ class BreakpointController:
         return self._schedule(self.async_set_source(path, breakpoints))
 
     async def async_set_source(
-        self, path: str | Path, breakpoints: list[LineBreakpointSpec]
+        self,
+        path: str | Path,
+        breakpoints: list[LineBreakpointSpec],
     ) -> list[BreakpointResponse]:
         path_str = str(Path(path).resolve())
         bp_list: list[SourceBreakpoint] = []
@@ -134,12 +142,14 @@ class BreakpointController:
 
     # ---- function breakpoints
     def set_function(
-        self, breakpoints: list[FunctionBreakpointSpec]
+        self,
+        breakpoints: list[FunctionBreakpointSpec],
     ) -> Future[list[FunctionBreakpoint]]:
         return self._schedule(self.async_set_function(breakpoints))
 
     async def async_set_function(
-        self, breakpoints: list[FunctionBreakpointSpec]
+        self,
+        breakpoints: list[FunctionBreakpointSpec],
     ) -> list[FunctionBreakpoint]:
         bp_funcs: list[FunctionBreakpoint] = []
         for bp in breakpoints:

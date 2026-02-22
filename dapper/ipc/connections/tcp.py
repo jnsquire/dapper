@@ -31,6 +31,7 @@ class TCPServerConnection(ConnectionBase):
             port: The port to bind to. Use 0 for an OS-assigned ephemeral
                 port (recommended). Pass an explicit port number only when
                 a fixed port is required (e.g. user-supplied configuration).
+
         """
         super().__init__()
         self.host = host or "localhost"
@@ -92,12 +93,17 @@ class TCPServerConnection(ConnectionBase):
         if hasattr(self, "socket") and self.socket is not None:
             logger.debug("Using pre-created socket")
             self.server = await asyncio.start_server(
-                self._handle_client, sock=self.socket, reuse_address=True
+                self._handle_client,
+                sock=self.socket,
+                reuse_address=True,
             )
         else:
             logger.debug("Creating new socket")
             self.server = await asyncio.start_server(
-                self._handle_client, self.host, self.port, reuse_address=True
+                self._handle_client,
+                self.host,
+                self.port,
+                reuse_address=True,
             )
 
         self._client_connected = asyncio.Future()
@@ -117,7 +123,9 @@ class TCPServerConnection(ConnectionBase):
                 _, port = sock.getsockname()[:2]
                 if port != self.port:
                     logger.debug(
-                        "Server bound to ephemeral port %d (requested: %d)", port, self.port
+                        "Server bound to ephemeral port %d (requested: %d)",
+                        port,
+                        self.port,
                     )
                     self.port = port
         except (IndexError, OSError) as e:
@@ -132,6 +140,7 @@ class TCPServerConnection(ConnectionBase):
         Raises:
             RuntimeError: If called before start_listening
             asyncio.TimeoutError: If timeout is reached before a client connects
+
         """
         logger.debug("wait_for_client() called, _client_connected=%s", self._client_connected)
         if self._client_connected is None:
@@ -144,12 +153,16 @@ class TCPServerConnection(ConnectionBase):
             self._is_connected = True
         except asyncio.TimeoutError:
             logger.warning(
-                "Timed out waiting for client connection on %s:%s", self.host, self.port
+                "Timed out waiting for client connection on %s:%s",
+                self.host,
+                self.port,
             )
             raise
 
     async def _handle_client(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
     ) -> None:
         """Handle a new client connection."""
         logger.debug("TCP client connected")

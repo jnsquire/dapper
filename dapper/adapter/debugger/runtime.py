@@ -35,7 +35,8 @@ class _PyDebuggerRuntimeManager:
             """Handle IPC message that may be already parsed (binary) or string."""
             if isinstance(message, dict):
                 asyncio.run_coroutine_threadsafe(
-                    self._debugger.handle_debug_message(message), self._debugger.loop
+                    self._debugger.handle_debug_message(message),
+                    self._debugger.loop,
                 )
             else:
                 self._debugger._handle_debug_message(message)
@@ -84,7 +85,7 @@ class _PyDebuggerRuntimeManager:
                 self._debugger.is_terminated = True
 
             self._debugger.spawn_threadsafe(
-                lambda c=exit_code: self._debugger._handle_program_exit(c)
+                lambda c=exit_code: self._debugger._handle_program_exit(c),
             )
         except Exception:
             logger.exception("Error starting debuggee")

@@ -1,5 +1,4 @@
-"""
-Pytest-style tests for the Debug Adapter entry point.
+"""Pytest-style tests for the Debug Adapter entry point.
 
 Converted from unittest.TestCase to plain pytest functions with
 fixtures and parametrization to reduce boilerplate.

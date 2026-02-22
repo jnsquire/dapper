@@ -144,8 +144,14 @@ class TestFrameEvalManager:
                 assert result["compatible"] is False
                 assert "Python version too old" in result["reason"]
 
-            # Test with incompatible Python version (too new)
+            # Test with boundary Python version (maximum supported)
             with patch("sys.version_info", VersionInfo(3, 14, 0, "final", 0)):
+                result = self.manager.check_environment_compatibility()
+                assert result["compatible"] is True
+                assert result["python_version"] == "3.14.0"
+            # Test with incompatible Python version (too new)
+            # max_python ceiling is now (3, 14), so 3.15 is the first out-of-range version
+            with patch("sys.version_info", VersionInfo(3, 15, 0, "final", 0)):
                 result = self.manager.check_environment_compatibility()
                 assert result["compatible"] is False
                 assert "Python version too new" in result["reason"]

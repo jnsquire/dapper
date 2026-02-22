@@ -1,7 +1,5 @@
 # ruff: noqa: PLC0415
-"""
-DebuggerBDB class and related helpers for debug launcher.
-"""
+"""DebuggerBDB class and related helpers for debug launcher."""
 
 from __future__ import annotations
 
@@ -132,7 +130,9 @@ class DebuggerBDB(bdb.Bdb):
 
     # ---------------- Data Breakpoint (Watch) Support -----------------
     def register_data_watches(
-        self, names: list[str], metas: list[tuple[str, dict]] | None = None
+        self,
+        names: list[str],
+        metas: list[tuple[str, dict]] | None = None,
     ) -> None:
         """Replace the set of variable names to watch for changes.
 
@@ -286,7 +286,11 @@ class DebuggerBDB(bdb.Bdb):
         return True
 
     def _emit_stopped_event(
-        self, frame: types.FrameType, thread_id: int, reason: str, description: str | None = None
+        self,
+        frame: types.FrameType,
+        thread_id: int,
+        reason: str,
+        description: str | None = None,
     ) -> None:
         """Emit a stopped event with proper bookkeeping."""
         self.stepping_controller.current_frame = frame
@@ -326,7 +330,7 @@ class DebuggerBDB(bdb.Bdb):
                 or self.get_break(canonical, line)
                 or (
                     filename in self.bp_manager.custom and line in self.bp_manager.custom[filename]
-                )
+                ),
             )
             if not has_explicit_bp:
                 self.set_step()
@@ -351,7 +355,10 @@ class DebuggerBDB(bdb.Bdb):
                 if self._should_stop_for_data_breakpoint(changed_name, frame):
                     self._ensure_thread_registered(thread_id)
                     self._emit_stopped_event(
-                        frame, thread_id, "data breakpoint", f"{changed_name} changed"
+                        frame,
+                        thread_id,
+                        "data breakpoint",
+                        f"{changed_name} changed",
                     )
             if changed_names:
                 return
@@ -448,7 +455,10 @@ class DebuggerBDB(bdb.Bdb):
         return stack_frames
 
     def set_custom_breakpoint(
-        self, filename: str, line: int, condition: str | None = None
+        self,
+        filename: str,
+        line: int,
+        condition: str | None = None,
     ) -> None:
         custom = self.bp_manager.custom
         if filename not in custom:

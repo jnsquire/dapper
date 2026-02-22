@@ -1,5 +1,4 @@
-"""
-ThreadTracker: Centralized management of thread and frame state during debugging.
+"""ThreadTracker: Centralized management of thread and frame state during debugging.
 
 This module provides a unified API for:
 1. Tracking registered threads and their names
@@ -73,6 +72,7 @@ class ThreadTracker:
         frames_by_thread: Mapping of thread ID to list of stack frame dicts.
         frame_id_to_frame: Mapping of frame ID to actual Python frame object.
         next_frame_id: Next frame ID to allocate.
+
     """
 
     threads: dict[int, str] = field(default_factory=dict)
@@ -96,6 +96,7 @@ class ThreadTracker:
 
         Returns:
             The thread name.
+
         """
         if name is None:
             name = threading.current_thread().name
@@ -119,6 +120,7 @@ class ThreadTracker:
 
         Returns:
             True if the thread was previously stopped, False otherwise.
+
         """
         if thread_id in self.stopped_thread_ids:
             self.stopped_thread_ids.discard(thread_id)
@@ -179,6 +181,7 @@ class ThreadTracker:
 
         Returns:
             List of DAP-style stack frame dicts.
+
         """
         stack_frames: list[StackFrameDict] = []
         current = frame
@@ -246,6 +249,7 @@ class ThreadTracker:
 
         Returns:
             List of DAP-style stack frame dicts, innermost first.
+
         """
         stack_frames: list[StackFrameDict] = []
 

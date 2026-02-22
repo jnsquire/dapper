@@ -9,8 +9,7 @@ from .test_debugger_base import BaseDebuggerTest
 
 @pytest.mark.asyncio
 class TestDebuggerThreads(BaseDebuggerTest):
-    """
-    Test cases for debugger thread management"""
+    """Test cases for debugger thread management"""
 
     async def test_py_debugger_thread_initialization(self):
         """Test PyDebuggerThread initialization"""

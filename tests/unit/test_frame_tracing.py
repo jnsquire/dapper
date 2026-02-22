@@ -481,7 +481,7 @@ def test_should_skip_frame():
 
         # Test with debugger path
         frame.f_code.co_filename = str(
-            Path(__file__).parent.parent.parent / "dapper" / "debugger_bdb.py"
+            Path(__file__).parent.parent.parent / "dapper" / "debugger_bdb.py",
         )
         assert ft.should_skip_frame(frame) is True
 

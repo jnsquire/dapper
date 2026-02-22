@@ -10,25 +10,8 @@ Legend
 
 ---
 
-## 1. Async / Concurrency Awareness
-
-- [x] **Async-aware stepping** — `step over` an `await` expression should
-      suspend at the next await suspension point rather than diving into event
-      loop internals.
-- [x] **asyncio task inspector** — expose all live `asyncio.Task` objects as
-      pseudo-threads; show their coroutine call chains as stack frames in the
-      DAP stack trace view.
-- [x] **Thread name propagation** — surface `threading.Thread.name` in the
-      threads listing (flagged in checklist as "dynamic thread names ❌";
-      the value is directly available and cheap to expose).
-
----
-
 ## 2. Rich Variable Presentation
 
-- [x] **Dataclass / namedtuple / Pydantic model rendering** — show fields by
-      name, suppress internal `__` attributes, and use `presentationHint` to
-      distinguish field types.
 - [ ] **numpy / pandas / torch tensor summaries** — show shape, dtype, and a
       compact data preview instead of the full `repr` (which can hang the UI
       for large arrays).
@@ -38,16 +21,6 @@ Legend
 - [ ] **`__repr__` vs `__str__` toggle** — let the user choose which
       representation the variable panel displays when both differ meaningfully
       (e.g. SQLAlchemy models, custom domain objects).
-
----
-
-## 3. Instruction-Level / Statement-Level Step Granularity
-
-- [x] **Expose DAP `stepGranularity`** (statement / line / instruction) —
-      especially useful for comprehensions, generator expressions, and
-      decorator stacks where multiple logical operations share one source line.
-      The Cython bytecode layer is already in place; an instruction-stepper
-      is a natural extension.
 
 ---
 
@@ -120,19 +93,6 @@ Legend
 
 ---
 
-## 10. Source References for Dynamic / Generated Code
-
-- [x] **Runtime source registry** — maintain a `sourceRef → source_string`
-      mapping in the adapter for code without a filesystem backing (`eval`,
-      `exec`, `compile`, Jinja-rendered templates, Cython intermediates).
-- [x] **Synthesise source references on the fly** — when the debugger
-      encounters a frame whose `co_filename` is not a real path, register the
-      source and return a `sourceReference` in stack frames so the DAP client
-      can display it.  (Currently `❌` in checklist under "Source references
-      for non-filesystem sources".)
-
----
-
 ## 11. Richer Exception Filtering
 
 - [ ] **Exception type filter** — break only on specific exception classes
@@ -170,18 +130,18 @@ Legend
 | # | Area | User Impact | Estimated Effort |
 |---|------|-------------|-----------------|
 | 1 | Async task inspector | Very High | Medium |
-| 2 | ~~Rich variable presentation (dataclass / namedtuple / Pydantic)~~ ✅ / numpy pending | High | Low–Medium |
+| 2 | numpy / pandas / torch tensor summaries | High | Low–Medium |
+| 3 | Object reference graph | High | Low–Medium |
+| 4 | `__repr__` vs `__str__` toggle | High | Low–Medium |
 | 5 | Expression watchpoints | High | Low (frame-eval infra exists) |
-| 11 | Exception type filtering / "just my code" | High | Medium |
-| 4 | Hot code reloading | High | High |
-| 10 | ~~Source refs for dynamic code~~ ✅ | Medium–High | Medium |
-| 3 | ~~Step granularity~~ ✅ | Medium | Medium (bytecode infra exists) |
+| 6 | Exception type filtering / "just my code" | High | Medium |
+| 7 | Hot code reloading | High | High |
 | 8 | Coverage-aware breakpoints | Medium | Low–Medium |
-| 6 | Multi-process attach | Medium | High |
-| 9 | Test framework integration | Medium | Medium |
-| 13 | goto / jump-to-line | Medium | Low |
-| 7 | Execution event log | Medium | Low–Medium |
-| 12 | Read-access watchpoints | Medium | Medium |
+| 9 | Multi-process attach | Medium | High |
+| 10 | Test framework integration | Medium | Medium |
+| 11 | goto / jump-to-line | Medium | Low |
+| 12 | Execution event log | Medium | Low–Medium |
+| 13 | Read-access watchpoints | Medium | Medium |
 
 ---
 

@@ -1,5 +1,4 @@
-"""
-Bytecode modification utilities for Dapper frame evaluation.
+"""Bytecode modification utilities for Dapper frame evaluation.
 
 This module provides safe bytecode manipulation capabilities to inject
 breakpoints directly into Python code objects for optimized debugging.
@@ -72,6 +71,7 @@ class BytecodeErrorInfo(TypedDict):
         error: Error message
         filename: Name of the source file if available, otherwise 'unknown'
         name: Name of the code object if available, otherwise 'unknown'
+
     """
 
     error: str
@@ -165,10 +165,12 @@ class BytecodeModifier:
         self.optimization_enabled = True
 
     def inject_breakpoints(
-        self, code_obj: CodeType, breakpoint_lines: set[int], debug_mode: bool = False
+        self,
+        code_obj: CodeType,
+        breakpoint_lines: set[int],
+        debug_mode: bool = False,
     ) -> tuple[bool, CodeType]:
-        """
-        Inject breakpoints into a code object at specified lines.
+        """Inject breakpoints into a code object at specified lines.
 
         Args:
             code_obj: The original code object to modify
@@ -177,6 +179,7 @@ class BytecodeModifier:
 
         Returns:
             tuple: (success, modified_code_obj)
+
         """
         if not breakpoint_lines:
             return True, code_obj
@@ -223,14 +226,14 @@ class BytecodeModifier:
             return True, modified_code
 
     def create_breakpoint_wrapper_code(self, line: int) -> CodeType:
-        """
-        Create a code object that serves as a breakpoint wrapper.
+        """Create a code object that serves as a breakpoint wrapper.
 
         Args:
             line: The line number for the breakpoint
 
         Returns:
             CodeType: Compiled wrapper code object
+
         """
         wrapper_source = f'''
 def __dapper_breakpoint_wrapper_{line}():
@@ -268,14 +271,14 @@ __dapper_breakpoint_wrapper_{line}()
         return compile(wrapper_source, f"<dapper_breakpoint_wrapper_{line}>", "exec")
 
     def optimize_code_object(self, code_obj: CodeType) -> CodeType:
-        """
-        Optimize a code object for better frame evaluation performance.
+        """Optimize a code object for better frame evaluation performance.
 
         Args:
             code_obj: The code object to optimize
 
         Returns:
             CodeType: Optimized code object
+
         """
         if not self.optimization_enabled:
             return code_obj
@@ -294,14 +297,14 @@ __dapper_breakpoint_wrapper_{line}()
             return optimized
 
     def remove_breakpoints(self, code_obj: CodeType) -> CodeType:
-        """
-        Remove any injected breakpoints from a code object.
+        """Remove any injected breakpoints from a code object.
 
         Args:
             code_obj: The code object to clean
 
         Returns:
             CodeType: Cleaned code object
+
         """
         try:
             instructions = _get_instructions(code_obj)
@@ -332,7 +335,9 @@ __dapper_breakpoint_wrapper_{line}()
             return cleaned
 
     def _get_cache_key(
-        self, code_obj: CodeType, breakpoint_lines: set[int]
+        self,
+        code_obj: CodeType,
+        breakpoint_lines: set[int],
     ) -> tuple[str, str, int, tuple[int, ...]]:
         """Generate a cache key for a code object and breakpoint set."""
         return (
@@ -343,10 +348,11 @@ __dapper_breakpoint_wrapper_{line}()
         )
 
     def _find_injection_points(
-        self, instructions: list[dis.Instruction], breakpoint_lines: set[int]
+        self,
+        instructions: list[dis.Instruction],
+        breakpoint_lines: set[int],
     ) -> dict[int, int]:
-        """
-        Find the best injection points for breakpoints.
+        """Find the best injection points for breakpoints.
 
         Returns a dict mapping line numbers to instruction indices.
         """
@@ -363,7 +369,9 @@ __dapper_breakpoint_wrapper_{line}()
         return injection_points
 
     def _create_breakpoint_instructions(
-        self, original_instructions: list[dis.Instruction], injection_points: dict[int, int]
+        self,
+        original_instructions: list[dis.Instruction],
+        injection_points: dict[int, int],
     ) -> list[dis.Instruction]:
         """Create new instruction list with breakpoints injected."""
         new_instructions = []
@@ -383,7 +391,7 @@ __dapper_breakpoint_wrapper_{line}()
                 # Get or create breakpoint wrapper code
                 if line_to_check not in breakpoint_code_cache:
                     breakpoint_code_cache[line_to_check] = self.create_breakpoint_wrapper_code(
-                        line_to_check
+                        line_to_check,
                     )
 
                 # Add breakpoint check instructions
@@ -459,7 +467,9 @@ __dapper_breakpoint_wrapper_{line}()
         return optimized
 
     def _is_breakpoint_sequence(
-        self, instructions: list[dis.Instruction], start_index: int
+        self,
+        instructions: list[dis.Instruction],
+        start_index: int,
     ) -> bool:
         """Check if instructions starting at start_index form a breakpoint sequence."""
         if start_index + 2 >= len(instructions):
@@ -477,7 +487,9 @@ __dapper_breakpoint_wrapper_{line}()
         )
 
     def _get_breakpoint_sequence_length(
-        self, instructions: list[dis.Instruction], start_index: int
+        self,
+        instructions: list[dis.Instruction],
+        start_index: int,
     ) -> int:
         """Get the length of a breakpoint instruction sequence."""
         if self._is_breakpoint_sequence(instructions, start_index):
@@ -485,7 +497,9 @@ __dapper_breakpoint_wrapper_{line}()
         return 1
 
     def _rebuild_code_object(  # noqa: PLR0912
-        self, original_code: CodeType, new_instructions: list[dis.Instruction]
+        self,
+        original_code: CodeType,
+        new_instructions: list[dis.Instruction],
     ) -> tuple[bool, CodeType]:
         """Rebuild a code object with new instructions."""
         # Convert instructions back to bytecode.
@@ -622,7 +636,7 @@ __dapper_breakpoint_wrapper_{line}()
                     original_code.co_exceptiontable
                     if hasattr(original_code, "co_exceptiontable")
                     else b"",
-                ]
+                ],
             )
 
         # Remove any trailing None values for older Python versions
@@ -644,10 +658,11 @@ _bytecode_modifier = BytecodeModifier()
 
 
 def insert_code(
-    code_obj: CodeType, line: int, break_at_lines: tuple[int, ...]
+    code_obj: CodeType,
+    line: int,
+    break_at_lines: tuple[int, ...],
 ) -> tuple[bool, CodeType]:
-    """
-    Insert debugging code into a Python code object.
+    """Insert debugging code into a Python code object.
 
     This function safely modifies bytecode to inject breakpoint checks
     at specific line numbers without changing the code's behavior.
@@ -659,6 +674,7 @@ def insert_code(
 
     Returns:
         tuple: (success, modified_code_obj) where success is bool
+
     """
     # Validate line number
     if line < 0:
@@ -668,7 +684,9 @@ def insert_code(
         # Use the advanced bytecode modifier
         breakpoint_lines = set(break_at_lines)
         success, modified_code = _bytecode_modifier.inject_breakpoints(
-            code_obj, breakpoint_lines, debug_mode=True
+            code_obj,
+            breakpoint_lines,
+            debug_mode=True,
         )
     except Exception:
         # If anything goes wrong, return original code object
@@ -683,14 +701,14 @@ def insert_code(
 
 
 def create_breakpoint_instruction(line: int) -> bytes:
-    """
-    Create bytecode for a breakpoint check at a specific line.
+    """Create bytecode for a breakpoint check at a specific line.
 
     Args:
         line: The line number for the breakpoint
 
     Returns:
         bytes: Bytecode for the breakpoint instruction
+
     """
     # This creates a simple breakpoint instruction that will
     # call the frame evaluation hook
@@ -738,27 +756,27 @@ def create_breakpoint_instruction(line: int) -> bytes:
 
 
 def optimize_bytecode(code_obj: CodeType) -> CodeType:
-    """
-    Optimize a code object for better frame evaluation performance.
+    """Optimize a code object for better frame evaluation performance.
 
     Args:
         code_obj: The code object to optimize
 
     Returns:
         CodeType: Optimized code object
+
     """
     return _bytecode_modifier.optimize_code_object(code_obj)
 
 
 def validate_bytecode(code_obj: CodeType) -> bool:
-    """
-    Validate that a code object has correct bytecode.
+    """Validate that a code object has correct bytecode.
 
     Args:
         code_obj: The code object to validate
 
     Returns:
         bool: True if bytecode is valid
+
     """
     try:
         # Try to disassemble the code
@@ -770,10 +788,10 @@ def validate_bytecode(code_obj: CodeType) -> bool:
 
 
 def inject_breakpoint_bytecode(
-    code_obj: CodeType, breakpoint_lines: set[int]
+    code_obj: CodeType,
+    breakpoint_lines: set[int],
 ) -> tuple[bool, CodeType]:
-    """
-    Inject breakpoint bytecode into a code object.
+    """Inject breakpoint bytecode into a code object.
 
     Args:
         code_obj: The code object to modify
@@ -781,19 +799,20 @@ def inject_breakpoint_bytecode(
 
     Returns:
         tuple: (success, modified_code_obj)
+
     """
     return _bytecode_modifier.inject_breakpoints(code_obj, breakpoint_lines)
 
 
 def remove_breakpoint_bytecode(code_obj: CodeType) -> CodeType:
-    """
-    Remove any injected breakpoint bytecode from a code object.
+    """Remove any injected breakpoint bytecode from a code object.
 
     Args:
         code_obj: The code object to clean
 
     Returns:
         CodeType: Cleaned code object
+
     """
     return _bytecode_modifier.remove_breakpoints(code_obj)
 
@@ -804,14 +823,14 @@ def clear_bytecode_cache() -> None:
 
 
 def get_bytecode_info(code_obj: CodeType) -> BytecodeInfo | BytecodeErrorInfo:
-    """
-    Get information about a code object's bytecode.
+    """Get information about a code object's bytecode.
 
     Args:
         code_obj: The code object to analyze
 
     Returns:
         BytecodeInfo: Information about the bytecode
+
     """
     try:
         instructions = list(dis.get_instructions(code_obj))
@@ -841,11 +860,11 @@ def get_bytecode_info(code_obj: CodeType) -> BytecodeInfo | BytecodeErrorInfo:
 
 
 def set_optimization_enabled(enabled: bool) -> None:
-    """
-    Enable or disable bytecode optimization.
+    """Enable or disable bytecode optimization.
 
     Args:
         enabled: Whether to enable optimization
+
     """
     _bytecode_modifier.optimization_enabled = enabled
 

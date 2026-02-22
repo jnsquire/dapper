@@ -44,14 +44,8 @@ class AsyncCallRecorder:
 @pytest.mark.asyncio
 class TestDebuggerVariables(BaseDebuggerTest):
     """
-
-    from pathlib import Path
-
-    # Add the project root to the Python path
-    project_root = str(Path(__file__).parent.parent.parent)
-    if project_root not in sys.path:
-
-    Test cases for debugger variables and stack trace functionality"""
+    Test cases for debugger variables and stack trace functionality
+    """
 
     async def test_get_stack_trace(self):
         """Test getting stack trace"""
@@ -60,7 +54,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
 
         # Mock a stack frame
         self.debugger.current_stack_frames[1] = [
-            {"id": 1, "name": "main", "line": 10, "column": 5}
+            {"id": 1, "name": "main", "line": 10, "column": 5},
         ]
 
         result = await self.debugger.get_stack_trace(1, 0, 10)
@@ -150,7 +144,10 @@ class TestDebuggerVariables(BaseDebuggerTest):
 
         # Verify in-process call
         mock_bridge.variables.assert_called_once_with(
-            789, filter_type="indexed", start=5, count=20
+            789,
+            filter_type="indexed",
+            start=5,
+            count=20,
         )
         assert result == expected_variables
 

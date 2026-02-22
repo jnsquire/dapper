@@ -1,5 +1,4 @@
-"""
-Tests for BreakpointManager.
+"""Tests for BreakpointManager.
 
 These tests verify the centralized breakpoint state management:
 - Line breakpoint metadata
@@ -403,7 +402,8 @@ class TestDebuggerBDBIntegration:
         dbg.clear_custom_breakpoint("/test.py", 10)
 
         assert "/test.py" not in dbg.bp_manager.custom or 10 not in dbg.bp_manager.custom.get(
-            "/test.py", {}
+            "/test.py",
+            {},
         )
 
     def test_clear_all_custom_breakpoints_method(self):

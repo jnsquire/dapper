@@ -1,6 +1,5 @@
 """
-Helpers and utilities for debug launcher.
-"""
+Helpers and utilities for debug launcher."""
 
 from __future__ import annotations
 
@@ -53,7 +52,8 @@ def frame_may_handle_exception(f: types.FrameType) -> bool | None:
 
 
 def frame_has_exception_table_handler(
-    code: types.CodeType | None, lineno: int | None
+    code: types.CodeType | None,
+    lineno: int | None,
 ) -> bool | None:
     result: bool | None = None
     try:
@@ -82,8 +82,7 @@ def frame_has_exception_table_handler(
 
 
 def frame_has_ast_handler(code: types.CodeType | None, lineno: int | None) -> bool | None:
-    """
-    Determines if the given code object has an AST handler for exceptions at the specified line number.
+    """Determines if the given code object has an AST handler for exceptions at the specified line number.
 
     Returns:
         True if an exception handler is present,

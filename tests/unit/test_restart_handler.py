@@ -1,5 +1,4 @@
 """
-
 Tests for the restart request handler.
 """
 

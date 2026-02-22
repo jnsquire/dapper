@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 
 class ResolveVariablesForReferenceFn(Protocol):
     def __call__(
-        self, dbg: CommandHandlerDebuggerLike | None, frame_info: object, /
+        self,
+        dbg: CommandHandlerDebuggerLike | None,
+        frame_info: object,
+        /,
     ) -> list[Payload]: ...
 
 

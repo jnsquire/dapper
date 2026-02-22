@@ -6,6 +6,7 @@ use a single, authoritative decision model.
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -20,7 +21,7 @@ class FrameEvalCompatibilityPolicy:
         self,
         *,
         min_python: tuple[int, int] = (3, 9),
-        max_python: tuple[int, int] = (3, 13),
+        max_python: tuple[int, int] = (3, 14),
         supported_platforms: tuple[str, ...] = ("Windows", "Linux", "Darwin"),
         supported_architectures: tuple[str, ...] = ("64bit", "32bit"),
         incompatible_debuggers: tuple[str, ...] = ("pydevd", "pdb", "ipdb"),
@@ -64,6 +65,15 @@ class FrameEvalCompatibilityPolicy:
             platform_system in self.supported_platforms
             and architecture in self.supported_architectures
         )
+
+    @staticmethod
+    def supports_sys_monitoring() -> bool:
+        """Return True if this interpreter supports the sys.monitoring API.
+
+        sys.monitoring was added in CPython 3.12. The check is against the
+        running interpreter, not the configured min/max_python range.
+        """
+        return sys.version_info >= (3, 12) and hasattr(sys, "monitoring")
 
     def is_incompatible_environment(
         self, modules: dict[str, Any], environ: Mapping[str, str]

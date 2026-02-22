@@ -1,5 +1,4 @@
-"""
-VariableManager: Centralized management of variable references and Variable object creation.
+"""VariableManager: Centralized management of variable references and Variable object creation.
 
 This module provides a unified API for:
 1. Allocating variable references (for expandable objects in the debugger UI)
@@ -49,6 +48,7 @@ class VariableManager:
 
         # Retrieve a referenced object
         ref_data = manager.get_ref(ref_id)
+
     """
 
     # Default starting reference ID (leaves room for reserved IDs)
@@ -59,6 +59,7 @@ class VariableManager:
 
         Args:
             start_ref: The starting reference ID for allocations.
+
         """
         self.next_var_ref: int = start_ref
         self.var_refs: dict[int, VarRef] = {}
@@ -75,6 +76,7 @@ class VariableManager:
 
         Returns:
             The allocated reference ID, or 0 if the value is not expandable.
+
         """
         if not self._is_expandable(value):
             return 0
@@ -101,6 +103,7 @@ class VariableManager:
 
         Returns:
             The allocated reference ID.
+
         """
         ref = self.next_var_ref
         self.next_var_ref = ref + 1
@@ -115,6 +118,7 @@ class VariableManager:
 
         Returns:
             The stored reference data, or None if not found.
+
         """
         return self.var_refs.get(ref_id)
 
@@ -126,6 +130,7 @@ class VariableManager:
 
         Returns:
             True if the reference exists.
+
         """
         return ref_id in self.var_refs
 
@@ -158,6 +163,7 @@ class VariableManager:
 
         Returns:
             A Variable-shaped dict with proper presentation hints.
+
         """
         val_str = self._format_value(value, max_string_length)
         var_ref = self.allocate_ref(value)

@@ -1,6 +1,4 @@
-"""
-Pytest-style tests for the Debug Adapter Protocol server.
-"""
+"""Pytest-style tests for the Debug Adapter Protocol server."""
 
 from __future__ import annotations
 
@@ -273,8 +271,8 @@ async def test_end_to_end_dap_flow_launch_break_continue_variables_disconnect(
                 "line": 7,
                 "column": 1,
                 "source": {"name": "prog.py", "path": "/tmp/prog.py"},
-            }
-        ]
+            },
+        ],
     )
     mock_debugger.get_scopes = AsyncCallRecorder(
         return_value=[
@@ -282,8 +280,8 @@ async def test_end_to_end_dap_flow_launch_break_continue_variables_disconnect(
                 "name": "Locals",
                 "variablesReference": variables_ref,
                 "expensive": False,
-            }
-        ]
+            },
+        ],
     )
     mock_debugger.get_variables = AsyncCallRecorder(
         return_value=[
@@ -292,8 +290,8 @@ async def test_end_to_end_dap_flow_launch_break_continue_variables_disconnect(
                 "value": "42",
                 "type": "int",
                 "variablesReference": 0,
-            }
-        ]
+            },
+        ],
     )
 
     with patch("dapper.adapter.server_core.PyDebugger", return_value=mock_debugger):

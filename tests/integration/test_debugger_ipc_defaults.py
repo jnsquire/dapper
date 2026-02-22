@@ -21,7 +21,6 @@ class _StubServer:
 @pytest.mark.asyncio
 async def test_unix_is_default_on_non_windows():
     """On non-Windows, default transport is 'unix' (IPC is now always enabled)."""
-
     if os.name == "nt":
         pytest.skip("UNIX sockets not default on Windows")
     if not hasattr(_socket, "AF_UNIX"):

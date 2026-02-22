@@ -1,5 +1,4 @@
-"""
-dapper.core - Core debugger implementation.
+"""dapper.core - Core debugger implementation.
 
 This module provides the core debugging functionality built on Python's bdb module.
 """

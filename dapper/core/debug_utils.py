@@ -1,6 +1,4 @@
-"""
-Utility functions for the debugger.
-"""
+"""Utility functions for the debugger."""
 
 from __future__ import annotations
 
@@ -32,6 +30,7 @@ def evaluate_hit_condition(expr: str, hit_count: int) -> bool:
     Returns:
         True if the condition is satisfied (breakpoint should trigger),
         False otherwise. Returns True on parse errors (fail-open).
+
     """
     try:
         s = expr.strip()

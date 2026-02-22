@@ -1,5 +1,4 @@
-"""
-Implementation of integrated Python debugger components.
+"""Implementation of integrated Python debugger components.
 
 This module contains the debugger orchestration (`PyDebugger`) and helper
 managers used by the adapter server core.
@@ -200,8 +199,7 @@ def _acquire_event_loop(
 
 
 class PyDebugger(_PyDebuggerSessionCompatMixin):
-    """
-    Main debugger class that integrates with Python's built-in debugging tools
+    """Main debugger class that integrates with Python's built-in debugging tools
     and communicates back to the DebugAdapterServer.
     """
 
@@ -217,6 +215,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             server: The debug adapter server instance
             loop: Optional event loop to use. If not provided, gets the current event loop.
             enable_frame_eval: Whether to enable frame evaluation optimization.
+
         """
         self.server: DebuggerServerProtocol = server
         self.loop: asyncio.AbstractEventLoop
@@ -448,7 +447,8 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         return self._inproc_backend
 
     def process_breakpoints(
-        self, breakpoints: Sequence[SourceBreakpoint]
+        self,
+        breakpoints: Sequence[SourceBreakpoint],
     ) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
         """Public wrapper for breakpoint normalization logic."""
         return self._process_breakpoints(breakpoints)
@@ -486,7 +486,9 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         return self._session_facade.pop_pending_command(command_id)
 
     def resolve_pending_response(
-        self, future: asyncio.Future[dict[str, Any]], data: dict[str, Any]
+        self,
+        future: asyncio.Future[dict[str, Any]],
+        data: dict[str, Any],
     ) -> None:
         """Resolve a pending response on the debugger loop."""
         self._session_facade.resolve_pending_response(future, data)
@@ -547,13 +549,16 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             await self.server.send_event("terminated")
 
     async def set_breakpoints(
-        self, source: SourceDict | str, breakpoints: list[SourceBreakpoint]
+        self,
+        source: SourceDict | str,
+        breakpoints: list[SourceBreakpoint],
     ) -> list[BreakpointResponse]:
         """Set breakpoints for a source file."""
         return await self._state_manager.set_breakpoints(source, breakpoints)
 
     def _process_breakpoints(
-        self, breakpoints: Sequence[SourceBreakpoint]
+        self,
+        breakpoints: Sequence[SourceBreakpoint],
     ) -> tuple[list[SourceBreakpoint], list[BreakpointDict]]:
         """Process breakpoints into spec and storage lists."""
         return self._breakpoint_facade.process_breakpoints(breakpoints)
@@ -563,7 +568,12 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self._breakpoint_facade.forward_breakpoint_events(storage_list)
 
     def set_break(
-        self, filename: str, lineno: int, *, cond: str | None = None, **kwargs: Any
+        self,
+        filename: str,
+        lineno: int,
+        *,
+        cond: str | None = None,
+        **kwargs: Any,
     ) -> bool:
         """Compatibility helper for shared breakpoint handlers."""
         hit_condition = kwargs.get("hit_condition") or kwargs.get("hitCondition")
@@ -630,7 +640,8 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         self.breakpoint_manager.clear_function_breakpoints()
 
     async def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
         """Set breakpoints for functions"""
         names: list[str] = []
@@ -732,7 +743,11 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         await self._execution_manager.next(thread_id, granularity=granularity)
 
     async def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         """Step into a function.
 
@@ -740,6 +755,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             thread_id: The thread to step in.
             target_id: Optional target ID for stepping into a specific call target.
             granularity: DAP stepGranularity ("line", "statement", "instruction").
+
         """
         await self._execution_manager.step_in(thread_id, target_id, granularity=granularity)
 
@@ -764,7 +780,10 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         return self._source_introspection.get_modules()
 
     async def get_stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
         return await self._state_manager.get_stack_trace(thread_id, start_frame, levels)
@@ -774,11 +793,18 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         return await self._state_manager.get_scopes(frame_id)
 
     async def get_variables(
-        self, variables_reference: int, filter_type: str = "", start: int = 0, count: int = 0
+        self,
+        variables_reference: int,
+        filter_type: str = "",
+        start: int = 0,
+        count: int = 0,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         return await self._state_manager.get_variables(
-            variables_reference, filter_type, start, count
+            variables_reference,
+            filter_type,
+            start,
+            count,
         )
 
     async def set_variable(
@@ -791,7 +817,10 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         return await self._state_manager.set_variable(var_ref, name, value)
 
     async def evaluate(
-        self, expression: str, frame_id: int | None = None, context: str | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        context: str | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
         return await self._state_manager.evaluate(expression, frame_id, context)
@@ -817,6 +846,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
 
         Returns:
             CompletionsResponseBody with list of completion targets
+
         """
         if self._backend is not None:
             result = await self._backend.completions(text, column, frame_id, line)
@@ -848,7 +878,10 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         await self._execution_manager.restart()
 
     async def evaluate_expression(
-        self, expression: str, frame_id: int, context: str = "hover"
+        self,
+        expression: str,
+        frame_id: int,
+        context: str = "hover",
     ) -> EvaluateResponseBody:
         """Evaluate an expression (alias for evaluate)"""
         return await self.evaluate(expression, frame_id, context)

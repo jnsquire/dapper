@@ -28,7 +28,6 @@ if __name__ == "__main__":
 
 def test_set_variable_integration():
     """Test setVariable functionality with actual debugging session"""
-
     # Create temporary test file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(TEST_PROGRAM)

@@ -1,5 +1,4 @@
-"""
-scripts/update_docs.py
+"""scripts/update_docs.py
 
 Helper to update documentation locally:
  - renders Mermaid diagrams (using existing scripts)
@@ -85,8 +84,7 @@ def build_mkdocs() -> None:
 
 
 def prepare_docs_for_build() -> dict[Path, str]:
-    """
-    Copy root README and examples README into doc/ so MkDocs can see them.
+    """Copy root README and examples README into doc/ so MkDocs can see them.
     Patch links in existing docs to point to these local copies.
     Returns a dict of {path: original_content} for restoration.
     """

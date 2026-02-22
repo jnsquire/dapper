@@ -87,7 +87,8 @@ class MockDebuggerBDB:
         return lambda _frame, _event, _arg: None
 
     def set_trace_function(
-        self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None
+        self,
+        trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None,
     ) -> None:
         """Set a new trace function.
 
@@ -168,6 +169,7 @@ class MockDebuggerBDB:
 
         Args:
             path: Path to the file to clear breakpoints from
+
         """
         if path in self.breakpoints:
             del self.breakpoints[path]
@@ -181,6 +183,7 @@ class MockDebuggerBDB:
 
         Args:
             frame: The frame to step to next.
+
         """
         self.stepping = True
 
@@ -193,6 +196,7 @@ class MockDebuggerBDB:
 
         Args:
             frame: The frame to return from.
+
         """
         self.stepping = True
 
@@ -203,6 +207,7 @@ class MockDebuggerBDB:
             cmd: The command to run
             *args: Additional positional arguments
             **kwargs: Additional keyword arguments
+
         """
         return
 
@@ -223,6 +228,7 @@ class MockDebuggerBDB:
             condition: Optional condition expression
             hit_condition: Optional hit condition expression
             log_message: Optional log message
+
         """
 
     def clear_break_meta_for_file(self, path: str) -> None:
@@ -230,6 +236,7 @@ class MockDebuggerBDB:
 
         Args:
             path: Path to the file to clear breakpoint metadata for
+
         """
 
     def clear_all_function_breakpoints(self) -> None:
@@ -248,6 +255,7 @@ class MockDebuggerBDB:
             source: The source file path or dict containing 'path' key
             breakpoints: List of breakpoint dictionaries
             **kwargs: Additional keyword arguments
+
         """
         source_path = source if isinstance(source, str) else source.get("path", "")
         if source_path not in self.breakpoints:
@@ -267,6 +275,7 @@ class MockDebuggerBDB:
 
         Args:
             frame: The frame to start tracing from, or None for the current frame.
+
         """
         if self._trace_function:
             self._trace_function(frame)
@@ -318,19 +327,22 @@ class MockPyDebugger:
         Returns:
             The current trace function that takes (frame, event, arg) as arguments.
             If no trace function is set, returns a no-op function.
+
         """
         if self._trace_function is not None:
             return self._trace_function
         return lambda _frame, _event, _arg: None
 
     def set_trace_function(
-        self, trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None
+        self,
+        trace_func: Callable[[Any | None, str | None, Any | None], Any | None] | None,
     ) -> None:
         """Set a new trace function.
 
         Args:
             trace_func: The new trace function that takes (frame, event, arg) as arguments,
                        or None to clear it (equivalent to a no-op function).
+
         """
         self._trace_function = trace_func
 
@@ -350,6 +362,7 @@ class MockPyDebugger:
             temporary: Whether the breakpoint is temporary
             cond: Optional condition expression
             funcname: Optional function name
+
         """
         if filename not in self.breakpoints:
             self.breakpoints[filename] = []
@@ -365,6 +378,7 @@ class MockPyDebugger:
 
         Returns:
             True if the breakpoint was found and removed, False otherwise
+
         """
         if filename in self.breakpoints and lineno in self.breakpoints[filename]:
             self.breakpoints[filename].remove(lineno)
@@ -378,6 +392,7 @@ class MockPyDebugger:
 
         Args:
             path: Path to the file to clear breakpoints from
+
         """
         if path in self.breakpoints:
             del self.breakpoints[path]
@@ -391,6 +406,7 @@ class MockPyDebugger:
 
         Args:
             frame: The frame to step to next.
+
         """
         self.stepping = True
 
@@ -403,6 +419,7 @@ class MockPyDebugger:
 
         Args:
             frame: The frame to return from.
+
         """
         self.stepping = True
 
@@ -413,6 +430,7 @@ class MockPyDebugger:
             cmd: The command to run
             *args: Additional positional arguments
             **kwargs: Additional keyword arguments
+
         """
         return
 
@@ -432,6 +450,7 @@ class MockPyDebugger:
 
         Args:
             path: Path to the file to clear breakpoint metadata for
+
         """
 
     def clear_all_function_breakpoints(self) -> None:
@@ -450,13 +469,14 @@ class MockPyDebugger:
             source: The source file path or dict containing 'path' key
             breakpoints: List of breakpoint dictionaries
             **kwargs: Additional keyword arguments
+
         """
         self.set_breakpoints_calls.append(
             {
                 "source": source,
                 "breakpoints": breakpoints,
                 "kwargs": kwargs,
-            }
+            },
         )
 
         source_path = source if isinstance(source, str) else source.get("path", "")
@@ -477,6 +497,7 @@ class MockPyDebugger:
 
         Args:
             frame: The frame to start tracing from, or None for the current frame.
+
         """
         if self._trace_function:
             self._trace_function(frame)
@@ -503,6 +524,7 @@ class MockPyDebugger:
 
         Args:
             frame: The frame where the debugger has stopped.
+
         """
         # Call the trace function if set
         trace_func = self.get_trace_function()
@@ -515,7 +537,7 @@ class MockPyDebugger:
                 "filename": frame.f_code.co_filename,
                 "lineno": frame.f_lineno,
                 "function": frame.f_code.co_name,
-            }
+            },
         )
 
 
@@ -563,7 +585,9 @@ def test_configuration():
 
         # Test configuration updates
         configure_integration(
-            selective_tracing=False, bytecode_optimization=False, performance_monitoring=True
+            selective_tracing=False,
+            bytecode_optimization=False,
+            performance_monitoring=True,
         )
 
         updated_config = bridge.config.copy()

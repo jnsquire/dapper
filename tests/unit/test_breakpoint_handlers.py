@@ -256,8 +256,8 @@ class TestHandleSetFunctionBreakpointsImpl:
                         "condition": "x == 1",
                         "hitCondition": "3",
                         "logMessage": "hit!",
-                    }
-                ]
+                    },
+                ],
             },
         )
         meta = dbg.bp_manager.function_meta.get("fn", {})

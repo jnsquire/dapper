@@ -414,7 +414,8 @@ class TestTraceManager:
 
         # Mock the analyzer to always return True for should_trace_frame
         with patch.object(
-            self.trace_manager.dispatcher.analyzer, "should_trace_frame"
+            self.trace_manager.dispatcher.analyzer,
+            "should_trace_frame",
         ) as mock_should_trace:
             mock_should_trace.return_value = {
                 "should_trace": True,
@@ -614,7 +615,8 @@ class TestThreadSafety:
 
         # Mock the analyzer to always return True for should_trace_frame
         with patch.object(
-            self.trace_manager.dispatcher.analyzer, "should_trace_frame"
+            self.trace_manager.dispatcher.analyzer,
+            "should_trace_frame",
         ) as mock_should_trace:
             mock_should_trace.return_value = {
                 "should_trace": True,

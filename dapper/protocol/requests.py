@@ -1,5 +1,4 @@
-"""
-All request/response and event TypedDicts used by the DAP; grouped here now
+"""All request/response and event TypedDicts used by the DAP; grouped here now
 that smaller structural types are in `structures.py` and capabilities / data
 breakpoints are in their own modules.
 """

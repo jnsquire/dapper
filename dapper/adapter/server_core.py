@@ -54,6 +54,7 @@ class DebugAdapterServer:
 
         Args:
             callback: The function to call on the server's event loop
+
         """
         if not self.loop.is_running():
             logger.warning("Event loop is not running, cannot schedule callback")
@@ -171,18 +172,23 @@ class DebugAdapterServer:
             logger.exception("Error sending message")
 
     async def send_response(
-        self, request: dict[str, Any], body: dict[str, Any] | None = None
+        self,
+        request: dict[str, Any],
+        body: dict[str, Any] | None = None,
     ) -> None:
         """Send a success response to a request"""
         response = self.protocol_handler.create_response(
-            cast("GenericRequest", request), True, body
+            cast("GenericRequest", request),
+            True,
+            body,
         )
         await self.send_message(cast("dict[str, Any]", response))
 
     async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
         """Send an error response to a request"""
         response = self.protocol_handler.create_error_response(
-            cast("GenericRequest", request), error_message
+            cast("GenericRequest", request),
+            error_message,
         )
         await self.send_message(cast("dict[str, Any]", response))
 

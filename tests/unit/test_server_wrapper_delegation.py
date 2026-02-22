@@ -41,7 +41,10 @@ async def _install_wrapper_stubs(debugger: PyDebugger) -> None:
         return None
 
     async def _step_in(
-        _thread_id: int, _target_id: int | None = None, *, granularity: str = "line"
+        _thread_id: int,
+        _target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ):
         return None
 

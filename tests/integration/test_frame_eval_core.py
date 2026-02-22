@@ -1,6 +1,4 @@
-"""
-Core tests for frame evaluation system focusing on critical functionality.
-"""
+"""Core tests for frame evaluation system focusing on critical functionality."""
 
 import threading
 from typing import Any

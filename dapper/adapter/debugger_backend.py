@@ -49,13 +49,16 @@ class DebuggerBackend(Protocol):
     # Breakpoint operations
     # ------------------------------------------------------------------
     async def set_breakpoints(
-        self, path: str, breakpoints: list[SourceBreakpoint]
+        self,
+        path: str,
+        breakpoints: list[SourceBreakpoint],
     ) -> list[Breakpoint]:
         """Set line breakpoints for a file."""
         ...
 
     async def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> list[FunctionBreakpoint]:
         """Set function breakpoints."""
         ...
@@ -81,7 +84,11 @@ class DebuggerBackend(Protocol):
         ...
 
     async def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         """Step into.
 
@@ -90,6 +97,7 @@ class DebuggerBackend(Protocol):
             target_id: Optional target ID for stepping into a specific call target
                        (see DAP stepInTargets request).
             granularity: DAP stepGranularity ("line", "statement", "instruction").
+
         """
         ...
 
@@ -105,7 +113,10 @@ class DebuggerBackend(Protocol):
     # Inspection operations
     # ------------------------------------------------------------------
     async def get_stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
         ...
@@ -125,7 +136,10 @@ class DebuggerBackend(Protocol):
         ...
 
     async def evaluate(
-        self, expression: str, frame_id: int | None = None, context: str | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        context: str | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
         ...
@@ -147,6 +161,7 @@ class DebuggerBackend(Protocol):
 
         Returns:
             Dict with 'targets' key containing list of completion items
+
         """
         ...
 

@@ -1,5 +1,4 @@
-"""
-In-process debugger bridge (no stdio).
+"""In-process debugger bridge (no stdio).
 
 This module exposes a simple object-oriented wrapper over DebuggerBDB that
 mirrors the command handlers from `debug_launcher.py` without using stdin/
@@ -118,7 +117,8 @@ class InProcessDebugger:
             return results
 
     def set_function_breakpoints(
-        self, breakpoints: list[FunctionBreakpoint]
+        self,
+        breakpoints: list[FunctionBreakpoint],
     ) -> Sequence[FunctionBreakpoint]:
         """Replace function breakpoints and record per-breakpoint metadata.
 
@@ -215,7 +215,11 @@ class InProcessDebugger:
                         dbg.set_next(frame)
 
     def step_in(
-        self, thread_id: int, _target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        _target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         # _target_id is accepted for DAP compatibility but not yet implemented.
         with self.command_lock:
@@ -242,7 +246,10 @@ class InProcessDebugger:
     # These follow the launcher semantics, but return dicts directly.
 
     def stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
     ) -> StackTraceResponseBody:
         dbg = self.debugger
         thread_tracker = getattr(dbg, "thread_tracker", None)
@@ -285,7 +292,7 @@ class InProcessDebugger:
             frame = None
             if isinstance(frame_id, int):
                 frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                    frame_id
+                    frame_id,
                 )
             variables: list[Variable] = []
             if frame and scope == "locals":
@@ -299,7 +306,10 @@ class InProcessDebugger:
         return cast("VariablesResponseBody", {"variables": []})
 
     def set_variable(
-        self, variables_reference: int, name: str, value: str
+        self,
+        variables_reference: int,
+        name: str,
+        value: str,
     ) -> SetVariableResponseBody | dict[str, Any]:
         dbg = self.debugger
         var_ref = variables_reference
@@ -315,7 +325,7 @@ class InProcessDebugger:
             frame = None
             if isinstance(frame_id, int):
                 frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                    frame_id
+                    frame_id,
                 )
             if not frame:
                 return {"success": False, "message": "Frame not found"}
@@ -333,13 +343,16 @@ class InProcessDebugger:
         return {"success": False, "message": "Invalid reference"}
 
     def evaluate(
-        self, expression: str, frame_id: int | None = None, _context: str | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        _context: str | None = None,
     ) -> EvaluateResponseBody:
         dbg = self.debugger
         frame = None
         if isinstance(frame_id, int):
             frame = getattr(getattr(dbg, "thread_tracker", None), "frame_id_to_frame", {}).get(
-                frame_id
+                frame_id,
             )
         if not frame:
             return {
@@ -384,6 +397,7 @@ class InProcessDebugger:
 
         Returns:
             Dict with 'targets' containing completion items
+
         """
         targets: list[CompletionItem] = []
 
@@ -408,7 +422,9 @@ class InProcessDebugger:
         if frame is not None:
             # Runtime completions using frame locals/globals
             targets = self._get_runtime_completions(
-                expr_to_complete, frame.f_locals, frame.f_globals
+                expr_to_complete,
+                frame.f_locals,
+                frame.f_globals,
             )
         else:
             # Fallback: use builtins only
@@ -465,6 +481,7 @@ class InProcessDebugger:
 
         Returns:
             List of completion items
+
         """
         targets: list[CompletionItem] = []
 
@@ -536,7 +553,7 @@ class InProcessDebugger:
                         {
                             "label": attr,
                             "type": "property",
-                        }
+                        },
                     )
 
         return targets

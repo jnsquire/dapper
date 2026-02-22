@@ -1,5 +1,4 @@
-"""
-Dapper DAP adapter — ``python -m dapper.adapter``.
+"""Dapper DAP adapter — ``python -m dapper.adapter``.
 
 This module is the entry point for the **DAP adapter**, the IDE-facing
 server that speaks the Debug Adapter Protocol.  It listens for connections

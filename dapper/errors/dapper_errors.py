@@ -207,6 +207,7 @@ class ErrorHandler:
 
         Returns:
             Dictionary with error information suitable for API responses
+
         """
         # Log the error
         error_msg = f"Error: {error!s}"
@@ -265,6 +266,7 @@ class ErrorHandler:
 
         Returns:
             DAP response dictionary with error information
+
         """
         error_info = self.handle_error(error, reraise=False, context=context)
 
@@ -295,7 +297,10 @@ def handle_error(
 ) -> dict[str, Any]:
     """Handle an error using the default error handler."""
     return default_error_handler.handle_error(
-        error, reraise=reraise, log_level=log_level, context=context
+        error,
+        reraise=reraise,
+        log_level=log_level,
+        context=context,
     )
 
 

@@ -1,6 +1,4 @@
-"""
-Common object shapes used by many requests/responses: Source, Breakpoint, StackFrame, Scope, Variable, Thread
-"""
+"""Common object shapes used by many requests/responses: Source, Breakpoint, StackFrame, Scope, Variable, Thread"""
 
 from __future__ import annotations
 

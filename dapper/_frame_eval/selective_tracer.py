@@ -1,5 +1,4 @@
-"""
-Selective frame tracing system for Dapper frame evaluation.
+"""Selective frame tracing system for Dapper frame evaluation.
 
 This module provides intelligent frame tracing that only enables tracing
 on frames that have breakpoints, dramatically improving debugging performance
@@ -71,6 +70,7 @@ except ImportError:
 
             Args:
                 _filename: The filename to check (unused in fallback)
+
             """
             return False
 
@@ -102,14 +102,14 @@ class ConditionalBreakpointSpec(_ConditionalBreakpointSpecRequired, total=False)
         condition: Optional Python expression.  When present the breakpoint
             only triggers when the expression evaluates to a truthy value in
             the frame's context.  ``None`` means unconditional.
+
     """
 
     condition: str | None
 
 
 class FrameTraceAnalyzer:
-    """
-    Analyzes frames to determine if they should be traced.
+    """Analyzes frames to determine if they should be traced.
 
     Uses multiple strategies to efficiently determine if a frame
     contains breakpoints and should be traced.
@@ -150,7 +150,7 @@ class FrameTraceAnalyzer:
         """Check if frame should be skipped based on thread info."""
         thread_info = get_thread_info()
         if hasattr(thread_info, "should_skip_frame") and thread_info.should_skip_frame(
-            frame.f_code.co_filename
+            frame.f_code.co_filename,
         ):
             return self._create_trace_decision(
                 should_trace=False,
@@ -163,21 +163,25 @@ class FrameTraceAnalyzer:
         """Handle case when no breakpoints are found for a file."""
         if self._should_track_file(filename):
             return self._create_trace_decision(
-                should_trace=False, reason="no_breakpoints_in_file", frame_info=frame_info
+                should_trace=False,
+                reason="no_breakpoints_in_file",
+                frame_info=frame_info,
             )
         return self._create_trace_decision(
-            should_trace=False, reason="file_not_tracked", frame_info=frame_info
+            should_trace=False,
+            reason="file_not_tracked",
+            frame_info=frame_info,
         )
 
     def should_trace_frame(self, frame: FrameType) -> TraceDecision:
-        """
-        Determine if a frame should be traced based on breakpoints.
+        """Determine if a frame should be traced based on breakpoints.
 
         Args:
             frame: The frame to analyze
 
         Returns:
             TraceDecision containing the decision and reasoning
+
         """
         self._stats["total_frames"] += 1
         frame_info = self._get_frame_info(frame)
@@ -229,7 +233,9 @@ class FrameTraceAnalyzer:
 
         # Default case: no tracing needed
         return self._create_trace_decision(
-            should_trace=False, reason="no_breakpoints_in_function", frame_info=frame_info
+            should_trace=False,
+            reason="no_breakpoints_in_function",
+            frame_info=frame_info,
         )
 
     def _should_track_file(self, filename: str) -> bool:
@@ -325,6 +331,7 @@ class FrameTraceAnalyzer:
             filename: Absolute path of the source file.
             conditions: Mapping of line number → condition expression.  A
                 value of ``None`` removes any existing condition for that line.
+
         """
         active = {ln: expr for ln, expr in conditions.items() if expr is not None}
         with self._cache_lock:
@@ -368,8 +375,7 @@ class FrameTraceAnalyzer:
 
 
 class SelectiveTraceDispatcher:
-    """
-    Dispatches trace functions only when necessary.
+    """Dispatches trace functions only when necessary.
 
     Acts as a smart intermediary that decides whether to call
     the actual debugger trace function based on frame analysis.
@@ -386,15 +392,15 @@ class SelectiveTraceDispatcher:
         self._lock = threading.RLock()
 
     def set_debugger_trace_func(
-        self, trace_func: Callable[[FrameType, str, Any], Callable | None] | None
+        self,
+        trace_func: Callable[[FrameType, str, Any], Callable | None] | None,
     ) -> None:
         """Set the actual debugger trace function."""
         with self._lock:
             self.debugger_trace_func = trace_func
 
     def selective_trace_dispatch(self, frame: FrameType, event: str, arg: Any) -> Callable | None:
-        """
-        Dispatch trace function only when frame should be traced.
+        """Dispatch trace function only when frame should be traced.
 
         Args:
             frame: The current frame
@@ -403,6 +409,7 @@ class SelectiveTraceDispatcher:
 
         Returns:
             Trace function or None if frame should not be traced
+
         """
         with self._lock:
             self._dispatch_stats["total_calls"] += 1
@@ -466,8 +473,7 @@ class SelectiveTraceDispatcher:
 
 
 class FrameTraceManager:
-    """
-    High-level manager for selective frame tracing.
+    """High-level manager for selective frame tracing.
 
     Coordinates between the frame evaluator, breakpoint manager,
     and trace dispatcher to provide optimal tracing performance.
@@ -508,7 +514,9 @@ class FrameTraceManager:
             self.dispatcher.update_breakpoints(filename, breakpoints)
 
     def set_conditional_breakpoints(
-        self, filename: str, specs: list[ConditionalBreakpointSpec]
+        self,
+        filename: str,
+        specs: list[ConditionalBreakpointSpec],
     ) -> None:
         """Set breakpoints with optional condition expressions for *filename*.
 
@@ -523,6 +531,7 @@ class FrameTraceManager:
             specs: List of :class:`ConditionalBreakpointSpec` dicts, each
                 containing at least a ``lineno`` key and optionally a
                 ``condition`` key.
+
         """
         lines: set[int] = set()
         conditions: dict[int, str | None] = {}

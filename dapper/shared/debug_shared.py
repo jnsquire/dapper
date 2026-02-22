@@ -810,7 +810,6 @@ def _make_variable_object_impl(
     allocate variable references on the debugger (when present), and
     produce the presentationHint structure expected by clients.
     """
-
     val_str = _format_value_str(value, max_string_length)
     var_ref = _allocate_var_ref(value, dbg)
     type_name = type(value).__name__

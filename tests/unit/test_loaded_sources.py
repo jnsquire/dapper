@@ -24,7 +24,6 @@ MAX_DISPLAY_SOURCES = 10
 @pytest.mark.asyncio
 async def test_loaded_sources():
     """Test the loadedSources functionality."""
-
     # Create the server components
     connection = TCPServerConnection("localhost", 0)  # Use ephemeral port
     debugger = PyDebugger(Mock())

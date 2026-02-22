@@ -1,7 +1,4 @@
-"""
-
-Test to verify the configurationDone request handler is implemented and working.
-"""
+"""Test to verify the configurationDone request handler is implemented and working."""
 
 from __future__ import annotations
 

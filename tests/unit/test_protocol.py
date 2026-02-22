@@ -90,7 +90,8 @@ def test_response_message(handler: ProtocolHandler) -> None:
 
     # Test error response
     err_resp = cast(
-        "GenericResponse", handler.create_response(request, False, None, "Invalid expression")
+        "GenericResponse",
+        handler.create_response(request, False, None, "Invalid expression"),
     )
 
     assert err_resp["seq"] == 3
@@ -239,7 +240,10 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
 
     # Test error response with message
     error_resp = handler.create_response(
-        request=request, success=False, body=None, error_message="Failed to launch"
+        request=request,
+        success=False,
+        body=None,
+        error_message="Failed to launch",
     )
 
     assert error_resp["seq"] == 2
@@ -254,7 +258,10 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
 
     # Test error response without message
     error_resp_no_msg = handler.create_response(
-        request=request, success=False, body=None, error_message=None
+        request=request,
+        success=False,
+        body=None,
+        error_message=None,
     )
     assert (
         "message" not in error_resp_no_msg

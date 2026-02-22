@@ -25,7 +25,9 @@ class _PyDebuggerStateManager:
         self._debugger = debugger
 
     async def set_breakpoints(
-        self, source: SourceDict | str, breakpoints: list[SourceBreakpoint]
+        self,
+        source: SourceDict | str,
+        breakpoints: list[SourceBreakpoint],
     ) -> list[BreakpointResponse]:
         """Set breakpoints for a source file."""
         path = source if isinstance(source, str) else source.get("path")
@@ -85,7 +87,8 @@ class _PyDebuggerStateManager:
             progress_id = f"setBreakpoints:{path}"
 
         self._debugger.emit_event(
-            "progressStart", {"progressId": progress_id, "title": "Setting breakpoints"}
+            "progressStart",
+            {"progressId": progress_id, "title": "Setting breakpoints"},
         )
 
         await backend.set_breakpoints(path, spec_list)
@@ -112,7 +115,10 @@ class _PyDebuggerStateManager:
         ]
 
     async def get_stack_trace(
-        self, thread_id: int, start_frame: int = 0, levels: int = 0
+        self,
+        thread_id: int,
+        start_frame: int = 0,
+        levels: int = 0,
     ) -> StackTraceResponseBody:
         """Get stack trace for a thread."""
         # Check whether this is an asyncio task pseudo-thread managed by the
@@ -168,7 +174,11 @@ class _PyDebuggerStateManager:
         ]
 
     async def get_variables(
-        self, variables_reference: int, filter_type: str = "", start: int = 0, count: int = 0
+        self,
+        variables_reference: int,
+        filter_type: str = "",
+        start: int = 0,
+        count: int = 0,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         backend = self._debugger.get_active_backend()
@@ -205,7 +215,10 @@ class _PyDebuggerStateManager:
         raise ValueError(msg)
 
     async def evaluate(
-        self, expression: str, frame_id: int | None = None, context: str | None = None
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        context: str | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
         backend = self._debugger.get_active_backend()

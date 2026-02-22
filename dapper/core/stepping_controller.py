@@ -1,5 +1,4 @@
-"""
-SteppingController: Centralized stepping state management.
+"""SteppingController: Centralized stepping state management.
 
 This module provides logic for:
 1. Managing stepping flags (stepping, stop_on_entry)
@@ -68,6 +67,7 @@ class SteppingController:
         stepping: Whether the debugger is in stepping mode.
         stop_on_entry: Whether to stop at program entry.
         current_frame: The frame we're currently stopped at (if any).
+
     """
 
     stepping: bool = False
@@ -121,6 +121,7 @@ class SteppingController:
 
         Returns:
             The stop reason that was active.
+
         """
         reason = self.get_stop_reason()
 

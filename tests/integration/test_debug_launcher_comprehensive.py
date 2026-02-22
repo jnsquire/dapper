@@ -145,7 +145,9 @@ def _make_variable(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[s
 
 def _resolve_variables_for_reference(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
     def _extract_from_mapping(
-        helper_dbg: Any, mapping: dict[str, Any], frame: Any
+        helper_dbg: Any,
+        mapping: dict[str, Any],
+        frame: Any,
     ) -> list[dict[str, Any]]:
         return command_handler_helpers.extract_variables_from_mapping(
             helper_dbg,
@@ -335,7 +337,7 @@ def test_handle_set_function_breakpoints():
                 ),
                 cast("FunctionBreakpoint", {"name": "test_func2"}),
                 cast("FunctionBreakpoint", {"name": "test_func3", "logMessage": "Function hit"}),
-            ]
+            ],
         },
     )
 
@@ -682,7 +684,8 @@ def test_handle_variables_scope_reference():
     # Create frame and scope reference
     frame_id = 1
     frame = MockFrame(
-        _locals={"local_var": "local_value"}, _globals={"global_var": "global_value"}
+        _locals={"local_var": "local_value"},
+        _globals={"global_var": "global_value"},
     )
     dbg.frame_id_to_frame[frame_id] = frame
 
@@ -734,7 +737,8 @@ def test_handle_set_variable_object_member():
     dbg.var_refs[var_ref] = ("object", test_obj)
 
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "existing_key", "value": "new_value"}
+        dbg,
+        {"variablesReference": var_ref, "name": "existing_key", "value": "new_value"},
     )
 
     assert result is not None
@@ -752,7 +756,8 @@ def test_handle_set_variable_list_member():
     dbg.var_refs[var_ref] = ("object", test_list)
 
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "1", "value": "new_item"}
+        dbg,
+        {"variablesReference": var_ref, "name": "1", "value": "new_item"},
     )
 
     assert result is not None
@@ -771,7 +776,8 @@ def test_handle_set_variable_list_invalid_index():
 
     # Test invalid index
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "invalid", "value": "new_item"}
+        dbg,
+        {"variablesReference": var_ref, "name": "invalid", "value": "new_item"},
     )
 
     assert result is not None
@@ -780,7 +786,8 @@ def test_handle_set_variable_list_invalid_index():
 
     # Test out of range index
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "5", "value": "new_item"}
+        dbg,
+        {"variablesReference": var_ref, "name": "5", "value": "new_item"},
     )
 
     assert result is not None
@@ -798,7 +805,8 @@ def test_handle_set_variable_tuple():
     dbg.var_refs[var_ref] = ("object", test_tuple)
 
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "0", "value": "new_item"}
+        dbg,
+        {"variablesReference": var_ref, "name": "0", "value": "new_item"},
     )
 
     assert result is not None
@@ -819,7 +827,8 @@ def test_handle_set_variable_scope_variable():
     dbg.var_refs[var_ref] = (frame_id, "locals")
 
     result = _handle_set_variable(
-        dbg, {"variablesReference": var_ref, "name": "y", "value": "new_value"}
+        dbg,
+        {"variablesReference": var_ref, "name": "y", "value": "new_value"},
     )
 
     assert result is not None
@@ -1293,7 +1302,6 @@ def test_handle_command_bytes():
 
 def test_handle_command_bytes_invalid_json():
     """Test _handle_command_bytes with invalid JSON."""
-
     # Test that invalid JSON doesn't crash
     try:
         debug_launcher._handle_command_bytes(b"invalid json")

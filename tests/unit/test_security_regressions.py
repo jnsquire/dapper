@@ -186,12 +186,17 @@ class TestModuleSourcePathValidation:
     @pytest.fixture
     def handler(self):
         """Create a minimal request handler instance."""
-
         h = RequestHandler.__new__(RequestHandler)
         seq = [0]
 
         def make_response(
-            request, command, _response_type=None, *, body=None, success=True, message=None
+            request,
+            command,
+            _response_type=None,
+            *,
+            body=None,
+            success=True,
+            message=None,
         ):
             seq[0] += 1
             resp = {

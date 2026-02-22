@@ -80,6 +80,7 @@ class LifecycleManager:
 
         Args:
             backend_name: Name of the backend for logging
+
         """
         self._backend_name = backend_name
         self._state = BackendLifecycleState.UNINITIALIZED
@@ -112,7 +113,9 @@ class LifecycleManager:
         return self._error_info
 
     async def transition_to(
-        self, new_state: BackendLifecycleState, error_info: str | None = None
+        self,
+        new_state: BackendLifecycleState,
+        error_info: str | None = None,
     ) -> None:
         """Transition to a new lifecycle state.
 
@@ -122,6 +125,7 @@ class LifecycleManager:
 
         Raises:
             LifecycleTransitionError: If the transition is invalid
+
         """
         async with self._lock:
             if new_state not in self._VALID_TRANSITIONS[self._state]:
@@ -142,6 +146,7 @@ class LifecycleManager:
 
         Args:
             callback: Function to call during cleanup
+
         """
         self._cleanup_callbacks.append(callback)
 
@@ -170,6 +175,7 @@ class LifecycleManager:
 
         Args:
             operation_name: Name of the operation for logging
+
         """
         # Auto-transition from UNINITIALIZED -> INITIALIZING -> READY
         if self._state == BackendLifecycleState.UNINITIALIZED:
@@ -203,6 +209,7 @@ class LifecycleManager:
 
         Args:
             error_info: Description of the error
+
         """
         await self.transition_to(BackendLifecycleState.ERROR, error_info)
 

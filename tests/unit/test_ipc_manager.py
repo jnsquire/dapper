@@ -23,11 +23,11 @@ class _ReadErrorConn:
 
 def test_is_expected_loop_shutdown_error_matches_runtime_error() -> None:
     assert _is_expected_loop_shutdown_error(
-        RuntimeError("Event loop stopped before Future completed.")
+        RuntimeError("Event loop stopped before Future completed."),
     )
     assert not _is_expected_loop_shutdown_error(RuntimeError("other runtime error"))
     assert not _is_expected_loop_shutdown_error(
-        ValueError("Event loop stopped before Future completed.")
+        ValueError("Event loop stopped before Future completed."),
     )
 
 

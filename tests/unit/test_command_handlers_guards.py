@@ -89,7 +89,9 @@ def test_set_breakpoints_handler_exercises_debugger_clear_breaks_for_file(
     monkeypatch.setattr(dbg, "clear_break", lambda _path, line: cleared_lines.append(line))
     monkeypatch.setattr(handlers, "_active_debugger", lambda: dbg)
     monkeypatch.setattr(
-        handlers, "_safe_send_debug_message", lambda _message_type, **_payload: True
+        handlers,
+        "_safe_send_debug_message",
+        lambda _message_type, **_payload: True,
     )
 
     handlers._cmd_set_breakpoints({"source": {"path": "/tmp/sample.py"}, "breakpoints": []})

@@ -117,6 +117,7 @@ def build_coroutine_frame_chain(coro: Any) -> list[Any]:
     Returns:
         List of live frame objects.  May be empty if the coroutine has not
         yet started or has already completed (frame is ``None``).
+
     """
     outer_to_inner: list[Any] = []
     obj: Any = coro
@@ -262,6 +263,7 @@ class AsyncioTaskRegistry:
 
         Returns:
             List of ``{"id": int, "name": str}`` dicts, one per live task.
+
         """
         self.clear()
         threads: list[Thread] = []
@@ -294,6 +296,7 @@ class AsyncioTaskRegistry:
         Returns:
             Slice of the pre-built frame list, respecting *start_frame* /
             *levels*.  Returns an empty list if the ID is unknown.
+
         """
         frames = self._id_to_frames.get(pseudo_id, [])
         total = len(frames)

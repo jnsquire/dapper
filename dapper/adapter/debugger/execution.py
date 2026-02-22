@@ -59,7 +59,11 @@ class _PyDebuggerExecutionManager:
             await self._debugger._backend.next_(thread_id, granularity=granularity)
 
     async def step_in(
-        self, thread_id: int, target_id: int | None = None, *, granularity: str = "line"
+        self,
+        thread_id: int,
+        target_id: int | None = None,
+        *,
+        granularity: str = "line",
     ) -> None:
         if not self._debugger.program_running or self._debugger.is_terminated:
             return

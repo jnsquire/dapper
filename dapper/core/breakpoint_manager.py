@@ -1,6 +1,5 @@
 # ruff: noqa: I001
-"""
-BreakpointManager: Centralized breakpoint state management.
+"""BreakpointManager: Centralized breakpoint state management.
 
 This module provides unified management for all breakpoint types:
 1. Line breakpoints with metadata (conditions, hit counts, log messages)
@@ -37,6 +36,7 @@ class BreakpointManager:
         function_names: List of function names to break on.
         function_meta: Mapping of function name -> metadata dict.
         custom: Mapping of filename -> {line -> condition}.
+
     """
 
     line_meta: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
@@ -66,6 +66,7 @@ class BreakpointManager:
             hit_condition: Optional hit count condition.
             log_message: Optional log message (makes this a logpoint).
             **kwargs: Additional metadata (e.g. verified, message, id).
+
         """
         key = (path, int(line))
         meta = self.line_meta.get(key, {})
@@ -88,6 +89,7 @@ class BreakpointManager:
 
         Returns:
             The metadata dict, or None if not found.
+
         """
         normalized_line = int(line)
         path_meta = self._line_meta_by_path.get(path)
@@ -106,6 +108,7 @@ class BreakpointManager:
 
         Args:
             path: The file path to clear metadata for.
+
         """
         path_meta = self._line_meta_by_path.pop(path, None)
         if path_meta is not None:
@@ -126,6 +129,7 @@ class BreakpointManager:
 
         Returns:
             The new hit count.
+
         """
         normalized_line = int(line)
         meta = self.get_line_meta(path, normalized_line)
@@ -146,6 +150,7 @@ class BreakpointManager:
         Args:
             names: List of function names to break on.
             metas: Optional mapping of name -> metadata dict.
+
         """
         self.function_names = list(names)
         self.function_meta = dict(metas) if metas else {}
@@ -158,6 +163,7 @@ class BreakpointManager:
 
         Returns:
             The metadata dict (empty dict if not found).
+
         """
         return self.function_meta.get(name, {})
 
@@ -184,6 +190,7 @@ class BreakpointManager:
             filename: The file path.
             line: The line number.
             condition: Optional condition expression.
+
         """
         if filename not in self.custom:
             self.custom[filename] = {}
@@ -198,6 +205,7 @@ class BreakpointManager:
 
         Returns:
             True if a breakpoint was cleared, False if none existed.
+
         """
         if filename in self.custom and line in self.custom[filename]:
             del self.custom[filename][line]
@@ -213,6 +221,7 @@ class BreakpointManager:
 
         Returns:
             True if a custom breakpoint exists.
+
         """
         return filename in self.custom and line in self.custom[filename]
 

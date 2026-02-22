@@ -281,7 +281,11 @@ async def test_stack_trace(handler, mock_server):
 
 @pytest.mark.asyncio
 async def test_handle_source_prefers_debugger_helper_and_falls_back(
-    handler, mock_server, monkeypatch, tmp_path, use_debug_session
+    handler,
+    mock_server,
+    monkeypatch,
+    tmp_path,
+    use_debug_session,
 ):
     """RequestHandler._handle_source should prefer debugger helper then fallback to session."""
     # prepare a temp file path
@@ -316,7 +320,9 @@ async def test_handle_source_prefers_debugger_helper_and_falls_back(
 
 @pytest.mark.asyncio
 async def test_handle_source_falls_back_to_session_provider_for_uri(
-    handler, mock_server, use_debug_session
+    handler,
+    mock_server,
+    use_debug_session,
 ):
     uri = "vscode-remote://workspace/app.py"
 

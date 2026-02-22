@@ -32,7 +32,9 @@ def test_user_call_continue_action_does_not_emit_stopped(monkeypatch):
     dbg.bp_manager.function_meta["target_fn"] = {"logMessage": "hello"}
 
     monkeypatch.setattr(
-        debugger_bdb_module, "get_function_candidate_names", lambda _frame: ["target_fn"]
+        debugger_bdb_module,
+        "get_function_candidate_names",
+        lambda _frame: ["target_fn"],
     )
 
     def resolve_continue(*_args, **_kwargs):
@@ -56,7 +58,9 @@ def test_user_call_stop_action_emits_function_breakpoint(monkeypatch):
     dbg.bp_manager.function_meta["target_fn"] = {}
 
     monkeypatch.setattr(
-        debugger_bdb_module, "get_function_candidate_names", lambda _frame: ["target_fn"]
+        debugger_bdb_module,
+        "get_function_candidate_names",
+        lambda _frame: ["target_fn"],
     )
 
     def resolve_stop(*_args, **_kwargs):
@@ -95,7 +99,9 @@ def test_user_exception_swallows_set_continue_failure(monkeypatch):
     dbg = DebuggerBDB()
     dbg.exception_handler.config.break_on_raised = True
     monkeypatch.setattr(
-        dbg, "set_continue", lambda: (_ for _ in ()).throw(RuntimeError("set_continue failed"))
+        dbg,
+        "set_continue",
+        lambda: (_ for _ in ()).throw(RuntimeError("set_continue failed")),
     )
 
     frame = _make_frame()
@@ -389,7 +395,9 @@ def test_user_exception_stop_path_emits_and_stores_exception(monkeypatch):
     store_exception_info = MagicMock()
     monkeypatch.setattr(dbg.exception_handler, "store_exception_info", store_exception_info)
     monkeypatch.setattr(
-        dbg.exception_handler, "get_exception_text", lambda _exc_info: "ValueError"
+        dbg.exception_handler,
+        "get_exception_text",
+        lambda _exc_info: "ValueError",
     )
     monkeypatch.setattr(dbg, "_get_stack_frames", lambda _frame: [{"id": 1}])
     set_continue = MagicMock()
@@ -458,7 +466,7 @@ def test_handle_regular_breakpoint_with_real_break_table_continue(monkeypatch):
     try:
         dbg.breaks = {file_path: [1]}  # type: ignore[attr-defined]
         dbg.breakpoint_resolver.resolve = lambda *_args, **_kwargs: SimpleNamespace(
-            action=ResolveAction.CONTINUE
+            action=ResolveAction.CONTINUE,
         )
         set_continue = MagicMock()
         monkeypatch.setattr(dbg, "set_continue", set_continue)
