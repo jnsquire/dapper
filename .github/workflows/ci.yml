@@ -86,7 +86,7 @@ jobs:
           python -m pip install --upgrade pip
           # Install project with C-extension extras so the frame-eval extension is built
           python -m pip install -e ".[frame-eval]"
-          pip install pyright "ruff==0.12.12" pytest pytest-asyncio pytest-cov pytest-xdist mkdocs mkdocs-mermaid2-plugin
+          pip install pyright "ruff==0.12.12" pytest pytest-asyncio pytest-cov pytest-xdist mkdocs mkdocs-material mkdocs-mermaid2-plugin
 
       - name: Lint (ruff)
         run: |
