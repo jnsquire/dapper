@@ -35,10 +35,25 @@ npm run package
 
 ## Quick Start
 
-1. Run **Dapper: Add Saved Debug Configuration** or manually add a `launch.json` configuration using the provided snippet.
-2. Start debugging with **F5** or the `Dapper: Start Debugging` command.
+1. Open **Dapper: Open Launch Configuration Wizard** to create and save a configuration.
+2. Use **Save & Insert to launch.json** in the wizard (or run **Dapper: Add Saved Debug Configuration**) to write it to `launch.json`.
+3. Start debugging with **F5** or the `Dapper: Start Debugging` command.
 
-### Example launch.json snippet
+### Launch Configuration Wizard
+
+Use the wizard to configure `program`/`module`, runtime options, debug options, and then review the final JSON before saving.
+
+You can open it from:
+
+- Command Palette: `Dapper: Open Launch Configuration Wizard`
+- Run and Debug view title actions (Debug sidebar)
+- Active debug toolbar (for Dapper sessions)
+
+The legacy command **Dapper: Configure Settings** is still available as an alias.
+
+## Example Configurations
+
+### Python file launch
 
 ```json
 {
@@ -50,7 +65,7 @@ npm run package
 }
 ```
 
-### Module launch snippet
+### Python module launch
 
 ```json
 {
@@ -64,6 +79,8 @@ npm run package
   "console": "integratedTerminal"
 }
 ```
+
+### Launch target rule
 
 - Use exactly one launch target: `program` or `module`.
 
@@ -79,10 +96,11 @@ npm run package
 
 ## Commands
 
+- `Dapper: Open Launch Configuration Wizard` - Open the step-by-step launch configuration wizard.
 - `Dapper: Start Debugging` - Start debugging with the current configuration.
 - `Dapper: Toggle Breakpoint` - Toggles a breakpoint at the current cursor.
 - `Dapper: Show Variable Inspector` - Opens the variable inspector view for the active debug session.
-- `Dapper: Configure Settings` - Open a quick settings UI for the extension.
+- `Dapper: Configure Settings` - Legacy alias for opening the launch configuration wizard.
 - `Dapper: Add Saved Debug Configuration to launch.json` - Save and insert a configuration.
 - `Dapper: Start Debugging with Saved Config` - Start debugging using a saved configuration.
 

@@ -146,8 +146,8 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
     }
   });
 
-  // Configure Settings Command
-  yield vscode.commands.registerCommand('dapper.configureSettings', async () => {
+  // Launch Configuration Wizard Command
+  const openLaunchWizard = async () => {
     try {
       // Get the current workspace folder
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -156,12 +156,17 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
         return;
       }
 
-      // Create or show the webview with configuration
+      // Create or show the webview with configuration wizard
       await DapperWebview.createOrShow(context.extensionUri, 'config');
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open settings: ${error}`);
+      vscode.window.showErrorMessage(`Failed to open launch configuration wizard: ${error}`);
     }
-  });
+  };
+
+  yield vscode.commands.registerCommand('dapper.openLaunchWizard', openLaunchWizard);
+
+  // Backward-compatible alias
+  yield vscode.commands.registerCommand('dapper.configureSettings', openLaunchWizard);
 
   // Toggle Breakpoint Command
     // Add Debug Configuration Command (insert last saved config into launch.json)
@@ -169,7 +174,7 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
       try {
         const saved = vscode.workspace.getConfiguration('dapper').get('debug');
         if (!saved) {
-          vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Configure Settings to create one.');
+          vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Open Launch Configuration Wizard to create one.');
           return;
         }
         const ok = await insertLaunchConfiguration(saved as any);
@@ -179,6 +184,8 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
         vscode.window.showErrorMessage(`Failed to add debug configuration: ${error}`);
       }
     });
+
+  // Toggle Breakpoint Command
   yield vscode.commands.registerCommand('dapper.toggleBreakpoint', async (file: string, line: number) => {
     try {
       const uri = vscode.Uri.file(file);
@@ -211,7 +218,7 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
     try {
       const saved = vscode.workspace.getConfiguration('dapper').get('debug');
       if (!saved) {
-        vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Configure Settings to create one.');
+        vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Open Launch Configuration Wizard to create one.');
         return;
       }
       await vscode.debug.startDebugging(undefined, saved as any);

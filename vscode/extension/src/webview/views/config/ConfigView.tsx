@@ -1,50 +1,45 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
 import { ConfigProvider, useConfig } from '../../contexts/ConfigContext.js';
 import { DebugConfiguration } from '../../types/debug.js';
-import { useWebComponentEvents } from '../../hooks/useWebComponentEvents.js';
 import '@vscode-elements/elements/dist/vscode-elements.js';
 
 import { vscode } from '../../vscodeApi.js';
-
-type VSCodeComponentProps = {
-  id?: string;
-  value?: string | number | boolean;
-  checked?: boolean;
-  onInput?: (e: Event) => void;
-  onChange?: (e: Event) => void;
-  onClick?: (e: Event) => void;
-  'data-vscode-context'?: string;
-  className?: string;
-  [key: string]: unknown;
-};
 
 interface ConfigViewProps {
   initialConfig?: Partial<DebugConfiguration>;
   onSave?: (config: DebugConfiguration) => void;
   onCancel?: () => void;
-  isSubProcess?: boolean;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSave, onCancel, isSubProcess = false }) => {
+const WIZARD_STEPS = [
+  { id: 'basics', title: 'Basics' },
+  { id: 'runtime', title: 'Runtime' },
+  { id: 'debug', title: 'Debug Options' },
+  { id: 'review', title: 'Review & Create' },
+] as const;
+
+type StepIndex = 0 | 1 | 2 | 3;
+
+const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSave, onCancel }) => {
   const { config, updateConfig, validate } = useConfig();
   const [localErrors, setLocalErrors] = useState<Record<string, string[]>>({});
   const [status, setStatus] = useState<string | null>(null);
+  const [stepIndex, setStepIndex] = useState<StepIndex>(0);
+  const [targetKind, setTargetKind] = useState<'program' | 'module'>('program');
 
   // Local state for lists to maintain stable IDs and focus
   const [argsList, setArgsList] = useState<{ id: string, value: string }[]>([]);
   const [envList, setEnvList] = useState<{ id: string, key: string, value: string }[]>([]);
-
-  // Handlers from the hook to wire webcomponent events to config updates
-  const { createInputHandler, createCheckboxHandler } = useWebComponentEvents<DebugConfiguration>(
-    (field, value) => updateConfig({ [field]: value } as Partial<DebugConfiguration>)
-  );
+  const [modulePathsList, setModulePathsList] = useState<{ id: string, value: string }[]>([]);
 
   const initialConfigApplied = useRef(false);
   useEffect(() => {
     if (!initialConfigApplied.current && initialConfig && Object.keys(initialConfig).length > 0) {
       updateConfig(initialConfig as Partial<DebugConfiguration>);
+      setTargetKind(initialConfig.module ? 'module' : 'program');
       initialConfigApplied.current = true;
     }
     // Request config from host in case it's provided asynchronously
@@ -76,6 +71,14 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   }, [config?.env]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const currentPaths = config?.moduleSearchPaths || [];
+    const localPaths = modulePathsList.map((p) => p.value);
+    if (JSON.stringify(currentPaths) !== JSON.stringify(localPaths)) {
+      setModulePathsList(currentPaths.map((value) => ({ id: generateId(), value })));
+    }
+  }, [config?.moduleSearchPaths]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     const { valid, errors } = validate();
     if (!valid && errors) {
       const grouped = errors.reduce<Record<string, string[]>>((acc, e) => {
@@ -98,6 +101,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
       const data = ev.data as any;
       if (data?.command === 'updateConfig' && data.config) {
         updateConfig(data.config as Partial<DebugConfiguration>);
+        setTargetKind(data.config.module ? 'module' : 'program');
       } else if (data?.command === 'updateStatus' && data.text) {
         setStatus(String((data as any).text));
       }
@@ -128,27 +132,19 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     else if (vscode) vscode.postMessage({ command: 'cancelConfig' });
   }, [onCancel]);
 
-  const getFieldProps = <K extends keyof DebugConfiguration>(field: K, type: 'text' | 'checkbox' = 'text'): VSCodeComponentProps => {
-    const value = config?.[field];
-    const error = localErrors[String(field)]?.[0];
-    const base: VSCodeComponentProps = {
-      id: String(field),
-      'data-vscode-context': JSON.stringify({ field }),
-      className: error ? 'error' : ''
-    };
-    if (type === 'checkbox') {
-      return {
-        ...base,
-        checked: Boolean(value),
-        onChange: createCheckboxHandler(field as any)
-      };
-    }
-    return {
-      ...base,
-      value: value == null ? '' : String(value),
-      onInput: createInputHandler(field as any)
-    };
+  const updateField = <K extends keyof DebugConfiguration>(field: K, value: DebugConfiguration[K]) => {
+    updateConfig({ [field]: value } as Partial<DebugConfiguration>);
   };
+
+  const nextStep = () => {
+    setStepIndex((current) => Math.min(current + 1, WIZARD_STEPS.length - 1) as StepIndex);
+  };
+
+  const previousStep = () => {
+    setStepIndex((current) => Math.max(current - 1, 0) as StepIndex);
+  };
+
+  const stepErrorCount = Object.values(localErrors).reduce((sum, entries) => sum + entries.length, 0);
 
   const updateArgs = (newList: { id: string, value: string }[]) => {
     setArgsList(newList);
@@ -164,88 +160,254 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     updateConfig({ env: newEnv });
   };
 
-  return (
-    <div className="config-view">
-      {status && <div className="status">{status}</div>}
-      <form onSubmit={(e) => { e.preventDefault(); handleSave(e); }}>
-        <vscode-form-group>
-          <vscode-label>Name</vscode-label>
-          <vscode-textfield {...(getFieldProps('name') as any)} placeholder="Configuration name">
-          </vscode-textfield>
+  const updateModulePaths = (newList: { id: string, value: string }[]) => {
+    setModulePathsList(newList);
+    updateConfig({ moduleSearchPaths: newList.map((entry) => entry.value).filter(Boolean) });
+  };
 
+  const renderBasicsStep = () => (
+    <vscode-form-group>
+      <vscode-label>Name</vscode-label>
+      <vscode-textfield
+        value={config?.name || ''}
+        onInput={(e: any) => updateField('name', (e.target as HTMLInputElement).value)}
+        placeholder="Configuration name"
+      />
+
+      <vscode-label>Request</vscode-label>
+      <vscode-single-select
+        value={config?.request || 'launch'}
+        onChange={(e: any) => updateField('request', (e.target as HTMLSelectElement).value as DebugConfiguration['request'])}
+      >
+        <vscode-option value="launch">launch</vscode-option>
+        <vscode-option value="attach">attach</vscode-option>
+      </vscode-single-select>
+
+      <vscode-label>Launch Target</vscode-label>
+      <vscode-radio-group
+        value={targetKind}
+        onChange={(e: any) => {
+          const value = (e.target as HTMLInputElement).value as 'program' | 'module';
+          setTargetKind(value);
+          if (value === 'program') {
+            updateConfig({ module: '' });
+          } else {
+            updateConfig({ program: '' });
+          }
+        }}
+      >
+        <vscode-radio value="program">Python file (`program`)</vscode-radio>
+        <vscode-radio value="module">Python module (`module`)</vscode-radio>
+      </vscode-radio-group>
+
+      {targetKind === 'program' ? (
+        <>
           <vscode-label>Program</vscode-label>
-          <vscode-textfield {...(getFieldProps('program') as any)} placeholder="Path to your program">
-          </vscode-textfield>
+          <vscode-textfield
+            value={config?.program || ''}
+            onInput={(e: any) => updateField('program', (e.target as HTMLInputElement).value)}
+            placeholder="${file}"
+          />
+        </>
+      ) : (
+        <>
+          <vscode-label>Module</vscode-label>
+          <vscode-textfield
+            value={config?.module || ''}
+            onInput={(e: any) => updateField('module', (e.target as HTMLInputElement).value)}
+            placeholder="package.module"
+          />
+        </>
+      )}
+    </vscode-form-group>
+  );
 
-          <vscode-label>Working Directory</vscode-label>
-          <vscode-textfield {...(getFieldProps('cwd') as any)} placeholder="Working directory">
-          </vscode-textfield>
+  const renderRuntimeStep = () => (
+    <vscode-form-group>
+      <vscode-label>Working Directory</vscode-label>
+      <vscode-textfield
+        value={config?.cwd || ''}
+        onInput={(e: any) => updateField('cwd', (e.target as HTMLInputElement).value)}
+        placeholder="${workspaceFolder}"
+      />
 
-          <vscode-form-group>
-            <vscode-label>Arguments</vscode-label>
-            {argsList.map((arg, idx) => (
-              <div key={arg.id} className="form-row">
-                <vscode-textfield
-                  value={arg.value}
-                  onInput={(e: any) => {
-                    const v = (e.target as HTMLInputElement).value;
-                    const next = [...argsList];
-                    next[idx] = { ...next[idx], value: v };
-                    updateArgs(next);
-                  }}
-                />
-                <vscode-button
-                  {...({ appearance: 'icon' } as any)}
-                  onClick={() => updateArgs(argsList.filter((_, i) => i !== idx))}
-                >
-                  <span slot="start" className="codicon codicon-remove" />
-                </vscode-button>
-              </div>
-            ))}
-            <vscode-button icon="add" secondary onClick={() => updateArgs([...argsList, { id: generateId(), value: '' }])}>Add Argument</vscode-button>
-          </vscode-form-group>
+      <vscode-label>Virtual Environment Path (optional)</vscode-label>
+      <vscode-textfield
+        value={config?.venvPath || ''}
+        onInput={(e: any) => updateField('venvPath', (e.target as HTMLInputElement).value)}
+        placeholder=".venv"
+      />
 
-          <vscode-form-group>
-            <vscode-label>Environment Variables</vscode-label>
-            {envList.map((entry, idx) => (
-              <div key={entry.id} className="form-row">
-                <vscode-textfield
-                  value={entry.key}
-                  onInput={(e: any) => {
-                    const v = (e.target as HTMLInputElement).value;
-                    const next = [...envList];
-                    next[idx] = { ...next[idx], key: v };
-                    updateEnv(next);
-                  }}
-                  placeholder="Name"
-                />
-                <vscode-textfield
-                  value={entry.value}
-                  onInput={(e: any) => {
-                    const v = (e.target as HTMLInputElement).value;
-                    const next = [...envList];
-                    next[idx] = { ...next[idx], value: v };
-                    updateEnv(next);
-                  }}
-                  placeholder="Value"
-                />
-                <vscode-button icon="remove" onClick={() => updateEnv(envList.filter((_, i) => i !== idx))}>
-                </vscode-button>
-              </div>
-            ))}
-            <vscode-button secondary onClick={() => updateEnv([...envList, { id: generateId(), key: 'NEW_VAR_' + Date.now(), value: '' }])}>
-              <span slot="start" className="codicon codicon-add" />Add Environment Variable
-            </vscode-button>
-          </vscode-form-group>
-        </vscode-form-group>
+      <vscode-label>Arguments</vscode-label>
+      {argsList.map((arg, idx) => (
+        <div key={arg.id} className="form-row">
+          <vscode-textfield
+            value={arg.value}
+            onInput={(e: any) => {
+              const v = (e.target as HTMLInputElement).value;
+              const next = [...argsList];
+              next[idx] = { ...next[idx], value: v };
+              updateArgs(next);
+            }}
+          />
+          <vscode-button secondary onClick={() => updateArgs(argsList.filter((_, i) => i !== idx))}>Remove</vscode-button>
+        </div>
+      ))}
+      <vscode-button secondary onClick={() => updateArgs([...argsList, { id: generateId(), value: '' }])}>Add Argument</vscode-button>
+
+      {targetKind === 'module' && (
+        <>
+          <vscode-label>Module Search Paths</vscode-label>
+          {modulePathsList.map((entry, idx) => (
+            <div key={entry.id} className="form-row">
+              <vscode-textfield
+                value={entry.value}
+                onInput={(e: any) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  const next = [...modulePathsList];
+                  next[idx] = { ...next[idx], value: v };
+                  updateModulePaths(next);
+                }}
+              />
+              <vscode-button secondary onClick={() => updateModulePaths(modulePathsList.filter((_, i) => i !== idx))}>Remove</vscode-button>
+            </div>
+          ))}
+          <vscode-button secondary onClick={() => updateModulePaths([...modulePathsList, { id: generateId(), value: '' }])}>Add Search Path</vscode-button>
+        </>
+      )}
+
+      <vscode-label>Environment Variables</vscode-label>
+      {envList.map((entry, idx) => (
+        <div key={entry.id} className="form-row">
+          <vscode-textfield
+            value={entry.key}
+            onInput={(e: any) => {
+              const v = (e.target as HTMLInputElement).value;
+              const next = [...envList];
+              next[idx] = { ...next[idx], key: v };
+              updateEnv(next);
+            }}
+            placeholder="Name"
+          />
+          <vscode-textfield
+            value={entry.value}
+            onInput={(e: any) => {
+              const v = (e.target as HTMLInputElement).value;
+              const next = [...envList];
+              next[idx] = { ...next[idx], value: v };
+              updateEnv(next);
+            }}
+            placeholder="Value"
+          />
+          <vscode-button secondary onClick={() => updateEnv(envList.filter((_, i) => i !== idx))}>Remove</vscode-button>
+        </div>
+      ))}
+      <vscode-button secondary onClick={() => updateEnv([...envList, { id: generateId(), key: '', value: '' }])}>Add Environment Variable</vscode-button>
+    </vscode-form-group>
+  );
+
+  const renderDebugStep = () => (
+    <vscode-form-group>
+      <vscode-label>Debug Server Port</vscode-label>
+      <vscode-textfield
+        type="number"
+        value={String(config?.debugServer ?? 4711)}
+        onInput={(e: any) => updateField('debugServer', Number((e.target as HTMLInputElement).value || 4711))}
+      />
+
+      <vscode-label>IPC Transport</vscode-label>
+      <vscode-single-select
+        value={config?.ipcTransport || 'pipe'}
+        onChange={(e: any) => updateField('ipcTransport', (e.target as HTMLSelectElement).value as DebugConfiguration['ipcTransport'])}
+      >
+        <vscode-option value="pipe">pipe</vscode-option>
+        <vscode-option value="tcp">tcp</vscode-option>
+        <vscode-option value="unix">unix</vscode-option>
+      </vscode-single-select>
+
+      <vscode-checkbox checked={Boolean(config?.useIpc)} onChange={(e: any) => updateField('useIpc', (e.target as HTMLInputElement).checked)}>
+        Use IPC
+      </vscode-checkbox>
+      <vscode-checkbox checked={Boolean(config?.frameEval)} onChange={(e: any) => updateField('frameEval', (e.target as HTMLInputElement).checked)}>
+        Enable Frame Evaluation
+      </vscode-checkbox>
+      <vscode-checkbox checked={Boolean(config?.stopOnEntry)} onChange={(e: any) => updateField('stopOnEntry', (e.target as HTMLInputElement).checked)}>
+        Stop on Entry
+      </vscode-checkbox>
+      <vscode-checkbox checked={Boolean(config?.justMyCode)} onChange={(e: any) => updateField('justMyCode', (e.target as HTMLInputElement).checked)}>
+        Just My Code
+      </vscode-checkbox>
+      <vscode-checkbox checked={Boolean(config?.subprocessAutoAttach)} onChange={(e: any) => updateField('subprocessAutoAttach', (e.target as HTMLInputElement).checked)}>
+        Auto-attach subprocesses
+      </vscode-checkbox>
+    </vscode-form-group>
+  );
+
+  const renderReviewStep = () => {
+    const finalConfig = {
+      ...config,
+      type: 'dapper',
+      request: config?.request || 'launch',
+    };
+
+    return (
+      <vscode-form-group>
+        <vscode-label>Review</vscode-label>
+        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+          {JSON.stringify(finalConfig, null, 2)}
+        </pre>
+      </vscode-form-group>
+    );
+  };
+
+  const renderCurrentStep = () => {
+    switch (stepIndex) {
+      case 0:
+        return renderBasicsStep();
+      case 1:
+        return renderRuntimeStep();
+      case 2:
+        return renderDebugStep();
+      default:
+        return renderReviewStep();
+    }
+  };
+
+  return (
+    <div className="config-view" style={{ padding: '16px' }}>
+      {status && <div className="status">{status}</div>}
+
+      <vscode-label style={{ display: 'block', marginBottom: '8px' }}>
+        Step {stepIndex + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[stepIndex].title}
+      </vscode-label>
+      <vscode-progress-ring value={((stepIndex + 1) / WIZARD_STEPS.length) * 100} />
+
+      <form onSubmit={(e) => { e.preventDefault(); handleSave(e); }}>
+        {renderCurrentStep()}
+
+        {!!stepErrorCount && (
+          <vscode-form-helper>
+            {stepErrorCount} validation issue(s) detected. Review required fields before saving.
+          </vscode-form-helper>
+        )}
 
         <div className="form-actions">
-          <vscode-button type="submit">Save Configuration</vscode-button>
+          <vscode-button secondary disabled={stepIndex === 0} onClick={(e: React.MouseEvent) => { e.preventDefault(); previousStep(); }}>
+            Back
+          </vscode-button>
+
+          {stepIndex < WIZARD_STEPS.length - 1 ? (
+            <vscode-button onClick={(e: React.MouseEvent) => { e.preventDefault(); nextStep(); }}>
+              Next
+            </vscode-button>
+          ) : (
+            <vscode-button type="submit">Save Configuration</vscode-button>
+          )}
+
           <vscode-button
             appearance="primary"
             onClick={(e) => {
               e.preventDefault();
-              // Start debugging with current config
               if (vscode) vscode.postMessage({ command: 'startDebug', config });
             }}
           >
@@ -255,7 +417,6 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
             secondary
             onClick={(e) => {
               e.preventDefault();
-              // save and insert into launch.json
               if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
             }}
           >
@@ -273,5 +434,15 @@ const ConfigView: React.FC<ConfigViewProps> = (props) => (
     <ConfigViewContent {...props} />
   </ConfigProvider>
 );
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <ConfigView />
+    </React.StrictMode>
+  );
+}
 
 export default ConfigView;

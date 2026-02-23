@@ -2,7 +2,7 @@
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
   "description": "Enhanced Python debugging with Dapper Debug Adapter and React-based UI",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
@@ -195,7 +195,10 @@
                 "default": 5678
               },
               "processId": {
-                "type": ["number", "string"],
+                "type": [
+                  "number",
+                  "string"
+                ],
                 "description": "Process ID to attach to, or '${command:pickProcess}' to pick",
                 "default": ""
               },
@@ -211,7 +214,11 @@
               },
               "ipcTransport": {
                 "type": "string",
-                "enum": ["tcp", "unix", "pipe"],
+                "enum": [
+                  "tcp",
+                  "unix",
+                  "pipe"
+                ],
                 "description": "IPC transport method",
                 "default": "tcp"
               },
@@ -292,6 +299,11 @@
     ],
     "commands": [
       {
+        "command": "dapper.openLaunchWizard",
+        "title": "Dapper: Open Launch Configuration Wizard",
+        "category": "Dapper"
+      },
+      {
         "command": "dapper.startDebugging",
         "title": "Dapper: Start Debugging",
         "category": "Dapper"
@@ -308,7 +320,7 @@
       },
       {
         "command": "dapper.configureSettings",
-        "title": "Dapper: Configure Settings",
+        "title": "Dapper: Configure Settings (Legacy)",
         "category": "Dapper"
       },
       {
@@ -348,6 +360,10 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "dapper.openLaunchWizard",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
           "command": "dapper.showVariableInspector",
           "when": "debuggersAvailable == true"
         },
@@ -364,7 +380,19 @@
           "when": "debugType == 'dapper' && editorLangId == python"
         }
       ],
+      "view/title": [
+        {
+          "command": "dapper.openLaunchWizard",
+          "when": "view == workbench.view.debug && workspaceFolderCount > 0",
+          "group": "navigation@5"
+        }
+      ],
       "debug/toolbar": [
+        {
+          "command": "dapper.openLaunchWizard",
+          "group": "dapper_debug",
+          "when": "debugType == 'dapper'"
+        },
         {
           "command": "dapper.showVariableInspector",
           "group": "dapper_debug",
@@ -379,6 +407,7 @@
     "build": "npm run compile && npm run bundle:extension",
     "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",
+    "package:fresh": "node ./scripts/package.cjs --fresh",
     "watch": "node esbuild.config.js --watch",
     "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
     "compile": "npm run clean && tsc -p ./",
@@ -393,15 +422,15 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.99.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
     "@vscode-elements/elements": "^2.3.1",
     "@vscode/debugprotocol": "^1.68.0",
     "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.25.12",
     "esbuild-plugin-copy": "^2.1.1",
     "esbuild-sass-plugin": "^3.3.1",
-    "eslint": "^8.56.0",
+    "eslint": "^8.57.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ts-loader": "^9.5.1",

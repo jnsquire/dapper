@@ -67,8 +67,8 @@ async function buildExtension() {
       'debugAdapter/configurationProvider': './src/debugAdapter/configurationProvider.ts',
       'webview/reactSSRProvider': './src/webview/reactSSRProvider.ts',
     },
-  // Keep vscode and native debug adapter external (resolved at runtime by VS Code)
-  external: ['vscode', '@vscode/debugadapter'],
+    // Keep only vscode external (provided by VS Code runtime)
+    external: ['vscode'],
     banner: {
       ...commonConfig.banner,
       // Ensure Node.js can handle ES modules with dynamic imports

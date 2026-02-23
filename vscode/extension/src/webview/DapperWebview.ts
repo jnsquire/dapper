@@ -27,7 +27,7 @@ export class DapperWebview {
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    const title = viewType === 'config' ? 'Dapper Settings' : 'Dapper Debugger';
+    const title = viewType === 'config' ? 'Dapper Launch Configuration Wizard' : 'Dapper Debugger';
     const panelId = `dapperWebview.${viewType}`;
 
     // If we already have a panel with the same view type, show it
@@ -69,7 +69,7 @@ export class DapperWebview {
     this._viewType = viewType;
     
     // Update panel title based on view type
-    const newTitle = viewType === 'config' ? 'Dapper Settings' : 'Dapper Debugger';
+    const newTitle = viewType === 'config' ? 'Dapper Launch Configuration Wizard' : 'Dapper Debugger';
     this._panel.title = newTitle;
     logger.debug(`Updated webview title to: ${newTitle}`);
     
@@ -118,12 +118,20 @@ export class DapperWebview {
 
   private async createConfigView(): Promise<IViewComponent> {
     // In a real implementation, you would import the actual component
+    const nonce = String(Date.now());
+    const configScriptUri = this.getWebviewUri('webview/views/config/ConfigView.js');
+    const stylesUri = this.getWebviewUri('styles.css');
     return {
       render: () => `
+        <!doctype html>
         <html>
           <head>
-            <title>Dapper Settings</title>
-            <script type="module" src="${this.getWebviewUri('config.js')}"></script>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this._panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${this._panel.webview.cspSource} https: data:; font-src ${this._panel.webview.cspSource};" />
+            <title>Dapper Launch Configuration Wizard</title>
+            <link rel="stylesheet" href="${stylesUri}" />
+            <script type="module" nonce="${nonce}" src="${configScriptUri}"></script>
           </head>
           <body>
             <div id="root"></div>
