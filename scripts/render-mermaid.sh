@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 shopt -s nullglob
-INPUT_DIR="doc/reference/diagrams"
-OUTPUT_DIR="doc/reference/images"
+INPUT_DIR="doc/development/diagrams"
+OUTPUT_DIR="doc/development/images"
 FORCE=0
 
 if [ "${1-}" = "--force" ]; then
