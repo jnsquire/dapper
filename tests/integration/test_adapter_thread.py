@@ -76,11 +76,15 @@ async def test_start_stop_tcp(monkeypatch):
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", host="127.0.0.1", port=None)
 
     # Set up port listener BEFORE starting to avoid race
-    port_future: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+    test_loop = asyncio.get_running_loop()
+    port_future: asyncio.Future[int] = test_loop.create_future()
 
     def on_port(port: int) -> None:
-        if not port_future.done():
-            port_future.set_result(port)
+        def _set() -> None:
+            if not port_future.done():
+                port_future.set_result(port)
+
+        test_loop.call_soon_threadsafe(_set)
 
     runner.on_port_assigned.add_listener(on_port)
 
@@ -138,11 +142,15 @@ async def test_port_future_resolves_when_server_created(monkeypatch):
     monkeypatch.setattr(adapter_thread_mod, "TCPServerConnection", _FakeTCPConnection)
     monkeypatch.setattr(adapter_thread_mod, "DebugAdapterServer", _FakeServer)
 
-    port_future = asyncio.Future()
+    test_loop = asyncio.get_running_loop()
+    port_future: asyncio.Future[int] = test_loop.create_future()
 
     def on_port_assigned(port):
-        if not port_future.done():
-            port_future.set_result(port)
+        def _set() -> None:
+            if not port_future.done():
+                port_future.set_result(port)
+
+        test_loop.call_soon_threadsafe(_set)
 
     runner = adapter_thread_mod.AdapterThread(connection_type="tcp", port=None)
     runner.on_port_assigned.add_listener(on_port_assigned)

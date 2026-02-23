@@ -388,6 +388,15 @@ async def test_continue_execution(debugger):
     # Set up the external backend
     setup_external_backend(debugger)
 
+    async def _send_message_with_immediate_response(message: dict[str, object]) -> None:
+        command_id = message.get("id")
+        if isinstance(command_id, int):
+            future = debugger._session_facade.pending_commands.get(command_id)
+            if future is not None and not future.done():
+                future.set_result({"body": {"allThreadsContinued": True}})
+
+    debugger.ipc.send_message = AsyncMock(side_effect=_send_message_with_immediate_response)
+
     await debugger.continue_execution(thread_id=1)
 
     # Check that send_message was called via IPC
@@ -841,6 +850,20 @@ async def test_handle_debug_message_exited_event(debugger):
 
     # Check that terminated flag was set
     assert debugger.is_terminated
+
+
+@pytest.mark.asyncio
+async def test_handle_debug_message_exited_event_fails_pending_commands(debugger):
+    pending = asyncio.get_running_loop().create_future()
+    debugger._session_facade.pending_commands[4242] = pending
+
+    message = {"event": "exited", "exitCode": 0}
+    await debugger.handle_debug_message(message)
+    await asyncio.sleep(0)
+
+    assert pending.done()
+    with pytest.raises(RuntimeError, match="Debuggee exited"):
+        pending.result()
 
 
 @pytest.mark.asyncio

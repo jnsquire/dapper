@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import concurrent.futures
 import ctypes
 from datetime import datetime
 from datetime import timezone
@@ -47,6 +48,41 @@ def _shutdown_trace(message: str) -> None:
         return
     stamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     print(f"[dapper-pytest-shutdown {stamp}] {message}", file=sys.stderr, flush=True)
+
+
+def _is_truthy(value: str | None) -> bool:
+    return str(value).lower() in ("1", "true", "yes")
+
+
+def _normalized_timeout(timeout_seconds: float) -> float:
+    return max(timeout_seconds, 0.05)
+
+
+def _is_vscode_test_runner_context() -> bool:
+    # VS Code Python test adapter typically injects one or both of these pipe env vars.
+    # Prefer these specific signals over broad editor markers like VSCODE_PID.
+    return bool(
+        os.getenv("TEST_RUN_PIPE")
+        or os.getenv("RUN_TEST_IDS_PIPE")
+        or os.getenv("PYTEST_TEST_RUN_PIPE")
+        or os.getenv("PYTEST_RUN_TEST_IDS_PIPE")
+    )
+
+
+def _resolve_skip_js_tests_in_conftest() -> str:
+    explicit_skip = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFTEST")
+    if explicit_skip is None:
+        # Backward compatibility for historical typo.
+        explicit_skip = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT")
+
+    if _is_truthy(os.getenv("DAPPER_RUN_JS_TESTS_IN_CONFTEST")):
+        return "0"
+
+    if _is_vscode_test_runner_context():
+        _shutdown_trace("detected VS Code test runner context; skipping JS tests in conftest")
+        return "1"
+
+    return explicit_skip if explicit_skip is not None else "0"
 
 
 def _maybe_start_faulthandler_dump() -> None:
@@ -107,12 +143,28 @@ def _force_thread_shutdown_enabled() -> bool:
 
 
 def _force_process_exit_enabled() -> bool:
-    default = "1" if sys.platform.startswith("win") and os.getenv("CI") else "0"
+    default = (
+        "1"
+        if sys.platform.startswith("win") and (os.getenv("CI") or _is_vscode_test_runner_context())
+        else "0"
+    )
     return str(os.getenv("DAPPER_PYTEST_FORCE_OS_EXIT", default)).lower() in (
         "1",
         "true",
         "yes",
     )
+
+
+def _shutdown_policy() -> tuple[bool, float, float]:
+    """Return (force_exit, loop_timeout, cleanup_timeout)."""
+    force_exit = _force_process_exit_enabled()
+    loop_timeout = 0.2 if (force_exit or _is_vscode_test_runner_context()) else 1.5
+    cleanup_timeout = 0.1 if force_exit else 1.5
+    return force_exit, loop_timeout, cleanup_timeout
+
+
+def _loop_teardown_timeout_seconds() -> float:
+    return _shutdown_policy()[1]
 
 
 def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
@@ -144,8 +196,15 @@ def _tracking_new_event_loop() -> asyncio.AbstractEventLoop:
 
 def _close_tracked_event_loops() -> None:
     loops = list(_created_event_loops)
+    shutdown_timeout = _loop_teardown_timeout_seconds()
 
-    # First, ask running loops (possibly in background threads) to stop.
+    # First, request graceful shutdown so default executor threads get a
+    # chance to exit before we close loops.
+    for loop in loops:
+        _shutdown_loop_best_effort(loop, timeout_seconds=shutdown_timeout)
+
+    # Ask any still-running loops to stop, then allow their threads to observe
+    # the stop signal.
     for loop in loops:
         try:
             if not loop.is_closed() and loop.is_running():
@@ -153,18 +212,72 @@ def _close_tracked_event_loops() -> None:
         except Exception:  # noqa: PERF203
             pass
 
-    # Give background loop threads a small window to observe stop signal.
     time.sleep(0.05)
 
-    # Then close loops that remain open.
+    # Finally close loops that are no longer running.
     for loop in loops:
         try:
-            if not loop.is_closed():
+            if not loop.is_closed() and not loop.is_running():
                 loop.close()
         except Exception:  # noqa: PERF203
             pass
 
     _created_event_loops.clear()
+
+
+async def _graceful_loop_shutdown(
+    loop: asyncio.AbstractEventLoop, timeout_seconds: float = 1.0
+) -> None:
+    bounded_timeout = _normalized_timeout(timeout_seconds)
+    current = asyncio.current_task(loop=loop)
+    pending = [t for t in asyncio.all_tasks(loop) if t is not current and not t.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*pending, return_exceptions=True),
+                timeout=bounded_timeout,
+            )
+        except TimeoutError:
+            pass
+    try:
+        await asyncio.wait_for(loop.shutdown_asyncgens(), timeout=bounded_timeout)
+    except TimeoutError:
+        pass
+    try:
+        await asyncio.wait_for(loop.shutdown_default_executor(), timeout=bounded_timeout)
+    except TimeoutError:
+        pass
+
+
+def _shutdown_loop_best_effort(
+    loop: asyncio.AbstractEventLoop, timeout_seconds: float = 1.0
+) -> None:
+    if loop.is_closed():
+        return
+
+    try:
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                _graceful_loop_shutdown(loop, timeout_seconds=timeout_seconds),
+                loop,
+            )
+            try:
+                future.result(timeout=_normalized_timeout(timeout_seconds) + 0.25)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                try:
+                    future.result(timeout=0.2)
+                except Exception:
+                    pass
+            except concurrent.futures.CancelledError:
+                pass
+            return
+
+        loop.run_until_complete(_graceful_loop_shutdown(loop, timeout_seconds=timeout_seconds))
+    except Exception:
+        pass
 
 
 def _join_known_background_threads(timeout_seconds: float = 1.0) -> None:
@@ -298,16 +411,7 @@ def event_loop():
     try:
         yield loop
     finally:
-        try:
-            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-            for t in pending:
-                t.cancel()
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.run_until_complete(loop.shutdown_default_executor())
-        except Exception:
-            logger.exception("Exception during event loop teardown")
+        _shutdown_loop_best_effort(loop, timeout_seconds=_loop_teardown_timeout_seconds())
         try:
             loop.close()
         except Exception:
@@ -343,13 +447,14 @@ def background_event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     try:
         yield loop
     finally:
+        _shutdown_loop_best_effort(loop, timeout_seconds=_loop_teardown_timeout_seconds())
         if not loop.is_closed():
             try:
                 loop.call_soon_threadsafe(loop.stop)
             except Exception:
                 pass
-        thread.join(timeout=1.0)
-        if not loop.is_closed():
+        thread.join(timeout=_loop_teardown_timeout_seconds())
+        if not loop.is_closed() and not loop.is_running():
             loop.close()
 
 
@@ -365,15 +470,11 @@ def pytest_sessionfinish(session, exitstatus):
     _shutdown_trace("pytest_sessionfinish entered")
     _maybe_start_faulthandler_dump()
     _shutdown_trace(f"threads at sessionfinish entry: {_format_threads_for_trace()}")
-    # Allow the `run_tests` runner to suppress running JS tests inside pytest
-    skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFTEST")
-    if skip_in_conftest is None:
-        # Backward compatibility for historical typo.
-        skip_in_conftest = os.getenv("DAPPER_SKIP_JS_TESTS_IN_CONFT", "0")
+    skip_in_conftest = _resolve_skip_js_tests_in_conftest()
 
     _shutdown_trace(f"skip_in_conftest={skip_in_conftest!r}")
 
-    if str(skip_in_conftest).lower() in ("1", "true", "yes"):
+    if _is_truthy(skip_in_conftest):
         _shutdown_trace("pytest_sessionfinish returning early (JS tests skipped)")
         return
     try:
@@ -403,13 +504,14 @@ def pytest_unconfigure(config):
 
     # Aggressive final cleanup for leaked background loops/threads that can
     # keep the interpreter alive on Windows during pytest shutdown.
+    force_exit, _loop_timeout, cleanup_timeout = _shutdown_policy()
     _close_tracked_event_loops()
-    _join_known_background_threads(timeout_seconds=1.5)
-    _force_stop_lingering_threads(timeout_seconds=1.5)
+    _join_known_background_threads(timeout_seconds=cleanup_timeout)
+    _force_stop_lingering_threads(timeout_seconds=cleanup_timeout)
 
     _shutdown_trace(f"threads at unconfigure: {_format_threads_for_trace()}")
 
-    if _force_process_exit_enabled():
+    if force_exit:
         code = int(_pytest_session_state["exitstatus"])
         _shutdown_trace(f"forcing os._exit({code}) due to DAPPER_PYTEST_FORCE_OS_EXIT")
         try:

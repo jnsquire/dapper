@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from dapper.ipc.ipc_manager import IPCManager
@@ -21,6 +22,21 @@ class _ReadErrorConn:
         raise ValueError("boom")
 
 
+class _AcceptCancelledConn:
+    async def accept(self) -> None:
+        raise asyncio.CancelledError
+
+
+class _ReadCancelledConn:
+    async def read_message(self):
+        raise asyncio.CancelledError
+
+
+class _AcceptSystemExitConn:
+    async def accept(self) -> None:
+        raise SystemExit
+
+
 def test_is_expected_loop_shutdown_error_matches_runtime_error() -> None:
     assert _is_expected_loop_shutdown_error(
         RuntimeError("Event loop stopped before Future completed."),
@@ -29,6 +45,11 @@ def test_is_expected_loop_shutdown_error_matches_runtime_error() -> None:
     assert not _is_expected_loop_shutdown_error(
         ValueError("Event loop stopped before Future completed."),
     )
+
+
+def test_is_expected_loop_shutdown_error_matches_cancelled_and_system_exit() -> None:
+    assert _is_expected_loop_shutdown_error(asyncio.CancelledError())
+    assert _is_expected_loop_shutdown_error(SystemExit())
 
 
 def test_read_messages_accept_shutdown_does_not_log_error(caplog) -> None:
@@ -68,3 +89,42 @@ def test_read_messages_read_real_error_logs(caplog) -> None:
         manager._read_messages()  # pyright: ignore[reportAttributeAccessIssue]
 
     assert "Error reading IPC message" in caplog.text
+
+
+def test_read_messages_accept_cancelled_does_not_log_error(caplog) -> None:
+    manager = IPCManager()
+    manager._connection = _AcceptCancelledConn()  # pyright: ignore[reportAttributeAccessIssue]
+    manager._message_handler = lambda _message: None
+    manager._enabled = True
+    manager._should_accept = True
+
+    with caplog.at_level(logging.ERROR):
+        manager._read_messages()  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert "Error accepting IPC connection" not in caplog.text
+
+
+def test_read_messages_read_cancelled_does_not_log_error(caplog) -> None:
+    manager = IPCManager()
+    manager._connection = _ReadCancelledConn()  # pyright: ignore[reportAttributeAccessIssue]
+    manager._message_handler = lambda _message: None
+    manager._enabled = True
+    manager._should_accept = False
+
+    with caplog.at_level(logging.ERROR):
+        manager._read_messages()  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert "Error reading IPC message" not in caplog.text
+
+
+def test_read_messages_accept_system_exit_does_not_log_error(caplog) -> None:
+    manager = IPCManager()
+    manager._connection = _AcceptSystemExitConn()  # pyright: ignore[reportAttributeAccessIssue]
+    manager._message_handler = lambda _message: None
+    manager._enabled = True
+    manager._should_accept = True
+
+    with caplog.at_level(logging.ERROR):
+        manager._read_messages()  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert "Error accepting IPC connection" not in caplog.text

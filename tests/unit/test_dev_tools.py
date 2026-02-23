@@ -6,6 +6,7 @@ This module tests the developer tools functionality, focusing on the update_docs
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -121,3 +122,32 @@ def test_main_calls_update_docs() -> None:
 
         # Check that update_docs was called
         mock_update_docs.assert_called_once()
+
+
+def test_js_test_timeout_seconds_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("DAPPER_JS_TEST_TIMEOUT_SECONDS", "42")
+    assert dev_tools._js_test_timeout_seconds() == 42
+
+
+def test_run_js_tests_raises_on_timeout(monkeypatch, tmp_path: Path) -> None:
+    fake_file = tmp_path / "a" / "b" / "dev_tools.py"
+    fake_file.parent.mkdir(parents=True)
+    fake_file.write_text("# test")
+
+    ext_dir = tmp_path / "vscode" / "extension"
+    (ext_dir / "node_modules").mkdir(parents=True)
+
+    monkeypatch.setattr(dev_tools, "__file__", str(fake_file))
+    monkeypatch.setattr(dev_tools.shutil, "which", lambda _name: "npm")
+    monkeypatch.setenv("DAPPER_JS_TEST_TIMEOUT_SECONDS", "1")
+
+    def _raise_timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd=["npm", "test"], timeout=1)
+
+    monkeypatch.setattr(dev_tools.subprocess, "run", _raise_timeout)
+
+    with pytest.raises(dev_tools.JSTestsFailedError) as exc:
+        dev_tools.run_js_tests()
+
+    assert exc.value.returncode == 124
+    assert "timed out" in str(exc.value).lower()

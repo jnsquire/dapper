@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 def _is_expected_loop_shutdown_error(exc: BaseException) -> bool:
     """Return whether an exception represents expected loop shutdown."""
+    if isinstance(exc, (asyncio.CancelledError, SystemExit)):
+        return True
     if not isinstance(exc, RuntimeError):
         return False
     message = str(exc)
@@ -197,7 +199,7 @@ class IPCManager:
                 logger.debug("Accepting connection...")
                 try:
                     loop.run_until_complete(self._connection.accept())
-                except Exception as exc:
+                except BaseException as exc:
                     if _is_expected_loop_shutdown_error(exc):
                         logger.debug("Reader thread exiting during accept() shutdown")
                         return
@@ -215,7 +217,7 @@ class IPCManager:
                         break
                     logger.debug("Received IPC message: %s", message)
                     self._message_handler(message)
-                except Exception as exc:
+                except BaseException as exc:
                     if _is_expected_loop_shutdown_error(exc):
                         logger.debug("Reader thread exiting during read_message() shutdown")
                         break

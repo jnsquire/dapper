@@ -55,14 +55,8 @@ def test_sync_connection_adapter_close_propagates_conn_close_errors() -> None:
 
 
 def test_sync_connection_adapter_run_coro_raises_when_loop_missing() -> None:
-    conn = _FakeConn()
-    adapter = SyncConnectionAdapter(conn)
-    try:
-        adapter._loop = None
-        with pytest.raises(RuntimeError, match="Adapter loop not started"):
-            adapter._run_coro(None)
-    finally:
-        # Ensure no background thread leak from setup.
-        adapter._loop = None
-        if adapter._thread is not None:
-            adapter._thread.join(timeout=1.0)
+    adapter = SyncConnectionAdapter.__new__(SyncConnectionAdapter)
+    adapter._loop = None
+
+    with pytest.raises(RuntimeError, match="Adapter loop not started"):
+        adapter._run_coro(None)

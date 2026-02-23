@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
@@ -27,6 +28,17 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetExpressionResponseBody
 
 logger = logging.getLogger(__name__)
+
+
+def _command_response_timeout_seconds() -> float | None:
+    raw = str(os.getenv("DAPPER_COMMAND_RESPONSE_TIMEOUT_SECONDS", "0")).strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 class _SetExpressionDispatchArgs(TypedDict):
@@ -391,8 +403,10 @@ class ExternalProcessBackend(BaseBackend):
         expect_response: bool = False,
     ) -> dict[str, Any] | None:
         """Send a command to the debuggee process."""
+        result: dict[str, Any] | None = None
+
         if not self.is_available():
-            return None
+            return result
 
         response_future: asyncio.Future[dict[str, Any]] | None = None
         command_id: int = 0  # Only used when expect_response is True
@@ -411,16 +425,18 @@ class ExternalProcessBackend(BaseBackend):
             logger.exception("Error sending command to debuggee")
             if expect_response:
                 self._pending_commands.pop(command_id, None)
-            return None
+        else:
+            if response_future is not None:
+                timeout_seconds = _command_response_timeout_seconds()
+                try:
+                    if timeout_seconds is None:
+                        result = await response_future
+                    else:
+                        result = await asyncio.wait_for(response_future, timeout=timeout_seconds)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    self._pending_commands.pop(command_id, None)
 
-        if response_future is None:
-            return None
-
-        try:
-            return await asyncio.wait_for(response_future, timeout=5.0)
-        except asyncio.TimeoutError:
-            self._pending_commands.pop(command_id, None)
-            return None
+        return result
 
     # ------------------------------------------------------------------
     # Lifecycle

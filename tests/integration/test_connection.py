@@ -38,9 +38,9 @@ def pipe_name():
 @pytest.mark.asyncio
 async def test_tcp_connection_initialization():
     """Test TCP connection initialization."""
-    conn = TCPServerConnection(port=0)
+    conn = TCPServerConnection(host="127.0.0.1", port=0)
     try:
-        assert conn.host == "localhost"
+        assert conn.host == "127.0.0.1"
         assert conn.port == 0
         assert not conn.is_connected
     finally:
@@ -61,7 +61,7 @@ async def test_tcp_accept_message_flow():
     """Test TCP connection accept, message sending and receiving using an
     OS-assigned ephemeral port to avoid race conditions.
     """
-    conn = TCPServerConnection(port=0)
+    conn = TCPServerConnection(host="127.0.0.1", port=0)
 
     try:
         # Start listening but don't wait for a client yet
@@ -70,7 +70,7 @@ async def test_tcp_accept_message_flow():
 
         # Connect client and send request while server waits in parallel
         wait_task = asyncio.create_task(conn.wait_for_client())
-        reader, writer = await asyncio.open_connection("localhost", port)
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
         request = {"seq": 1, "type": "request", "command": "test"}
         content = json.dumps(request).encode("utf-8")
         header = f"Content-Length: {len(content)}\r\n\r\n".encode()

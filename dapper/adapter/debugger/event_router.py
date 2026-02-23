@@ -65,6 +65,7 @@ class _PyDebuggerEventRouter:
         """Handle debuggee exited event and schedule cleanup."""
         exit_code = data.get("exitCode", 0)
         self._debugger.is_terminated = True
+        self._debugger.session_facade.fail_pending_commands(RuntimeError("Debuggee exited"))
         self._debugger.schedule_program_exit(exit_code)
 
     def handle_event_stacktrace(self, data: dict[str, Any]) -> None:

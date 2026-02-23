@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
+from typing import TYPE_CHECKING
 from typing import Any
+
+if TYPE_CHECKING:
+    import threading
 
 logger = logging.getLogger(__name__)
 
@@ -182,35 +185,9 @@ class _PyDebuggerSessionFacade:
                 if asyncio.get_running_loop() is future_loop:
                     _set_exception()
                 else:
-                    completion = threading.Event()
-
-                    def _set_exception_with_signal(
-                        f: asyncio.Future[dict[str, Any]] = future,
-                        done: threading.Event = completion,
-                    ) -> None:
-                        try:
-                            if not f.done():
-                                f.set_exception(error)
-                        finally:
-                            done.set()
-
-                    future_loop.call_soon_threadsafe(_set_exception_with_signal)
-                    completion.wait(timeout=0.2)
+                    future_loop.call_soon_threadsafe(_set_exception)
             except Exception:
                 try:
-                    completion = threading.Event()
-
-                    def _set_exception_with_signal(
-                        f: asyncio.Future[dict[str, Any]] = future,
-                        done: threading.Event = completion,
-                    ) -> None:
-                        try:
-                            if not f.done():
-                                f.set_exception(error)
-                        finally:
-                            done.set()
-
-                    future_loop.call_soon_threadsafe(_set_exception_with_signal)
-                    completion.wait(timeout=0.2)
+                    future_loop.call_soon_threadsafe(_set_exception)
                 except Exception:
                     logger.debug("failed to fail pending future %s", command_id)

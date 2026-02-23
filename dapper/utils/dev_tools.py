@@ -34,6 +34,37 @@ class JSTestsFailedError(RuntimeError):
         self.returncode = int(returncode)
 
 
+def _js_test_timeout_seconds() -> int:
+    raw = str(
+        os.getenv(
+            "DAPPER_JS_TEST_TIMEOUT_SECONDS",
+            "300" if sys.platform.startswith("win") else "0",
+        )
+    ).strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 0
+    return max(parsed, 0)
+
+
+def _run_with_optional_timeout(
+    cmd: list[str],
+    *,
+    cwd: str,
+    check: bool,
+    timeout_seconds: int,
+) -> subprocess.CompletedProcess:
+    if timeout_seconds > 0:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            check=check,
+            timeout=timeout_seconds,
+        )
+    return subprocess.run(cmd, cwd=cwd, check=check)
+
+
 def run_js_tests(js_args: list[str] | None = None) -> None:
     """Run the extension's JS tests and raise JSTestsFailedError on failure.
 
@@ -53,10 +84,21 @@ def run_js_tests(js_args: list[str] | None = None) -> None:
     if not npm_bin:
         return
 
+    timeout_seconds = _js_test_timeout_seconds()
+
     node_modules_dir = ext_dir / "node_modules"
     try:
         if not node_modules_dir.exists():
-            subprocess.run([npm_bin, "ci"], cwd=str(ext_dir), check=True)
+            _run_with_optional_timeout(
+                [npm_bin, "ci"],
+                cwd=str(ext_dir),
+                check=True,
+                timeout_seconds=timeout_seconds,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise JSTestsFailedError(
+            124, f"JS dependency install timed out after {exc.timeout}s"
+        ) from exc
     except Exception as exc:  # pragma: no cover - environment specific
         # We prefer not to fail on install, log and proceed to attempt tests
         print(f"Warning: Failed to install extension dependencies: {exc!s}")
@@ -64,7 +106,15 @@ def run_js_tests(js_args: list[str] | None = None) -> None:
     cmd = [npm_bin, "test"]
     if js_args:
         cmd.extend(["--", *js_args])
-    proc = subprocess.run(cmd, cwd=str(ext_dir), check=False)
+    try:
+        proc = _run_with_optional_timeout(
+            cmd,
+            cwd=str(ext_dir),
+            check=False,
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise JSTestsFailedError(124, f"JS tests timed out after {exc.timeout}s") from exc
     if proc.returncode != 0:
         raise JSTestsFailedError(proc.returncode)
 
