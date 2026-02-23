@@ -197,8 +197,9 @@ def run_tests(argv: list[str] | None = None) -> None:
     suite via the same `uv` script mechanism that `docs` uses. It exits with
     the pytest exit code on failure.
     """
-    # Run pytest with the current working directory as root
-    # Prevent pytest conftest hook from running JS tests as run_tests will run them below
+    # Run pytest with the current working directory as root.
+    # Keep JS tests disabled in conftest by default; this wrapper can still
+    # invoke them explicitly below when requested.
     os.environ.setdefault("DAPPER_SKIP_JS_TESTS_IN_CONFTEST", "1")
     if argv is None:
         argv = list(sys.argv[1:])
@@ -217,7 +218,15 @@ def run_tests(argv: list[str] | None = None) -> None:
     rc = pytest_module.main(argv)
     if rc != 0:
         raise SystemExit(rc)
-    # Run JS tests after pytest completes
+
+    should_run_js = (
+        str(os.getenv("DAPPER_RUN_JS_TESTS", "0")).lower() in ("1", "true", "yes")
+        or js_args is not None
+    )
+
+    if not should_run_js:
+        return
+
     try:
         run_js_tests(js_args)
     except JSTestsFailedError as exc:

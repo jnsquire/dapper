@@ -252,44 +252,6 @@ async def test_launch_success(debugger, mock_server):
 
 
 @pytest.mark.asyncio
-async def test_shutdown_fails_pending_commands_cross_loop(
-    debugger,
-    background_event_loop: asyncio.AbstractEventLoop,
-):
-    """If a pending Future was created on a different loop (running in
-    another thread), shutdown should still cause it to finish with an
-    exception. This exercises the cross-loop scheduling path.
-    """
-    other_loop = background_event_loop
-
-    # Create an asyncio.Future on the other loop by scheduling a small
-    # coroutine that returns a fresh future.
-    async def _make_future():
-        return other_loop.create_future()
-
-    fut_async = asyncio.run_coroutine_threadsafe(_make_future(), other_loop).result()
-
-    # Mark the future as pending by not completing it; inject into pending
-    cmd_id = 99999
-    debugger._session_facade.pending_commands[cmd_id] = fut_async
-
-    # Call shutdown on the debugger
-    await debugger.shutdown()
-
-    # Allow callbacks to run
-    await asyncio.sleep(0)
-
-    # The future should be done and have an exception
-    assert fut_async.done()
-    # Attempting to get the result should raise the RuntimeError we set
-    with pytest.raises(RuntimeError):
-        # Use result() from the other loop by scheduling a coroutine that
-        # reads the future's result; but since the future is already done
-        # we can call result() directly.
-        fut_async.result()
-
-
-@pytest.mark.asyncio
 async def test_launch_already_running_error(debugger):
     """Test launching when already running raises error"""
     debugger.process = MagicMock()

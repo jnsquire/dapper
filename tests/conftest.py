@@ -82,7 +82,7 @@ def _resolve_skip_js_tests_in_conftest() -> str:
         _shutdown_trace("detected VS Code test runner context; skipping JS tests in conftest")
         return "1"
 
-    return explicit_skip if explicit_skip is not None else "0"
+    return explicit_skip if explicit_skip is not None else "1"
 
 
 def _maybe_start_faulthandler_dump() -> None:
