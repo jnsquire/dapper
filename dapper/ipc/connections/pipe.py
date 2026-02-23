@@ -139,18 +139,19 @@ class NamedPipeServerConnection(ConnectionBase):
         self._is_connected = False
         logger.info("Named pipe connection closed")
 
-    async def read_message(self) -> dict[str, Any] | None:  # noqa: PLR0911,PLR0912
+    async def read_message(self) -> dict[str, Any] | None:  # noqa: PLR0911,PLR0912,PLR0915
         if sys.platform == "win32" and self._pipe_conn is not None:
             loop = asyncio.get_running_loop()
+            pipe_conn = self._pipe_conn
 
             def _recv_for_dap() -> object | None:
                 try:
-                    return self._pipe_conn.recv_bytes()
+                    return pipe_conn.recv_bytes()
                 except (EOFError, OSError):
                     return None
                 except Exception:
                     try:
-                        return self._pipe_conn.recv()
+                        return pipe_conn.recv()
                     except (EOFError, OSError):
                         return None
 

@@ -6,6 +6,7 @@ import contextlib
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import Optional
 from typing import TypeVar
 
 if TYPE_CHECKING:
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 BodyT = TypeVar("BodyT", bound=dict[str, Any])
-SendEvent = Callable[[str, BodyT | None], Coroutine[Any, Any, None]]
+SendEvent = Callable[[str, Optional[BodyT]], Coroutine[Any, Any, None]]
 
 
 def schedule_coroutine_threadsafe(
