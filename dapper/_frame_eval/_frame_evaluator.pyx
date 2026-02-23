@@ -17,6 +17,7 @@ from cpython.ref cimport Py_INCREF, Py_DECREF
 from cpython.object cimport PyObject
 
 # Python imports
+import contextvars
 import threading
 import sys
 import os
@@ -31,8 +32,8 @@ cdef bint _frame_eval_active = 0
 cdef object _breakpoint_manager = None
 cdef object _frame_eval_lock = None
 
-# Thread-local storage
-_thread_local_info = threading.local()
+# Context-local storage (ContextVar is per-task in asyncio, not just per-thread)
+_thread_info_var: contextvars.ContextVar = contextvars.ContextVar("thread_info", default=None)
 
 # Initialize global state
 def _initialize_global_state():
@@ -97,18 +98,15 @@ cdef class FuncCodeInfo:
 
 
 cpdef ThreadInfo get_thread_info():
-    """Get thread-local debugging information."""
+    """Get context-local debugging information."""
     cdef ThreadInfo thread_info
-    
-    try:
-        thread_info = _thread_local_info.thread_info
-    except AttributeError:
+
+    thread_info = _thread_info_var.get()
+    if thread_info is None:
         thread_info = ThreadInfo()
-        _thread_local_info.thread_info = thread_info
-        
-        # Mark thread as fully initialized
+        _thread_info_var.set(thread_info)
         thread_info.fully_initialized = True
-    
+
     return thread_info
 
 
@@ -236,9 +234,8 @@ cpdef stop_frame_eval():
 
 
 cpdef clear_thread_local_info():
-    """Clear thread-local debugging information."""
-    global _thread_local_info
-    _thread_local_info = threading.local()
+    """Clear context-local debugging information."""
+    _thread_info_var.set(None)
 
 
 cpdef get_frame_eval_stats():
