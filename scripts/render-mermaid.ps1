@@ -5,8 +5,8 @@ param(
 )
 
 if (-not (Test-Path $InputDir)) {
-    Write-Error "Input directory '$InputDir' not found."
-    exit 1
+    Write-Host "Input directory '$InputDir' not found; skipping Mermaid render."
+    exit 0
 }
 if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir | Out-Null
