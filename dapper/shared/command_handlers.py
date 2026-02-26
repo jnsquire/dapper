@@ -21,6 +21,8 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import Literal
+from typing import TypedDict
 from typing import cast
 
 from dapper.shared import breakpoint_handlers
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetVariableArguments
     from dapper.protocol.requests import StackTraceArguments
     from dapper.protocol.requests import StepInArguments
+    from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import StepOutArguments
     from dapper.protocol.requests import VariablesArguments
 
@@ -546,3 +549,56 @@ def _cmd_source(arguments: dict[str, Any] | None = None) -> None:
 @command_handler("modules")
 def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
     source_handlers.handle_modules(arguments, _safe_send_debug_message)
+
+
+# ---------------------------------------------------------------------------
+# TypedDicts for the hotReload command handler response
+# ---------------------------------------------------------------------------
+
+
+class _HotReloadHandlerSuccess(TypedDict):
+    """Response shape returned by the hotReload handler on success."""
+
+    success: Literal[True]
+    body: dict[str, Any]
+
+
+class _HotReloadHandlerError(TypedDict):
+    """Response shape returned by the hotReload handler on failure."""
+
+    success: Literal[False]
+    message: str
+
+
+@command_handler("hotReload")
+def _cmd_hot_reload(
+    arguments: dict[str, Any] | None,
+) -> _HotReloadHandlerSuccess | _HotReloadHandlerError:
+    """Handle the 'hotReload' command in the debuggee process.
+
+    Performs a live reload of the Python source file identified by
+    ``arguments["path"]``, rebinds live stack frames to the new code objects,
+    and returns a response dict that ``DapMappingProvider`` will forward back
+    to the adapter via the IPC channel.
+
+    The return value must have a ``"success"`` key so that
+    :class:`~dapper.shared.debug_shared.CommandDispatcher` recognises it as a
+    structured response and echoes the command ``id`` back to the adapter.
+    """
+    # Deferred import: reload_helpers is a shared module that must not be
+    # loaded at command_handlers import time to avoid slowing down startup.
+    from dapper.shared import reload_helpers  # noqa: PLC0415
+
+    args: dict[str, Any] = arguments or {}
+    path: str = args.get("path", "")
+    options: HotReloadOptions | None = cast(
+        "HotReloadOptions | None", args.get("options")
+    )
+
+    try:
+        result = reload_helpers.perform_reload(path, options)
+        # Convert PerformReloadResult (TypedDict) to a plain dict so the
+        # protocol layer can safely merge it into the IPC response envelope.
+        return _HotReloadHandlerSuccess(success=True, body=dict(result))
+    except Exception as exc:
+        return _HotReloadHandlerError(success=False, message=str(exc))

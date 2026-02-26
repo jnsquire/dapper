@@ -289,7 +289,9 @@ def test_user_line_clears_async_step_over_for_user_frame() -> None:
 
 def test_user_line_normal_behavior_unaffected_when_flag_false() -> None:
     """When async_step_over is False, asyncio frames should not be skipped."""
-    dbg = DebuggerBDB()
+    # Disable just_my_code so the asyncio stdlib path doesn't get filtered out
+    # before we can observe whether async_step_over affected anything.
+    dbg = DebuggerBDB(just_my_code=False)
     assert dbg.stepping_controller.async_step_over is False
 
     asyncio_frame = _make_real_frame_obj("/usr/lib/python3.11/asyncio/tasks.py")

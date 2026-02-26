@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # ruff: noqa: SLF001
-import asyncio
 import logging
 import os
 from pathlib import Path
@@ -103,56 +102,29 @@ class _PyDebuggerLifecycleManager:
         working_directory: str | None = None,
         environment: dict[str, str] | None = None,
     ) -> None:
-        use_legacy_signature = working_directory is None and environment is None
-        if self._debugger.is_test_mode_enabled():
-            start_target = self._debugger._start_debuggee_process
-            if use_legacy_signature:
-                threading.Thread(
-                    target=start_target,
-                    args=(debug_args,),
-                    daemon=True,
-                ).start()
-            else:
-                threading.Thread(
-                    target=start_target,
-                    kwargs={
-                        "debug_args": debug_args,
-                        "working_directory": working_directory,
-                        "environment": environment,
-                    },
-                    daemon=True,
-                ).start()
-            return
+        """Start the debuggee process in a background thread.
 
-        if use_legacy_signature:
-            try:
-                await self._debugger.loop.run_in_executor(
-                    None,
-                    self._debugger._start_debuggee_process,
-                    debug_args,
-                )
-            except Exception:
-                await asyncio.to_thread(
-                    self._debugger._start_debuggee_process,
-                    debug_args,
-                )
-            return
-
-        try:
-            await self._debugger.loop.run_in_executor(
-                None,
-                self._debugger._start_debuggee_process,
-                debug_args,
-                working_directory,
-                environment,
-            )
-        except Exception:
-            await asyncio.to_thread(
-                self._debugger._start_debuggee_process,
-                debug_args,
-                working_directory,
-                environment,
-            )
+        The process is always started in a daemon thread so this coroutine
+        returns immediately.  IPC setup and ``await_stop_event`` must be
+        called after this returns while the process is still running.
+        """
+        start_target = self._debugger._start_debuggee_process
+        if working_directory is None and environment is None:
+            threading.Thread(
+                target=start_target,
+                args=(debug_args,),
+                daemon=True,
+            ).start()
+        else:
+            threading.Thread(
+                target=start_target,
+                kwargs={
+                    "debug_args": debug_args,
+                    "working_directory": working_directory,
+                    "environment": environment,
+                },
+                daemon=True,
+            ).start()
 
     async def launch(self, config: DapperConfig) -> None:
         """Launch a new Python program for debugging using centralized configuration."""
@@ -193,16 +165,18 @@ class _PyDebuggerLifecycleManager:
                     f"{merged}{os.pathsep}{existing}" if existing else merged
                 )
 
+        # Start IPC reader and create the external backend *before* starting
+        # the process so they are ready to accept the debuggee's connection.
+        if self._debugger.ipc.is_enabled:
+            self._debugger.start_ipc_reader(accept=True)
+
+        self._debugger.create_external_backend()
+
         await self._start_external_process(
             debug_args,
             working_directory=config.debuggee.working_directory,
             environment=process_env,
         )
-
-        if self._debugger.ipc.is_enabled:
-            self._debugger.start_ipc_reader(accept=True)
-
-        self._debugger.create_external_backend()
 
         self._debugger.program_running = True
 

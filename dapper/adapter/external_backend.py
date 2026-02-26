@@ -11,10 +11,12 @@ import logging
 import os
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Final
 from typing import TypedDict
 from typing import cast
 
 from dapper.adapter.base_backend import BaseBackend
+from dapper.protocol.requests import GotoTargetsResponseBody
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,9 +25,19 @@ if TYPE_CHECKING:
 
     from dapper.config import DapperConfig
     from dapper.ipc.ipc_manager import IPCManager
+    from dapper.protocol.requests import CompletionsResponseBody
+    from dapper.protocol.requests import ContinueResponseBody
+    from dapper.protocol.requests import EvaluateResponseBody
+    from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import GotoTarget
-    from dapper.protocol.requests import GotoTargetsResponseBody
+    from dapper.protocol.requests import HotReloadResponseBody
+    from dapper.protocol.requests import SetBreakpointsResponseBody
+    from dapper.protocol.requests import SetExceptionBreakpointsResponseBody
     from dapper.protocol.requests import SetExpressionResponseBody
+    from dapper.protocol.requests import SetFunctionBreakpointsResponseBody
+    from dapper.protocol.requests import SetVariableResponseBody
+    from dapper.protocol.requests import StackTraceResponseBody
+    from dapper.protocol.requests import VariablesResponseBody
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +57,28 @@ class _SetExpressionDispatchArgs(TypedDict):
     expression: str
     value: str
     frame_id: int | None
+
+
+class _HotReloadDispatchArgs(TypedDict, total=False):
+    """Arguments for the 'hot_reload' dispatch entry."""
+
+    path: str
+    options: dict[str, Any]
+
+
+class _EmptyBody(TypedDict, total=False):
+    """TypedDict for DAP commands whose response body carries no fields."""
+
+
+class _PauseResponseBody(TypedDict):
+    """Internal bookkeeping body returned by _dispatch_pause."""
+
+    sent: bool
+
+
+# Singletons — avoids allocating a new dict on every fire-and-forget dispatch.
+_EMPTY_BODY: Final[_EmptyBody] = _EmptyBody()
+_PAUSE_SENT: Final[_PauseResponseBody] = _PauseResponseBody(sent=True)
 
 
 class ExternalProcessBackend(BaseBackend):
@@ -109,6 +143,7 @@ class ExternalProcessBackend(BaseBackend):
             "exception_info": self._dispatch_exception_info,
             "configuration_done": self._dispatch_configuration_done,
             "terminate": self._dispatch_terminate,
+            "hot_reload": self._dispatch_hot_reload,
         }
 
     def _cleanup_ipc(self) -> None:
@@ -163,7 +198,7 @@ class ExternalProcessBackend(BaseBackend):
 
         return {name: _wrap(handler) for name, handler in self._dispatch_map.items()}
 
-    async def _dispatch_set_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_set_breakpoints(self, args: dict[str, Any]) -> SetBreakpointsResponseBody:
         cmd = {
             "command": "setBreakpoints",
             "arguments": {
@@ -172,23 +207,31 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         await self._send_command(cmd)
-        return {
-            "breakpoints": [
-                {"verified": True, "line": bp.get("line")} for bp in args["breakpoints"]
-            ],
-        }
+        return cast(
+            "SetBreakpointsResponseBody",
+            {
+                "breakpoints": [
+                    {"verified": True, "line": bp.get("line")} for bp in args["breakpoints"]
+                ]
+            },
+        )
 
-    async def _dispatch_set_function_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_set_function_breakpoints(
+        self, args: dict[str, Any]
+    ) -> SetFunctionBreakpointsResponseBody:
         cmd = {
             "command": "setFunctionBreakpoints",
             "arguments": {"breakpoints": [dict(bp) for bp in args["breakpoints"]]},
         }
         await self._send_command(cmd)
-        return {
-            "breakpoints": [{"verified": bp.get("verified", True)} for bp in args["breakpoints"]],
-        }
+        return cast(
+            "SetFunctionBreakpointsResponseBody",
+            {"breakpoints": [{"verified": bp.get("verified", True)} for bp in args["breakpoints"]]},
+        )
 
-    async def _dispatch_set_exception_breakpoints(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_set_exception_breakpoints(
+        self, args: dict[str, Any]
+    ) -> SetExceptionBreakpointsResponseBody:
         ebp_args: dict[str, Any] = {"filters": args["filters"]}
         if args.get("filter_options") is not None:
             ebp_args["filterOptions"] = args["filter_options"]
@@ -196,46 +239,49 @@ class ExternalProcessBackend(BaseBackend):
             ebp_args["exceptionOptions"] = args["exception_options"]
         cmd = {"command": "setExceptionBreakpoints", "arguments": ebp_args}
         await self._send_command(cmd)
-        return {"breakpoints": [{"verified": True} for _ in args["filters"]]}
+        return cast(
+            "SetExceptionBreakpointsResponseBody",
+            {"breakpoints": [{"verified": True} for _ in args["filters"]]},
+        )
 
-    async def _dispatch_continue(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_continue(self, args: dict[str, Any]) -> ContinueResponseBody:
         cmd = {"command": "continue", "arguments": {"threadId": args["thread_id"]}}
         response = await self._send_command(cmd, expect_response=True)
         body = self._extract_body(response, {})
         if isinstance(body, dict) and body:
-            return dict(self._normalize_continue_payload(body))
-        return dict(self._normalize_continue_payload(response))
+            return self._normalize_continue_payload(body)
+        return self._normalize_continue_payload(response)
 
-    async def _dispatch_next(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_next(self, args: dict[str, Any]) -> _EmptyBody:
         cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
         if args.get("granularity") and args["granularity"] != "line":
             cmd_args["granularity"] = args["granularity"]
         cmd = {"command": "next", "arguments": cmd_args}
         await self._send_command(cmd)
-        return {}
+        return _EMPTY_BODY
 
-    async def _dispatch_step_in(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_step_in(self, args: dict[str, Any]) -> _EmptyBody:
         cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
         if args.get("granularity") and args["granularity"] != "line":
             cmd_args["granularity"] = args["granularity"]
         cmd = {"command": "stepIn", "arguments": cmd_args}
         await self._send_command(cmd)
-        return {}
+        return _EMPTY_BODY
 
-    async def _dispatch_step_out(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_step_out(self, args: dict[str, Any]) -> _EmptyBody:
         cmd_args: dict[str, Any] = {"threadId": args["thread_id"]}
         if args.get("granularity") and args["granularity"] != "line":
             cmd_args["granularity"] = args["granularity"]
         cmd = {"command": "stepOut", "arguments": cmd_args}
         await self._send_command(cmd)
-        return {}
+        return _EMPTY_BODY
 
-    async def _dispatch_pause(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_pause(self, args: dict[str, Any]) -> _PauseResponseBody:
         cmd = {"command": "pause", "arguments": {"threadId": args["thread_id"]}}
         await self._send_command(cmd)
-        return {"sent": True}
+        return _PAUSE_SENT
 
-    async def _dispatch_goto_targets(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_goto_targets(self, args: dict[str, Any]) -> GotoTargetsResponseBody:
         frame_id = int(args["frame_id"])
         line = int(args["line"])
         cmd = {
@@ -247,16 +293,16 @@ class ExternalProcessBackend(BaseBackend):
         }
         response = await self._send_command(cmd, expect_response=True)
         if not response:
-            return {"targets": []}
+            return GotoTargetsResponseBody(targets=[])
         body = response.get("body", {})
         if not isinstance(body, dict):
-            return {"targets": []}
+            return GotoTargetsResponseBody(targets=[])
         typed_body = cast("GotoTargetsResponseBody", body)
         targets = typed_body.get("targets", [])
         normalized_targets: list[GotoTarget] = targets if isinstance(targets, list) else []
-        return {"targets": normalized_targets}
+        return GotoTargetsResponseBody(targets=normalized_targets)
 
-    async def _dispatch_goto(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_goto(self, args: dict[str, Any]) -> _EmptyBody:
         cmd = {
             "command": "goto",
             "arguments": {
@@ -268,9 +314,9 @@ class ExternalProcessBackend(BaseBackend):
         if isinstance(response, dict) and response.get("success") is False:
             msg = str(response.get("message") or "goto failed")
             raise ValueError(msg)
-        return {}
+        return _EMPTY_BODY
 
-    async def _dispatch_stack_trace(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_stack_trace(self, args: dict[str, Any]) -> StackTraceResponseBody:
         cmd = {
             "command": "stackTrace",
             "arguments": {
@@ -280,9 +326,12 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(cmd, expect_response=True)
-        return self._extract_body(response, {"stackFrames": [], "totalFrames": 0})
+        return cast(
+            "StackTraceResponseBody",
+            self._extract_body(response, {"stackFrames": [], "totalFrames": 0}),
+        )
 
-    async def _dispatch_variables(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_variables(self, args: dict[str, Any]) -> VariablesResponseBody:
         cmd: dict[str, Any] = {
             "command": "variables",
             "arguments": {"variablesReference": args["variables_reference"]},
@@ -298,11 +347,11 @@ class ExternalProcessBackend(BaseBackend):
             cmd["arguments"]["count"] = c
         response = await self._send_command(cmd, expect_response=True)
         if not response:
-            return {"variables": []}
+            return VariablesResponseBody(variables=[])
         body = response.get("body", {})
-        return {"variables": body.get("variables", [])}
+        return cast("VariablesResponseBody", {"variables": body.get("variables", [])})
 
-    async def _dispatch_set_variable(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_set_variable(self, args: dict[str, Any]) -> SetVariableResponseBody:
         cmd = {
             "command": "setVariable",
             "arguments": {
@@ -312,9 +361,12 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(cmd, expect_response=True)
-        return self._extract_body(
-            response,
-            {"value": args["value"], "type": "string", "variablesReference": 0},
+        return cast(
+            "SetVariableResponseBody",
+            self._extract_body(
+                response,
+                {"value": args["value"], "type": "string", "variablesReference": 0},
+            ),
         )
 
     async def _dispatch_set_expression(
@@ -338,7 +390,7 @@ class ExternalProcessBackend(BaseBackend):
             ),
         )
 
-    async def _dispatch_evaluate(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_evaluate(self, args: dict[str, Any]) -> EvaluateResponseBody:
         cmd = {
             "command": "evaluate",
             "arguments": {
@@ -348,14 +400,14 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(cmd, expect_response=True)
-        default = {
+        default: dict[str, Any] = {
             "result": f"<evaluation of '{args['expression']}' not available>",
             "type": "string",
             "variablesReference": 0,
         }
-        return self._extract_body(response, default)
+        return cast("EvaluateResponseBody", self._extract_body(response, default))
 
-    async def _dispatch_completions(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_completions(self, args: dict[str, Any]) -> CompletionsResponseBody:
         cmd = {
             "command": "completions",
             "arguments": {
@@ -366,25 +418,61 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(cmd, expect_response=True)
-        return self._extract_body(response, {"targets": []})
+        return cast("CompletionsResponseBody", self._extract_body(response, {"targets": []}))
 
-    async def _dispatch_exception_info(self, args: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_exception_info(self, args: dict[str, Any]) -> ExceptionInfoResponseBody:
         cmd = {
             "command": "exceptionInfo",
             "arguments": {"threadId": args["thread_id"]},
         }
         response = await self._send_command(cmd, expect_response=True)
         if response and "body" in response:
-            return response["body"]
-        return {}
+            return cast("ExceptionInfoResponseBody", response["body"])
+        return ExceptionInfoResponseBody()
 
-    async def _dispatch_configuration_done(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    async def _dispatch_configuration_done(self, *_args: Any, **_kwargs: Any) -> _EmptyBody:
         await self._send_command({"command": "configurationDone"})
-        return {}
+        return _EMPTY_BODY
 
-    async def _dispatch_terminate(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    async def _dispatch_terminate(self, *_args: Any, **_kwargs: Any) -> _EmptyBody:
         await self._send_command({"command": "terminate"})
-        return {}
+        return _EMPTY_BODY
+
+    async def _dispatch_hot_reload(
+        self, args: _HotReloadDispatchArgs
+    ) -> HotReloadResponseBody:
+        """Send a 'hotReload' command to the debuggee and await its response.
+
+        The debuggee's ``@command_handler("hotReload")`` performs the reload
+        and returns a ``{"success": True, "body": {...}}`` response.  The
+        ``CommandDispatcher`` on the debuggee side automatically tags the
+        response with the command ``id`` so the adapter can match it to the
+        pending :class:`~asyncio.Future`.
+
+        Raises:
+            RuntimeError: If the debuggee signals ``success=False``.
+        """
+        cmd: dict[str, Any] = {
+            "command": "hotReload",
+            "arguments": {
+                "path": args.get("path", ""),
+                "options": args.get("options") or {},
+            },
+        }
+        response = await self._send_command(cmd, expect_response=True)
+        if response is not None and response.get("success") is False:
+            msg = str(response.get("message") or "hotReload failed in debuggee process")
+            raise RuntimeError(msg)
+
+        _default: dict[str, Any] = {
+            "reloadedModule": "<unknown>",
+            "reboundFrames": 0,
+            "updatedFrameCodes": 0,
+            "patchedInstances": 0,
+            "warnings": [],
+        }
+        body = self._extract_body(response, _default)
+        return cast("HotReloadResponseBody", body)
 
     async def _execute_command(
         self,

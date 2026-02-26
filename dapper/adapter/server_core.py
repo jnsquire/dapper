@@ -176,7 +176,7 @@ class DebugAdapterServer:
     async def send_message(self, message: dict[str, Any]) -> None:
         """Send a DAP message to the client"""
         if not self.connection or not self.connection.is_connected:
-            logger.warning("Cannot send message: No active connection")
+            logger.debug("Cannot send message: No active connection")
             return
 
         if "seq" not in message:

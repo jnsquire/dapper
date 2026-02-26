@@ -283,6 +283,10 @@ class SetFunctionBreakpointsResponseBody(TypedDict):
     breakpoints: list[Breakpoint]
 
 
+class SetExceptionBreakpointsResponseBody(TypedDict):
+    breakpoints: list[Breakpoint]
+
+
 class FunctionBreakpoint(TypedDict, total=False):
     name: str
     condition: NotRequired[str]

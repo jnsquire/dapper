@@ -258,6 +258,25 @@ graph LR
     UnixClient --> Launcher
 ```
 
+### TCP Sockets
+
+```mermaid
+graph LR
+    subgraph "Debug Adapter"
+        DA[DebugAdapterServer]
+        TCPListener[socket.AF_INET]
+    end
+    
+    subgraph "Debuggee"
+        TCPClient[socket.AF_INET]
+        Launcher[debug_launcher.py]
+    end
+    
+    DA --> TCPListener
+    TCPListener -.->|TCP Connection| TCPClient
+    TCPClient --> Launcher
+```
+
 ---
 
 ## 5. Child Process Auto-Attach (Phase 1)
@@ -317,28 +336,9 @@ child process interception for Python `subprocess.Popen(...)` calls.
 - `shell=True` and stdin-script (`python -`) invocation forms are still passed through.
 - Event forwarding is adapter-specific (`dapper/*` namespace) and follows DAP custom event semantics.
 
-### TCP Sockets
-
-```mermaid
-graph LR
-    subgraph "Debug Adapter"
-        DA[DebugAdapterServer]
-        TCPListener[socket.AF_INET]
-    end
-    
-    subgraph "Debuggee"
-        TCPClient[socket.AF_INET]
-        Launcher[debug_launcher.py]
-    end
-    
-    DA --> TCPListener
-    TCPListener -.->|TCP Connection| TCPClient
-    TCPClient --> Launcher
-```
-
 ---
 
-## 5. Message Flow Patterns
+## 6. Message Flow Patterns
 
 ### Binary vs Text Protocol
 
@@ -390,7 +390,7 @@ sequenceDiagram
 
 ---
 
-## 6. Backend Selection Logic
+## 7. Backend Selection Logic
 
 ```mermaid
 flowchart TD
@@ -412,7 +412,7 @@ flowchart TD
 
 ---
 
-## 7. Error Handling and Cleanup
+## 8. Error Handling and Cleanup
 
 ```mermaid
 stateDiagram-v2
@@ -439,18 +439,19 @@ stateDiagram-v2
 
 ---
 
-## 8. Configuration Matrix
+## 9. Configuration Matrix
 
 | Mode | IPC Required | Subprocess | Backend Type | Use Case |
 |------|--------------|------------|--------------|----------|
 | Launch (Default) | Yes | Yes | ExternalProcessBackend | Standard debugging |
 | Launch (inProcess) | No | No | InProcessBackend | Embedded debugging |
-| Attach | Yes | No | ExternalProcessBackend | Connect to existing |
+| Attach | Yes | No | ExternalProcessBackend | Connect to existing; supports `pathMappings` for remote |
 | No Debug | No | Yes | None | Run without debugging |
+| Hot Reload | Yes (active) | N/A | N/A | Live code reload while session is paused |
 
 ---
 
-## 9. Threading Model
+## 10. Threading Model
 
 ```mermaid
 graph TB
@@ -476,4 +477,76 @@ graph TB
     
     DebuggeeThread --> DebuggerThread
     DebuggerThread -.->|IPC Events| IPC_Receive
+```
+
+---
+
+## 11. Hot Reload
+
+Hot reload allows a Python source file to be reloaded into the running process without stopping or restarting the debug session. It is only available while the session is paused (stopped state).
+
+### Triggers
+
+- **Manual** — `Dapper: Hot Reload Current File` command (`Ctrl+Alt+R` / `Cmd+Alt+R`).
+- **Auto on save** — when `dapper.hotReload.autoOnSave` is `true` (default), saving a Python file that is loaded in the active stopped session triggers a reload automatically.
+
+### Custom DAP messages
+
+`dapper/hotReload` (request from extension → adapter)
+
+- Request body fields:
+    - `source.path` (`string`) absolute path of the file to reload
+
+`dapper/hotReloadResult` (event from adapter → extension)
+
+- Event body fields:
+    - `reloadedModule` (`string`) Python module name that was reloaded
+    - `reboundFrames` (`number`) number of live stack frames rebound to new code
+    - `updatedFrameCodes` (`number`) number of code objects updated
+    - `warnings` (`string[]`) non-fatal warnings produced during reload
+
+### Manual hot reload flow
+
+```mermaid
+sequenceDiagram
+    participant Editor as VS Code Editor
+    participant Ext as Dapper Extension
+    participant Session as Debug Session
+    participant Adapter as DapperDebugSession
+    participant Python as Python Debug Adapter
+
+    Editor->>Ext: dapper.hotReload (Ctrl+Alt+R)
+    Ext->>Editor: document.save()
+    Ext->>Session: customRequest('dapper/hotReload', {source: {path}})
+    Session->>Adapter: dapper/hotReload request
+    Adapter->>Python: IPC hot reload command
+    Python-->>Adapter: reload result
+    Adapter-->>Session: dapper/hotReloadResult event
+    Session-->>Ext: event received
+    Ext->>Editor: showInformationMessage (reloadedModule, reboundFrames, updatedFrameCodes)
+    Note over Ext: warnings shown as separate warning message if non-empty
+```
+
+### Auto hot reload flow (on save)
+
+```mermaid
+sequenceDiagram
+    participant Editor as VS Code Editor
+    participant Ext as Dapper Extension
+    participant Session as Debug Session
+    participant Adapter as DapperDebugSession
+    participant Python as Python Debug Adapter
+
+    Note over Ext: dapper.hotReload.autoOnSave=true
+    Editor->>Ext: onDidSaveTextDocument
+    Ext->>Ext: check: python file, active dapper session, session stopped?
+    Ext->>Session: loadedSources request
+    Session-->>Ext: loaded source list
+    Ext->>Ext: check: saved file in loaded sources?
+    Ext->>Session: customRequest('dapper/hotReload', {source: {path}})
+    Session->>Adapter: dapper/hotReload request
+    Adapter->>Python: IPC hot reload command
+    Python-->>Adapter: reload result
+    Adapter-->>Ext: dapper/hotReloadResult event
+    Ext->>Editor: setStatusBarMessage (Auto reloaded <file>)
 ```

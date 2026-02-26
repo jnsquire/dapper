@@ -27,6 +27,7 @@ except Exception:  # pragma: no cover - optional frame-eval integration
 
 if TYPE_CHECKING:
     from dapper.adapter.debugger.py_debugger import PyDebugger
+    from dapper.adapter.external_backend import ExternalProcessBackend
     from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.structures import SourceBreakpoint
@@ -50,6 +51,20 @@ class HotReloadService:
         self._debugger = debugger
 
     async def reload_module(
+        self,
+        path: str,
+        options: HotReloadOptions | None = None,
+    ) -> HotReloadResponseBody:
+        """Reload *path* in the debuggee (in-process or external) and return results.
+
+        Routes to :meth:`_reload_inprocess` when an in-process backend is
+        active, or to :meth:`_reload_via_external_backend` otherwise.
+        """
+        if self._debugger.get_inprocess_backend() is not None:
+            return await self._reload_inprocess(path, options)
+        return await self._reload_via_external_backend(path, options)
+
+    async def _reload_inprocess(
         self,
         path: str,
         options: HotReloadOptions | None = None,
@@ -110,13 +125,119 @@ class HotReloadService:
 
         return body
 
+    async def _reload_via_external_backend(
+        self,
+        path: str,
+        options: HotReloadOptions | None = None,
+    ) -> HotReloadResponseBody:
+        """Reload *path* by delegating to the external debuggee process via IPC.
+
+        The adapter validates the source path locally (fast-fail for obvious
+        errors), then sends a ``hotReload`` command to the debuggee.  The
+        debuggee performs the actual ``importlib.reload`` and frame rebinding
+        via :func:`~dapper.shared.reload_helpers.perform_reload` and returns a
+        structured result body.
+
+        After the round-trip the adapter performs its own housekeeping:
+        variable-cache invalidation, frame-eval cache invalidation, breakpoint
+        reapplication, and event/telemetry emission.
+
+        Returns:
+            A :class:`~dapper.protocol.requests.HotReloadResponseBody`
+            populated from the debuggee's response.
+
+        Raises:
+            RuntimeError: If no external-process backend is available or the
+                debuggee signals a failure.
+            ValueError: If *path* is not a reloadable Python source.
+            OSError: If the file does not exist on the adapter side.
+        """
+        start = time.perf_counter()
+        resolved_path = str(Path(path))
+        reloaded_module: str = "<unresolved>"
+
+        try:
+            resolved = Path(path).resolve(strict=True)
+            resolved_path = str(resolved)
+            self._assert_reloadable_source(resolved)
+
+            backend: ExternalProcessBackend | None = (
+                self._debugger.get_external_backend()
+            )
+            if backend is None:
+                self._raise_runtime_error(
+                    "No external-process backend is available for hot reload"
+                )
+
+            raw: dict[str, object] = await backend._execute_command(  # noqa: SLF001
+                "hot_reload",
+                {"path": str(resolved), "options": options or {}},
+            )
+
+            reloaded_module = str(raw.get("reloadedModule", "<unknown>"))
+            rebound_frames = int(raw.get("reboundFrames", 0))  # type: ignore[arg-type]
+            updated_frame_codes = int(raw.get("updatedFrameCodes", 0))  # type: ignore[arg-type]
+            _raw_warnings = raw.get("warnings")
+            remote_warnings: list[str] = (
+                [str(w) for w in _raw_warnings]
+                if isinstance(_raw_warnings, list)
+                else []
+            )
+
+            # Adapter-side housekeeping (same bookkeeping as the in-process path).
+            adapter_warnings: list[str] = []
+            self._invalidate_variable_caches(adapter_warnings)
+            self._invalidate_frame_eval_cache(str(resolved), adapter_warnings)
+            breakpoint_lines = await self._reapply_breakpoints(str(resolved))
+            if breakpoint_lines:
+                self._update_frame_eval_breakpoints(
+                    str(resolved), breakpoint_lines, adapter_warnings
+                )
+
+            all_warnings = remote_warnings + adapter_warnings
+            duration_ms = (time.perf_counter() - start) * 1000.0
+
+            self._emit_reload_events(
+                resolved,
+                reloaded_module,
+                rebound_frames,
+                updated_frame_codes,
+                all_warnings,
+                duration_ms,
+            )
+            self._record_hot_reload_success(
+                module_name=reloaded_module,
+                path=str(resolved),
+                rebound_frames=rebound_frames,
+                updated_frame_codes=updated_frame_codes,
+                warning_count=len(all_warnings),
+                duration_ms=duration_ms,
+            )
+
+            body: HotReloadResponseBody = {
+                "reloadedModule": reloaded_module,
+                "reloadedPath": str(resolved),
+                "reboundFrames": rebound_frames,
+                "updatedFrameCodes": updated_frame_codes,
+                "patchedInstances": 0,
+                "warnings": all_warnings,
+            }
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self._record_hot_reload_failure(
+                module_name=reloaded_module,
+                path=resolved_path,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                duration_ms=duration_ms,
+            )
+            raise
+
+        return body
+
     def _resolve_reload_target(self, path: str) -> tuple[Path, str, ModuleType]:
         resolved = Path(path).resolve(strict=True)
         self._assert_reloadable_source(resolved)
-
-        backend = self._debugger.get_inprocess_backend()
-        if backend is None:
-            self._raise_runtime_error("Hot reload currently requires an in-process debug session")
 
         found = self._debugger._source_introspection.resolve_module_for_path(str(resolved))  # noqa: SLF001
         if found is None:

@@ -268,7 +268,7 @@ async def test_hot_reload_requires_inprocess_backend(tmp_path: Path) -> None:
 
     debugger = PyDebugger(Mock())
 
-    with pytest.raises(RuntimeError, match="in-process"):
+    with pytest.raises(RuntimeError, match="external-process"):
         await debugger.hot_reload(str(module_file.resolve()), {"invalidatePycache": False})
 
     snapshot = get_frame_eval_telemetry()

@@ -1,75 +1,134 @@
 """
 Integration test for setVariable functionality.
-This test verifies that variables can actually be set during debugging.
+
+Verifies that the variable-setting pipeline — DAP request → RequestHandler →
+PyDebugger → VariableManager → backend — works end-to-end using a real
+``PyDebugger`` and ``RequestHandler`` wired to a mock server.  A mock backend
+simulates the actual value conversion so we can confirm that the entire
+chain produces a valid DAP response.
 """
 
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
+from __future__ import annotations
 
-# Test program that will be debugged
-TEST_PROGRAM = """
-def main():
-    x = 10
-    y = "hello"
-    z = [1, 2, 3]
-    
-    # Breakpoint will be set here
-    print(f"x={x}, y={y}, z={z}")  # Line 7
-    
-    # After setVariable calls, values should be different
-    print(f"After: x={x}, y={y}, z={z}")  # Line 10
+from typing import Any
+from unittest.mock import AsyncMock, Mock
 
-if __name__ == "__main__":
-    main()
-"""
+import pytest
+
+from dapper.adapter.debugger.py_debugger import PyDebugger
+from dapper.adapter.request_handlers import RequestHandler
 
 
-def test_set_variable_integration():
-    """Test setVariable functionality with actual debugging session"""
-    # Create temporary test file
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(TEST_PROGRAM)
-        test_file = f.name
+@pytest.fixture
+def _wired_handler():
+    """Create a real PyDebugger + RequestHandler backed by a mock server.
 
-    try:
-        # Start debugger process
-        cmd = [
-            sys.executable,
-            "-m",
-            "dapper",
-            "--stop-on-entry",
-            test_file,
-        ]
+    The PyDebugger's active backend is a mock that echoes the requested
+    value so we can test the full request-handler → set_variable pipeline
+    without needing a subprocess.
+    """
+    server = Mock()
+    server.send_event = AsyncMock()
+    server.send_message = AsyncMock()
+    server.protocol_handler = Mock()
 
-        # Starting debugger command (removed print)
+    _seq = 0
 
-        # For now, just verify the command doesn't crash
-        # TODO: Add actual DAP communication to test setVariable
-        result = subprocess.run(
-            cmd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            input="exit\n",
-        )
+    @property
+    def _next_seq(self):
+        nonlocal _seq
+        _seq += 1
+        return _seq
 
-        # Check results (removed prints for cleaner output)
+    type(server).next_seq = _next_seq
 
-        # Just verify the debugger starts without crashing
-        assert result.returncode != 1, "Debugger should not crash on startup"
+    debugger = PyDebugger(server)
+    server.debugger = debugger
+    server._debugger = debugger
 
-    except subprocess.TimeoutExpired:
-        # Debugger started successfully (timeout expected)
-        pass
+    handler = RequestHandler(server)
 
-    finally:
-        # Clean up
-        Path(test_file).unlink(missing_ok=True)
+    # Set up a scope reference so set_variable recognizes it
+    frame_id = 1
+    scope_ref = debugger.variable_manager.allocate_scope_ref(frame_id, "locals")
+
+    # Provide a mock backend that returns sensible responses
+    mock_backend = AsyncMock()
+
+    async def _mock_set_variable(
+        var_ref: int, name: str, value: str
+    ) -> dict[str, Any]:
+        return {"value": value, "type": type(eval(value)).__name__, "variablesReference": 0}  # noqa: S307
+
+    mock_backend.set_variable = AsyncMock(side_effect=_mock_set_variable)
+
+    # Patch the active-backend getter
+    debugger.get_active_backend = Mock(return_value=mock_backend)
+
+    return handler, debugger, scope_ref, mock_backend
 
 
-if __name__ == "__main__":
-    test_set_variable_integration()
-    # Integration test completed (removed print)
+@pytest.mark.asyncio
+async def test_set_variable_integration(_wired_handler):
+    """Send three setVariable requests through the full adapter pipeline.
+
+    Verifies that RequestHandler dispatches to PyDebugger.set_variable,
+    which resolves the scope reference and delegates to the active backend,
+    and that each response is well-formed.
+    """
+    handler, debugger, scope_ref, mock_backend = _wired_handler
+
+    # --- setVariable: x = 99 ---
+    resp_x = await handler.handle_request(
+        {
+            "seq": 10,
+            "type": "request",
+            "command": "setVariable",
+            "arguments": {
+                "variablesReference": scope_ref,
+                "name": "x",
+                "value": "99",
+            },
+        }
+    )
+    assert resp_x["success"], f"setVariable(x) failed: {resp_x.get('message')}"
+    assert resp_x["body"]["value"] == "99"
+
+    # --- setVariable: y = 'world' ---
+    resp_y = await handler.handle_request(
+        {
+            "seq": 11,
+            "type": "request",
+            "command": "setVariable",
+            "arguments": {
+                "variablesReference": scope_ref,
+                "name": "y",
+                "value": "'world'",
+            },
+        }
+    )
+    assert resp_y["success"], f"setVariable(y) failed: {resp_y.get('message')}"
+    assert resp_y["body"]["value"] == "'world'"
+
+    # --- setVariable: z = [9, 8, 7] ---
+    resp_z = await handler.handle_request(
+        {
+            "seq": 12,
+            "type": "request",
+            "command": "setVariable",
+            "arguments": {
+                "variablesReference": scope_ref,
+                "name": "z",
+                "value": "[9, 8, 7]",
+            },
+        }
+    )
+    assert resp_z["success"], f"setVariable(z) failed: {resp_z.get('message')}"
+    assert resp_z["body"]["value"] == "[9, 8, 7]"
+
+    # Verify the backend received three set_variable calls
+    assert mock_backend.set_variable.call_count == 3
+    calls = mock_backend.set_variable.call_args_list
+    assert calls[0].args == (scope_ref, "x", "99")
+    assert calls[1].args == (scope_ref, "y", "'world'")
+    assert calls[2].args == (scope_ref, "z", "[9, 8, 7]")

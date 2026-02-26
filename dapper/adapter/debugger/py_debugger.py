@@ -450,6 +450,14 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         """Return in-process backend when active."""
         return self._inproc_backend
 
+    def get_external_backend(self) -> ExternalProcessBackend | None:
+        """Return the external-process backend when active.
+
+        Returns ``None`` when the session is running in-process or before a
+        backend has been created.
+        """
+        return self._external_backend
+
     def resolve_runtime_frame(self, frame_id: int | None) -> types.FrameType | None:
         """Resolve a live runtime frame from an id or current frame fallback."""
         if isinstance(frame_id, int):
