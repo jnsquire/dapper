@@ -356,7 +356,11 @@ class DebuggerFrameEvalBridge:
             if not filepath or not filepath.endswith(".py"):
                 return
 
-            breakpoint_lines = {l for bp in breakpoints if (l := bp.get("line")) is not None}
+            breakpoint_lines = {
+                line
+                for bp in breakpoints
+                if (line := bp.get("line")) is not None
+            }
             if not breakpoint_lines:
                 return
 

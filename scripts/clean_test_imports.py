@@ -125,9 +125,8 @@ def main():
         modified, original_content = process_file(file_path, dry_run=not args.apply)
         if modified:
             modified_count += 1
-            print(
-                f"\n{'[WOULD MODIFY]' if not args.apply else '[MODIFIED]'} {file_path.relative_to(project_root)}"
-            )
+            msg = "[WOULD MODIFY]" if not args.apply else "[MODIFIED]"
+            print(f"\n{msg} {file_path.relative_to(project_root)}")
 
             # For dry run, show the diff
             if not args.apply:

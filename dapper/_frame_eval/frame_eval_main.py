@@ -354,11 +354,17 @@ class FrameEvalManager:
         Returns:
             dict: Debug information including configuration and status
         """
+        python_version = (
+            f"{sys.version_info.major}."
+            f"{sys.version_info.minor}."
+            f"{sys.version_info.micro}"
+        )
+
         return {
             "frame_eval_initialized": self._is_initialized,
             "frame_eval_config": self._frame_eval_config,
             "runtime_status": self._runtime.status(),
-            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "python_version": python_version,
             "platform": platform.system(),
             "architecture": platform.architecture()[0],
             "implementation": platform.python_implementation(),

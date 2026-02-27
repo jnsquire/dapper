@@ -326,7 +326,10 @@ def _force_stop_lingering_threads(timeout_seconds: float = 1.0) -> None:
                 )
                 continue
             _shutdown_trace(
-                f"forced-stop signal sent to thread {thread.name} ident={thread.ident} result={result}"
+                
+                    f"forced-stop signal sent to thread {thread.name} "
+                    f"ident={thread.ident} result={result}"
+                
             )
         except Exception as exc:  # pragma: no cover - best-effort diagnostics
             _shutdown_trace(f"forced-stop failed for thread {thread.name}: {exc!s}")

@@ -135,15 +135,15 @@ sys.path.insert(0, r"__BUILD_LIB_DIR__")
 
 try:
     from dapper._frame_eval import is_frame_eval_available, enable_frame_eval
-    
+
     print(f"Frame eval available: {is_frame_eval_available()}")
-    
+
     if is_frame_eval_available():
         success = enable_frame_eval()
         print(f"Frame eval enabled: {success}")
     else:
         print("Frame evaluation not available on this Python version")
-        
+
 except ImportError as e:
     print(f"Import error: {e}")
 except Exception as e:

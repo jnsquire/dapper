@@ -105,7 +105,8 @@ def check_reloadable_source(resolved: Path) -> None:
     if ext_sfx and any(str(resolved).endswith(sfx) for sfx in ext_sfx):
         raise ValueError("Cannot reload C extension module")
     if resolved.suffix.lower() not in _PYTHON_SOURCE_SUFFIXES:
-        raise ValueError(f"Not a Python source file: {resolved}")
+        msg = f"Not a Python source file: {resolved}"
+        raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,8 @@ def resolve_module_for_path(path: str) -> tuple[str, ModuleType]:
                 return name, mod
         except (OSError, ValueError):
             continue
-    raise ValueError(f"Module not loaded: {path}")
+    msg = f"Module not loaded: {path}"
+    raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +251,7 @@ def _flush_frame_locals(frame: types.FrameType, warnings: list[str]) -> None:
         fn.argtypes = [ctypes.py_object, ctypes.c_int]
         fn.restype = None
         fn(frame, 1)
-    except Exception as exc:  # pragma: no cover – ctypes rarely fails
+    except Exception as exc:  # pragma: no cover - ctypes rarely fails
         warnings.append(f"Failed to flush frame locals: {exc!s}")
 
 
@@ -268,9 +270,7 @@ def _maybe_update_frame_code(
         return False
 
     current_code: CodeType | None = getattr(frame, "f_code", None)
-    replacement_fn = (
-        rebind_map.get(id(current_code)) if current_code is not None else None
-    )
+    replacement_fn = rebind_map.get(id(current_code)) if current_code is not None else None
     new_code: CodeType | None = (
         getattr(replacement_fn, "__code__", None) if replacement_fn is not None else None
     )
@@ -377,9 +377,7 @@ def rebind_stack_frames(
             except Exception as exc:
                 co = getattr(frame, "f_code", None)
                 fname = getattr(co, "co_name", "<?>")
-                warnings.append(
-                    f"Failed to rebind local '{local_name}' in frame {fname}: {exc!s}"
-                )
+                warnings.append(f"Failed to rebind local '{local_name}' in frame {fname}: {exc!s}")
 
         if changed:
             rebound_frames += 1
@@ -410,7 +408,7 @@ def delete_stale_pyc(source_path: Path) -> list[str]:
     for pyc in pycache.glob(f"{stem}*.pyc"):
         try:
             pyc.unlink()
-        except Exception as exc:
+        except Exception as exc:  # noqa: PERF203
             warnings.append(f"Failed to delete stale .pyc: {pyc} ({exc!s})")
     return warnings
 
@@ -423,9 +421,7 @@ def delete_stale_pyc(source_path: Path) -> list[str]:
 def _try_invalidate_frame_eval(path: str, warnings: list[str]) -> None:
     """Best-effort: invalidate the dapper frame-eval breakpoint cache for *path*."""
     try:
-        from dapper._frame_eval.cache_manager import (  # noqa: PLC0415
-            invalidate_breakpoints,
-        )
+        from dapper._frame_eval.cache_manager import invalidate_breakpoints  # noqa: PLC0415
 
         invalidate_breakpoints(path)
     except Exception as exc:

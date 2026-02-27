@@ -705,7 +705,8 @@ def test_error_handling():
 
         # Simulate error conditions by trying to integrate with invalid object
         class BrokenDebugger:
-            """A debugger class that intentionally fails to initialize for testing error handling."""
+            """A debugger class that intentionally fails to initialize for
+            testing error handling."""
 
             def __init__(self):
                 raise RuntimeError("Intentionally broken debugger for testing error handling")  # noqa: TRY301

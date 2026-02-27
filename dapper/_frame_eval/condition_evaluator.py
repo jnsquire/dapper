@@ -12,10 +12,11 @@ Safety properties
 - Evaluation errors (syntax, name, type, …) fall back to ``True`` (trace)
   so that a bad condition never silently skips a breakpoint.
 - A wall-clock budget is measured after every evaluation; if it is exceeded
-  a :meth:`~dapper._frame_eval.telemetry.FrameEvalTelemetry.record_selective_tracing_analysis_failed`
-  reason code is recorded and the evaluator logs a warning — but execution
-  is not interrupted mid-eval because hard thread-level timeouts are unsafe
-  inside the trace machinery.
+  a telemetry reason code is recorded via
+  :meth:`~dapper._frame_eval.telemetry.FrameEvalTelemetry.
+  record_selective_tracing_analysis_failed` and the evaluator logs a warning.
+  Execution is not interrupted mid-eval because hard thread-level timeouts are
+  unsafe inside the trace machinery.
 """
 
 from __future__ import annotations

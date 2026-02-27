@@ -1,4 +1,5 @@
-"""Common object shapes used by many requests/responses: Source, Breakpoint, StackFrame, Scope, Variable, Thread"""
+"""Common object shapes used by many requests/responses: Source,
+Breakpoint, StackFrame, Scope, Variable, Thread"""
 
 from __future__ import annotations
 
@@ -100,7 +101,8 @@ class Scope(TypedDict):
 
 
 class VariablePresentationHint(TypedDict):
-    """Properties of a variable that can be used to determine how to render the variable in the UI."""
+    """Properties of a variable that can be used to determine how to render the
+    variable in the UI."""
 
     kind: NotRequired[str]  # The kind of variable
     attributes: NotRequired[list[str]]  # Set of attributes represented as an array of strings

@@ -7,7 +7,8 @@ from tests.mocks import make_real_frame
 
 
 def test_server_data_breakpoint_info_includes_type_value():
-    # create a fresh event loop for the PyDebugger instance (avoids get_event_loop() issues in test env)
+    # create a fresh event loop for the PyDebugger instance
+    # (avoids get_event_loop() issues in test env)
     loop = asyncio.new_event_loop()
     # Create a DebugAdapterServer which constructs a PyDebugger internally
     server = DebugAdapterServer(MockConnection(), loop)

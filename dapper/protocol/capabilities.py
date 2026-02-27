@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 
 class ExceptionBreakpointsFilter(TypedDict):
-    """An ExceptionBreakpointsFilter is shown in the UI as a filter option for configuring how exceptions are dealt with."""
+    """An ExceptionBreakpointsFilter is shown in the UI as a filter option for
+    configuring how exceptions are dealt with."""
 
     filter: str  # The internal ID of the filter option
     label: str  # The name of the filter option. This is shown in the UI.
@@ -30,7 +31,8 @@ class ExceptionBreakpointsFilter(TypedDict):
 
 # Exception filter options as defined in the DAP schema.
 class ExceptionFilterOptions(TypedDict):
-    """An ExceptionFilterOptions is used to specify an exception filter together with a condition for setExceptionBreakpoints."""
+    """An ExceptionFilterOptions is used to specify an exception filter
+    together with a condition for setExceptionBreakpoints."""
 
     filterId: (
         str  # ID of an exception filter returned by the exceptionBreakpointFilters capability

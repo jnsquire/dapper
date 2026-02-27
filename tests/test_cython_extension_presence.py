@@ -26,9 +26,11 @@ def test_frame_eval_extension_importable():
     if spec is None:
         msg = (
             "Cython frame-eval extension not found.\n"
-            "If you expect C extensions to be built, ensure the CI step builds the 'frame-eval' extras.\n"
+            "If you expect C extensions to be built, ensure the CI step builds "
+            "the 'frame-eval' extras.\n"
             "Locally you can build with: python -m pip install -e '.[frame-eval]'\n"
-            "Spec lookup returned None and import failed for: dapper._frame_eval._frame_evaluator"
+            "Spec lookup returned None and import failed for: "
+            "dapper._frame_eval._frame_evaluator"
         )
         raise AssertionError(msg)
 

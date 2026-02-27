@@ -233,7 +233,7 @@ class TestRuntimeCompletions:
         targets = self.ip._get_runtime_completions("", local_ns, {})
 
         # Filter to just our test variables
-        our_labels = [l for l in labels_from_targets(targets) if l in local_ns]
+        our_labels = [lbl for lbl in labels_from_targets(targets) if lbl in local_ns]
         assert our_labels == sorted(our_labels)
 
 

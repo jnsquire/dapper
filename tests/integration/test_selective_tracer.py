@@ -68,9 +68,11 @@ class TestFrameAnalyzer:
             result = self.analyzer.should_trace_frame(mock_frame)
 
             # Verify the result
-            assert result["should_trace"] is True, (
-                f"Expected should_trace to be True, got {result['should_trace']}. Reason: {result['reason']}"
+            msg = (
+                f"Expected should_trace to be True, got {result['should_trace']}" 
+                f". Reason: {result['reason']}"
             )
+            assert result["should_trace"] is True, msg
             assert result["reason"] == "breakpoint_on_line"
             assert 10 in result["breakpoint_lines"]
 
@@ -277,7 +279,8 @@ class TestTraceDispatcher:
 
     def test_dispatch_trace_other_events(self):
         """Test dispatch for non-line events."""
-        # For non-line events, we should call the debugger trace function if the frame should be traced
+        # For non-line events, we should call the debugger trace function
+        # if the frame should be traced
         for event in ["call", "return", "exception"]:
             frame = Mock()
             frame.f_code.co_filename = "test.py"

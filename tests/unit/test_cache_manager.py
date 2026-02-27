@@ -53,7 +53,8 @@ class TestFuncCodeInfoCache:
         assert after_remove == before
 
     def test_id_reuse_detection_invalidates_stale_entries(self):
-        """Ensure stale LRU entries are evicted when code objects are GC'd and do not return stale info."""
+        """Ensure stale LRU entries are evicted when code objects are GC'd
+        and do not return stale info."""
 
         def make_func():
             def x():

@@ -82,7 +82,8 @@ def frame_has_exception_table_handler(
 
 
 def frame_has_ast_handler(code: types.CodeType | None, lineno: int | None) -> bool | None:
-    """Determines if the given code object has an AST handler for exceptions at the specified line number.
+    """Determines if the given code object has an AST handler for exceptions
+    at the specified line number.
 
     Returns:
         True if an exception handler is present,

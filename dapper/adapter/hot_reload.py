@@ -161,9 +161,7 @@ class HotReloadService:
             resolved_path = str(resolved)
             self._assert_reloadable_source(resolved)
 
-            backend: ExternalProcessBackend | None = (
-                self._debugger.get_external_backend()
-            )
+            backend: ExternalProcessBackend | None = self._debugger.get_external_backend()
             if backend is None:
                 self._raise_runtime_error(
                     "No external-process backend is available for hot reload"
@@ -179,9 +177,7 @@ class HotReloadService:
             updated_frame_codes = int(raw.get("updatedFrameCodes", 0))  # type: ignore[arg-type]
             _raw_warnings = raw.get("warnings")
             remote_warnings: list[str] = (
-                [str(w) for w in _raw_warnings]
-                if isinstance(_raw_warnings, list)
-                else []
+                [str(w) for w in _raw_warnings] if isinstance(_raw_warnings, list) else []
             )
 
             # Adapter-side housekeeping (same bookkeeping as the in-process path).
@@ -449,9 +445,11 @@ class HotReloadService:
                 try:
                     locals_map[local_name] = replacement
                 except Exception as exc:
-                    warnings.append(
-                        f"Failed to rebind local '{local_name}' in frame {getattr(frame, 'f_code', None)}: {exc!s}",
+                    msg = (
+                        f"Failed to rebind local '{local_name}' in frame "
+                        f"{getattr(frame, 'f_code', None)}: {exc!s}"
                     )
+                    warnings.append(msg)
                     continue
                 changed = True
 
@@ -490,7 +488,11 @@ class HotReloadService:
         if self._is_closure_function(replacement_function):
             code_name = getattr(current_code, "co_name", "<unknown>")
             warnings.append(
-                f"Closure function {code_name}() skipped: captured cell variables cannot be safely rebound",
+                
+                    "Closure function "
+                    f"{code_name}() skipped: captured cell variables cannot be safely "
+                    "rebound"
+                
             )
             return False
 
@@ -530,7 +532,11 @@ class HotReloadService:
         if function_name not in warned:
             warned.add(function_name)
             warnings.append(
-                f"Closure function {function_name}() skipped: captured cell variables cannot be safely rebound",
+                
+                    "Closure function "
+                    f"{function_name}() skipped: captured cell variables cannot be safely "
+                    "rebound"
+                
             )
         return True
 

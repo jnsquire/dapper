@@ -414,8 +414,9 @@ class TestDebuggerBDBIntegration:
         print(f"Integration stats: {self.bridge.integration_stats}")
 
         # Should still call original behavior due to fallback
-        assert len(self.mock_debugger.user_line_calls) == 1, (
-            f"Expected 1 call to user_line, got {len(self.mock_debugger.user_line_calls)}. Calls: {self.mock_debugger.user_line_calls}"
+        calls = self.mock_debugger.user_line_calls
+        assert len(calls) == 1, (
+            f"Expected 1 call to user_line, got {len(calls)}. Calls: {calls}"
         )
 
         # Should record error
@@ -482,7 +483,8 @@ class TestPyDebuggerIntegration:
             self.mock_debugger.set_trace_function(mock_trace_func)
             assert self.mock_debugger.get_trace_function() == mock_trace_func
 
-            # Verify the trace function was enhanced (it should be different from the initial no-op)
+            # Verify the trace function was enhanced
+            # (it should be different from the initial no-op)
             assert self.mock_debugger._trace_function != original_trace_value or callable(
                 current_trace,
             )
@@ -735,8 +737,9 @@ class TestIntegrationErrorRecovery:
             pytest.fail(f"Should have handled error gracefully, but got: {e}")
 
         # Should record the error
-        assert bridge.integration_stats["errors_handled"] >= 1, (
-            f"Expected at least 1 error handled, but got {bridge.integration_stats['errors_handled']}"
+        count = bridge.integration_stats["errors_handled"]
+        assert count >= 1, (
+            f"Expected at least 1 error handled, but got {count}"
         )
 
     def test_partial_integration_recovery(self):
@@ -767,7 +770,8 @@ class TestIntegrationErrorRecovery:
             # With fallback enabled, should still integrate
             bridge.update_config(fallback_on_error=True)
 
-            # The integration should return False when selective tracing fails, even with fallback on error
+            # The integration should return False when selective tracing fails,
+            # even with fallback on error
             # This is because the integration wasn't fully successful
             result = bridge.integrate_with_debugger_bdb(mock_debugger)
 

@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import GotoTargetsArguments
     from dapper.protocol.requests import GotoTargetsResponseBody
+    from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import NextArguments
     from dapper.protocol.requests import PauseArguments
     from dapper.protocol.requests import ScopesArguments
@@ -60,7 +61,6 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetVariableArguments
     from dapper.protocol.requests import StackTraceArguments
     from dapper.protocol.requests import StepInArguments
-    from dapper.protocol.requests import HotReloadOptions
     from dapper.protocol.requests import StepOutArguments
     from dapper.protocol.requests import VariablesArguments
 
@@ -440,9 +440,15 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
                 {
                     "convert_value_with_context_fn": convert_value_with_context,
                     "evaluate_with_policy_fn": evaluate_with_policy,
-                    "set_object_member_helper": command_handler_helpers.set_object_member_with_dependencies,
-                    "set_scope_variable_helper": command_handler_helpers.set_scope_variable_with_dependencies,
-                    "assign_to_parent_member_fn": command_handler_helpers.assign_to_parent_member,
+                    "set_object_member_helper": (
+                        command_handler_helpers.set_object_member_with_dependencies
+                    ),
+                    "set_scope_variable_helper": (
+                        command_handler_helpers.set_scope_variable_with_dependencies
+                    ),
+                    "assign_to_parent_member_fn": (
+                        command_handler_helpers.assign_to_parent_member
+                    ),
                     "error_response_fn": command_handler_helpers.error_response,
                     "conversion_error_message": _CONVERSION_ERROR_MESSAGE,
                     "get_state_debugger": _active_debugger,
@@ -591,9 +597,7 @@ def _cmd_hot_reload(
 
     args: dict[str, Any] = arguments or {}
     path: str = args.get("path", "")
-    options: HotReloadOptions | None = cast(
-        "HotReloadOptions | None", args.get("options")
-    )
+    options: HotReloadOptions | None = cast("HotReloadOptions | None", args.get("options"))
 
     try:
         result = reload_helpers.perform_reload(path, options)

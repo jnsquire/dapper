@@ -16,7 +16,9 @@ from typing import TypedDict
 from typing import cast
 
 from dapper.adapter.base_backend import BaseBackend
+from dapper.protocol.requests import ExceptionInfoResponseBody
 from dapper.protocol.requests import GotoTargetsResponseBody
+from dapper.protocol.requests import VariablesResponseBody
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,7 +30,6 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import CompletionsResponseBody
     from dapper.protocol.requests import ContinueResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
-    from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import GotoTarget
     from dapper.protocol.requests import HotReloadResponseBody
     from dapper.protocol.requests import SetBreakpointsResponseBody
@@ -37,7 +38,6 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetFunctionBreakpointsResponseBody
     from dapper.protocol.requests import SetVariableResponseBody
     from dapper.protocol.requests import StackTraceResponseBody
-    from dapper.protocol.requests import VariablesResponseBody
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,11 @@ class ExternalProcessBackend(BaseBackend):
         await self._send_command(cmd)
         return cast(
             "SetFunctionBreakpointsResponseBody",
-            {"breakpoints": [{"verified": bp.get("verified", True)} for bp in args["breakpoints"]]},
+            {
+                "breakpoints": [
+                    {"verified": bp.get("verified", True)} for bp in args["breakpoints"]
+                ]
+            },
         )
 
     async def _dispatch_set_exception_breakpoints(
@@ -438,9 +442,7 @@ class ExternalProcessBackend(BaseBackend):
         await self._send_command({"command": "terminate"})
         return _EMPTY_BODY
 
-    async def _dispatch_hot_reload(
-        self, args: _HotReloadDispatchArgs
-    ) -> HotReloadResponseBody:
+    async def _dispatch_hot_reload(self, args: _HotReloadDispatchArgs) -> HotReloadResponseBody:
         """Send a 'hotReload' command to the debuggee and await its response.
 
         The debuggee's ``@command_handler("hotReload")`` performs the reload

@@ -49,7 +49,8 @@ class TestFrameEvalMain:
 
     def test_is_incompatible_environment(self):
         """Test environment compatibility checking."""
-        # The actual implementation may have specific conditions, so we'll just test that it returns a boolean
+        # The actual implementation may have specific conditions, so we'll
+        # just test that it returns a boolean
         result = self.manager._is_incompatible_environment()
         assert isinstance(result, bool)
 

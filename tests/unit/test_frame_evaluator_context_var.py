@@ -22,16 +22,12 @@ import threading
 
 import pytest
 
-CYTHON_AVAILABLE = (
-    importlib.util.find_spec("dapper._frame_eval._frame_evaluator") is not None
-)
+CYTHON_AVAILABLE = importlib.util.find_spec("dapper._frame_eval._frame_evaluator") is not None
 
-pytestmark = pytest.mark.skipif(
-    not CYTHON_AVAILABLE, reason="Cython module not available"
-)
+pytestmark = pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython module not available")
 
 
-@pytest.fixture()
+@pytest.fixture
 def evaluator():
     m = importlib.import_module("dapper._frame_eval._frame_evaluator")
     required = ("get_thread_info", "clear_thread_local_info")
@@ -55,6 +51,7 @@ def test_get_thread_info_returns_same_object_in_same_context(evaluator):
 
 def test_get_thread_info_initialised_on_first_call(evaluator):
     """ThreadInfo must be marked fully_initialized on first access."""
+
     # Run in a fresh context so we're guaranteed a new ThreadInfo.
     def _get():
         ctx = contextvars.copy_context()
@@ -65,7 +62,7 @@ def test_get_thread_info_initialised_on_first_call(evaluator):
 
 
 # ---------------------------------------------------------------------------
-# Thread isolation (regression – must still work like threading.local)
+# Thread isolation (regression - must still work like threading.local)
 # ---------------------------------------------------------------------------
 
 
@@ -104,6 +101,7 @@ def test_different_contexts_get_different_thread_infos(evaluator):
     object.  We therefore clear the var first so both sibling contexts start
     from None and each lazily creates its own ThreadInfo.
     """
+
     def _run_isolated():
         # Clear in this context so copies below start with None.
         evaluator.clear_thread_local_info()
@@ -123,6 +121,7 @@ def test_mutation_in_one_context_does_not_affect_sibling_context(evaluator):
     independent ThreadInfo objects, so a mutation to one is invisible to the
     other.
     """
+
     def _run_isolated():
         evaluator.clear_thread_local_info()
         ctx1 = contextvars.copy_context()
@@ -138,9 +137,7 @@ def test_mutation_in_one_context_does_not_affect_sibling_context(evaluator):
         return ctx2.run(_get_pydevd)
 
     result = contextvars.copy_context().run(_run_isolated)
-    assert result is False, (
-        "Mutation in ctx1 leaked into ctx2 – contexts are not properly isolated"
-    )
+    assert result is False, "Mutation in ctx1 leaked into ctx2 - contexts are not properly isolated"
 
 
 # ---------------------------------------------------------------------------
@@ -173,9 +170,10 @@ def test_async_tasks_on_same_thread_get_isolated_thread_infos(evaluator):
 
     asyncio.run(_main())
 
-    assert "a" in results and "b" in results
+    assert "a" in results
+    assert "b" in results
     assert results["a"] is not results["b"], (
-        "Two asyncio tasks on the same thread share a ThreadInfo – "
+        "Two asyncio tasks on the same thread share a ThreadInfo - "
         "ContextVar isolation is not working"
     )
 

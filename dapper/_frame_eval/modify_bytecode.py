@@ -242,11 +242,11 @@ def __dapper_breakpoint_wrapper_{line}():
         # Get the current frame
         import sys
         frame = sys._getframe(1)
-        
+
         # Check if we should stop at this line
         filename = frame.f_code.co_filename
         lineno = {line}
-        
+
         # Call the debugger's breakpoint check
         if hasattr(sys, '_pydevd_frame_eval'):
             debugger_info = sys._pydevd_frame_eval
@@ -255,11 +255,11 @@ def __dapper_breakpoint_wrapper_{line}():
                 if should_stop:
                     debugger_info['stop_at_frame'](frame)
                     return
-        
+
         # Fallback: check for trace function
         if hasattr(sys, 'trace_function') and sys.trace_function:
             sys.trace_function(frame, 'line', None)
-            
+
     except Exception:
         # Silently ignore errors to avoid breaking execution
         pass

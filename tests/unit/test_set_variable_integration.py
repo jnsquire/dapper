@@ -11,7 +11,8 @@ chain produces a valid DAP response.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -20,7 +21,7 @@ from dapper.adapter.request_handlers import RequestHandler
 
 
 @pytest.fixture
-def _wired_handler():
+def wired_handler():
     """Create a real PyDebugger + RequestHandler backed by a mock server.
 
     The PyDebugger's active backend is a mock that echoes the requested
@@ -55,10 +56,8 @@ def _wired_handler():
     # Provide a mock backend that returns sensible responses
     mock_backend = AsyncMock()
 
-    async def _mock_set_variable(
-        var_ref: int, name: str, value: str
-    ) -> dict[str, Any]:
-        return {"value": value, "type": type(eval(value)).__name__, "variablesReference": 0}  # noqa: S307
+    async def _mock_set_variable(var_ref: int, name: str, value: str) -> dict[str, Any]:
+        return {"value": value, "type": type(eval(value)).__name__, "variablesReference": 0}
 
     mock_backend.set_variable = AsyncMock(side_effect=_mock_set_variable)
 
@@ -69,14 +68,14 @@ def _wired_handler():
 
 
 @pytest.mark.asyncio
-async def test_set_variable_integration(_wired_handler):
+async def test_set_variable_integration(wired_handler):
     """Send three setVariable requests through the full adapter pipeline.
 
     Verifies that RequestHandler dispatches to PyDebugger.set_variable,
     which resolves the scope reference and delegates to the active backend,
     and that each response is well-formed.
     """
-    handler, debugger, scope_ref, mock_backend = _wired_handler
+    handler, _debugger, scope_ref, mock_backend = wired_handler
 
     # --- setVariable: x = 99 ---
     resp_x = await handler.handle_request(

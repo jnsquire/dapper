@@ -338,9 +338,11 @@ def test_invalid_breakpoint_lines(original_code: types.CodeType) -> None:
     # Test with non-existent breakpoint lines
     success, result = inject_breakpoint_bytecode(original_code, {999, 1000})
     # The function should either:
-    # 1. Return success=True with a valid code object (if it could inject breakpoints)
+    # 1. Return success=True with a valid code object (if it could inject
+    #    breakpoints)
     # 2. Return success=False with None (if it couldn't inject breakpoints)
-    # 3. Return success=False with the original code object (if it couldn't inject breakpoints but wants to preserve the original)
+    # 3. Return success=False with the original code object (if it couldn't
+    #    inject breakpoints but wants to preserve the original)
     if success:
         assert result is not None
         assert validate_bytecode(result)

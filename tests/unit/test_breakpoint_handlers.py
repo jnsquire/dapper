@@ -139,7 +139,8 @@ class TestHandleSetBreakpointsImpl:
         dbg.clear_breaks_for_file.assert_called_once_with("/app/main.py")
 
     def test_clear_fallback_chain(self) -> None:
-        """If clear_breaks_for_file raises, falls back to clear_break and then clear_break_meta_for_file."""
+        """If clear_breaks_for_file raises, falls back to clear_break and then
+        clear_break_meta_for_file."""
         dbg = _make_dbg(clear_raises=True)
         # Should not raise — all clear methods fail gracefully
         result = handle_set_breakpoints_impl(
