@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { DapperDebugAdapterDescriptorFactory } from './debugAdapter/dapperDebugAdapter.js';
-import { DapperConfigurationProvider } from './debugAdapter/configurationProvider.js';
+import { DapperConfigurationProvider, DapperDynamicConfigurationProvider } from './debugAdapter/configurationProvider.js';
 import { DapperWebview } from './webview/DapperWebview.js';
 import { logger, registerLoggerCommands } from './utils/logger.js';
 import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js';
@@ -137,7 +137,7 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
         request: 'launch',
         program: '${file}',
         cwd: '${workspaceFolder}',
-        pythonPath: vscode.workspace.getConfiguration('python').get('pythonPath', 'python'),
+        pythonPath: vscode.workspace.getConfiguration('python').get('defaultInterpreterPath', 'python'),
         console: 'integratedTerminal',
         stopOnEntry: true
       });
@@ -293,9 +293,18 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
 }
 
 function* registerDebugAdapters(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
-  // Register debug configuration provider
+  // Register debug configuration provider (Initial: generates launch.json snippets)
   const provider = new DapperConfigurationProvider();
   yield vscode.debug.registerDebugConfigurationProvider('dapper', provider);
+
+  // Register dynamic debug configuration provider (Dynamic: launches the wizard from the
+  // run/debug UI when the user asks for dynamically-generated configurations)
+  const dynamicProvider = new DapperDynamicConfigurationProvider(context.extensionUri);
+  yield vscode.debug.registerDebugConfigurationProvider(
+    'dapper',
+    dynamicProvider,
+    vscode.DebugConfigurationProviderTriggerKind.Dynamic
+  );
 
   // Register debug adapter descriptor factory
   const factory = new DapperDebugAdapterDescriptorFactory(context);

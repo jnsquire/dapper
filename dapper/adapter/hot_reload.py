@@ -488,11 +488,9 @@ class HotReloadService:
         if self._is_closure_function(replacement_function):
             code_name = getattr(current_code, "co_name", "<unknown>")
             warnings.append(
-                
-                    "Closure function "
-                    f"{code_name}() skipped: captured cell variables cannot be safely "
-                    "rebound"
-                
+                "Closure function "
+                f"{code_name}() skipped: captured cell variables cannot be safely "
+                "rebound"
             )
             return False
 
@@ -532,11 +530,9 @@ class HotReloadService:
         if function_name not in warned:
             warned.add(function_name)
             warnings.append(
-                
-                    "Closure function "
-                    f"{function_name}() skipped: captured cell variables cannot be safely "
-                    "rebound"
-                
+                "Closure function "
+                f"{function_name}() skipped: captured cell variables cannot be safely "
+                "rebound"
             )
         return True
 

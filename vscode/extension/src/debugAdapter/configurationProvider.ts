@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { DebugConfiguration, ProviderResult, WorkspaceFolder } from 'vscode';
+import { DapperWebview } from '../webview/DapperWebview.js';
 
 export class DapperConfigurationProvider implements vscode.DebugConfigurationProvider {
   private static hasLaunchTarget(config: DebugConfiguration): boolean {
@@ -89,5 +90,32 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
     }
 
     return config;
+  }
+}
+
+/**
+ * Registered with {@link vscode.DebugConfigurationProviderTriggerKind.Dynamic} so that VS Code
+ * calls `provideDebugConfigurations` when the user opens the run/debug picker and asks for
+ * dynamically-generated configurations (e.g. via "Select and Start Debugging").
+ *
+ * Instead of returning a static list, we open the Dapper Launch Configuration Wizard and wait
+ * for the user to confirm their settings.  When the wizard emits a `confirmConfig` message the
+ * promise resolves and VS Code receives the configured launch configuration.  If the user closes
+ * the wizard without confirming, the call resolves to an empty array so VS Code hides the picker
+ * entry gracefully.
+ */
+export class DapperDynamicConfigurationProvider implements vscode.DebugConfigurationProvider {
+  private readonly _extensionUri: vscode.Uri;
+
+  constructor(extensionUri: vscode.Uri) {
+    this._extensionUri = extensionUri;
+  }
+
+  async provideDebugConfigurations(
+    _folder: WorkspaceFolder | undefined,
+    _token?: vscode.CancellationToken
+  ): Promise<DebugConfiguration[]> {
+    const config = await DapperWebview.showAndWaitForConfig(this._extensionUri);
+    return config ? [config] : [];
   }
 }

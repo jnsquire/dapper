@@ -355,9 +355,7 @@ class FrameEvalManager:
             dict: Debug information including configuration and status
         """
         python_version = (
-            f"{sys.version_info.major}."
-            f"{sys.version_info.minor}."
-            f"{sys.version_info.micro}"
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         )
 
         return {

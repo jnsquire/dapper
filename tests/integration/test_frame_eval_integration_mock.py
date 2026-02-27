@@ -415,9 +415,7 @@ class TestDebuggerBDBIntegration:
 
         # Should still call original behavior due to fallback
         calls = self.mock_debugger.user_line_calls
-        assert len(calls) == 1, (
-            f"Expected 1 call to user_line, got {len(calls)}. Calls: {calls}"
-        )
+        assert len(calls) == 1, f"Expected 1 call to user_line, got {len(calls)}. Calls: {calls}"
 
         # Should record error
         assert self.bridge.integration_stats["errors_handled"] == 1, (
@@ -738,9 +736,7 @@ class TestIntegrationErrorRecovery:
 
         # Should record the error
         count = bridge.integration_stats["errors_handled"]
-        assert count >= 1, (
-            f"Expected at least 1 error handled, but got {count}"
-        )
+        assert count >= 1, f"Expected at least 1 error handled, but got {count}"
 
     def test_partial_integration_recovery(self):
         """Test recovery when partial integration fails."""

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import '../../types/vscode-elements.d';
-import '@vscode-elements/elements/dist/vscode-elements.js';
+// vscode-elements is loaded as a separate <script> tag in the webview HTML
 
 interface EnvironmentVariablesProps {
   variables: Record<string, string>;

@@ -69,7 +69,7 @@ class TestFrameAnalyzer:
 
             # Verify the result
             msg = (
-                f"Expected should_trace to be True, got {result['should_trace']}" 
+                f"Expected should_trace to be True, got {result['should_trace']}"
                 f". Reason: {result['reason']}"
             )
             assert result["should_trace"] is True, msg

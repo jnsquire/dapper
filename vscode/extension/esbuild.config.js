@@ -87,6 +87,8 @@ async function buildExtension() {
 const buildWebview = async () => {
   return esbuild.build({
     ...commonConfig,
+    // Clear the Node.js banner — browser ESM cannot resolve 'module' or 'path' built-ins
+    banner: {},
     entryPoints: {
       'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
     },
@@ -106,8 +108,8 @@ const buildWebview = async () => {
     bundle: true,
     minify: isProduction,
     sourcemap: !isProduction,
-  // Externalize vscode and the vscode-elements package so they are not bundled into the webview
-  external: ['vscode', '@vscode-elements/elements', '@vscode-elements/elements/dist/vscode-elements.js'],
+  // Only externalize vscode (provided by VS Code runtime); bundle @vscode-elements inline
+  external: ['vscode', '@vscode-elements/elements', '@vscode-elements/elements/dist/bundled.js'],
     define: {
       'process.env.NODE_ENV': isProduction ? '"production"' : '"development"',
     },

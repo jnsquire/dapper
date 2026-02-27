@@ -2,12 +2,15 @@ import * as vscode from 'vscode';
 import { logger } from '../utils/logger.js';
 import { insertLaunchConfiguration } from '../utils/insertLaunchConfiguration.js';
 import { IViewComponent } from './components/BaseView.js';
+import { DebugView } from './components/debug/DebugView.js';
 
 // Type for view components
 type ViewType = 'debug' | 'config';
 
 export class DapperWebview {
   public static currentPanel: DapperWebview | undefined;
+  /** Resolve callback set when the wizard is opened via the Dynamic debug config provider. */
+  private static _dynamicProviderResolve: ((config: vscode.DebugConfiguration | undefined) => void) | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
   private _extensionUri: vscode.Uri;
@@ -18,6 +21,28 @@ export class DapperWebview {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+  }
+
+  /**
+   * Open the configuration wizard and wait for the user to confirm a configuration.
+   * Used by {@link DapperDynamicConfigurationProvider} to satisfy the Dynamic
+   * `DebugConfigurationProviderTriggerKind` hook in the run/debug UI.
+   *
+   * Resolves with the confirmed {@link vscode.DebugConfiguration}, or `undefined`
+   * if the user closes the wizard without confirming.
+   */
+  public static showAndWaitForConfig(
+    extensionUri: vscode.Uri
+  ): Promise<vscode.DebugConfiguration | undefined> {
+    // If a previous call is still pending, cancel it immediately.
+    DapperWebview._dynamicProviderResolve?.(undefined);
+
+    return new Promise((resolve) => {
+      DapperWebview._dynamicProviderResolve = resolve;
+      // providerMode is communicated to the webview via the updateConfig response to
+      // requestConfig (sent by the React app on mount), avoiding a timing race.
+      void DapperWebview.createOrShow(extensionUri, 'config');
+    });
   }
 
   public static async createOrShow(extensionUri: vscode.Uri, viewType: 'debug' | 'config' = 'debug') {
@@ -53,7 +78,8 @@ export class DapperWebview {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(extensionUri, 'media'),
-          vscode.Uri.joinPath(extensionUri, 'out/compiled')
+          vscode.Uri.joinPath(extensionUri, 'out/compiled'),
+          vscode.Uri.joinPath(extensionUri, 'node_modules', '@vscode-elements', 'elements', 'dist')
         ]
       }
     );
@@ -86,9 +112,8 @@ export class DapperWebview {
       
       switch (viewType) {
         case 'debug':
-          // TODO: Implement debug view component
-          logger.debug('Creating debug view component (falling back to config view)');
-          component = await this.createConfigView();
+          logger.debug('Creating debug view component');
+          component = new DebugView(this._panel, this._extensionUri);
           break;
         case 'config':
         default:
@@ -120,7 +145,10 @@ export class DapperWebview {
     // In a real implementation, you would import the actual component
     const nonce = String(Date.now());
     const configScriptUri = this.getWebviewUri('webview/views/config/ConfigView.js');
-    const stylesUri = this.getWebviewUri('styles.css');
+    const stylesUri = this.getWebviewUri('styles/webview/styles.css');
+    const elementsUri = this._panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js')
+    );
     return {
       render: () => `
         <!doctype html>
@@ -131,6 +159,7 @@ export class DapperWebview {
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${this._panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${this._panel.webview.cspSource} https: data:; font-src ${this._panel.webview.cspSource};" />
             <title>Dapper Launch Configuration Wizard</title>
             <link rel="stylesheet" href="${stylesUri}" />
+            <script type="module" nonce="${nonce}" src="${elementsUri}"></script>
             <script type="module" nonce="${nonce}" src="${configScriptUri}"></script>
           </head>
           <body>
@@ -148,13 +177,24 @@ export class DapperWebview {
                 vscode.window.showInformationMessage('Configuration saved');
                 break;
               case 'requestConfig':
-                // Respond with the saved configuration or default
+                // Respond with the saved configuration or default.
+                // Include providerMode so the wizard knows it was opened from the
+                // Dynamic debug-config provider (reliable: sent in response to the
+                // webview's own mount-time message, so the listener is always ready).
                 try {
                   const saved = vscode.workspace.getConfiguration('dapper').get('debug');
-                  panel.webview.postMessage({ command: 'updateConfig', config: saved || {} });
+                  panel.webview.postMessage({
+                    command: 'updateConfig',
+                    config: saved || {},
+                    providerMode: DapperWebview._dynamicProviderResolve !== undefined,
+                  });
                 } catch (err) {
                   logger.error('Failed to read saved configuration', err as Error);
-                  panel.webview.postMessage({ command: 'updateConfig', config: {} });
+                  panel.webview.postMessage({
+                    command: 'updateConfig',
+                    config: {},
+                    providerMode: DapperWebview._dynamicProviderResolve !== undefined,
+                  });
                 }
                 break;
               case 'saveAndInsert':
@@ -182,6 +222,15 @@ export class DapperWebview {
                   vscode.window.showErrorMessage('Failed to start debugging');
                 }
                 break;
+              case 'confirmConfig':
+                // Sent by the wizard when invoked from the Dynamic debug config provider.
+                // Resolve the waiting provideDebugConfigurations promise, then close the panel.
+                if (DapperWebview._dynamicProviderResolve) {
+                  DapperWebview._dynamicProviderResolve(message.config as vscode.DebugConfiguration);
+                  DapperWebview._dynamicProviderResolve = undefined;
+                }
+                panel.dispose();
+                break;
               case 'cancelConfig':
                 // Close the webview
                 panel.dispose();
@@ -204,6 +253,11 @@ export class DapperWebview {
   public dispose() {
     logger.debug(`Disposing ${this._viewType} webview`);
     DapperWebview.currentPanel = undefined;
+
+    // If the wizard was opened via the Dynamic config provider and the user closes it
+    // without confirming, resolve the pending promise with undefined (cancellation).
+    DapperWebview._dynamicProviderResolve?.(undefined);
+    DapperWebview._dynamicProviderResolve = undefined;
 
     // Clean up our resources
     this._panel.dispose();

@@ -137,7 +137,9 @@ def test_mutation_in_one_context_does_not_affect_sibling_context(evaluator):
         return ctx2.run(_get_pydevd)
 
     result = contextvars.copy_context().run(_run_isolated)
-    assert result is False, "Mutation in ctx1 leaked into ctx2 - contexts are not properly isolated"
+    assert result is False, (
+        "Mutation in ctx1 leaked into ctx2 - contexts are not properly isolated"
+    )
 
 
 # ---------------------------------------------------------------------------

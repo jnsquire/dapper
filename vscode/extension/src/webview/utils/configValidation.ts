@@ -13,7 +13,7 @@ export const defaultConfig: Omit<DebugConfiguration, 'name'> = {
   inProcess: false,
   stopOnEntry: true,
   justMyCode: true,
-  pythonPath: '${config:python.pythonPath}',
+  pythonPath: '${config:python.defaultInterpreterPath}',
   console: 'integratedTerminal',
   redirectOutput: true,
   showReturnValue: true,
@@ -43,10 +43,6 @@ export function validateConfig(config: Partial<DebugConfiguration>): { valid: bo
     errors.push('Subprocess name is required when subprocess debugging is enabled');
   }
 
-  if (config.useIpc && !config.ipcTransport) {
-    errors.push('IPC transport method is required when using IPC');
-  }
-
   return {
     valid: errors.length === 0,
     errors
@@ -63,6 +59,16 @@ export function sanitizeConfig(config: DebugConfiguration): DebugConfiguration {
       delete sanitized[key];
     }
   });
+
+  // Derive useIpc from transport: pipe and unix are IPC, tcp is not
+  sanitized.useIpc = sanitized.ipcTransport !== 'tcp';
+
+  // Enforce module-over-program priority: when module is set, program is ignored
+  if (sanitized.module?.trim()) {
+    delete sanitized.program;
+  } else if (!sanitized.program?.trim()) {
+    delete sanitized.program;
+  }
 
   // Ensure arrays are properly initialized
   if (!Array.isArray(sanitized.args)) sanitized.args = [];

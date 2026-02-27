@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ConfigProvider, useConfig } from '../../contexts/ConfigContext.js';
 import { DebugConfiguration } from '../../types/debug.js';
-import '@vscode-elements/elements/dist/vscode-elements.js';
+// vscode-elements is loaded as a separate <script> tag in the webview HTML
 
 import { vscode } from '../../vscodeApi.js';
 
@@ -15,10 +15,10 @@ interface ConfigViewProps {
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const WIZARD_STEPS = [
-  { id: 'basics', title: 'Basics' },
-  { id: 'runtime', title: 'Runtime' },
-  { id: 'debug', title: 'Debug Options' },
-  { id: 'review', title: 'Review & Create' },
+  { id: 'basics',  title: 'Basics',          description: 'Name your configuration and choose what to launch.' },
+  { id: 'runtime', title: 'Runtime',         description: 'Set the working directory, arguments, and environment.' },
+  { id: 'debug',   title: 'Debug Options',   description: 'Configure the debug adapter and Python-specific options.' },
+  { id: 'review',  title: 'Review & Create', description: 'Verify your settings, then save or start debugging.' },
 ] as const;
 
 type StepIndex = 0 | 1 | 2 | 3;
@@ -28,8 +28,8 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   const [localErrors, setLocalErrors] = useState<Record<string, string[]>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState<StepIndex>(0);
-  const [targetKind, setTargetKind] = useState<'program' | 'module'>('program');
-
+  /** True when the wizard was opened by the Dynamic debug-config provider. */
+  const [providerMode, setProviderMode] = useState(false);
   // Local state for lists to maintain stable IDs and focus
   const [argsList, setArgsList] = useState<{ id: string, value: string }[]>([]);
   const [envList, setEnvList] = useState<{ id: string, key: string, value: string }[]>([]);
@@ -39,7 +39,6 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   useEffect(() => {
     if (!initialConfigApplied.current && initialConfig && Object.keys(initialConfig).length > 0) {
       updateConfig(initialConfig as Partial<DebugConfiguration>);
-      setTargetKind(initialConfig.module ? 'module' : 'program');
       initialConfigApplied.current = true;
     }
     // Request config from host in case it's provided asynchronously
@@ -56,14 +55,17 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   }, [config?.args]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync Config -> Local State (Env)
+  // Only reset when config changes externally; ignore blank in-progress rows in the comparison.
   useEffect(() => {
     const currentConfigEnv = config?.env || {};
-    const currentLocalEnvObj = envList.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
-    
+    const committedLocalEnv = envList
+      .filter(e => e.key.trim())
+      .reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
+
     const configKeys = Object.keys(currentConfigEnv).sort();
-    const localKeys = Object.keys(currentLocalEnvObj).sort();
+    const localKeys = Object.keys(committedLocalEnv).sort();
     const keysMatch = JSON.stringify(configKeys) === JSON.stringify(localKeys);
-    const valuesMatch = keysMatch && configKeys.every(k => currentConfigEnv[k] === currentLocalEnvObj[k]);
+    const valuesMatch = keysMatch && configKeys.every(k => currentConfigEnv[k] === committedLocalEnv[k]);
 
     if (!valuesMatch) {
       setEnvList(Object.entries(currentConfigEnv).map(([k, v]) => ({ id: generateId(), key: k, value: v as string })));
@@ -72,8 +74,9 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
 
   useEffect(() => {
     const currentPaths = config?.moduleSearchPaths || [];
-    const localPaths = modulePathsList.map((p) => p.value);
-    if (JSON.stringify(currentPaths) !== JSON.stringify(localPaths)) {
+    // Ignore blank in-progress rows when comparing
+    const committedLocalPaths = modulePathsList.map(p => p.value).filter(Boolean);
+    if (JSON.stringify(currentPaths) !== JSON.stringify(committedLocalPaths)) {
       setModulePathsList(currentPaths.map((value) => ({ id: generateId(), value })));
     }
   }, [config?.moduleSearchPaths]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -101,7 +104,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
       const data = ev.data as any;
       if (data?.command === 'updateConfig' && data.config) {
         updateConfig(data.config as Partial<DebugConfiguration>);
-        setTargetKind(data.config.module ? 'module' : 'program');
+        if (data.providerMode) setProviderMode(true);
       } else if (data?.command === 'updateStatus' && data.text) {
         setStatus(String((data as any).text));
       }
@@ -166,181 +169,295 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   };
 
   const renderBasicsStep = () => (
-    <vscode-form-group>
-      <vscode-label>Name</vscode-label>
-      <vscode-textfield
-        value={config?.name || ''}
-        onInput={(e: any) => updateField('name', (e.target as HTMLInputElement).value)}
-        placeholder="Configuration name"
-      />
+    <>
+      <p className="step-section-title">Identity</p>
 
-      <vscode-label>Request</vscode-label>
-      <vscode-single-select
-        value={config?.request || 'launch'}
-        onChange={(e: any) => updateField('request', (e.target as HTMLSelectElement).value as DebugConfiguration['request'])}
-      >
-        <vscode-option value="launch">launch</vscode-option>
-        <vscode-option value="attach">attach</vscode-option>
-      </vscode-single-select>
+      <div className="field">
+        <vscode-label>
+          Configuration Name <span className="field-required">*</span>
+        </vscode-label>
+        <vscode-textfield
+          style={{ width: '100%' }}
+          value={config?.name || ''}
+          onInput={(e: any) => updateField('name', (e.target as HTMLInputElement).value)}
+          placeholder="My Python App"
+        />
+        <div className="field-hint">Appears in the debug dropdown in the Run panel.</div>
+      </div>
 
-      <vscode-label>Launch Target</vscode-label>
-      <vscode-radio-group
-        value={targetKind}
-        onChange={(e: any) => {
-          const value = (e.target as HTMLInputElement).value as 'program' | 'module';
-          setTargetKind(value);
-          if (value === 'program') {
-            updateConfig({ module: '' });
-          } else {
-            updateConfig({ program: '' });
-          }
-        }}
-      >
-        <vscode-radio value="program">Python file (`program`)</vscode-radio>
-        <vscode-radio value="module">Python module (`module`)</vscode-radio>
-      </vscode-radio-group>
-
-      {targetKind === 'program' ? (
-        <>
-          <vscode-label>Program</vscode-label>
-          <vscode-textfield
-            value={config?.program || ''}
-            onInput={(e: any) => updateField('program', (e.target as HTMLInputElement).value)}
-            placeholder="${file}"
+      <div className="field">
+        <vscode-label>Request</vscode-label>
+        <vscode-radio-group
+          variant="vertical"
+          onChange={(e: any) => updateField('request', (e.target as HTMLInputElement).value as DebugConfiguration['request'])}
+        >
+          <vscode-radio
+            label="launch"
+            name="request"
+            value="launch"
+            checked={!config?.request || config.request === 'launch'}
           />
-        </>
-      ) : (
-        <>
-          <vscode-label>Module</vscode-label>
-          <vscode-textfield
-            value={config?.module || ''}
-            onInput={(e: any) => updateField('module', (e.target as HTMLInputElement).value)}
-            placeholder="package.module"
+          <vscode-radio
+            label="attach"
+            name="request"
+            value="attach"
+            checked={config?.request === 'attach'}
           />
-        </>
+        </vscode-radio-group>
+        <div className="field-hint">
+          {config?.request === 'attach'
+            ? 'Connect to an already-running process via a debug port.'
+            : 'Start a new Python process and attach the debugger immediately.'}
+        </div>
+      </div>
+
+      <p className="step-section-title">Target</p>
+
+      {!!(config?.program && config?.module) && (
+        <div className="wizard-error-banner" style={{ marginBottom: '10px' }}>
+          ⚠ Both <strong>Program</strong> and <strong>Module</strong> are set —
+          <strong>Module takes priority</strong> and Program will be ignored.
+          Clear Module if you want to run a file directly.
+        </div>
       )}
-    </vscode-form-group>
+
+      <div className="field">
+        <vscode-label>Program path</vscode-label>
+        <vscode-textfield
+          style={{ width: '100%' }}
+          value={config?.program || ''}
+          onInput={(e: any) => updateField('program', (e.target as HTMLInputElement).value)}
+          placeholder="${file}"
+        />
+        <div className="field-hint">
+          Run a specific file. Absolute path or VS Code variable —
+          e.g. <code>{'${file}'}</code> for the currently open file.
+          Ignored if <strong>Module</strong> is also set.
+        </div>
+      </div>
+
+      <div className="field">
+        <vscode-label>Module name</vscode-label>
+        <vscode-textfield
+          style={{ width: '100%' }}
+          value={config?.module || ''}
+          onInput={(e: any) => updateField('module', (e.target as HTMLInputElement).value)}
+          placeholder="package.module"
+        />
+        <div className="field-hint">
+          Run as a module: equivalent to <code>python -m package.module</code>.
+          Takes priority over Program when both are set.
+          Leave blank to run the Program file directly.
+        </div>
+      </div>
+    </>
   );
 
   const renderRuntimeStep = () => (
-    <vscode-form-group>
-      <vscode-label>Working Directory</vscode-label>
-      <vscode-textfield
-        value={config?.cwd || ''}
-        onInput={(e: any) => updateField('cwd', (e.target as HTMLInputElement).value)}
-        placeholder="${workspaceFolder}"
-      />
+    <>
+      <p className="step-section-title">Paths</p>
 
-      <vscode-label>Virtual Environment Path (optional)</vscode-label>
-      <vscode-textfield
-        value={config?.venvPath || ''}
-        onInput={(e: any) => updateField('venvPath', (e.target as HTMLInputElement).value)}
-        placeholder=".venv"
-      />
+      <div className="field">
+        <vscode-label>Working directory</vscode-label>
+        <vscode-textfield
+          style={{ width: '100%' }}
+          value={config?.cwd || ''}
+          onInput={(e: any) => updateField('cwd', (e.target as HTMLInputElement).value)}
+          placeholder="${workspaceFolder}"
+        />
+        <div className="field-hint">Current directory when the process starts. Defaults to workspace root.</div>
+      </div>
 
-      <vscode-label>Arguments</vscode-label>
-      {argsList.map((arg, idx) => (
-        <div key={arg.id} className="form-row">
-          <vscode-textfield
-            value={arg.value}
-            onInput={(e: any) => {
-              const v = (e.target as HTMLInputElement).value;
-              const next = [...argsList];
-              next[idx] = { ...next[idx], value: v };
-              updateArgs(next);
-            }}
-          />
-          <vscode-button secondary onClick={() => updateArgs(argsList.filter((_, i) => i !== idx))}>Remove</vscode-button>
-        </div>
-      ))}
-      <vscode-button secondary onClick={() => updateArgs([...argsList, { id: generateId(), value: '' }])}>Add Argument</vscode-button>
+      <div className="field">
+        <vscode-label>Virtual environment path</vscode-label>
+        <vscode-textfield
+          style={{ width: '100%' }}
+          value={config?.venvPath || ''}
+          onInput={(e: any) => updateField('venvPath', (e.target as HTMLInputElement).value)}
+          placeholder=".venv"
+        />
+        <div className="field-hint">Relative or absolute path to a venv. Leave blank to use the workspace interpreter.</div>
+      </div>
 
-      {targetKind === 'module' && (
-        <>
-          <vscode-label>Module Search Paths</vscode-label>
-          {modulePathsList.map((entry, idx) => (
-            <div key={entry.id} className="form-row">
+      <p className="step-section-title">Arguments</p>
+
+      <div className="field">
+        <div className="list-section">
+          {argsList.length === 0 && (
+            <div className="list-section-empty">No arguments — click Add to append one.</div>
+          )}
+          {argsList.map((arg, idx) => (
+            <div key={arg.id} className="list-row">
               <vscode-textfield
-                value={entry.value}
+                value={arg.value}
+                placeholder={`arg ${idx + 1}`}
                 onInput={(e: any) => {
                   const v = (e.target as HTMLInputElement).value;
-                  const next = [...modulePathsList];
+                  const next = [...argsList];
                   next[idx] = { ...next[idx], value: v };
-                  updateModulePaths(next);
+                  updateArgs(next);
                 }}
               />
-              <vscode-button secondary onClick={() => updateModulePaths(modulePathsList.filter((_, i) => i !== idx))}>Remove</vscode-button>
+              <vscode-button type="button" secondary onClick={() => updateArgs(argsList.filter((_, i) => i !== idx))}>×</vscode-button>
             </div>
           ))}
-          <vscode-button secondary onClick={() => updateModulePaths([...modulePathsList, { id: generateId(), value: '' }])}>Add Search Path</vscode-button>
+          <div className="list-add-row">
+            <vscode-button type="button" secondary onClick={() => updateArgs([...argsList, { id: generateId(), value: '' }])}>
+              + Add argument
+            </vscode-button>
+          </div>
+        </div>
+        <div className="field-hint">Passed to the program as <code>sys.argv[1:]</code>.</div>
+      </div>
+
+      {!!(config?.module) && (
+        <>
+          <p className="step-section-title">Module search paths</p>
+          <div className="field">
+            <div className="list-section">
+              {modulePathsList.length === 0 && (
+                <div className="list-section-empty">No extra paths — click Add to append one.</div>
+              )}
+              {modulePathsList.map((entry, idx) => (
+                <div key={entry.id} className="list-row">
+                  <vscode-textfield
+                    value={entry.value}
+                    placeholder="/path/to/dir"
+                    onInput={(e: any) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      const next = [...modulePathsList];
+                      next[idx] = { ...next[idx], value: v };
+                      updateModulePaths(next);
+                    }}
+                  />
+                  <vscode-button type="button" secondary onClick={() => updateModulePaths(modulePathsList.filter((_, i) => i !== idx))}>×</vscode-button>
+                </div>
+              ))}
+              <div className="list-add-row">
+                <vscode-button type="button" secondary onClick={() => updateModulePaths([...modulePathsList, { id: generateId(), value: '' }])}>
+                  + Add search path
+                </vscode-button>
+              </div>
+            </div>
+            <div className="field-hint">Extra directories prepended to <code>sys.path</code> when resolving the module.</div>
+          </div>
         </>
       )}
 
-      <vscode-label>Environment Variables</vscode-label>
-      {envList.map((entry, idx) => (
-        <div key={entry.id} className="form-row">
-          <vscode-textfield
-            value={entry.key}
-            onInput={(e: any) => {
-              const v = (e.target as HTMLInputElement).value;
-              const next = [...envList];
-              next[idx] = { ...next[idx], key: v };
-              updateEnv(next);
-            }}
-            placeholder="Name"
-          />
-          <vscode-textfield
-            value={entry.value}
-            onInput={(e: any) => {
-              const v = (e.target as HTMLInputElement).value;
-              const next = [...envList];
-              next[idx] = { ...next[idx], value: v };
-              updateEnv(next);
-            }}
-            placeholder="Value"
-          />
-          <vscode-button secondary onClick={() => updateEnv(envList.filter((_, i) => i !== idx))}>Remove</vscode-button>
+      <p className="step-section-title">Environment variables</p>
+
+      <div className="field">
+        <div className="list-section">
+          {envList.length === 0 && (
+            <div className="list-section-empty">No environment overrides — click Add to define one.</div>
+          )}
+          {envList.map((entry, idx) => (
+            <div key={entry.id} className="list-row">
+              <vscode-textfield
+                className="list-row-key"
+                style={{ flex: '0 0 36%' }}
+                value={entry.key}
+                placeholder="NAME"
+                onInput={(e: any) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  const next = [...envList];
+                  next[idx] = { ...next[idx], key: v };
+                  updateEnv(next);
+                }}
+              />
+              <vscode-textfield
+                value={entry.value}
+                placeholder="value"
+                onInput={(e: any) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  const next = [...envList];
+                  next[idx] = { ...next[idx], value: v };
+                  updateEnv(next);
+                }}
+              />
+              <vscode-button type="button" secondary onClick={() => updateEnv(envList.filter((_, i) => i !== idx))}>×</vscode-button>
+            </div>
+          ))}
+          <div className="list-add-row">
+            <vscode-button type="button" secondary onClick={() => updateEnv([...envList, { id: generateId(), key: '', value: '' }])}>
+              + Add variable
+            </vscode-button>
+          </div>
         </div>
-      ))}
-      <vscode-button secondary onClick={() => updateEnv([...envList, { id: generateId(), key: '', value: '' }])}>Add Environment Variable</vscode-button>
-    </vscode-form-group>
+        <div className="field-hint">Merged with the inherited environment of the VS Code process.</div>
+      </div>
+    </>
   );
 
   const renderDebugStep = () => (
-    <vscode-form-group>
-      <vscode-label>Debug Server Port</vscode-label>
-      <vscode-textfield
-        type="number"
-        value={String(config?.debugServer ?? 4711)}
-        onInput={(e: any) => updateField('debugServer', Number((e.target as HTMLInputElement).value || 4711))}
-      />
+    <>
+      <p className="step-section-title">Transport</p>
 
-      <vscode-label>IPC Transport</vscode-label>
-      <vscode-single-select
-        value={config?.ipcTransport || 'pipe'}
-        onChange={(e: any) => updateField('ipcTransport', (e.target as HTMLSelectElement).value as DebugConfiguration['ipcTransport'])}
-      >
-        <vscode-option value="pipe">pipe</vscode-option>
-        <vscode-option value="tcp">tcp</vscode-option>
-        <vscode-option value="unix">unix</vscode-option>
-      </vscode-single-select>
+      <div className="field">
+        <vscode-label>IPC transport</vscode-label>
+        <vscode-single-select
+          style={{ width: '200px' }}
+          value={config?.ipcTransport || 'pipe'}
+          onChange={(e: any) => updateField('ipcTransport', (e.target as HTMLSelectElement).value as DebugConfiguration['ipcTransport'])}
+        >
+          <vscode-option value="pipe">pipe (recommended)</vscode-option>
+          <vscode-option value="tcp">tcp</vscode-option>
+          <vscode-option value="unix">unix socket</vscode-option>
+        </vscode-single-select>
+        <div className="field-hint">
+          Communication channel between VS Code and the debug adapter.
+          <strong> pipe</strong> and <strong>unix</strong> use a local socket;
+          <strong> tcp</strong> requires a port number below.
+        </div>
+      </div>
 
-      <vscode-checkbox checked={Boolean(config?.useIpc)} onChange={(e: any) => updateField('useIpc', (e.target as HTMLInputElement).checked)}>
-        Use IPC
-      </vscode-checkbox>
-      <vscode-checkbox checked={Boolean(config?.frameEval)} onChange={(e: any) => updateField('frameEval', (e.target as HTMLInputElement).checked)}>
-        Enable Frame Evaluation
-      </vscode-checkbox>
-      <vscode-checkbox checked={Boolean(config?.stopOnEntry)} onChange={(e: any) => updateField('stopOnEntry', (e.target as HTMLInputElement).checked)}>
-        Stop on Entry
-      </vscode-checkbox>
-      <vscode-checkbox checked={Boolean(config?.justMyCode)} onChange={(e: any) => updateField('justMyCode', (e.target as HTMLInputElement).checked)}>
-        Just My Code
-      </vscode-checkbox>
-      <vscode-checkbox checked={Boolean(config?.subprocessAutoAttach)} onChange={(e: any) => updateField('subprocessAutoAttach', (e.target as HTMLInputElement).checked)}>
-        Auto-attach subprocesses
-      </vscode-checkbox>
-    </vscode-form-group>
+      {config?.ipcTransport === 'tcp' && (
+        <div className="field">
+          <vscode-label>Debug server port</vscode-label>
+          <vscode-textfield
+            style={{ width: '120px' }}
+            type="number"
+            value={String(config?.debugServer ?? 4711)}
+            onInput={(e: any) => updateField('debugServer', Number((e.target as HTMLInputElement).value || 4711))}
+          />
+          <div className="field-hint">Port the debug adapter listens on when using TCP transport (default 4711).</div>
+        </div>
+      )}
+
+      <p className="step-section-title">Execution behaviour</p>
+
+      <div className="checkbox-group">
+        <div className="checkbox-row">
+          <vscode-checkbox checked={Boolean(config?.frameEval)} onChange={(e: any) => updateField('frameEval', (e.target as HTMLInputElement).checked)}>
+            Enable frame evaluation
+          </vscode-checkbox>
+          <div className="field-hint">Dapper's low-overhead frame evaluator — improves performance during heavy stepping.</div>
+        </div>
+        <div className="checkbox-row">
+          <vscode-checkbox checked={Boolean(config?.stopOnEntry)} onChange={(e: any) => updateField('stopOnEntry', (e.target as HTMLInputElement).checked)}>
+            Stop on entry
+          </vscode-checkbox>
+          <div className="field-hint">Break on the very first statement before any user code runs.</div>
+        </div>
+        <div className="checkbox-row">
+          <vscode-checkbox checked={Boolean(config?.justMyCode)} onChange={(e: any) => updateField('justMyCode', (e.target as HTMLInputElement).checked)}>
+            Just My Code
+          </vscode-checkbox>
+          <div className="field-hint">Skip stepping into standard library and third-party packages.</div>
+        </div>
+      </div>
+
+      <p className="step-section-title">Subprocess debugging</p>
+
+      <div className="checkbox-group">
+        <div className="checkbox-row">
+          <vscode-checkbox checked={Boolean(config?.subprocessAutoAttach)} onChange={(e: any) => updateField('subprocessAutoAttach', (e.target as HTMLInputElement).checked)}>
+            Auto-attach to subprocesses
+          </vscode-checkbox>
+          <div className="field-hint">Automatically attach the debugger to any child processes spawned at runtime.</div>
+        </div>
+      </div>
+    </>
   );
 
   const renderReviewStep = () => {
@@ -352,8 +469,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
 
     return (
       <vscode-form-group>
-        <vscode-label>Review</vscode-label>
-        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+        <pre className="review-json">
           {JSON.stringify(finalConfig, null, 2)}
         </pre>
       </vscode-form-group>
@@ -374,57 +490,115 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
   };
 
   return (
-    <div className="config-view" style={{ padding: '16px' }}>
-      {status && <div className="status">{status}</div>}
+    <div className="wizard-shell">
 
-      <vscode-label style={{ display: 'block', marginBottom: '8px' }}>
-        Step {stepIndex + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[stepIndex].title}
-      </vscode-label>
-      <vscode-progress-ring value={((stepIndex + 1) / WIZARD_STEPS.length) * 100} />
+      {/* ── Step rail ─────────────────────────────────────────── */}
+      <ol className="wizard-rail">
+        {WIZARD_STEPS.map((step, idx) => {
+          const cls = idx < stepIndex ? 'done' : idx === stepIndex ? 'active' : '';
+          return (
+            <li key={step.id} className={cls}>
+              <div className="step-circle">
+                {idx < stepIndex ? '✓' : idx + 1}
+              </div>
+              <span className="step-label">{step.title}</span>
+            </li>
+          );
+        })}
+      </ol>
 
-      <form onSubmit={(e) => { e.preventDefault(); handleSave(e); }}>
-        {renderCurrentStep()}
+      {/* ── Scrollable content card ────────────────────────────── */}
+      <form
+        className="wizard-body"
+        onSubmit={(e) => { e.preventDefault(); handleSave(e); }}
+      >
+        <div className="step-header">
+          <h2>{WIZARD_STEPS[stepIndex].title}</h2>
+          <p>{WIZARD_STEPS[stepIndex].description}</p>
+        </div>
+
+        <div className="step-fields">
+          {renderCurrentStep()}
+        </div>
 
         {!!stepErrorCount && (
-          <vscode-form-helper>
-            {stepErrorCount} validation issue(s) detected. Review required fields before saving.
-          </vscode-form-helper>
+          <div className="wizard-error-banner">
+            ⚠&nbsp;{stepErrorCount} validation issue{stepErrorCount > 1 ? 's' : ''} — review required fields before saving.
+          </div>
         )}
 
-        <div className="form-actions">
-          <vscode-button secondary disabled={stepIndex === 0} onClick={(e: React.MouseEvent) => { e.preventDefault(); previousStep(); }}>
-            Back
-          </vscode-button>
+        {status && <div className="wizard-status">{status}</div>}
+      </form>
 
-          {stepIndex < WIZARD_STEPS.length - 1 ? (
-            <vscode-button onClick={(e: React.MouseEvent) => { e.preventDefault(); nextStep(); }}>
-              Next
-            </vscode-button>
-          ) : (
-            <vscode-button type="submit">Save Configuration</vscode-button>
-          )}
-
-          <vscode-button
-            appearance="primary"
-            onClick={(e) => {
-              e.preventDefault();
-              if (vscode) vscode.postMessage({ command: 'startDebug', config });
-            }}
-          >
-            Start Debugging
-          </vscode-button>
+      {/* ── Sticky footer ──────────────────────────────────────── */}
+      <div className="wizard-footer">
+        <div className="wizard-footer-left">
           <vscode-button
             secondary
-            onClick={(e) => {
-              e.preventDefault();
-              if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
-            }}
+            disabled={stepIndex === 0}
+            onClick={(e: React.MouseEvent) => { e.preventDefault(); previousStep(); }}
           >
-            Save & Insert to launch.json
+            ← Back
           </vscode-button>
-          <vscode-button secondary onClick={(e) => { e.preventDefault(); handleCancel(e); }}>Cancel</vscode-button>
         </div>
-      </form>
+
+        <div className="wizard-footer-right">
+          {stepIndex < WIZARD_STEPS.length - 1 ? (
+            <vscode-button
+              onClick={(e: React.MouseEvent) => { e.preventDefault(); nextStep(); }}
+            >
+              Next →
+            </vscode-button>
+          ) : (
+            <>
+              {providerMode ? (
+                /* Opened by the Dynamic debug-config provider — return the config to VS Code */
+                <vscode-button
+                  onClick={(e: React.MouseEvent) => {
+                    e.preventDefault();
+                    if (vscode) vscode.postMessage({ command: 'confirmConfig', config });
+                  }}
+                >
+                  ✓ Use this configuration
+                </vscode-button>
+              ) : (
+                <>
+                  <vscode-button
+                    secondary
+                    onClick={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
+                    }}
+                  >
+                    Save to launch.json
+                  </vscode-button>
+                  <vscode-button
+                    secondary
+                    onClick={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      if (vscode) vscode.postMessage({ command: 'startDebug', config });
+                    }}
+                  >
+                    ▶ Start Debugging
+                  </vscode-button>
+                  <vscode-button
+                    onClick={(e: React.MouseEvent) => { e.preventDefault(); handleSave(e); }}
+                  >
+                    Save Configuration
+                  </vscode-button>
+                </>
+              )}
+            </>
+          )}
+          <vscode-button
+            secondary
+            onClick={(e: React.MouseEvent) => { e.preventDefault(); handleCancel(e); }}
+          >
+            Cancel
+          </vscode-button>
+        </div>
+      </div>
+
     </div>
   );
 };

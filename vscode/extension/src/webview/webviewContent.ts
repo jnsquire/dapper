@@ -8,7 +8,7 @@ export function getWebviewContent(
 ) {
   // Get URIs for resources
   const stylesUri = getUri(webview, extensionUri, ['webview', 'styles.css']);
-  const elementsUri = 'https://unpkg.com/@vscode-elements/elements/dist/vscode-elements.js';
+  const elementsUri = getUri(webview, extensionUri, ['node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js']);
 
   // Use a nonce to only allow specific scripts to be run
   const nonce = getNonce();
@@ -24,9 +24,9 @@ export function getWebviewContent(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'none';
-      style-src ${webview.cspSource} 'unsafe-inline' https://unpkg.com;
-      script-src 'nonce-${nonce}' https://unpkg.com;
-      font-src ${webview.cspSource} https://unpkg.com;
+      style-src ${webview.cspSource} 'unsafe-inline';
+      script-src 'nonce-${nonce}' ${webview.cspSource};
+      font-src ${webview.cspSource};
       img-src ${webview.cspSource} https: data:;
     ">
     <link href="${stylesUri}" rel="stylesheet" />

@@ -64,10 +64,9 @@ describe('validateConfig', () => {
     expect(result.errors).toContain('Subprocess name is required when subprocess debugging is enabled');
   });
 
-  it('should fail when useIpc is true but ipcTransport is missing', () => {
-    const result = validateConfig(makeValidConfig({ useIpc: true, ipcTransport: undefined as any }));
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('IPC transport method is required when using IPC');
+  it('should pass when ipcTransport is tcp (useIpc no longer required separately)', () => {
+    const result = validateConfig(makeValidConfig({ ipcTransport: 'tcp', useIpc: false }));
+    expect(result.valid).toBe(true);
   });
 
   it('should return multiple errors at once', () => {
@@ -124,6 +123,27 @@ describe('sanitizeConfig', () => {
     const config = makeValidConfig({ type: 'other' as any });
     const result = sanitizeConfig(config);
     expect(result.type).toBe('dapper');
+  });
+
+  it('should derive useIpc=true for pipe and unix transport', () => {
+    expect(sanitizeConfig(makeValidConfig({ ipcTransport: 'pipe' })).useIpc).toBe(true);
+    expect(sanitizeConfig(makeValidConfig({ ipcTransport: 'unix' })).useIpc).toBe(true);
+  });
+
+  it('should derive useIpc=false for tcp transport', () => {
+    const result = sanitizeConfig(makeValidConfig({ ipcTransport: 'tcp' }));
+    expect(result.useIpc).toBe(false);
+  });
+
+  it('should drop program when module is set', () => {
+    const result = sanitizeConfig(makeValidConfig({ program: '${file}', module: 'mypackage.main' }));
+    expect(result).not.toHaveProperty('program');
+    expect(result.module).toBe('mypackage.main');
+  });
+
+  it('should keep program when module is empty', () => {
+    const result = sanitizeConfig(makeValidConfig({ program: 'app.py', module: '' }));
+    expect(result.program).toBe('app.py');
   });
 
   it('should not mutate the original object', () => {

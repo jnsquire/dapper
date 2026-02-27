@@ -149,9 +149,7 @@ def threaded_worker(worker_id: int, shared_data: dict[str, Any], lock: threading
 
             shared_data["counters"][worker_id] += 1
             total = shared_data["counters"][worker_id]
-            logger.info(
-                f"Worker {worker_id}: iteration {i + 1}, total count: {total}"
-            )
+            logger.info(f"Worker {worker_id}: iteration {i + 1}, total count: {total}")
 
 
 def demonstrate_threading():
