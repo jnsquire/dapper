@@ -127,15 +127,15 @@ class TestVariableManagerMakeVariable:
         manager = VariableManager()
         var = manager.make_variable("s", "line1\nline2")
         hint = var.get("presentationHint", {})
-        attrs = hint.get("attributes", [])  # type: ignore[union-attr]
+        attrs = hint.get("attributes", [])
         assert "rawString" in attrs
 
     def test_make_variable_callable_has_side_effects(self):
         manager = VariableManager()
         var = manager.make_variable("fn", lambda x: x)
         hint = var.get("presentationHint", {})
-        assert hint.get("kind") == "method"  # type: ignore[union-attr]
-        assert "hasSideEffects" in hint.get("attributes", [])  # type: ignore[union-attr]
+        assert hint.get("kind") == "method"
+        assert "hasSideEffects" in hint.get("attributes", [])
 
     def test_make_variable_class_type(self):
         manager = VariableManager()
@@ -145,13 +145,13 @@ class TestVariableManagerMakeVariable:
 
         var = manager.make_variable("cls", MyClass)
         hint = var.get("presentationHint", {})
-        assert hint.get("kind") == "class"  # type: ignore[union-attr]
+        assert hint.get("kind") == "class"
 
     def test_make_variable_private_visibility(self):
         manager = VariableManager()
         var = manager.make_variable("_private", 1)
         hint = var.get("presentationHint", {})
-        assert hint.get("visibility") == "private"  # type: ignore[union-attr]
+        assert hint.get("visibility") == "private"
 
     def test_make_variable_public_visibility(self):
         manager = VariableManager()

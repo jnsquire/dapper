@@ -77,7 +77,7 @@ def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) ->
 def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
     active_session = session if session is not None else debug_shared.get_active_session()
     while not active_session.is_terminated:
-        header = read_exact(rfile, HEADER_SIZE)  # type: ignore[arg-type]
+        header = read_exact(rfile, HEADER_SIZE)
         if not header:
             active_session.exit_func(0)
             return
@@ -87,7 +87,7 @@ def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
             with debug_shared.use_session(active_session):
                 send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = read_exact(rfile, length)  # type: ignore[arg-type]
+        payload = read_exact(rfile, length)
         if not payload:
             active_session.exit_func(0)
             return

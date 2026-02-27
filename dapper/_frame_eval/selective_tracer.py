@@ -28,7 +28,7 @@ class ThreadInfo(Protocol):
     fully_initialized: bool
     step_mode: bool
 
-    def should_skip_frame(self, filename: str) -> bool:
+    def should_skip_frame(self, frame: FrameType) -> bool:
         """Determine if a frame should be skipped based on its filename."""
         ...
 
@@ -54,9 +54,7 @@ else:
 
 # Import frame evaluation functions if available
 try:
-    from dapper._frame_eval._frame_evaluator import (
-        get_thread_info,  # type: ignore[import-not-found]
-    )
+    from dapper._frame_eval._frame_evaluator import get_thread_info
 except ImportError:
     # Fallback implementation for when C extensions are not available
     class _FallbackThreadInfo:
@@ -65,16 +63,16 @@ except ImportError:
         fully_initialized: bool = False
         step_mode: bool = False
 
-        def should_skip_frame(self, _filename: str) -> bool:
+        def should_skip_frame(self, frame: FrameType) -> bool:  # noqa: ARG002
             """Never skip frames in fallback mode.
 
             Args:
-                _filename: The filename to check (unused in fallback)
+                frame: The frame to check (unused in fallback)
 
             """
             return False
 
-    def get_thread_info() -> _FallbackThreadInfo:
+    def get_thread_info() -> ThreadInfo:
         """Get thread information with fallback implementation."""
         return _FallbackThreadInfo()
 
@@ -150,7 +148,7 @@ class FrameTraceAnalyzer:
         """Check if frame should be skipped based on thread info."""
         thread_info = get_thread_info()
         if hasattr(thread_info, "should_skip_frame") and thread_info.should_skip_frame(
-            frame.f_code.co_filename,
+            frame,
         ):
             return self._create_trace_decision(
                 should_trace=False,

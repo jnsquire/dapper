@@ -219,7 +219,7 @@ class AsyncioTaskRegistry:
                 continue
 
             frame_id = self._allocate_frame_id()
-            dap_frame: StackFrameDict = {  # type: ignore[assignment]
+            dap_frame: StackFrameDict = {
                 "id": frame_id,
                 "name": name,
                 "line": lineno,

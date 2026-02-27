@@ -80,13 +80,13 @@ class NamedPipeServerConnection(ConnectionBase):
             _read_transport, _ = await loop.connect_read_pipe(
                 lambda: read_protocol,
                 self.pipe_file,
-            )  # type: ignore[arg-type]
+            )
 
             # Create write stream
             write_transport, write_protocol = await loop.connect_write_pipe(
                 asyncio.Protocol,
                 self.pipe_file,
-            )  # type: ignore[arg-type]
+            )
             self.writer = asyncio.StreamWriter(write_transport, write_protocol, self.reader, loop)
 
             self._is_connected = True

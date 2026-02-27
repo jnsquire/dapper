@@ -378,10 +378,10 @@ class SubprocessManager:
         track_child_exit = self._track_child_exit
         config = self.config
 
-        def patched_popen_init(self_popen, args, *popen_rest, **kwargs):
+        def patched_popen_init(self, args, *popen_rest, **kwargs):
             """Patched Popen.__init__ that intercepts Python subprocess creation."""
             if kwargs.get("shell"):
-                original_init(self_popen, args, *popen_rest, **kwargs)
+                original_init(self, args, *popen_rest, **kwargs)
                 return
 
             # Convert args to list if string
@@ -393,13 +393,13 @@ class SubprocessManager:
                 args_list = [str(args)]
 
             if "dapper.launcher.debug_launcher" in args_list or "--subprocess" in args_list:
-                original_init(self_popen, args, *popen_rest, **kwargs)
+                original_init(self, args, *popen_rest, **kwargs)
                 return
 
             if config.auto_attach and is_python_command(args_list):
                 invocation = analyze_invocation(args_list)
                 if invocation is None:
-                    original_init(self_popen, args, *popen_rest, **kwargs)
+                    original_init(self, args, *popen_rest, **kwargs)
                     return
 
                 port = allocate_port()
@@ -413,11 +413,11 @@ class SubprocessManager:
                 logger.debug(f"Intercepted subprocess: {args_list} -> {new_args}")
 
                 # Call original with modified args
-                original_init(self_popen, new_args, *popen_rest, **kwargs)
+                original_init(self, new_args, *popen_rest, **kwargs)
 
                 # Notify about the new child
                 child_info = ChildProcessInfo(
-                    pid=self_popen.pid,
+                    pid=self.pid,
                     name=Path(args_list[-1]).name if args_list else "unknown",
                     ipc_port=port,
                     command=args_list,
@@ -428,18 +428,18 @@ class SubprocessManager:
                     parent_session_id=config.session_id,
                 )
                 on_child_detected(child_info)
-                track_child_exit(self_popen, child_info.pid)
+                track_child_exit(self, child_info.pid)
             else:
-                original_init(self_popen, args, *popen_rest, **kwargs)
+                original_init(self, args, *popen_rest, **kwargs)
 
-        subprocess.Popen.__init__ = patched_popen_init  # type: ignore[method-assign]
+        subprocess.Popen.__init__ = patched_popen_init
         logger.debug("Patched subprocess.Popen")
 
     def _unpatch_subprocess(self) -> None:
         """Restore original subprocess.Popen."""
 
         if self._original_popen is not None:
-            subprocess.Popen.__init__ = self._original_popen  # type: ignore[method-assign]
+            subprocess.Popen.__init__ = self._original_popen
             self._original_popen = None
             logger.debug("Restored subprocess.Popen")
 
@@ -456,26 +456,26 @@ class SubprocessManager:
         original_start = self._original_mp_process_start
         emit_candidate_event = self._emit_candidate_event
 
-        def patched_process_start(process_obj, *args, **kwargs):
-            target_fn = getattr(process_obj, "_target", None)
+        def patched_process_start(self, *args, **kwargs):
+            target_fn = getattr(self, "_target", None)
             target_name = getattr(target_fn, "__name__", None)
-            proc_name = getattr(process_obj, "name", "multiprocessing.Process")
+            proc_name = getattr(self, "name", "multiprocessing.Process")
             with suppress(Exception):
                 emit_candidate_event(
                     source="multiprocessing.Process",
                     name=str(proc_name),
                     target=target_name,
                 )
-            return original_start(process_obj, *args, **kwargs)
+            return original_start(self, *args, **kwargs)
 
-        multiprocessing.Process.start = patched_process_start  # type: ignore[method-assign]
+        multiprocessing.Process.start = patched_process_start
         logger.debug("Patched multiprocessing.Process.start (scaffold)")
 
     def _unpatch_multiprocessing(self) -> None:
         if self._original_mp_process_start is None:
             return
         with suppress(Exception):
-            multiprocessing.Process.start = self._original_mp_process_start  # type: ignore[method-assign]
+            multiprocessing.Process.start = self._original_mp_process_start
             logger.debug("Restored multiprocessing.Process.start")
         self._original_mp_process_start = None
 
@@ -502,14 +502,14 @@ class SubprocessManager:
                 )
             return original_submit(executor_obj, fn, *args, **kwargs)
 
-        futures.ProcessPoolExecutor.submit = patched_submit  # type: ignore[method-assign]
+        futures.ProcessPoolExecutor.submit = patched_submit
         logger.debug("Patched ProcessPoolExecutor.submit (scaffold)")
 
     def _unpatch_process_pool_executor(self) -> None:
         if self._original_process_pool_submit is None:
             return
         with suppress(Exception):
-            futures.ProcessPoolExecutor.submit = self._original_process_pool_submit  # type: ignore[method-assign]
+            futures.ProcessPoolExecutor.submit = self._original_process_pool_submit
             logger.debug("Restored ProcessPoolExecutor.submit")
         self._original_process_pool_submit = None
 

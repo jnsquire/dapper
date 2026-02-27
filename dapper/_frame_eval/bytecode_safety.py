@@ -102,7 +102,7 @@ def validate_code_object(
     if cfg.get("validate_stacksize", True):
         try:
             orig_size = original.co_stacksize
-            mod_size = modified.co_stacksize  # type: ignore[union-attr]
+            mod_size = modified.co_stacksize
             delta = mod_size - orig_size
             max_delta = cfg.get("max_stacksize_delta", _DEFAULT_MAX_STACKSIZE_DELTA)
 

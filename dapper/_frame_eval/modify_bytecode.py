@@ -30,7 +30,7 @@ def _get_instructions(code_obj: CodeType) -> list[dis.Instruction]:
     instructions so that the reconstructed bytecode has the correct length.
     """
     if sys.version_info >= (3, 11):
-        return list(dis.get_instructions(code_obj, show_caches=True))  # type: ignore[call-arg]
+        return list(dis.get_instructions(code_obj, show_caches=True))
     return list(dis.get_instructions(code_obj))
 
 

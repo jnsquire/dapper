@@ -91,7 +91,7 @@ def get_model_fields(value: Any) -> list[tuple[str, Any]]:
     if is_dataclass_instance(value):
         _missing = object()
         result: list[tuple[str, Any]] = []
-        for f in dataclasses.fields(value):  # type: ignore[arg-type]
+        for f in dataclasses.fields(value):
             val = getattr(value, f.name, _missing)
             if val is not _missing:
                 result.append((f.name, val))

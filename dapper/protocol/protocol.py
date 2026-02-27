@@ -82,7 +82,7 @@ class ProtocolFactory:
         if arguments is not None:
             request_dict["arguments"] = arguments
         result = cast("GenericRequest", request_dict)
-        return cast("RequestT", result) if return_type else result  # type: ignore[return-value]
+        return cast("RequestT", result) if return_type else result
 
     @overload
     def create_response(
@@ -131,7 +131,7 @@ class ProtocolFactory:
             response_dict["message"] = error_message
 
         result = cast("GenericResponse", response_dict)
-        return cast("ResponseT", result) if return_type else result  # type: ignore[return-value]
+        return cast("ResponseT", result) if return_type else result
 
     @overload
     def create_error_response(
@@ -163,7 +163,7 @@ class ProtocolFactory:
             },
         }
         result = self.create_response(request, False, error_body, error_message)
-        return cast("ResponseT", result) if return_type else cast("ErrorResponse", result)  # type: ignore[return-value]
+        return cast("ResponseT", result) if return_type else cast("ErrorResponse", result)
 
     @overload
     def create_event(
@@ -198,7 +198,7 @@ class ProtocolFactory:
             event_dict["body"] = body
 
         result = cast("GenericEvent", event_dict)
-        return cast("EventT", result) if return_type else result  # type: ignore[return-value]
+        return cast("EventT", result) if return_type else result
 
     # ---- Specialized request creators -------------------------------------
 

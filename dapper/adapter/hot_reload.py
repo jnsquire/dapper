@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 import types
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import NoReturn
 from typing import Protocol
 from typing import cast
@@ -167,14 +168,14 @@ class HotReloadService:
                     "No external-process backend is available for hot reload"
                 )
 
-            raw: dict[str, object] = await backend._execute_command(  # noqa: SLF001
+            raw: dict[str, Any] = await backend._execute_command(  # noqa: SLF001
                 "hot_reload",
                 {"path": str(resolved), "options": options or {}},
             )
 
             reloaded_module = str(raw.get("reloadedModule", "<unknown>"))
-            rebound_frames = int(raw.get("reboundFrames", 0))  # type: ignore[arg-type]
-            updated_frame_codes = int(raw.get("updatedFrameCodes", 0))  # type: ignore[arg-type]
+            rebound_frames = int(raw.get("reboundFrames", 0))
+            updated_frame_codes = int(raw.get("updatedFrameCodes", 0))
             _raw_warnings = raw.get("warnings")
             remote_warnings: list[str] = (
                 [str(w) for w in _raw_warnings] if isinstance(_raw_warnings, list) else []

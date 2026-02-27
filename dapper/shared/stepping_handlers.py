@@ -14,10 +14,10 @@ _CO_COROUTINE: int = inspect.CO_COROUTINE
 _CO_ASYNC_GENERATOR: int = inspect.CO_ASYNC_GENERATOR
 
 
-def _frame_is_coroutine(frame: object) -> bool:
+def _frame_is_coroutine(frame: FrameType) -> bool:
     """Return True if *frame* belongs to a coroutine or async-generator function."""
     try:
-        flags: int = frame.f_code.co_flags  # type: ignore[union-attr]
+        flags: int = frame.f_code.co_flags
         return bool(flags & (_CO_COROUTINE | _CO_ASYNC_GENERATOR))
     except AttributeError:
         return False
@@ -25,6 +25,7 @@ def _frame_is_coroutine(frame: object) -> bool:
 
 if TYPE_CHECKING:
     from logging import Logger
+    from types import FrameType
 
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
@@ -166,7 +167,7 @@ def handle_pause_impl(
             if frame is not None:
                 try:
                     stack_frames = dbg.thread_tracker.build_stack_frames(frame)
-                    annotate_stack_frames_with_source_refs(stack_frames)  # type: ignore[arg-type]
+                    annotate_stack_frames_with_source_refs(stack_frames)
                     dbg.thread_tracker.frames_by_thread[thread_id] = stack_frames
                     dbg.stepping_controller.current_frame = frame
                 except Exception:
