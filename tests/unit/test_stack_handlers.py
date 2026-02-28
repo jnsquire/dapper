@@ -238,6 +238,9 @@ class TestHandleScopesImpl:
         dbg = MagicMock()
         fake_frame = MagicMock()
         dbg.thread_tracker.frame_id_to_frame = {2: fake_frame}
+        # allocate_scope_ref is now called; make it return sequential IDs
+        _ref_counter = iter(range(100, 200))
+        dbg.var_manager.allocate_scope_ref.side_effect = lambda _fid, _scope: next(_ref_counter)
 
         result = handle_scopes_impl(
             dbg,
@@ -251,9 +254,11 @@ class TestHandleScopesImpl:
         scope_names = {s["name"] for s in scopes}
         assert "Locals" in scope_names
         assert "Globals" in scope_names
-        # variablesReference is frameId * var_ref_tuple_size
+        # allocate_scope_ref returns the sequential IDs
         locals_scope = next(s for s in scopes if s["name"] == "Locals")
-        assert locals_scope["variablesReference"] == 2 * self.VAR_REF_TUPLE_SIZE
+        assert locals_scope["variablesReference"] == 100
+        globals_scope = next(s for s in scopes if s["name"] == "Globals")
+        assert globals_scope["variablesReference"] == 101
 
     def test_scopes_fallback_to_stack(self) -> None:
         send = _make_safe_send()

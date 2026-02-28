@@ -427,6 +427,8 @@ class DebugSession:
         self.parent_session_id: str | None = None
         self.module_search_paths: list[str] = []
         self.command_queue: queue.Queue[Any] = queue.Queue()
+        self.configuration_done_event: threading.Event = threading.Event()
+        self._resume_event: threading.Event = threading.Event()
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None
 
@@ -434,6 +436,10 @@ class DebugSession:
         self.sources = SourceCatalog()
         self.dispatcher = CommandDispatcher()
         self.process_control = ProcessControl()
+
+    def signal_resume(self) -> None:
+        """Signal the resume event to unblock the debugger thread."""
+        self._resume_event.set()
 
     @property
     def ipc_enabled(self) -> bool:
@@ -549,26 +555,17 @@ class DebugSession:
         self.transport.require_ipc_write_channel()
 
     def process_queued_commands_launcher(self) -> None:
-        """Process queued commands using the launcher handlers.
+        """Block until a resume command (continue/step/terminate) is processed.
 
-        This method consumes commands from the internal command queue and
-        forwards them to the launcher-level `handle_debug_command` helper.
-        It dynamically imports the `dapper.launcher.handlers` module so we
-        avoid circular imports at module import time.
+        The IPC listener thread dispatches incoming commands directly via
+        ``handle_debug_command``.  This method simply waits for one of those
+        dispatches to signal ``_resume_event``, which happens when a resume
+        command (continue, next, stepIn, stepOut, terminate) is handled.
         """
-        # Use non-blocking reads until the queue is empty. Avoid try/except in
-        # the loop to reduce overhead and satisfy linter suggestions.
-        while not self.command_queue.empty():
-            cmd = self.command_queue.get_nowait()
-            try:
-                # Deferred import to avoid circular imports at module import time
-                from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
-
-                handle_debug_command(cmd)
-            except Exception:
-                # If anything goes wrong, fall back to the provider
-                # dispatch mechanism and continue processing.
-                self.dispatch_debug_command(cmd)
+        self._resume_event.clear()
+        while not self.is_terminated:
+            if self._resume_event.wait(timeout=0.5):
+                break
 
     def set_exit_func(self, fn: Callable[[int], Any]) -> None:
         self.exit_func = fn

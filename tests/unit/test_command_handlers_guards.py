@@ -49,12 +49,12 @@ def test_handle_debug_command_rejects_non_string_command(monkeypatch: pytest.Mon
     )
     session = DebugSession()
 
-    handlers.handle_debug_command({"seq": 7, "command": 123, "arguments": {}}, session=session)
+    handlers.handle_debug_command({"id": 7, "command": 123, "arguments": {}}, session=session)
 
     assert sent
     message_type, payload = sent[-1]
     assert message_type == "response"
-    assert payload["request_seq"] == 7
+    assert payload["id"] == 7
     assert payload["success"] is False
     assert "Invalid command" in str(payload["message"])
 
@@ -69,14 +69,14 @@ def test_handle_debug_command_rejects_unknown_command(monkeypatch: pytest.Monkey
     session = DebugSession()
 
     handlers.handle_debug_command(
-        {"seq": 8, "command": "definitelyUnknown", "arguments": {}},
+        {"id": 8, "command": "definitelyUnknown", "arguments": {}},
         session=session,
     )
 
     assert sent
     message_type, payload = sent[-1]
     assert message_type == "response"
-    assert payload["request_seq"] == 8
+    assert payload["id"] == 8
     assert payload["success"] is False
     assert payload["message"] == "Unknown command: definitelyUnknown"
 

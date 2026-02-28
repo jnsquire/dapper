@@ -63,10 +63,22 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import StepInArguments
     from dapper.protocol.requests import StepOutArguments
     from dapper.protocol.requests import VariablesArguments
+    from dapper.shared.command_handler_helpers import Payload
 
 
 CommandPayload = command_handler_helpers.Payload
 
+# Commands that resume program execution and should unblock
+# ``process_queued_commands_launcher`` (which is blocking on ``_resume_event``).
+_RESUME_COMMANDS: frozenset[str] = frozenset(
+    {
+        "continue",
+        "next",
+        "stepIn",
+        "stepOut",
+        "terminate",
+    }
+)
 
 VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
@@ -82,6 +94,10 @@ _TRUNC_SUFFIX = "..."
 # Command mapping table - populated by the @command_handler decorator
 COMMAND_HANDLERS: dict[str, Callable[..., None]] = {}
 
+# Thread-local storage for the current command's id so handlers can include it
+# in their responses without needing to change every handler signature.
+_cmd_id_local: threading.local = threading.local()
+
 
 _error_response = command_handler_helpers.error_response
 
@@ -90,6 +106,15 @@ send_debug_message = _d_shared.send_debug_message
 
 
 def _send_debug_message_adapter(message_type: str, **payload: Any) -> object:
+    # Automatically inject the current request id into response messages so
+    # the TypeScript adapter can match them to pending requests.
+    if message_type == "response":
+        if "id" not in payload:
+            cmd_id = getattr(_cmd_id_local, "value", None)
+            if cmd_id is not None:
+                payload["id"] = cmd_id
+        # Track that a response was sent for this command dispatch cycle
+        _cmd_id_local.response_sent = True
     send_debug_message(message_type, **payload)
     return None
 
@@ -125,28 +150,48 @@ def handle_debug_command(
     active_session = session if session is not None else _d_shared.get_active_session()
     with _d_shared.use_session(active_session):
         cmd = command.get("command")
+        cmd_id = command.get("id")  # request id to echo back in the response
         arguments = command.get("arguments", {})
         # Ensure the command name is a string before looking up the handler
         if not isinstance(cmd, str):
             _safe_send_debug_message(
                 "response",
-                request_seq=command.get("seq"),
+                id=cmd_id,
                 success=False,
                 message=f"Invalid command: {cmd!r}",
             )
             return
 
-        # Look up the command handler in the mapping table and dispatch
-        handler_func = COMMAND_HANDLERS.get(cmd)
-        if handler_func is not None:
-            handler_func(arguments)
-        else:
-            _safe_send_debug_message(
-                "response",
-                request_seq=command.get("seq"),
-                success=False,
-                message=f"Unknown command: {cmd}",
-            )
+        # Store id in thread-local so _send_debug_message_adapter can pick it up
+        _cmd_id_local.value = cmd_id
+        _cmd_id_local.response_sent = False
+        try:
+            # Look up the command handler in the mapping table and dispatch
+            handler_func = COMMAND_HANDLERS.get(cmd)
+            if handler_func is not None:
+                result = handler_func(arguments)
+                # If the handler returned a result dict with 'success', send it
+                # as a response (mirrors CommandDispatcher._send_response_for_result).
+                if isinstance(result, dict) and "success" in result and cmd_id is not None:
+                    _safe_send_debug_message("response", **result)
+                # If no response was sent at all for a request that has an id,
+                # send a default success acknowledgement so the adapter doesn't hang.
+                elif cmd_id is not None and not _cmd_id_local.response_sent:
+                    _safe_send_debug_message("response", success=True)
+                # Signal resume for stepping/continue/terminate commands so the
+                # debugger thread unblocks from process_queued_commands_launcher.
+                if cmd in _RESUME_COMMANDS:
+                    active_session.signal_resume()
+            else:
+                _safe_send_debug_message(
+                    "response",
+                    id=cmd_id,
+                    success=False,
+                    message=f"Unknown command: {cmd}",
+                )
+        finally:
+            _cmd_id_local.value = None
+            _cmd_id_local.response_sent = False
 
 
 def _get_thread_ident() -> int:
@@ -182,15 +227,18 @@ def _active_debugger() -> CommandHandlerDebuggerLike | None:
 
 
 @command_handler("setBreakpoints")
-def _cmd_set_breakpoints(arguments: SetBreakpointsArguments | dict[str, Any] | None) -> None:
+def _cmd_set_breakpoints(
+    arguments: SetBreakpointsArguments | dict[str, Any] | None,
+) -> dict[str, Any] | None:
     dbg = _active_debugger()
     if dbg:
-        breakpoint_handlers.handle_set_breakpoints_impl(
+        return breakpoint_handlers.handle_set_breakpoints_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
             _safe_send_debug_message,
             logger,
         )
+    return None
 
 
 @command_handler("setFunctionBreakpoints")
@@ -334,38 +382,43 @@ def _cmd_goto(arguments: GotoArguments | dict[str, Any] | None) -> dict[str, Any
 
 
 @command_handler("stackTrace")
-def _cmd_stack_trace(arguments: StackTraceArguments | dict[str, Any] | None) -> None:
+def _cmd_stack_trace(
+    arguments: StackTraceArguments | dict[str, Any] | None,
+) -> dict[str, Any] | None:
     dbg = _active_debugger()
     if dbg:
-        stack_handlers.handle_stack_trace_impl(
+        return stack_handlers.handle_stack_trace_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
             get_thread_ident=_get_thread_ident,
             safe_send_debug_message=_safe_send_debug_message,
         )
+    return None
 
 
 @command_handler("threads")
-def _cmd_threads(arguments: dict[str, Any] | None = None) -> None:
+def _cmd_threads(arguments: dict[str, Any] | None = None) -> dict[str, Any] | None:
     dbg = _active_debugger()
     if dbg:
-        stack_handlers.handle_threads_impl(dbg, arguments, _safe_send_debug_message)
+        return stack_handlers.handle_threads_impl(dbg, arguments, _safe_send_debug_message)
+    return None
 
 
 @command_handler("scopes")
-def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> None:
+def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> dict[str, Any] | None:
     dbg = _active_debugger()
     if dbg:
-        stack_handlers.handle_scopes_impl(
+        return stack_handlers.handle_scopes_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
             safe_send_debug_message=_safe_send_debug_message,
             var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
         )
+    return None
 
 
 @command_handler("variables")
-def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> None:
+def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Payload | None:
     dbg = _active_debugger()
     if dbg:
 
@@ -406,12 +459,13 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
                 var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
             )
 
-        variable_handlers.handle_variables_impl(
+        return variable_handlers.handle_variables_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
             _safe_send_debug_message,
             _resolve_variables_for_reference,
         )
+    return None
 
 
 @command_handler("setVariable")
@@ -463,10 +517,10 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
 
 
 @command_handler("evaluate")
-def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
+def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> dict[str, Any] | None:
     dbg = _active_debugger()
     if dbg:
-        variable_handlers.handle_evaluate_impl(
+        return variable_handlers.handle_evaluate_impl(
             dbg,
             cast("dict[str, Any] | None", arguments),
             evaluate_with_policy=evaluate_with_policy,
@@ -474,6 +528,7 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
             safe_send_debug_message=_safe_send_debug_message,
             logger=logger,
         )
+    return None
 
 
 @command_handler("setDataBreakpoints")
@@ -516,14 +571,25 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
 @command_handler("configurationDone")
 def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     lifecycle_handlers.handle_configuration_done_impl()
+    # Acknowledge the request so the TS adapter's sendRequestToPython resolves
+    _safe_send_debug_message("response", success=True)
+    # Unblock the launcher main thread which is waiting before starting the program
+    _active_session().configuration_done_event.set()
 
 
 @command_handler("terminate")
-def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> None:
-    lifecycle_handlers.handle_terminate_impl(
+def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    state = _active_session()
+    result = lifecycle_handlers.handle_terminate_impl(
         safe_send_debug_message=_safe_send_debug_message,
-        state=_active_session(),
+        state=state,
     )
+    # Return here so that the dispatch sends the response first, then
+    # the resume event (set inside handle_terminate_impl) unblocks the
+    # debugger thread.  Call exit_func *after* the response is sent.
+    _safe_send_debug_message("response", **result)
+    state.exit_func(0)
+    return result  # won't reach if exit_func raises, but satisfies type
 
 
 @command_handler("initialize")
@@ -531,6 +597,9 @@ def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     result = lifecycle_handlers.handle_initialize_impl()
     if result:
         _safe_send_debug_message("response", **result)
+    # After responding to initialize, emit the 'initialized' event so the client
+    # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
+    _safe_send_debug_message("initialized")
 
 
 @command_handler("restart")

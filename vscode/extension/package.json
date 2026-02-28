@@ -1,8 +1,8 @@
 {
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
-  "description": "Enhanced Python debugging with Dapper Debug Adapter and React-based UI",
-  "version": "0.1.1",
+  "description": "Python debugging support with style",
+  "version": "0.6.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
@@ -347,6 +347,12 @@
         "command": "dapper.inspectVariable",
         "title": "Dapper: Inspect Variable",
         "category": "Dapper"
+      },
+      {
+        "command": "dapper.debugCurrentFile",
+        "title": "Debug Python File with Dapper",
+        "category": "Dapper",
+        "icon": "$(debug-alt)"
       }
     ],
     "keybindings": [
@@ -380,6 +386,13 @@
           "when": "debugType == 'dapper' && editorLangId == python"
         }
       ],
+      "editor/title/run": [
+        {
+          "command": "dapper.debugCurrentFile",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ],
       "view/title": [
         {
           "command": "dapper.openLaunchWizard",
@@ -404,7 +417,7 @@
   "scripts": {
     "vscode:prepublish": "node ./scripts/prepublish.cjs",
     "prepare-python": "node scripts/copy-wheel.cjs",
-    "build": "npm run compile && npm run bundle:extension",
+    "build": "npm run prepare-python && npm run compile && npm run bundle:extension",
     "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",
     "package:fresh": "node ./scripts/package.cjs --fresh",

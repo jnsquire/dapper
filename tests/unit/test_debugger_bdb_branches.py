@@ -196,6 +196,9 @@ def test_user_line_default_stop_path_emits_event_and_continues(monkeypatch):
     )
     monkeypatch.setattr(dbg.thread_tracker, "clear_frames", MagicMock())
     monkeypatch.setattr(dbg, "set_continue", lambda: None)
+    # The user_line guard skips when stepping is False; set it True so
+    # we actually reach the default stop path.
+    dbg.stepping_controller.stepping = True
 
     dbg.user_line(_make_frame())
 
@@ -410,7 +413,8 @@ def test_user_exception_stop_path_emits_and_stores_exception(monkeypatch):
     assert stopped_events[-1]["reason"] == "exception"
     assert processed == [True]
     store_exception_info.assert_called_once()
-    set_continue.assert_called_once()
+    # set_continue is no longer called; blocking process_commands handles
+    # resumption via _resume_event.
 
 
 def test_clear_breaks_for_file_handles_breaks_lookup_exception(monkeypatch):
@@ -508,7 +512,8 @@ def test_user_exception_full_flow_with_real_exc_info(monkeypatch):
     assert stopped_events
     assert stopped_events[-1]["reason"] == "exception"
     assert processed == [True]
-    set_continue.assert_called_once()
+    # set_continue is no longer called; blocking process_commands handles
+    # resumption via _resume_event.
 
 
 def test_clear_breaks_for_file_success_path_clears_lines_and_meta(monkeypatch):

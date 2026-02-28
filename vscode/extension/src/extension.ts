@@ -245,6 +245,37 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
     }
   });
 
+  // Debug Current File Command (editor/title/run button)
+  yield vscode.commands.registerCommand('dapper.debugCurrentFile', async () => {
+    const editor = vscode.window.activeTextEditor;
+    const uri = editor?.document.uri;
+    if (!uri || uri.scheme !== 'file') {
+      vscode.window.showErrorMessage('No active Python file — click inside the editor for the file you want to debug.');
+      return;
+    }
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    logger.log(`dapper.debugCurrentFile: file=${uri.fsPath} workspaceFolder=${workspaceFolder?.uri.fsPath ?? '(none)'}`);
+    try {
+      const config = {
+        type: 'dapper',
+        request: 'launch',
+        name: 'Debug Current File',
+        program: uri.fsPath,
+        cwd: workspaceFolder?.uri.fsPath ?? '${workspaceFolder}',
+      };
+      logger.debug('dapper.debugCurrentFile: launch config', config);
+      await vscode.debug.startDebugging(workspaceFolder, config);
+      logger.log('dapper.debugCurrentFile: startDebugging returned successfully');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('dapper.debugCurrentFile failed', error as Error);
+      vscode.window.showErrorMessage(
+        `Dapper: Failed to start debugging: ${message}. ` +
+        "See the 'Dapper Python Env' output channel for details."
+      );
+    }
+  });
+
   // Hot Reload Current File Command
   yield vscode.commands.registerCommand('dapper.hotReload', async () => {
     try {

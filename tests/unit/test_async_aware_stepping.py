@@ -303,6 +303,8 @@ def test_user_line_normal_behavior_unaffected_when_flag_false() -> None:
     dbg.send_message = lambda *_a, **kw: stopped_events.append(kw.get("reason", ""))  # type: ignore[method-assign]
     dbg.process_commands = lambda: None  # type: ignore[method-assign]
     dbg.set_continue = lambda: None  # type: ignore[method-assign]
+    # Mark as stepping so the user_line guard doesn't skip the stop
+    dbg.stepping_controller.stepping = True  # type: ignore[attr-defined]
 
     dbg.user_line(asyncio_frame)  # type: ignore[arg-type]
 

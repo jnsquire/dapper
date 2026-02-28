@@ -19,7 +19,7 @@ class GetThreadIdentFn(Protocol):
     def __call__(self) -> int: ...
 
 
-def handle_stack_trace_impl(
+def handle_stack_trace_impl(  # noqa: PLR0912
     dbg: CommandHandlerDebuggerLike | None,
     arguments: Payload | None,
     *,
@@ -41,7 +41,26 @@ def handle_stack_trace_impl(
         and isinstance(thread_id, int)
         and thread_id in getattr(dbg.thread_tracker, "frames_by_thread", {})
     ):
-        frames = dbg.thread_tracker.frames_by_thread[thread_id]
+        raw_frames = dbg.thread_tracker.frames_by_thread[thread_id]
+        for entry in raw_frames:
+            if isinstance(entry, dict):
+                stack_frames.append(entry)
+            elif hasattr(entry, "to_dict"):
+                stack_frames.append(entry.to_dict())
+            else:
+                # (frame, lineno) tuple fallback
+                frame, lineno = entry
+                name = frame.f_code.co_name
+                source_path = frame.f_code.co_filename
+                stack_frames.append(
+                    {
+                        "id": len(stack_frames),
+                        "name": name,
+                        "source": {"name": Path(source_path).name, "path": source_path},
+                        "line": lineno,
+                        "column": 0,
+                    }
+                )
     else:
         if dbg:
             stack = getattr(dbg, "stack", None)
@@ -118,7 +137,7 @@ def handle_scopes_impl(
     arguments: Payload | None,
     *,
     safe_send_debug_message: SafeSendDebugMessageFn,
-    var_ref_tuple_size: int,
+    var_ref_tuple_size: int,  # noqa: ARG001
 ) -> Payload:
     """Handle scopes command implementation."""
     arguments = arguments or {}
@@ -139,15 +158,21 @@ def handle_scopes_impl(
             except (AttributeError, IndexError, KeyError, TypeError):
                 frame = None
         if frame is not None:
+            # Allocate proper variable references through var_manager
+            # so that the variables handler can resolve them.
+            assert dbg is not None  # narrow type for the checker
+            # var_manager may not be statically typed as having allocate_scope_ref
+            locals_ref = dbg.var_manager.allocate_scope_ref(frame_id, "locals")  # type: ignore[attr-defined]
+            globals_ref = dbg.var_manager.allocate_scope_ref(frame_id, "globals")  # type: ignore[attr-defined]
             scopes = [
                 {
                     "name": "Locals",
-                    "variablesReference": frame_id * var_ref_tuple_size,
+                    "variablesReference": locals_ref,
                     "expensive": False,
                 },
                 {
                     "name": "Globals",
-                    "variablesReference": frame_id * var_ref_tuple_size + 1,
+                    "variablesReference": globals_ref,
                     "expensive": True,
                 },
             ]

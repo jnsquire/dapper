@@ -77,9 +77,16 @@ def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) ->
 def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
     active_session = session if session is not None else debug_shared.get_active_session()
     while not active_session.is_terminated:
-        header = read_exact(rfile, HEADER_SIZE)
+        try:
+            header = read_exact(rfile, HEADER_SIZE)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            # Socket was closed (e.g. during test teardown) — exit quietly.
+            if not active_session.is_terminated:
+                active_session.exit_func(0)
+            return
         if not header:
-            active_session.exit_func(0)
+            if not active_session.is_terminated:
+                active_session.exit_func(0)
             return
         try:
             kind, length = unpack_header(header)
@@ -87,12 +94,24 @@ def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
             with debug_shared.use_session(active_session):
                 send_debug_message("error", message=f"Bad frame header: {e!s}")
             continue
-        payload = read_exact(rfile, length)
+        try:
+            payload = read_exact(rfile, length)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            if not active_session.is_terminated:
+                active_session.exit_func(0)
+            return
         if not payload:
-            active_session.exit_func(0)
+            if not active_session.is_terminated:
+                active_session.exit_func(0)
             return
         if kind == KIND_COMMAND:
-            _handle_command_bytes(payload, active_session)
+            try:
+                _handle_command_bytes(payload, active_session)
+            except SystemExit:
+                # The terminate handler raises SystemExit after sending the
+                # response.  Let the thread exit cleanly instead of leaving
+                # an unhandled exception that pytest would report as a warning.
+                return
 
 
 def receive_debug_commands(session: Any | None = None) -> None:
@@ -323,18 +342,50 @@ def run_with_debugger(
     if dbg is None:
         dbg = configure_debugger(False, active_session)
 
+    # Ensure the session context is set for this thread so that any
+    # debugger callbacks (send_message, process_commands) that rely on
+    # ``get_active_session()`` will find the correct session.
+    with debug_shared.use_session(active_session):
+        _run_target(dbg, active_session, target_value, program_args, target_kind=target_kind)
+
+
+def _run_target(
+    dbg: Any,
+    active_session: Any,
+    target_value: str,
+    program_args: list[str],
+    *,
+    target_kind: str = "program",
+) -> None:
+    """Inner implementation for *run_with_debugger* — executes the target."""
     if target_kind == "program":
         program_path = target_value
         sys.argv = [program_path, *program_args]
         program_file = Path(program_path)
         if program_file.exists():
+            # Mirror Python's normal script behaviour: insert the script's directory
+            # as sys.path[0] so relative imports (e.g. `import hn` from src/) work.
+            script_dir = str(program_file.parent.resolve())
+            if not sys.path or sys.path[0] != script_dir:
+                sys.path.insert(0, script_dir)
             with program_file.open("r", encoding="utf-8") as pf:
                 program_code = pf.read()
-            dbg.run(program_code)
+            # Provide the same globals that Python sets when running a script directly,
+            # so __file__, __name__ and builtins are all available to the program.
+            script_globals = {
+                "__name__": "__main__",
+                "__file__": str(program_file.resolve()),
+                "__builtins__": __builtins__,
+            }
+            # Pre-compile with the real filename so frame.f_code.co_filename
+            # matches the paths used for breakpoint registration.  BDB's
+            # run() would otherwise compile with "<string>".
+            compiled = compile(program_code, str(program_file.resolve()), "exec")
+            dbg.run(compiled, script_globals)
             return
 
-        dbg.run(f"exec(Path('{program_path}').open().read())")
-        return
+        msg = f"Program file not found: {program_path!r}"
+        raise FileNotFoundError(msg)
 
     if target_kind == "module":
         module_name = target_value
@@ -357,7 +408,7 @@ def run_with_debugger(
     raise RuntimeError(msg)
 
 
-def main():
+def main():  # noqa: PLR0912
     """Main entry point for the debug launcher"""
     session = debug_shared.get_active_session()
     # Parse arguments and set module state
@@ -421,16 +472,21 @@ def main():
                 run_program(target_value, program_args)
             else:
                 run_program(target_value, program_args, target_kind=target_kind)
-        # Run the program with debugging
-        elif target_kind == "program":
-            run_with_debugger(target_value, program_args, session=session)
         else:
-            run_with_debugger(
-                target_value,
-                program_args,
-                session=session,
-                target_kind=target_kind,
-            )
+            # Wait for the adapter to finish sending setBreakpoints / configurationDone
+            # before starting the program so all breakpoints are in place.
+            if not session.configuration_done_event.wait(timeout=30):
+                logger.warning("Timed out waiting for configurationDone; starting anyway")
+            # Run the program with debugging
+            if target_kind == "program":
+                run_with_debugger(target_value, program_args, session=session)
+            else:
+                run_with_debugger(
+                    target_value,
+                    program_args,
+                    session=session,
+                    target_kind=target_kind,
+                )
     finally:
         if subprocess_manager is not None:
             subprocess_manager.cleanup()

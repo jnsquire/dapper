@@ -7,7 +7,7 @@ include = ["dapper*"]
 
 [project]
 name = "dapper"
-version = "0.6.0"
+version = "0.6.2"
 description = "Debug Adapter Protocol implementation for Python"
 readme = "README.md"
 authors = [

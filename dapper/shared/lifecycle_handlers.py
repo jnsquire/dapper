@@ -61,11 +61,15 @@ def handle_terminate_impl(
     *,
     safe_send_debug_message: SafeSendDebugMessageFn,
     state: DebugSession,
-) -> None:
+) -> Payload:
     """Handle terminate command."""
     safe_send_debug_message("exited", exitCode=0)
     state.is_terminated = True
-    state.exit_func(0)
+    # Unblock the debugger thread if it is waiting in process_queued_commands_launcher
+    state.signal_resume()
+    # Return a success response so the dispatch sends it before we exit.
+    # exit_func is called after the handler returns (or in a deferred manner).
+    return {"success": True}
 
 
 def handle_initialize_impl() -> Payload:

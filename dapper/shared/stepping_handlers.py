@@ -64,7 +64,14 @@ def handle_next_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
-    if dbg and thread_id == get_thread_ident():
+    _thread_is_stopped = (
+        (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
+        if dbg
+        else False
+    )
+    if dbg and (thread_id == get_thread_ident() or _thread_is_stopped):
+        if _thread_is_stopped:
+            dbg.thread_tracker.stopped_thread_ids.discard(thread_id)
         set_dbg_stepping_flag(dbg)
         dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None:
@@ -92,7 +99,14 @@ def handle_step_in_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
-    if dbg and thread_id == get_thread_ident():
+    _thread_is_stopped = (
+        (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
+        if dbg
+        else False
+    )
+    if dbg and (thread_id == get_thread_ident() or _thread_is_stopped):
+        if _thread_is_stopped:
+            dbg.thread_tracker.stopped_thread_ids.discard(thread_id)
         set_dbg_stepping_flag(dbg)
         dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None and _frame_is_coroutine(
@@ -117,7 +131,14 @@ def handle_step_out_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
-    if dbg and thread_id == get_thread_ident():
+    _thread_is_stopped = (
+        (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
+        if dbg
+        else False
+    )
+    if dbg and (thread_id == get_thread_ident() or _thread_is_stopped):
+        if _thread_is_stopped:
+            dbg.thread_tracker.stopped_thread_ids.discard(thread_id)
         set_dbg_stepping_flag(dbg)
         dbg.stepping_controller.set_granularity(granularity)
         if dbg.stepping_controller.current_frame is not None:

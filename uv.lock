@@ -362,7 +362,7 @@ wheels = [
 
 [[package]]
 name = "dapper"
-version = "0.6.0"
+version = "0.6.2"
 source = { editable = "." }
 
 [package.optional-dependencies]

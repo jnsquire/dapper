@@ -978,12 +978,14 @@ def test_handle_terminate():
 
     s.set_exit_func(fake_exit)
     try:
-        with pytest.raises(SystemExit):
-            lifecycle_handlers.handle_terminate_impl(
-                safe_send_debug_message=handlers._safe_send_debug_message,
-                state=s,
-            )
-
+        # handle_terminate_impl now returns a success dict rather than
+        # calling exit_func directly (exit_func is called by the command
+        # wrapper after the response is sent).
+        result = lifecycle_handlers.handle_terminate_impl(
+            safe_send_debug_message=handlers._safe_send_debug_message,
+            state=s,
+        )
+        assert result == {"success": True}
         assert s.is_terminated is True
     finally:
         # Restore original behavior

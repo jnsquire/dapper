@@ -134,6 +134,75 @@ class DebuggerBDB(bdb.Bdb):
         self.data_bp_state = DataBreakpointState()
         self.data_bp_state.set_strict_expression_watch_policy(strict_expression_watch_policy)
 
+    # ------------------------------------------------------------------
+    # BDB overrides for function breakpoint support
+    # ------------------------------------------------------------------
+
+    def _needs_tracing_active(self) -> bool:
+        """Return True if tracing must stay active beyond line breakpoints.
+
+        Function breakpoints and exception breakpoints both require the
+        trace function to remain installed even when ``self.breaks`` is
+        empty.
+        """
+        return (
+            self.bp_manager.has_function_breakpoints()
+            or self.exception_handler.config.is_enabled()
+        )
+
+    def break_anywhere(self, frame: types.FrameType) -> bool:
+        """Extend BDB to consider function and exception breakpoints.
+
+        The base implementation only checks ``self.breaks`` (line
+        breakpoints).  When function or exception breakpoints are
+        registered we must keep tracing active so that ``dispatch_call``
+        and ``dispatch_exception`` still fire.
+        """
+        if self._needs_tracing_active():
+            return True
+        return super().break_anywhere(frame)
+
+    def set_continue(self) -> None:
+        """Keep tracing active when function/exception breakpoints exist.
+
+        ``bdb.Bdb.set_continue`` removes the trace function entirely when
+        ``self.breaks`` is empty.  If function or exception breakpoints
+        are registered we must preserve tracing.
+        """
+        if self._needs_tracing_active() and not self.breaks:
+            # Set the stop info so we only stop at breakpoints (or
+            # function calls via break_anywhere), but do NOT remove the
+            # trace function.
+            # bdb.Bdb defines _set_stopinfo at runtime; stub lacks it
+            self._set_stopinfo(self.botframe, None, -1)  # type: ignore[attr-defined]
+            return
+        super().set_continue()
+
+    def dispatch_exception(self, frame: types.FrameType, arg: Any) -> Any:
+        """Extend BDB exception dispatch to handle exception breakpoints.
+
+        The base ``dispatch_exception`` only calls ``user_exception`` when
+        ``stop_here(frame)`` is True.  After ``set_continue``,
+        ``stop_here`` only matches the bottom frame.  When exception
+        breakpoints are enabled we need ``user_exception`` to fire for
+        *any* frame so that ``should_break`` can evaluate the exception.
+        """
+        if self.exception_handler.config.is_enabled() and not self.stop_here(frame):
+            # Bypass the base dispatch which would skip this frame:
+            # call user_exception directly.
+            import bdb as _bdb
+
+            if not (
+                frame.f_code.co_flags & _bdb.GENERATOR_AND_COROUTINE_FLAGS
+                and arg[0] is StopIteration
+                and arg[2] is None
+            ):
+                self.user_exception(frame, arg)
+                if self.quitting:
+                    raise _bdb.BdbQuit
+            return self.trace_dispatch
+        return super().dispatch_exception(frame, arg)
+
     def get_frame_by_id(self, frame_id: int) -> types.FrameType | None:
         """Return a live frame for a tracked frame id, if present."""
         frame = self.thread_tracker.get_frame(frame_id)
@@ -429,7 +498,9 @@ class DebuggerBDB(bdb.Bdb):
         self._ensure_thread_registered(thread_id)
         self._emit_stopped_event(frame, thread_id, "breakpoint")
         self.process_commands()
-        self.set_continue()
+        # NOTE: the resume command (continue/step/etc.) dispatched during
+        # process_commands already called the appropriate set_continue /
+        # set_next / set_step / set_return on this debugger instance.
         return True
 
     def _emit_stopped_event(
@@ -524,7 +595,14 @@ class DebuggerBDB(bdb.Bdb):
         if self._handle_regular_breakpoint(filename, line, frame):
             return
 
-        # Default stop behavior for stepping, entry, or normal breakpoints
+        # If the stepping controller has no explicit reason to stop
+        # (neither stop_on_entry nor user-initiated stepping), this is a
+        # spurious stop from BDB's initial step mode.  Resume silently.
+        if not self.stepping_controller.stop_on_entry and not self.stepping_controller.stepping:
+            self.set_continue()
+            return
+
+        # Default stop behavior for stepping or entry
         self._ensure_thread_registered(thread_id)
 
         # Get and consume the stop reason from stepping controller
@@ -533,7 +611,6 @@ class DebuggerBDB(bdb.Bdb):
         self._emit_stopped_event(frame, thread_id, reason)
         self.process_commands()
         self.thread_tracker.clear_frames()
-        self.set_continue()
 
     def user_opcode(self, frame: types.FrameType) -> None:
         """Stop at each bytecode instruction during instruction-level stepping.
@@ -567,7 +644,6 @@ class DebuggerBDB(bdb.Bdb):
         self._emit_stopped_event(frame, thread_id, reason)
         self.process_commands()
         self.thread_tracker.clear_frames()
-        self.set_continue()
 
     def user_exception(
         self,
@@ -598,10 +674,6 @@ class DebuggerBDB(bdb.Bdb):
             allThreadsStopped=True,
         )
         self.process_commands()
-        try:
-            self.set_continue()
-        except Exception:
-            logger.debug("set_continue failed after exception stop", exc_info=True)
 
     def _get_stack_frames(self, frame: types.FrameType) -> list[StackFrame]:
         """Build stack frames for the given frame using the thread tracker."""
@@ -714,4 +786,3 @@ class DebuggerBDB(bdb.Bdb):
         self._ensure_thread_registered(thread_id)
         self._emit_stopped_event(frame, thread_id, "function breakpoint")
         self.process_commands()
-        self.set_continue()

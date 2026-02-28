@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import types as _types
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
@@ -763,7 +764,7 @@ class TestUtilityFunctions:
     """Tests for utility functions."""
 
     def test_run_with_debugger_configures_when_missing(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
         fake_dbg = MagicMock()
         calls: list[tuple[bool, Any]] = []
@@ -774,15 +775,23 @@ class TestUtilityFunctions:
 
         monkeypatch.setattr(dl, "configure_debugger", _configure)
 
+        script = tmp_path / "demo.py"
+        script.write_text("x = 1\n")
         session = SimpleNamespace(debugger=None)
-        dl.run_with_debugger("/tmp/demo.py", ["--a", "1"], session=session)
+        dl.run_with_debugger(str(script), ["--a", "1"], session=session)
 
         assert calls == [(False, session)]
-        assert sys.argv == ["/tmp/demo.py", "--a", "1"]
-        fake_dbg.run.assert_called_once_with("exec(Path('/tmp/demo.py').open().read())")
+        assert sys.argv == [str(script), "--a", "1"]
+        fake_dbg.run.assert_called_once()
+        # First positional arg is now a compiled code object, second is the globals dict
+        code_arg = fake_dbg.run.call_args[0][0]
+        assert isinstance(code_arg, _types.CodeType)
+        assert code_arg.co_filename == str(script)
+        globals_arg = fake_dbg.run.call_args[0][1]
+        assert globals_arg["__name__"] == "__main__"
 
     def test_run_with_debugger_uses_existing_debugger(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
         fake_dbg = MagicMock()
         session = SimpleNamespace(debugger=fake_dbg)
@@ -795,11 +804,16 @@ class TestUtilityFunctions:
 
         monkeypatch.setattr(dl, "configure_debugger", _configure)
 
-        dl.run_with_debugger("/tmp/existing.py", ["--flag"], session=session)
+        script = tmp_path / "existing.py"
+        script.write_text("y = 2\n")
+        dl.run_with_debugger(str(script), ["--flag"], session=session)
 
         assert configured == []
-        assert sys.argv == ["/tmp/existing.py", "--flag"]
-        fake_dbg.run.assert_called_once_with("exec(Path('/tmp/existing.py').open().read())")
+        assert sys.argv == [str(script), "--flag"]
+        fake_dbg.run.assert_called_once()
+        code_arg = fake_dbg.run.call_args[0][0]
+        assert isinstance(code_arg, _types.CodeType)
+        assert code_arg.co_filename == str(script)
 
     def test_run_program_sets_argv_and_inserts_program_dir(self, tmp_path) -> None:
         program_path = tmp_path / "prog.py"

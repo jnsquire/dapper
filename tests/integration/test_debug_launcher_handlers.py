@@ -122,8 +122,10 @@ def test_handle_scopes_and_variables(use_debug_session):
             )
         ),
     )
-    # handle_variables sends a message rather than returning a value; ensure no exception
-    assert vars_res is None
+    # handle_variables now returns a result dict with the variables data
+    assert vars_res is not None
+    assert vars_res["success"] is True
+    assert "variables" in vars_res["body"]
 
 
 def test_handle_source_reads_file(tmp_path: Path, use_debug_session):
