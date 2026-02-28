@@ -5,13 +5,13 @@ import {
     InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent,
     ContinuedEvent, ThreadEvent, BreakpointEvent, LoadedSourceEvent,
     ModuleEvent, ExitedEvent, Event,
-    Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from '@vscode/debugadapter';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import * as Net from 'net';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { EnvironmentManager, InstallMode } from '../environment/EnvironmentManager.js';
+import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -79,7 +79,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     });
 
     socket.on('close', () => {
-      console.log('[Dapper] Python IPC socket closed');
+      logger.log('Python IPC socket closed');
       // If the socket closes while the session is still running,
       // ensure VS Code knows the debug session is done.
       if (this._isRunning) {
@@ -104,7 +104,7 @@ export class DapperDebugSession extends LoggingDebugSession {
       // Header: MAGIC(2) + VER(1) + KIND(1) + LEN(4)
       // MAGIC = "DP" (0x44 0x50)
       if (this._buffer[0] !== 0x44 || this._buffer[1] !== 0x50) {
-        console.error('Invalid magic bytes in IPC stream');
+        logger.error('Invalid magic bytes in IPC stream');
         this._buffer = Buffer.alloc(0);
         return;
       }
@@ -121,7 +121,7 @@ export class DapperDebugSession extends LoggingDebugSession {
         const message = JSON.parse(payload.toString('utf8'));
         this.processPythonMessage(message);
       } catch (e) {
-        console.error('Failed to parse Python message', e);
+        logger.error('Failed to parse Python message', e);
       }
     }
   }
@@ -129,7 +129,7 @@ export class DapperDebugSession extends LoggingDebugSession {
   private processPythonMessage(message: any) {
     const eventName = message.event;
     const msgJson = JSON.stringify(message);
-    console.log(`[Dapper] Python → TS: ${msgJson.length > 500 ? msgJson.substring(0, 500) + '…' : msgJson}`);
+    logger.debug(`Python → TS: ${msgJson.length > 500 ? msgJson.substring(0, 500) + '…' : msgJson}`);
 
     // Handle responses to requests
     if (eventName === 'response') {
@@ -137,14 +137,14 @@ export class DapperDebugSession extends LoggingDebugSession {
       if (msgId != null) {
         const resolve = this._pendingRequestsMap.get(msgId);
         if (resolve) {
-          console.log(`[Dapper] Matched response id=${msgId} to pending request`);
+          logger.debug(`Matched response id=${msgId} to pending request`);
           this._pendingRequestsMap.delete(msgId);
           resolve(message);
           return;
         }
-        console.warn(`[Dapper] Response id=${msgId} has no matching pending request (pending: ${[...this._pendingRequestsMap.keys()]})`);
+        logger.warn(`Response id=${msgId} has no matching pending request (pending: ${[...this._pendingRequestsMap.keys()]})`);
       } else {
-        console.warn(`[Dapper] Response with no id — cannot match to pending request. Keys: ${Object.keys(message).join(', ')}`);
+        logger.warn(`Response with no id — cannot match to pending request. Keys: ${Object.keys(message).join(', ')}`);
       }
     }
 
@@ -222,11 +222,11 @@ export class DapperDebugSession extends LoggingDebugSession {
     await this._socketReady;
     return new Promise((resolve, reject) => {
       const requestId = this._nextRequestId++;
-      console.log(`[Dapper] TS → Python: ${command} (requestId=${requestId})`);
+      logger.debug(`TS → Python: ${command} (requestId=${requestId})`);
       const timer = setTimeout(() => {
         if (this._pendingRequestsMap.delete(requestId)) {
           const msg = `[Dapper] Request ${command} (id=${requestId}) timed out after ${timeoutMs}ms`;
-          console.error(msg);
+          logger.error(msg);
           reject(new Error(msg));
         }
       }, timeoutMs);
@@ -268,14 +268,14 @@ export class DapperDebugSession extends LoggingDebugSession {
     response: DebugProtocol.InitializeResponse,
     args: DebugProtocol.InitializeRequestArguments
   ): Promise<void> {
-    console.log('[Dapper] initializeRequest: sending to Python');
+    logger.log('initializeRequest: sending to Python');
     // Send initialize to Python and wait for response
     let result: any;
     try {
       result = await this.sendRequestToPython('initialize', args);
-      console.log(`[Dapper] initializeRequest: got response: ${JSON.stringify(result).substring(0, 200)}`);
+      logger.debug(`initializeRequest: got response: ${JSON.stringify(result).substring(0, 200)}`);
     } catch (e) {
-      console.error('[Dapper] initializeRequest failed:', e);
+      logger.error('initializeRequest failed', e);
       result = { success: true, body: {} };
     }
     
@@ -298,7 +298,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.ConfigurationDoneArguments,
     _request?: DebugProtocol.Request
   ): void {
-    console.log('[Dapper] configurationDoneRequest: forwarding to Python');
+    logger.log('configurationDoneRequest: forwarding to Python');
     this._configurationDone = true;
     this.sendRequestToPython('configurationDone', args);
     this.sendResponse(response);
@@ -309,9 +309,9 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: LaunchRequestArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    console.log('[Dapper] launchRequest: forwarding to Python');
+    logger.log('launchRequest: forwarding to Python');
     const result = await this.sendRequestToPython('launch', args);
-    console.log(`[Dapper] launchRequest: response success=${result?.success}`);
+    logger.log(`launchRequest: response success=${result?.success}`);
     if (result && result.success === false) {
       response.success = false;
       response.message = this.formatPythonError(result);
@@ -340,9 +340,9 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.SetBreakpointsArguments,
     _request?: DebugProtocol.Request
   ): Promise<void> {
-    console.log(`[Dapper] setBreakpoints: source=${args.source?.path ?? '<unknown>'} lines=${(args.breakpoints || []).map(b => b.line).join(',')}`);
+    logger.debug(`setBreakpoints: source=${args.source?.path ?? '<unknown>'} lines=${(args.breakpoints || []).map(b => b.line).join(',')}`);
     const result = await this.sendRequestToPython('setBreakpoints', args);
-    console.log(`[Dapper] setBreakpoints: response breakpoints=${JSON.stringify(result?.body?.breakpoints?.map((b: any) => ({line: b.line, verified: b.verified})))}`);
+    logger.debug(`setBreakpoints: response breakpoints=${JSON.stringify(result?.body?.breakpoints?.map((b: any) => ({line: b.line, verified: b.verified})))}`);
     response.body = {
       breakpoints: (result.body && result.body.breakpoints) || []
     };
@@ -845,7 +845,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         const message = error instanceof Error ? error.message : String(error);
         outChannel.error(`createDebugAdapterDescriptor failed: ${error instanceof Error ? error : message}`);
         this.envManager.showOutputChannel();
-        console.error('Error creating debug adapter:', error);
+        logger.error('Error creating debug adapter', error);
         vscode.window.showErrorMessage(
           `Failed to initialize Dapper Python environment: ${message}. ` +
           'See the \'Dapper Python Env\' output channel for details.'
