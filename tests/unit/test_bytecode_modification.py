@@ -295,7 +295,7 @@ def test_rebuild_code_object_prefers_replace(
         code_type_calls["count"] += 1
         return types.CodeType(*args, **kwargs)
 
-    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", track_code_type_calls)
+    monkeypatch.setattr(types, "CodeType", track_code_type_calls)
 
     accepted, rebuilt = bytecode_modifier._rebuild_code_object(original_code, instructions)
     assert accepted
@@ -466,7 +466,7 @@ def test_rebuild_code_object_fallback_when_replace_unavailable(
         captured["args"] = args
         return "rebuilt-fallback"
 
-    monkeypatch.setattr(modify_bytecode_mod.types, "CodeType", fake_code_type)
+    monkeypatch.setattr(types, "CodeType", fake_code_type)
 
     accepted, _rebuilt = bytecode_modifier._rebuild_code_object(FakeCode(), instructions)  # type: ignore[arg-type]
     # The fake constructor was invoked (fallback path exercised).

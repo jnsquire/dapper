@@ -2,36 +2,31 @@
 
 This module provides safe bytecode manipulation capabilities to inject
 breakpoints directly into Python code objects for optimized debugging.
+
+Lower-level helpers live in neighbouring modules:
+
+* :mod:`dapper._frame_eval._bytecode_instructions` — opcode constants,
+  ``make_instruction()``, ``get_instructions()``
+* :mod:`dapper._frame_eval._code_object_builder` — ``rebuild_code_object()``
 """
 
 from __future__ import annotations
 
 import dis
-import sys
-import types
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
 
-from dapper._frame_eval.bytecode_safety import safe_replace_code
+from dapper._frame_eval._bytecode_instructions import CALL_FUNCTION
+from dapper._frame_eval._bytecode_instructions import LOAD_CONST
+from dapper._frame_eval._bytecode_instructions import POP_TOP
+from dapper._frame_eval._bytecode_instructions import get_instructions
+from dapper._frame_eval._bytecode_instructions import make_instruction
+from dapper._frame_eval._code_object_builder import rebuild_code_object
 from dapper._frame_eval.telemetry import telemetry
 
 if TYPE_CHECKING:
     from types import CodeType
-
-
-def _get_instructions(code_obj: CodeType) -> list[dis.Instruction]:
-    """Return instructions for *code_obj*, including inline CACHE entries on 3.11+.
-
-    Python 3.11 introduced per-instruction inline cache slots in ``co_code``.
-    ``dis.get_instructions()`` omits them by default, so a round-trip through the
-    instruction list produces a shorter byte string that Python rejects as
-    malformed.  Passing ``show_caches=True`` re-includes the CACHE pseudo-
-    instructions so that the reconstructed bytecode has the correct length.
-    """
-    if sys.version_info >= (3, 11):
-        return list(dis.get_instructions(code_obj, show_caches=True))
-    return list(dis.get_instructions(code_obj))
 
 
 class BytecodeInfo(TypedDict):
@@ -79,82 +74,6 @@ class BytecodeErrorInfo(TypedDict):
     name: str
 
 
-# Python bytecode instruction constants - version compatible
-LOAD_CONST = dis.opmap["LOAD_CONST"]
-POP_TOP = dis.opmap["POP_TOP"]
-JUMP_ABSOLUTE = dis.opmap.get("JUMP_ABSOLUTE", 0)
-JUMP_FORWARD = dis.opmap.get("JUMP_FORWARD", 0)
-SETUP_FINALLY = dis.opmap.get("SETUP_FINALLY", 0)
-POP_BLOCK = dis.opmap.get("POP_BLOCK", 0)
-LOAD_GLOBAL = dis.opmap["LOAD_GLOBAL"]
-STORE_FAST = dis.opmap["STORE_FAST"]
-LOAD_FAST = dis.opmap["LOAD_FAST"]
-COMPARE_OP = dis.opmap.get("COMPARE_OP", 0)
-POP_JUMP_IF_FALSE = dis.opmap.get("POP_JUMP_IF_FALSE", 0)
-POP_JUMP_IF_TRUE = dis.opmap.get("POP_JUMP_IF_TRUE", 0)
-
-# Handle different call instruction types across Python versions
-if sys.version_info >= (3, 11):
-    # Python 3.11+ uses different call instructions
-    CALL_FUNCTION = dis.opmap.get("CALL", 0) or dis.opmap.get("CALL_FUNCTION", 0)
-    CACHE = dis.opmap.get("CACHE", 0)
-    RESUME = dis.opmap["RESUME"]
-    LOAD_GLOBAL_CHECK = dis.opmap.get("LOAD_GLOBAL_CHECK", 0)
-else:
-    # Python 3.10 and earlier
-    CALL_FUNCTION = dis.opmap["CALL_FUNCTION"]
-    CACHE = 0
-    RESUME = 0
-    LOAD_GLOBAL_CHECK = 0
-
-# Special constants for breakpoint injection
-_BREAKPOINT_CONST_INDEX = -1  # Will be replaced with actual index
-_DEBUGGER_CALL_CONST = "__dapper_breakpoint_check__"
-
-
-def _make_instruction(
-    *,
-    opname: str,
-    opcode: int,
-    arg: int | None,
-    argval: Any,
-    argrepr: str,
-    offset: int,
-    starts_line: int | None,
-    is_jump_target: bool = False,
-) -> dis.Instruction:
-    fields = set(getattr(dis.Instruction, "_fields", ()))
-
-    kwargs: dict[str, Any] = {
-        "opname": opname,
-        "opcode": opcode,
-        "arg": arg,
-        "argval": argval,
-        "argrepr": argrepr,
-        "offset": offset,
-    }
-
-    if "is_jump_target" in fields:
-        kwargs["is_jump_target"] = is_jump_target
-
-    if "starts_line" in fields:
-        kwargs["starts_line"] = starts_line
-
-    if "start_offset" in fields:
-        kwargs["start_offset"] = offset
-
-    if "line_number" in fields:
-        kwargs["line_number"] = starts_line
-
-    if "label" in fields:
-        kwargs["label"] = None
-    if "positions" in fields:
-        kwargs["positions"] = None
-    if "cache_info" in fields:
-        kwargs["cache_info"] = None
-
-    return dis.Instruction(**kwargs)
-
 
 class BytecodeModifier:
     """Advanced bytecode modification system for frame evaluation."""
@@ -193,7 +112,7 @@ class BytecodeModifier:
                 return True, self.modified_code_objects[cache_key]
 
             # Get original instructions (including CACHE entries on 3.11+)
-            instructions = _get_instructions(code_obj)
+            instructions = get_instructions(code_obj)
 
             # Find injection points
             injection_points = self._find_injection_points(instructions, breakpoint_lines)
@@ -206,7 +125,7 @@ class BytecodeModifier:
             new_instructions = self._create_breakpoint_instructions(instructions, injection_points)
 
             # Rebuild code object — validated by the safety layer
-            accepted, modified_code = self._rebuild_code_object(code_obj, new_instructions)
+            accepted, modified_code = rebuild_code_object(code_obj, new_instructions)
 
             if not accepted:
                 # Validation failure already recorded by _rebuild_code_object.
@@ -284,9 +203,9 @@ __dapper_breakpoint_wrapper_{line}()
             return code_obj
 
         try:
-            instructions = _get_instructions(code_obj)
+            instructions = get_instructions(code_obj)
             optimized_instructions = self._optimize_instructions(instructions)
-            _accepted, optimized = self._rebuild_code_object(code_obj, optimized_instructions)
+            _accepted, optimized = rebuild_code_object(code_obj, optimized_instructions)
         except Exception:
             telemetry.record_bytecode_optimization_failed(
                 filename=getattr(code_obj, "co_filename", "unknown"),
@@ -307,7 +226,7 @@ __dapper_breakpoint_wrapper_{line}()
 
         """
         try:
-            instructions = _get_instructions(code_obj)
+            instructions = get_instructions(code_obj)
             cleaned_instructions = []
 
             i = 0
@@ -323,7 +242,7 @@ __dapper_breakpoint_wrapper_{line}()
                 cleaned_instructions.append(instr)
                 i += 1
 
-            _accepted, cleaned = self._rebuild_code_object(code_obj, cleaned_instructions)
+            _accepted, cleaned = rebuild_code_object(code_obj, cleaned_instructions)
 
         except Exception:
             telemetry.record_bytecode_optimization_failed(
@@ -496,161 +415,13 @@ __dapper_breakpoint_wrapper_{line}()
             return 3
         return 1
 
-    def _rebuild_code_object(  # noqa: PLR0912
+    def _rebuild_code_object(
         self,
         original_code: CodeType,
         new_instructions: list[dis.Instruction],
     ) -> tuple[bool, CodeType]:
-        """Rebuild a code object with new instructions."""
-        # Convert instructions back to bytecode.
-        # Python 3.6+ uses a fixed 2-byte word-code format: one byte for the
-        # opcode and one byte for the argument (low 8 bits).  Arguments that
-        # exceed 255 are handled by EXTENDED_ARG prefix instructions, which
-        # dis.get_instructions() returns as explicit Instruction objects whose
-        # own arg field already contains only the relevant byte.  CACHE
-        # pseudo-instructions (Python 3.11+) are also included when
-        # _get_instructions() is used, and they follow the same 2-byte layout.
-        bytecode = bytearray()
-        for instr in new_instructions:
-            bytecode.append(instr.opcode)
-            bytecode.append(instr.arg & 0xFF if instr.arg is not None else 0)
-
-        # Prefer the stable replace() API (available since Python 3.8).
-        # This avoids constructor-signature drift across Python versions.
-        if hasattr(original_code, "replace"):
-            try:
-                candidate = original_code.replace(
-                    co_code=bytes(bytecode),
-                    co_stacksize=original_code.co_stacksize + 2,
-                )
-                return safe_replace_code(original_code, candidate)
-            except Exception:
-                # Fall back to legacy constructor path for compatibility.
-                pass
-
-        # Extract constants and names
-        constants = list(original_code.co_consts)
-        names = list(original_code.co_names)
-        varnames = list(original_code.co_varnames)
-
-        # Create new code object with appropriate parameters based on Python version
-        code_args = {
-            "co_argcount": original_code.co_argcount,
-            "co_kwonlyargcount": original_code.co_kwonlyargcount,
-            "co_nlocals": original_code.co_nlocals,
-            "co_stacksize": original_code.co_stacksize
-            + 2,  # Increase stack size for breakpoint calls
-            "co_flags": original_code.co_flags,
-            "co_code": bytes(bytecode),
-            "co_consts": tuple(constants),
-            "co_names": tuple(names),
-            "co_varnames": tuple(varnames),
-            "co_filename": original_code.co_filename,
-            "co_name": original_code.co_name,
-            "co_firstlineno": original_code.co_firstlineno,
-            "co_freevars": original_code.co_freevars,
-            "co_cellvars": original_code.co_cellvars,
-        }
-
-        # Handle version-specific parameters
-        code_args["co_posonlyargcount"] = getattr(original_code, "co_posonlyargcount", 0)
-
-        # For Python 3.10+, we need to handle the new code object creation
-        if sys.version_info >= (3, 10):
-            # Get line number information using co_lines() and convert to lnotab format
-            # for backward compatibility with the code object constructor
-            lnotab = bytearray()
-            last_line = original_code.co_firstlineno
-            last_byte = 0
-
-            for start, _end, line in original_code.co_lines():
-                if start > last_byte and line is not None:
-                    # Calculate the byte offset and line delta
-                    byte_delta = start - last_byte
-                    line_delta = line - last_line
-
-                    # Constants for bytecode line number table encoding
-                    max_byte_delta = 255
-                    max_line_delta = 127
-                    min_line_delta = -128
-
-                    # Handle multi-byte deltas
-                    while (
-                        byte_delta > max_byte_delta
-                        or line_delta > max_line_delta
-                        or line_delta < min_line_delta
-                    ):
-                        # Emit a special byte to indicate multi-byte delta
-                        lnotab.extend((min(max_byte_delta, byte_delta), 0))
-                        byte_delta -= min(max_byte_delta, byte_delta)
-                        line_delta = max(min_line_delta, min(max_line_delta, line_delta))
-
-                    # Emit the final delta
-                    lnotab.extend((byte_delta, line_delta & 0xFF))
-                    last_byte = start
-                    last_line = line
-
-            code_args["co_linetable"] = bytes(lnotab)
-            # For Python 3.10+, co_lnotab is deprecated but some code might still need it
-            if sys.version_info < (3, 10):
-                code_args["co_lnotab"] = original_code.co_lnotab
-        # For Python < 3.10, use the old co_lnotab
-        elif hasattr(original_code, "co_lnotab"):
-            code_args["co_lnotab"] = original_code.co_lnotab
-
-        # Prepare common arguments for CodeType
-        args = [
-            code_args["co_argcount"],
-            code_args.get("co_posonlyargcount", 0) if sys.version_info >= (3, 8) else 0,
-            code_args["co_kwonlyargcount"],
-            code_args["co_nlocals"],
-            code_args["co_stacksize"],
-            code_args["co_flags"],
-            code_args["co_code"],
-            code_args["co_consts"],
-            code_args["co_names"],
-            code_args["co_varnames"],
-            code_args["co_filename"],
-            code_args["co_name"],
-            code_args.get("co_firstlineno", original_code.co_firstlineno),
-            # Use co_linetable for Python 3.10+, fall back to co_lnotab for older versions
-            code_args.get(
-                "co_linetable" if sys.version_info >= (3, 10) else "co_lnotab",
-                getattr(
-                    original_code,
-                    "co_linetable" if sys.version_info >= (3, 10) else "co_lnotab",
-                    b"",
-                ),
-            ),
-            code_args.get("co_freevars", getattr(original_code, "co_freevars", ())),
-            code_args.get("co_cellvars", getattr(original_code, "co_cellvars", ())),
-        ]
-
-        # Add Python 3.11+ specific arguments if available
-        if sys.version_info >= (3, 11):
-            args.extend(
-                [
-                    original_code.co_positions()
-                    if hasattr(original_code, "co_positions")
-                    else None,
-                    original_code.co_exceptiontable
-                    if hasattr(original_code, "co_exceptiontable")
-                    else b"",
-                ],
-            )
-
-        # Remove any trailing None values for older Python versions
-        while args and args[-1] is None:
-            args.pop()
-
-        try:
-            candidate = type(original_code)(*args)
-        except Exception:
-            try:
-                candidate = types.CodeType(*args)
-            except Exception:
-                return False, original_code
-        return safe_replace_code(original_code, candidate)
+        """Delegate to the module-level :func:`rebuild_code_object`."""
+        return rebuild_code_object(original_code, new_instructions)
 
 
 # Global bytecode modifier instance
@@ -713,7 +484,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
     # This creates a simple breakpoint instruction that will
     # call the frame evaluation hook
     instructions = [
-        _make_instruction(
+        make_instruction(
             opname="LOAD_CONST",
             opcode=LOAD_CONST,
             arg=0,
@@ -723,7 +494,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
             starts_line=line,
             is_jump_target=False,
         ),
-        _make_instruction(
+        make_instruction(
             opname="CALL_FUNCTION",
             opcode=CALL_FUNCTION,
             arg=1,
@@ -733,7 +504,7 @@ def create_breakpoint_instruction(line: int) -> bytes:
             starts_line=None,
             is_jump_target=False,
         ),
-        _make_instruction(
+        make_instruction(
             opname="POP_TOP",
             opcode=POP_TOP,
             arg=None,

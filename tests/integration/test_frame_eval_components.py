@@ -710,7 +710,7 @@ class TestBytecodeSafetyLayer:
 
         # Force safe_replace_code to always reject so we can verify the fallback path.
         with patch(
-            "dapper._frame_eval.modify_bytecode.safe_replace_code",
+            "dapper._frame_eval._code_object_builder.safe_replace_code",
             return_value=(False, code),
         ):
             success, result = modifier.inject_breakpoints(code, breakpoint_lines)

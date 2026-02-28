@@ -1,13 +1,17 @@
 import types
 
 from dapper._frame_eval import modify_bytecode as mb
+from dapper._frame_eval._bytecode_instructions import CALL_FUNCTION
+from dapper._frame_eval._bytecode_instructions import LOAD_CONST
+from dapper._frame_eval._bytecode_instructions import POP_TOP
+from dapper._frame_eval._bytecode_instructions import make_instruction
 
 
 def test_is_breakpoint_sequence_and_length():
     instrs = [
-        mb._make_instruction(
+        make_instruction(
             opname="LOAD_CONST",
-            opcode=mb.LOAD_CONST,
+            opcode=LOAD_CONST,
             arg=0,
             argval=123,
             argrepr="123",
@@ -15,9 +19,9 @@ def test_is_breakpoint_sequence_and_length():
             starts_line=None,
             is_jump_target=False,
         ),
-        mb._make_instruction(
+        make_instruction(
             opname="CALL_FUNCTION",
-            opcode=mb.CALL_FUNCTION,
+            opcode=CALL_FUNCTION,
             arg=1,
             argval=1,
             argrepr="",
@@ -25,9 +29,9 @@ def test_is_breakpoint_sequence_and_length():
             starts_line=None,
             is_jump_target=False,
         ),
-        mb._make_instruction(
+        make_instruction(
             opname="POP_TOP",
-            opcode=mb.POP_TOP,
+            opcode=POP_TOP,
             arg=None,
             argval=None,
             argrepr="",
