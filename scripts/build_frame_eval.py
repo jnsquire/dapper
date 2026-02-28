@@ -56,6 +56,27 @@ def clean_build():
     print("Clean completed.")
 
 
+def _install_so_into_package() -> bool:
+    """Copy the compiled .so/.pyd from build-lib into the package directory.
+
+    When the extension sits next to the .py fallback, CPython's import system
+    automatically prefers the compiled extension module.  This means no extra
+    ``sys.path`` manipulation is needed at runtime.
+    """
+    src_dir = BUILD_LIB_DIR / "dapper" / "_frame_eval"
+    if not src_dir.is_dir():
+        return False
+
+    copied = False
+    for pattern in ("_frame_evaluator*.so", "_frame_evaluator*.pyd"):
+        for src in src_dir.glob(pattern):
+            dst = FRAME_EVAL_DIR / src.name
+            shutil.copy2(src, dst)
+            print(f"Installed {dst}")
+            copied = True
+    return copied
+
+
 def build_development():
     """Build in development mode with verbose output."""
     print("Building frame evaluation extensions (development mode)...")
@@ -84,6 +105,7 @@ def build_development():
     result = subprocess.run(cmd, check=False, env=env, cwd=REPO_ROOT)
     if result.returncode == 0:
         print(f"Build artifacts: {ARTIFACTS_ROOT}")
+        _install_so_into_package()
     return result.returncode == 0
 
 
@@ -112,6 +134,7 @@ def build_production():
     result = subprocess.run(cmd, check=False, cwd=REPO_ROOT, env=env)
     if result.returncode == 0:
         print(f"Build artifacts: {ARTIFACTS_ROOT}")
+        _install_so_into_package()
     return result.returncode == 0
 
 
