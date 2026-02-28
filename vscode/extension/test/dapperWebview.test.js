@@ -37,7 +37,7 @@ describe('DapperWebview message handlers', () => {
     await webview._messageHandler({ command: 'requestConfig' });
 
     // The webview should have been posted the saved config
-    expect(webview.postMessage).toHaveBeenCalledWith({ command: 'updateConfig', config: saved });
+    expect(webview.postMessage).toHaveBeenCalledWith({ command: 'updateConfig', config: saved, providerMode: false });
   });
 
   it('should call insertLaunchConfiguration on saveAndInsert and post status', async () => {

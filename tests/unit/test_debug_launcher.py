@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import threading
 import types as _types
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -27,6 +28,22 @@ from dapper.shared import lifecycle_handlers
 from dapper.shared import stepping_handlers
 from dapper.shared import variable_handlers
 from tests.mocks import make_real_frame
+
+
+def _make_session(**kwargs: Any) -> SimpleNamespace:
+    """Build a ``SimpleNamespace`` mock with the helper methods that
+    ``DebugSession`` provides (``exit_if_alive``, ``terminate_session``)
+    so callers that invoke those methods don't need to duplicate the logic.
+    """
+    ns = SimpleNamespace(**kwargs)
+    # Bind exit_if_alive - mirrors DebugSession.exit_if_alive
+    ns.exit_if_alive = lambda code=0: ns.exit_func(code) if not ns.is_terminated else None
+    # Bind terminate_session - mirrors DebugSession.terminate_session
+    ns.terminate_session = lambda: (
+        setattr(ns, "is_terminated", True)
+        or (ns.signal_resume() if hasattr(ns, "signal_resume") else None)
+    )
+    return ns
 
 
 def _session() -> debug_shared.DebugSession:
@@ -420,7 +437,7 @@ def test_recv_binary_from_pipe_returns_immediately_when_terminated() -> None:
             raise AssertionError(msg)
 
     conn = FakeConn()
-    session = SimpleNamespace(is_terminated=True, exit_func=lambda _code: None)
+    session = _make_session(is_terminated=True, exit_func=lambda _code: None)
 
     dl._recv_binary_from_pipe(conn, session=session)  # type: ignore[arg-type]
     assert conn.calls == 0
@@ -433,7 +450,7 @@ def test_recv_binary_from_stream_returns_immediately_when_terminated() -> None:
             raise AssertionError(msg)
 
     stream = FakeStream()
-    session = SimpleNamespace(is_terminated=True, exit_func=lambda _code: None)
+    session = _make_session(is_terminated=True, exit_func=lambda _code: None)
 
     dl._recv_binary_from_stream(stream, session=session)
 
@@ -444,7 +461,7 @@ def test_recv_binary_from_stream_empty_payload_exits(monkeypatch: pytest.MonkeyP
     exits: list[int] = []
     handled: list[bytes] = []
 
-    session = SimpleNamespace(
+    session = _make_session(
         is_terminated=False,
         exit_func=exits.append,
         command_queue=SimpleNamespace(put=lambda _item: None),
@@ -992,7 +1009,7 @@ class TestUtilityFunctions:
             del session
             handled.append(command)
 
-        session = SimpleNamespace(
+        session = _make_session(
             is_terminated=False,
             command_queue=FakeQueue(),
             exit_func=exit_codes.append,
@@ -1032,7 +1049,7 @@ class TestUtilityFunctions:
         def _ignore_item(_item):
             return None
 
-        session = SimpleNamespace(
+        session = _make_session(
             is_terminated=False,
             exit_func=lambda code: messages.append(f"exit:{code}"),
             ipc_enabled=True,
@@ -1072,7 +1089,7 @@ class TestUtilityFunctions:
             del session
             handled.append(command)
 
-        session = SimpleNamespace(
+        session = _make_session(
             is_terminated=False,
             command_queue=SimpleNamespace(put=queue_items.append),
             exit_func=lambda _code: None,
@@ -1103,7 +1120,7 @@ class TestUtilityFunctions:
             del session
             handled.append(command)
 
-        session = SimpleNamespace(
+        session = _make_session(
             is_terminated=False,
             command_queue=SimpleNamespace(put=queued.append),
             exit_func=lambda code: messages.append(f"exit:{code}"),
@@ -1209,8 +1226,23 @@ class TestUtilityFunctions:
             calls.append("ipc")
 
         def _start_command_listener(session=None):
-            del session
+            """Simulate the command listener by auto-firing configurationDone.
+
+            The real command listener processes DAP messages and eventually
+            triggers ``configuration_done_event``.  Here we start a background
+            thread that waits for ``debugger_configured_event`` (set by
+            ``main()`` after ``configure_debugger`` returns) and then
+            immediately signals ``configuration_done_event`` so the test
+            doesn't block for the 30 s timeout.
+            """
             calls.append("listener")
+            if session is not None:
+
+                def _auto_config_done():
+                    session.debugger_configured_event.wait()
+                    session.configuration_done_event.set()
+
+                threading.Thread(target=_auto_config_done, daemon=True).start()
 
         def _configure_debugger(
             stop_on_entry,

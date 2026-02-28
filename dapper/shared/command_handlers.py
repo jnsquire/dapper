@@ -94,10 +94,6 @@ _TRUNC_SUFFIX = "..."
 # Command mapping table - populated by the @command_handler decorator
 COMMAND_HANDLERS: dict[str, Callable[..., None]] = {}
 
-# Thread-local storage for the current command's id so handlers can include it
-# in their responses without needing to change every handler signature.
-_cmd_id_local: threading.local = threading.local()
-
 
 _error_response = command_handler_helpers.error_response
 
@@ -105,23 +101,9 @@ _error_response = command_handler_helpers.error_response
 send_debug_message = _d_shared.send_debug_message
 
 
-def _send_debug_message_adapter(message_type: str, **payload: Any) -> object:
-    # Automatically inject the current request id into response messages so
-    # the TypeScript adapter can match them to pending requests.
-    if message_type == "response":
-        if "id" not in payload:
-            cmd_id = getattr(_cmd_id_local, "value", None)
-            if cmd_id is not None:
-                payload["id"] = cmd_id
-        # Track that a response was sent for this command dispatch cycle
-        _cmd_id_local.response_sent = True
-    send_debug_message(message_type, **payload)
-    return None
-
-
 _safe_send_debug_message: command_handler_helpers.SafeSendDebugMessageFn = (
     command_handler_helpers.build_safe_send_debug_message(
-        lambda: _send_debug_message_adapter,
+        lambda: send_debug_message,
         cast("command_handler_helpers.LoggerLike", logger),
         dynamic=True,
     )
@@ -152,6 +134,7 @@ def handle_debug_command(
         cmd = command.get("command")
         cmd_id = command.get("id")  # request id to echo back in the response
         arguments = command.get("arguments", {})
+        logger.debug("handle_debug_command: cmd=%s id=%s", cmd, cmd_id)
         # Ensure the command name is a string before looking up the handler
         if not isinstance(cmd, str):
             _safe_send_debug_message(
@@ -162,22 +145,21 @@ def handle_debug_command(
             )
             return
 
-        # Store id in thread-local so _send_debug_message_adapter can pick it up
-        _cmd_id_local.value = cmd_id
-        _cmd_id_local.response_sent = False
-        try:
+        # Scope the request lifecycle on the transport so
+        # SessionTransport.send() auto-injects the request id into
+        # outbound response messages.
+        with active_session.transport.request_scope(cmd_id) as transport:
             # Look up the command handler in the mapping table and dispatch
             handler_func = COMMAND_HANDLERS.get(cmd)
             if handler_func is not None:
                 result = handler_func(arguments)
-                # If the handler returned a result dict with 'success', send it
-                # as a response (mirrors CommandDispatcher._send_response_for_result).
-                if isinstance(result, dict) and "success" in result and cmd_id is not None:
-                    _safe_send_debug_message("response", **result)
-                # If no response was sent at all for a request that has an id,
-                # send a default success acknowledgement so the adapter doesn't hang.
-                elif cmd_id is not None and not _cmd_id_local.response_sent:
-                    _safe_send_debug_message("response", success=True)
+                # If the adapter expects a response and one hasn't been sent
+                # yet, send either the handler's return value or a default ack.
+                if cmd_id is not None and not transport.response_sent:
+                    if isinstance(result, dict) and "success" in result:
+                        _safe_send_debug_message("response", **result)
+                    else:
+                        _safe_send_debug_message("response", success=True)
                 # Signal resume for stepping/continue/terminate commands so the
                 # debugger thread unblocks from process_queued_commands_launcher.
                 if cmd in _RESUME_COMMANDS:
@@ -189,9 +171,6 @@ def handle_debug_command(
                     success=False,
                     message=f"Unknown command: {cmd}",
                 )
-        finally:
-            _cmd_id_local.value = None
-            _cmd_id_local.response_sent = False
 
 
 def _get_thread_ident() -> int:
@@ -230,6 +209,12 @@ def _active_debugger() -> CommandHandlerDebuggerLike | None:
 def _cmd_set_breakpoints(
     arguments: SetBreakpointsArguments | dict[str, Any] | None,
 ) -> dict[str, Any] | None:
+    source = (
+        (arguments or {}).get("source", {}).get("path", "<unknown>")
+        if isinstance(arguments, dict)
+        else "<unknown>"
+    )
+    logger.debug("setBreakpoints: source=%s", source)
     dbg = _active_debugger()
     if dbg:
         return breakpoint_handlers.handle_set_breakpoints_impl(
@@ -570,15 +555,18 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
 
 @command_handler("configurationDone")
 def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
+    logger.info("configurationDone received")
     lifecycle_handlers.handle_configuration_done_impl()
     # Acknowledge the request so the TS adapter's sendRequestToPython resolves
     _safe_send_debug_message("response", success=True)
     # Unblock the launcher main thread which is waiting before starting the program
     _active_session().configuration_done_event.set()
+    logger.debug("configurationDone: configuration_done_event set")
 
 
 @command_handler("terminate")
 def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    logger.info("terminate received")
     state = _active_session()
     result = lifecycle_handlers.handle_terminate_impl(
         safe_send_debug_message=_safe_send_debug_message,
@@ -594,12 +582,41 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
 
 @command_handler("initialize")
 def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
+    logger.info("initialize received")
     result = lifecycle_handlers.handle_initialize_impl()
     if result:
         _safe_send_debug_message("response", **result)
     # After responding to initialize, emit the 'initialized' event so the client
     # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
     _safe_send_debug_message("initialized")
+    logger.debug("initialize: sent initialized event")
+
+
+@command_handler("launch")
+def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
+    """Acknowledge the launch request.
+
+    When the launcher is spawned directly inside VS Code's integrated terminal
+    the TS adapter proxies the DAP ``launch`` request over IPC.  The launcher
+    already knows the target from its CLI arguments, so we simply acknowledge
+    the request so that VS Code continues with the normal DAP sequence
+    (``setBreakpoints`` → ``configurationDone``).
+    """
+    logger.info("launch acknowledged")
+    _safe_send_debug_message("response", success=True)
+
+
+@command_handler("disconnect")
+def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
+    """Handle the DAP disconnect request.
+
+    Marks the session as terminated and unblocks the debugger thread so the
+    launcher can exit cleanly.
+    """
+    logger.info("disconnect received")
+    session = _active_session()
+    session.terminate_session()
+    _safe_send_debug_message("response", success=True)
 
 
 @command_handler("restart")

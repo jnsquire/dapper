@@ -28,9 +28,8 @@ if TYPE_CHECKING:
     from typing import Any, Optional
 
 # Global state
-cdef bint _frame_eval_active = 0
-cdef object _breakpoint_manager = None
 cdef object _frame_eval_lock = None
+cdef object _breakpoint_manager = None
 
 # Context-local storage (ContextVar is per-task in asyncio, not just per-thread)
 _thread_info_var: contextvars.ContextVar = contextvars.ContextVar("thread_info", default=None)
@@ -97,24 +96,6 @@ cdef class FuncCodeInfo:
         self.is_valid = True
 
 
-def get_thread_info():
-    """Get context-local debugging information.
-
-    Pure-Python implementation ensures the usual Python call path is used when
-    Context.run() switches contexts.  cpdef/C-level entrypoints appeared to
-    bypass the interpreter machinery in a way that confused the contextvar
-    runtime, resulting in all contexts seeing the same value.
-    """
-    # use Python locals for clarity; this function is always called from Python
-    thread_info = _thread_info_var.get()
-    if thread_info is None:
-        thread_info = ThreadInfo()
-        _thread_info_var.set(thread_info)
-        thread_info.fully_initialized = True
-
-    return thread_info
-
-
 cpdef FuncCodeInfo get_func_code_info(frame_obj, code_obj):
     """Get code object breakpoint information with caching."""
     cdef FuncCodeInfo func_code_info
@@ -137,9 +118,7 @@ cdef bint should_trace_frame(frame_obj) except -1:
     cdef FuncCodeInfo func_code_info
     
     # Get thread info
-    thread_info = get_thread_info()
-    
-    # Skip if we're already inside frame evaluation (prevent recursion)
+    thread_info = _state.get_thread_info()
     if thread_info.inside_frame_eval > 0:
         return False
     
@@ -174,9 +153,7 @@ cdef PyObject *get_bytecode_while_frame_eval(frame_obj, int exc):
     cdef PyObject *result
     
     # Get thread info
-    thread_info = get_thread_info()
-    
-    # Enter frame evaluation context
+    thread_info = _state.get_thread_info()
     thread_info.enter_frame_eval()
     
     try:
@@ -212,65 +189,65 @@ cpdef dummy_trace_dispatch(frame, str event, arg):
     return None
 
 
-cpdef frame_eval_func():
-    """Enable frame evaluation by setting the eval_frame hook."""
-    global _frame_eval_active
-    
-    with _frame_eval_lock:
-        if _frame_eval_active:
-            return
-        
-        # For now, just mark as active - actual frame eval hook 
-        # will be set up through Python API
-        _frame_eval_active = 1
+class _FrameEvalModuleState:
+    """Mutable state for the Cython frame-evaluation backend.
 
-
-cpdef stop_frame_eval():
-    """Disable frame evaluation by restoring the default eval_frame hook."""
-    global _frame_eval_active
-    
-    with _frame_eval_lock:
-        if not _frame_eval_active:
-            return
-        
-        # For now, just mark as inactive - actual frame eval hook 
-        # will be restored through Python API
-        _frame_eval_active = 0
-
-
-def clear_thread_local_info():
-    """Clear context-local debugging information.
-
-    We give callers a simple way to wipe the current context entry so that
-    future ``get_thread_info`` calls will lazily create a new ``ThreadInfo``.
+    Mirrors the pure-Python ``_FrameEvalModuleState`` in
+    ``_frame_evaluator.py`` so both backends expose an identical
+    public API via a module-level ``_state`` singleton.
     """
-    _thread_info_var.set(None)
+
+    def __init__(self):
+        self.active = False
+
+    # -- active flag -----------------------------------------------------------
+
+    def enable(self):
+        """Enable frame evaluation by setting the eval_frame hook."""
+        with _frame_eval_lock:
+            if self.active:
+                return
+            self.active = True
+
+    def disable(self):
+        """Disable frame evaluation by restoring the default eval_frame hook."""
+        with _frame_eval_lock:
+            if not self.active:
+                return
+            self.active = False
+
+    # -- thread info -----------------------------------------------------------
+
+    def get_thread_info(self):
+        """Return the context-local ThreadInfo, creating one if needed."""
+        thread_info = _thread_info_var.get()
+        if thread_info is None:
+            thread_info = ThreadInfo()
+            _thread_info_var.set(thread_info)
+            thread_info.fully_initialized = True
+        return thread_info
+
+    def clear_thread_local_info(self):
+        """Reset the context-local ThreadInfo to ``None``."""
+        _thread_info_var.set(None)
+
+    # -- stats -----------------------------------------------------------------
+
+    def get_stats(self):
+        """Return a snapshot of frame-evaluation statistics."""
+        return {
+            'active': self.active,
+            'has_breakpoint_manager': _breakpoint_manager is not None,
+            'frames_evaluated': 0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'evaluation_time': 0.0,
+            'is_active': self.active,
+        }
 
 
-cpdef get_frame_eval_stats():
-    """Get statistics about frame evaluation performance."""
-    return {
-        'active': _frame_eval_active,
-        'has_breakpoint_manager': _breakpoint_manager is not None,
-    }
-
-
-cpdef mark_thread_as_pydevd():
-    """Mark the current thread as a pydevd thread that should be skipped."""
-    thread_info = get_thread_info()
-    thread_info.is_pydevd_thread = True
-
-
-cpdef unmark_thread_as_pydevd():
-    """Unmark the current thread as a pydevd thread."""
-    thread_info = get_thread_info()
-    thread_info.is_pydevd_thread = False
-
-
-cpdef set_thread_skip_all(bint skip):
-    """Set whether current thread should skip all frames."""
-    thread_info = get_thread_info()
-    thread_info.skip_all_frames = skip
+# Module-level singleton that all public helpers delegate to.
+_state = _FrameEvalModuleState()
 
 
 # _PyEval_RequestCodeExtraIndex, _PyCode_SetExtra, and _PyCode_GetExtra were all

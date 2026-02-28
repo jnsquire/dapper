@@ -100,6 +100,33 @@ class SessionTransport:
         self.ipc_wfile: Any | None = None
         self.ipc_pipe_conn: Any | None = None
         self.on_debug_message = EventEmitter()
+        # The request id of the command currently being handled.  Set by
+        # ``begin_request()`` and cleared by ``end_request()``.  ``send()``
+        # auto-injects this into every outbound *response* message so the
+        # TypeScript adapter can correlate responses to requests.
+        self.current_request_id: int | str | None = None
+        # Tracks whether a response has already been sent for the current
+        # command dispatch cycle.  Set automatically by ``send()`` when a
+        # response is emitted; checked by the dispatcher to decide whether to
+        # send a default acknowledgement.
+        self.response_sent: bool = False
+
+    @contextlib.contextmanager
+    def request_scope(self, request_id: int | str | None) -> Iterator[SessionTransport]:
+        """Context manager that brackets a single request lifecycle.
+
+        Sets the current request id on entry and clears it on exit,
+        ensuring ``end_request()`` is always called — even if the
+        handler raises.
+        """
+        self.current_request_id = request_id
+        self.response_sent = False
+
+        try:
+            yield self
+        finally:
+            self.current_request_id = None
+            self.response_sent = False
 
     def require_ipc(self) -> None:
         if not self.ipc_enabled:
@@ -111,13 +138,20 @@ class SessionTransport:
             msg = "IPC enabled but no connection available"
             raise RuntimeError(msg)
 
-    def send(self, event_type: str, **kwargs: Any) -> None:
+    def send(self, message_type: str, **kwargs: Any) -> None:
         """Send a debug message via IPC and emit to subscribers."""
-        message = {"event": event_type}
+        message: dict[str, Any] = {"event": message_type}
         message.update(kwargs)
 
+        # Auto-inject the current request id into response messages so the
+        # TypeScript adapter can match them to the pending request.
+        if message_type == "response":
+            self.response_sent = True
+            if "id" not in message and self.current_request_id is not None:
+                message["id"] = self.current_request_id
+
         with contextlib.suppress(Exception):
-            self.on_debug_message.emit(event_type, **kwargs)
+            self.on_debug_message.emit(message_type, **kwargs)
 
         self.require_ipc()
         self.require_ipc_write_channel()
@@ -428,6 +462,7 @@ class DebugSession:
         self.module_search_paths: list[str] = []
         self.command_queue: queue.Queue[Any] = queue.Queue()
         self.configuration_done_event: threading.Event = threading.Event()
+        self.debugger_configured_event: threading.Event = threading.Event()
         self._resume_event: threading.Event = threading.Event()
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None
@@ -439,7 +474,26 @@ class DebugSession:
 
     def signal_resume(self) -> None:
         """Signal the resume event to unblock the debugger thread."""
+        logger.debug("signal_resume: unblocking debugger thread (session_id=%s)", self.session_id)
         self._resume_event.set()
+
+    def exit_if_alive(self, code: int = 0) -> None:
+        """Call ``exit_func`` only if the session has not already been terminated."""
+        if not self.is_terminated:
+            logger.debug(
+                "exit_if_alive: exiting with code %d (session_id=%s)", code, self.session_id
+            )
+            self.exit_func(code)
+        else:
+            logger.debug(
+                "exit_if_alive: already terminated, ignoring (session_id=%s)", self.session_id
+            )
+
+    def terminate_session(self) -> None:
+        """Mark the session as terminated and unblock the debugger thread."""
+        logger.info("terminate_session: marking terminated (session_id=%s)", self.session_id)
+        self.is_terminated = True
+        self.signal_resume()
 
     @property
     def ipc_enabled(self) -> bool:
@@ -562,10 +616,22 @@ class DebugSession:
         dispatches to signal ``_resume_event``, which happens when a resume
         command (continue, next, stepIn, stepOut, terminate) is handled.
         """
+        logger.debug(
+            "process_queued_commands_launcher: waiting for resume (session_id=%s)", self.session_id
+        )
         self._resume_event.clear()
         while not self.is_terminated:
             if self._resume_event.wait(timeout=0.5):
+                logger.debug(
+                    "process_queued_commands_launcher: resume signalled (session_id=%s)",
+                    self.session_id,
+                )
                 break
+        if self.is_terminated:
+            logger.debug(
+                "process_queued_commands_launcher: session terminated (session_id=%s)",
+                self.session_id,
+            )
 
     def set_exit_func(self, fn: Callable[[int], Any]) -> None:
         self.exit_func = fn
@@ -684,9 +750,9 @@ def use_session(session: DebugSession) -> Iterator[DebugSession]:
         _active_session.reset(token)
 
 
-def send_debug_message(event_type: str, **kwargs) -> None:
+def send_debug_message(message_type: str, **kwargs: Any) -> None:
     """Send a debug message via the active session transport."""
-    get_active_session().transport.send(event_type, **kwargs)
+    get_active_session().transport.send(message_type, **kwargs)
 
 
 # Module-level helpers extracted from make_variable_object to reduce function size

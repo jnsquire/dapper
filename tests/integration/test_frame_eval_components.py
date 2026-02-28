@@ -60,12 +60,8 @@ if SELECTIVE_TRACER_AVAILABLE:
 # pylint: disable=protected-access
 try:
     from dapper._frame_eval._frame_evaluator import ThreadInfo
-    from dapper._frame_eval._frame_evaluator import clear_thread_local_info
+    from dapper._frame_eval._frame_evaluator import _state as _frame_eval_state
     from dapper._frame_eval._frame_evaluator import dummy_trace_dispatch
-    from dapper._frame_eval._frame_evaluator import frame_eval_func
-    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
-    from dapper._frame_eval._frame_evaluator import get_thread_info
-    from dapper._frame_eval._frame_evaluator import stop_frame_eval
 except ImportError:
     # This should not happen since we have a Python fallback
     pytest.fail("Could not import frame evaluator components")
@@ -251,7 +247,7 @@ class TestFrameEvalCoreComponents:
 
     def test_thread_info_creation(self):
         """Test ThreadInfo object creation."""
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
 
         assert isinstance(thread_info, ThreadInfo)
         assert hasattr(thread_info, "inside_frame_eval")
@@ -268,13 +264,13 @@ class TestFrameEvalCoreComponents:
 
     def test_thread_info_isolation(self):
         """Test that thread info is isolated between threads."""
-        main_thread_info = get_thread_info()
+        main_thread_info = _frame_eval_state.get_thread_info()
 
         # Modify main thread info
         main_thread_info.fully_initialized = True
 
         def check_thread_info():
-            thread_info = get_thread_info()
+            thread_info = _frame_eval_state.get_thread_info()
             # Should be different instance
             # The value of fully_initialized might vary by implementation
             # (0, False, or True are all possible)
@@ -295,7 +291,7 @@ class TestFrameEvalCoreComponents:
 
     def test_frame_eval_stats(self):
         """Test frame evaluation statistics."""
-        stats = get_frame_eval_stats()
+        stats = _frame_eval_state.get_stats()
 
         assert isinstance(stats, dict)
         assert "active" in stats
@@ -308,15 +304,15 @@ class TestFrameEvalCoreComponents:
     def test_frame_eval_activation(self):
         """Test frame evaluation activation/deactivation."""
         # Get initial state
-        get_frame_eval_stats()
+        _frame_eval_state.get_stats()
 
         # Activate
-        frame_eval_func()
-        active_stats = get_frame_eval_stats()
+        _frame_eval_state.enable()
+        active_stats = _frame_eval_state.get_stats()
 
         # Deactivate
-        stop_frame_eval()
-        inactive_stats = get_frame_eval_stats()
+        _frame_eval_state.disable()
+        inactive_stats = _frame_eval_state.get_stats()
 
         # The simplified implementation might keep some state
         # This is expected behavior
@@ -326,14 +322,14 @@ class TestFrameEvalCoreComponents:
     def test_clear_thread_local_info(self):
         """Test clearing thread local info."""
         # Get thread info and modify it
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
         thread_info.fully_initialized = True
 
         # Clear thread local info
-        clear_thread_local_info()
+        _frame_eval_state.clear_thread_local_info()
 
         # Get new thread info - should be fresh
-        new_thread_info = get_thread_info()
+        new_thread_info = _frame_eval_state.get_thread_info()
         # In the simplified implementation, this might not reset
         # but the function should not crash
         assert isinstance(new_thread_info, ThreadInfo)

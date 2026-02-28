@@ -17,45 +17,19 @@ from __future__ import annotations
 # Standard library imports
 import threading
 from typing import Any
-from typing import Callable
 
 # Local application imports
 from dapper._frame_eval.frame_eval_main import frame_eval_manager
 
-# Type aliases for Cython functions
-CythonFuncType = Callable[..., Any]
-
 # Initialize Cython functions with type hints
-_cython_enable_frame_eval: CythonFuncType | None = None
-_cython_get_stats: CythonFuncType | None = None
-_cython_mark_pydevd: CythonFuncType | None = None
-_cython_set_skip_all: CythonFuncType | None = None
-_cython_unmark_pydevd: CythonFuncType | None = None
+_cython_state: Any | None = None
 
-# Try to import Cython functions
-# Note: These are imported at module level to avoid import cycles
-# and ensure thread safety. The imports are wrapped in a try/except
-# to handle cases where the Cython extensions are not available.
+# Try to import the _state singleton from the extension module.
+# The pure-Python fallback always provides _state, so this import
+# only truly fails if _frame_evaluator itself is broken.
 try:
-    from dapper._frame_eval._frame_evaluator import (
-        frame_eval_func as _cython_enable_frame_eval_func,
-    )
-    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats as _cython_get_stats_func
-    from dapper._frame_eval._frame_evaluator import (
-        mark_thread_as_pydevd as _cython_mark_pydevd_func,
-    )
-    from dapper._frame_eval._frame_evaluator import (
-        set_thread_skip_all as _cython_set_skip_all_func,
-    )
-    from dapper._frame_eval._frame_evaluator import (
-        unmark_thread_as_pydevd as _cython_unmark_pydevd_func,
-    )
+    from dapper._frame_eval._frame_evaluator import _state as _cython_state
 
-    _cython_enable_frame_eval = _cython_enable_frame_eval_func
-    _cython_get_stats = _cython_get_stats_func
-    _cython_mark_pydevd = _cython_mark_pydevd_func
-    _cython_set_skip_all = _cython_set_skip_all_func
-    _cython_unmark_pydevd = _cython_unmark_pydevd_func
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
@@ -64,12 +38,7 @@ except ImportError:
 class FrameEvalState:
     """Singleton class to manage frame evaluation state."""
 
-    # Class-level references to Cython functions
-    _cython_enable_frame_eval = _cython_enable_frame_eval
-    _cython_get_stats = _cython_get_stats
-    _cython_mark_pydevd = _cython_mark_pydevd
-    _cython_set_skip_all = _cython_set_skip_all
-    _cython_unmark_pydevd = _cython_unmark_pydevd
+    _cython_state = _cython_state
 
     def __init__(self):
         self.available = False
@@ -114,22 +83,20 @@ class FrameEvalState:
         Returns:
             dict: Statistics or error information if Cython is not available
         """
-        if not self._import_cython():
+        if not self._import_cython() or FrameEvalState._cython_state is None:
             return {"available": False, "error": "Cython wrapper not available"}
 
-        if FrameEvalState._cython_get_stats is not None:
-            return FrameEvalState._cython_get_stats()
-        return {"available": False, "error": "Cython stats function not available"}
+        return FrameEvalState._cython_state.get_stats()
 
     def mark_thread_as_pydevd(self) -> None:
         """Mark the current thread as a pydevd thread."""
-        if self._import_cython() and FrameEvalState._cython_mark_pydevd:
-            FrameEvalState._cython_mark_pydevd()
+        if self._import_cython() and FrameEvalState._cython_state is not None:
+            FrameEvalState._cython_state.get_thread_info().is_pydevd_thread = True
 
     def unmark_thread_as_pydevd(self) -> None:
         """Remove pydevd thread marking from current thread."""
-        if self._import_cython() and FrameEvalState._cython_unmark_pydevd:
-            FrameEvalState._cython_unmark_pydevd()
+        if self._import_cython() and FrameEvalState._cython_state is not None:
+            FrameEvalState._cython_state.get_thread_info().is_pydevd_thread = False
 
     def set_thread_skip_all(self, skip: bool) -> None:
         """Set whether current thread should skip all frames.
@@ -137,8 +104,9 @@ class FrameEvalState:
         Args:
             skip: If True, skip all frames in this thread
         """
-        if self._import_cython() and FrameEvalState._cython_set_skip_all:
-            FrameEvalState._cython_set_skip_all(skip)
+        if self._import_cython() and FrameEvalState._cython_state is not None:
+            info = FrameEvalState._cython_state.get_thread_info()
+            info.skip_all_frames = skip
 
 
 # Singleton instance

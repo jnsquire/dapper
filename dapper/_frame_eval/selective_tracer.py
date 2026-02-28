@@ -52,10 +52,12 @@ else:
         from typing import TypedDict
 
 
-# Import frame evaluation functions if available
+# Import frame evaluation state if available
 try:
-    from dapper._frame_eval._frame_evaluator import get_thread_info
+    from dapper._frame_eval._frame_evaluator import _state as _frame_eval_state
 except ImportError:
+    _frame_eval_state = None
+
     # Fallback implementation for when C extensions are not available
     class _FallbackThreadInfo:
         """Fallback implementation of ThreadInfo protocol."""
@@ -72,9 +74,12 @@ except ImportError:
             """
             return False
 
-    def get_thread_info() -> ThreadInfo:
-        """Get thread information with fallback implementation."""
-        return _FallbackThreadInfo()
+
+def get_thread_info() -> ThreadInfo:
+    """Get thread information, delegating to _state when available."""
+    if _frame_eval_state is not None:
+        return _frame_eval_state.get_thread_info()
+    return _FallbackThreadInfo()
 
 
 class TraceDecision(TypedDict):

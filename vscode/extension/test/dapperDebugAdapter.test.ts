@@ -44,10 +44,9 @@ describe('DapperDebugSession', () => {
 
     beforeEach(() => {
         mockSocket = new MockSocket() as any;
+        // Constructor calls setPythonSocket internally when a socket is provided,
+        // which attaches the 'data' listener and resolves _socketReady.
         session = new DapperDebugSession(mockSocket as any);
-        // Manually call setPythonSocket to attach the 'data' listener to the mock socket.
-        // The constructor sets the property but does not attach listeners; that is normally done by the adapter factory.
-        session.setPythonSocket(mockSocket as any);
     });
 
     it('should parse complete messages from Python', () => {
@@ -109,6 +108,9 @@ describe('DapperDebugSession', () => {
             arguments: { adapterID: 'dapper' }
         } as DebugProtocol.InitializeRequest, { adapterID: 'dapper' });
 
+        // Flush the microtask so sendRequestToPython's awaited _socketReady continuation runs
+        await Promise.resolve();
+
         // Verify request was sent to Python
         expect(mockSocket.write).toHaveBeenCalled();
         const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
@@ -145,6 +147,9 @@ describe('DapperDebugSession', () => {
             success: true,
             body: {}
         } as DebugProtocol.VariablesResponse, { variablesReference: 123 });
+
+        // Flush the microtask so sendRequestToPython's awaited _socketReady continuation runs
+        await Promise.resolve();
 
         // Verify request sent
         expect(mockSocket.write).toHaveBeenCalled();

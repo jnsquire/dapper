@@ -5,6 +5,7 @@ This is used to start the debuggee process with the debugger attached.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import logging
 from multiprocessing import connection as _mpc
@@ -58,10 +59,10 @@ def _recv_binary_from_pipe(conn: _mpc.Connection, session: Any | None = None) ->
         try:
             data = conn.recv_bytes()
         except (EOFError, OSError):
-            active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         if not data:
-            active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         try:
             kind, length = unpack_header(data[:HEADER_SIZE])
@@ -81,12 +82,10 @@ def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
             header = read_exact(rfile, HEADER_SIZE)
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
             # Socket was closed (e.g. during test teardown) — exit quietly.
-            if not active_session.is_terminated:
-                active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         if not header:
-            if not active_session.is_terminated:
-                active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         try:
             kind, length = unpack_header(header)
@@ -97,12 +96,10 @@ def _recv_binary_from_stream(rfile: Any, session: Any | None = None) -> None:
         try:
             payload = read_exact(rfile, length)
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
-            if not active_session.is_terminated:
-                active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         if not payload:
-            if not active_session.is_terminated:
-                active_session.exit_func(0)
+            active_session.exit_if_alive(0)
             return
         if kind == KIND_COMMAND:
             try:
@@ -408,8 +405,45 @@ def _run_target(
     raise RuntimeError(msg)
 
 
-def main():  # noqa: PLR0912
+def _register_terminal_crash_handler() -> None:
+    """Keep the terminal open when the launcher exits due to an unhandled exception.
+
+    VS Code's integrated terminal can close before the user has a chance to
+    read the traceback.  We install a thin ``sys.excepthook`` wrapper that
+    sets a flag and an ``atexit`` handler that pauses for input when the
+    flag is set.
+    """
+    _had_crash = [False]
+    _orig_excepthook = sys.excepthook
+
+    def _excepthook(
+        exc_type: type[BaseException],
+        exc_value: BaseException,
+        exc_tb: Any,
+    ) -> None:
+        _had_crash[0] = True
+        _orig_excepthook(exc_type, exc_value, exc_tb)
+
+    def _pause_on_crash() -> None:
+        if not _had_crash[0]:
+            return
+        try:
+            sys.stderr.write(
+                "\n--- Dapper: the process exited with an error (see above) ---\n"
+                "Press Enter to close this terminal..."
+            )
+            sys.stderr.flush()
+            input()
+        except (EOFError, OSError):
+            pass
+
+    sys.excepthook = _excepthook
+    atexit.register(_pause_on_crash)
+
+
+def main():  # noqa: PLR0912, PLR0915
     """Main entry point for the debug launcher"""
+    _register_terminal_crash_handler()
     session = debug_shared.get_active_session()
     # Parse arguments and set module state
     args = parse_args()
@@ -436,6 +470,15 @@ def main():  # noqa: PLR0912
     # Configure logging for debug messages
     logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
 
+    logger.info(
+        "Launcher started: %s=%s session_id=%s stop_on_entry=%s no_debug=%s",
+        target_kind,
+        target_value,
+        session.session_id,
+        session.stop_at_entry,
+        session.no_debug,
+    )
+
     subprocess_manager: SubprocessManager | None = None
 
     if getattr(args, "subprocess_auto_attach", False):
@@ -454,9 +497,11 @@ def main():  # noqa: PLR0912
     try:
         # Establish IPC connection if requested
         setup_ipc_from_args(args, session=session)
+        logger.info("IPC connection established")
 
         # Start command listener thread (from IPC or stdin depending on state)
         start_command_listener(session=session)
+        logger.info("Command listener thread started")
 
         # Create the debugger and store it on state
         configure_debugger(
@@ -465,8 +510,15 @@ def main():  # noqa: PLR0912
             just_my_code=not args.no_just_my_code,
             strict_expression_watch_policy=getattr(args, "strict_expression_watch_policy", False),
         )
+        logger.info(
+            "Debugger configured (stop_at_entry=%s, no_debug=%s, just_my_code=%s)",
+            session.stop_at_entry,
+            session.no_debug,
+            not args.no_just_my_code,
+        )
 
         if session.no_debug:
+            logger.info("Running without debugging: %s=%s", target_kind, target_value)
             # Just run the program without debugging
             if target_kind == "program":
                 run_program(target_value, program_args)
@@ -475,9 +527,16 @@ def main():  # noqa: PLR0912
         else:
             # Wait for the adapter to finish sending setBreakpoints / configurationDone
             # before starting the program so all breakpoints are in place.
+            session.debugger_configured_event.set()
+            logger.info("Waiting for configurationDone (timeout=30s)...")
             if not session.configuration_done_event.wait(timeout=30):
                 logger.warning("Timed out waiting for configurationDone; starting anyway")
+            else:
+                logger.info("configurationDone received, starting program")
             # Run the program with debugging
+            logger.info(
+                "Starting debugger: %s=%s args=%s", target_kind, target_value, program_args
+            )
             if target_kind == "program":
                 run_with_debugger(target_value, program_args, session=session)
             else:
@@ -487,7 +546,16 @@ def main():  # noqa: PLR0912
                     session=session,
                     target_kind=target_kind,
                 )
+            logger.info("Program execution completed")
     finally:
+        # Notify the adapter that the program has finished so the debug
+        # session in VS Code terminates instead of hanging indefinitely.
+        logger.info("Sending exited/terminated events")
+        try:
+            send_debug_message("exited", exitCode=0)
+            send_debug_message("terminated")
+        except Exception:
+            logger.debug("Failed to send exit events (IPC may already be closed)")
         if subprocess_manager is not None:
             subprocess_manager.cleanup()
 

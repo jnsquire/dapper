@@ -5,8 +5,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
-
 # Import the modules we're testing
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
 from dapper._frame_eval.debugger_integration import FrameEvalConfig
@@ -19,16 +17,10 @@ from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.debugger_integration import integrate_py_debugger
 from dapper._frame_eval.debugger_integration import remove_integration
 
-# clear_thread_local_info is imported from _frame_evaluator below
-
 # Import Cython modules for testing
 try:
     from dapper._frame_eval._frame_evaluator import ThreadInfo
-    from dapper._frame_eval._frame_evaluator import clear_thread_local_info
-    from dapper._frame_eval._frame_evaluator import frame_eval_func
-    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats
-    from dapper._frame_eval._frame_evaluator import get_thread_info
-    from dapper._frame_eval._frame_evaluator import stop_frame_eval
+    from dapper._frame_eval._frame_evaluator import _state as _frame_eval_state
 
     CYTHON_AVAILABLE = True
 except ImportError:
@@ -374,16 +366,15 @@ class TestCythonIntegration:
     """Test Cython module integration."""
 
     def test_cython_imports(self):
-        """Test that Cython modules can be imported."""
-        # Test that functions are callable
-        assert callable(frame_eval_func)
-        assert callable(stop_frame_eval)
-        assert callable(get_thread_info)
-        assert callable(get_frame_eval_stats)
+        """Test that state methods are callable."""
+        assert callable(_frame_eval_state.enable)
+        assert callable(_frame_eval_state.disable)
+        assert callable(_frame_eval_state.get_thread_info)
+        assert callable(_frame_eval_state.get_stats)
 
     def test_thread_info_creation(self):
         """Test ThreadInfo object creation and properties."""
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
 
         assert isinstance(thread_info, ThreadInfo)
         assert hasattr(thread_info, "inside_frame_eval")
@@ -395,7 +386,7 @@ class TestCythonIntegration:
         """Test frame evaluation statistics."""
         # Skip test if Cython module isn't available
         try:
-            stats = get_frame_eval_stats()
+            stats = _frame_eval_state.get_stats()
 
             assert isinstance(stats, dict)
             assert "active" in stats
@@ -408,16 +399,16 @@ class TestCythonIntegration:
     def test_frame_eval_activation(self):
         """Test frame evaluation activation and deactivation."""
         # Get initial stats
-        get_frame_eval_stats()
+        _frame_eval_state.get_stats()
 
         # Activate frame evaluation
-        frame_eval_func()
-        active_stats = get_frame_eval_stats()
+        _frame_eval_state.enable()
+        active_stats = _frame_eval_state.get_stats()
         assert active_stats["active"] is True
 
         # Deactivate frame evaluation
-        stop_frame_eval()
-        get_frame_eval_stats()
+        _frame_eval_state.disable()
+        _frame_eval_state.get_stats()
 
         # Note: The simplified implementation might keep active=True
         # This is expected behavior for the current implementation
@@ -425,10 +416,10 @@ class TestCythonIntegration:
     def test_clear_thread_local_info(self):
         """Test clearing thread local info."""
         # This should not crash
-        clear_thread_local_info()
+        _frame_eval_state.clear_thread_local_info()
 
         # Get thread info after clearing
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
         assert isinstance(thread_info, ThreadInfo)
 
 

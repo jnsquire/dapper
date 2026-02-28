@@ -459,12 +459,20 @@ def background_event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
             loop.close()
 
 
+def _is_xdist_worker() -> bool:
+    """Return True when running inside a pytest-xdist worker process."""
+    return os.getenv("PYTEST_XDIST_WORKER") is not None
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Invoke extension jest tests at the end of a pytest session.
 
     If jest tests fail, exit the entire pytest run with the jest exit code so CI signals failure.
     """
     _pytest_session_state["exitstatus"] = int(exitstatus)
+    # xdist workers should not run session-finish actions — only the controller.
+    if _is_xdist_worker():
+        return
     # If pytest already failed, continue and still run JS tests to gather all results.
     # Mark args as used to satisfy linters (plugin requires specific arg names)
     del session, exitstatus
@@ -490,6 +498,9 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 def pytest_unconfigure(config):
+    # xdist workers should not run unconfigure cleanup — only the controller.
+    if _is_xdist_worker():
+        return
     _shutdown_trace("pytest_unconfigure entered")
     try:
         plugin_names = sorted(

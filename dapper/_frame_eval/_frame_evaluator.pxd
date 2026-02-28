@@ -41,10 +41,4 @@ cdef class FuncCodeInfo:
 # Function declarations
 
 cpdef FuncCodeInfo get_func_code_info(frame_obj, code_obj)
-cpdef frame_eval_func()
-cpdef stop_frame_eval()
 cpdef dummy_trace_dispatch(frame, str event, arg)
-cpdef get_frame_eval_stats()
-cpdef mark_thread_as_pydevd()
-cpdef unmark_thread_as_pydevd()
-cpdef set_thread_skip_all(bint skip)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 
@@ -22,45 +22,18 @@ from dapper._frame_eval.debugger_integration import remove_integration
 
 # Import Cython modules for testing
 CYTHON_AVAILABLE = False
+_frame_eval_state: _FrameEvalModuleState | None = None
 try:
     from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
-        frame_eval_func,
-    )
-    from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
-        get_frame_eval_stats,
-    )
-    from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
-        get_thread_info,
-    )
-    from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
-        stop_frame_eval,
+        _state as _frame_eval_state,
     )
 
     CYTHON_AVAILABLE = True
 except ImportError:
-    # Create a callable class that will be used as frame_eval_func
-    class FrameEvalFunc:
-        def __init__(self):
-            self.call_count = 0
+    pass
 
-        def __call__(self, frame: Any, event: str, arg: Any) -> None:
-            """Mock implementation of frame_eval_func."""
-            self.call_count += 1
-            # Use variables to avoid unused argument warnings
-            _ = frame, event, arg
-
-    # Create a mock that accepts any arguments
-    frame_eval_func = Mock(return_value=None)  # type: ignore[assignment]
-    get_frame_eval_stats = Mock(return_value={"active": False, "has_breakpoint_manager": False})  # type: ignore[assignment]
-    get_thread_info = Mock(
-        return_value=Mock(  # type: ignore[assignment]
-            inside_frame_eval=0,
-            fully_initialized=True,
-            is_pydevd_thread=False,
-            skip_all_frames=False,
-        ),
-    )
-    stop_frame_eval = Mock()  # type: ignore[assignment]
+if TYPE_CHECKING:
+    from dapper._frame_eval._frame_evaluator import _FrameEvalModuleState
 
 
 class TestFrameEvalConfig:
@@ -122,39 +95,38 @@ def mock_cython_functions(monkeypatch):
     if CYTHON_AVAILABLE:
         return  # Use real implementations if available
 
-    # Create a mock for frame_eval_func
-    def mock_frame_eval_func(frame, event, arg):
-        """Mock implementation of frame_eval_func."""
-
-    # Create a mock for get_frame_eval_stats
-    def mock_get_frame_eval_stats():
-        return {"active": False, "has_breakpoint_manager": False}
-
-    # Create a mock thread info object
-    class MockThreadInfo:
+    # Create mock state object with the same API as _FrameEvalModuleState
+    class MockFrameEvalState:
         def __init__(self):
-            self.skip_all_frames = False
-            self.inside_frame_eval = 0
-            self.fully_initialized = True
-            self.is_pydevd_thread = False
+            self._active = False
 
-    def mock_get_thread_info():
-        return MockThreadInfo()
+        def enable(self):
+            self._active = True
 
-    # Apply the mocks
+        def disable(self):
+            self._active = False
+
+        def get_stats(self):
+            return {"active": self._active, "has_breakpoint_manager": False}
+
+        def get_thread_info(self):
+            class MockThreadInfo:
+                def __init__(self):
+                    self.skip_all_frames = False
+                    self.inside_frame_eval = 0
+                    self.fully_initialized = True
+                    self.is_pydevd_thread = False
+
+            return MockThreadInfo()
+
+        def clear_thread_local_info(self):
+            pass
+
+    # Apply the mock state
     monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.frame_eval_func",
-        mock_frame_eval_func,
+        "dapper._frame_eval._frame_evaluator._state",
+        MockFrameEvalState(),
     )
-    monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.get_frame_eval_stats",
-        mock_get_frame_eval_stats,
-    )
-    monkeypatch.setattr(
-        "dapper._frame_eval._frame_evaluator.get_thread_info",
-        mock_get_thread_info,
-    )
-    monkeypatch.setattr("dapper._frame_eval._frame_evaluator.stop_frame_eval", lambda: None)
 
 
 @pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython modules not available")
@@ -173,8 +145,9 @@ class TestCythonIntegration:
         """Test that we can get thread info."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available")
+        assert _frame_eval_state is not None
 
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
         assert thread_info is not None
         assert hasattr(thread_info, "skip_all_frames")
 
@@ -182,9 +155,10 @@ class TestCythonIntegration:
         """Test that frame evaluation stats have the expected structure."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available")
+        assert _frame_eval_state is not None
 
         # Act
-        stats = get_frame_eval_stats()
+        stats = _frame_eval_state.get_stats()
 
         # Assert
         assert isinstance(stats, dict), "Expected stats to be a dictionary"
@@ -201,16 +175,10 @@ class TestCythonIntegration:
         # This test requires the real Cython implementation
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available - skipping frame evaluation test")
+        assert _frame_eval_state is not None
 
         # Only run this test if we have the real Cython implementation
         try:
-            # Reset the mock stats before the test
-            get_frame_eval_stats.return_value = {
-                "active": False,
-                "has_breakpoint_manager": False,
-                "call_count": 0,
-            }
-
             # Act - Simulate a frame evaluation
             mock_frame = MagicMock()
             mock_frame.f_code.co_filename = "<string>"
@@ -218,12 +186,12 @@ class TestCythonIntegration:
             mock_frame.f_trace = None
 
             # Get initial state
-            get_frame_eval_stats()
+            _frame_eval_state.get_stats()
 
             # Skip the frame evaluation part since we can't test it without the real implementation
 
             # Just verify we can get the stats
-            stats = get_frame_eval_stats()
+            stats = _frame_eval_state.get_stats()
             assert isinstance(stats, dict), "Stats should be a dictionary"
             assert "active" in stats, "Stats should have 'active' key"
 
@@ -236,27 +204,28 @@ class TestCythonIntegration:
         """Verify that frame evaluation can be toggled on/off."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available - skipping frame evaluation test")
+        assert _frame_eval_state is not None
 
         try:
             # Get initial state
-            get_frame_eval_stats()
+            _frame_eval_state.get_stats()
 
             # Act - Disable frame evaluation
-            stop_frame_eval()
+            _frame_eval_state.disable()
 
             # Assert - Check that frame evaluation is marked as inactive
-            stats_after_stop = get_frame_eval_stats()
+            stats_after_stop = _frame_eval_state.get_stats()
             assert stats_after_stop.get("active") is False, (
-                "Frame evaluation should be marked as inactive after stop_frame_eval()"
+                "Frame evaluation should be marked as inactive after disable()"
             )
 
             # Act - Re-enable frame evaluation
-            frame_eval_func()
+            _frame_eval_state.enable()
 
             # Assert - Check that frame evaluation is marked as active again
-            stats_after_start = get_frame_eval_stats()
+            stats_after_start = _frame_eval_state.get_stats()
             assert stats_after_start.get("active") is True, (
-                "Frame evaluation should be marked as active after frame_eval_func()"
+                "Frame evaluation should be marked as active after enable()"
             )
 
         except Exception as e:
@@ -268,15 +237,17 @@ class TestCythonIntegration:
         """Test that thread info is isolated between threads."""
         if not CYTHON_AVAILABLE:
             pytest.skip("Cython modules not available")
+        assert _frame_eval_state is not None
 
-        main_thread_info = get_thread_info()
+        main_thread_info = _frame_eval_state.get_thread_info()
 
         # Store initial values
         initial_inside_frame_eval = getattr(main_thread_info, "inside_frame_eval", 0)
 
         # Test in a different thread
         def thread_test():
-            thread_info = get_thread_info()
+            assert _frame_eval_state is not None
+            thread_info = _frame_eval_state.get_thread_info()
             # Should be a different ThreadInfo instance
             assert thread_info is not main_thread_info
             # But should have the same initial state

@@ -30,11 +30,14 @@ pytestmark = pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython module not 
 @pytest.fixture
 def evaluator():
     m = importlib.import_module("dapper._frame_eval._frame_evaluator")
+    if not hasattr(m, "_state"):
+        pytest.skip("_state not exported by compiled Cython module in this build")
+    state = m._state
     required = ("get_thread_info", "clear_thread_local_info")
     for name in required:
-        if not hasattr(m, name):
-            pytest.skip(f"{name} not exported by compiled Cython module in this build")
-    return m
+        if not hasattr(state, name):
+            pytest.skip(f"{name} not available on _state in this build")
+    return state
 
 
 # ---------------------------------------------------------------------------

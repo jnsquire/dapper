@@ -44,8 +44,8 @@ describe('DapperDebugSession - Extended', () => {
 
     beforeEach(() => {
         mockSocket = new MockSocket() as any;
+        // Constructor calls setPythonSocket internally when a socket is provided.
         session = new DapperDebugSession(mockSocket as any);
-        session.setPythonSocket(mockSocket as any);
     });
 
     // ─── formatPythonError ───────────────────────────────────────────────
@@ -149,6 +149,7 @@ describe('DapperDebugSession - Extended', () => {
             );
 
             // Extract request ID from the sent frame
+            await Promise.resolve(); // flush microtask so sendRequestToPython writes to socket
             expect(mockSocket.write).toHaveBeenCalled();
             const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
             const sentJson = JSON.parse(sentData.subarray(8).toString('utf8'));
@@ -188,6 +189,7 @@ describe('DapperDebugSession - Extended', () => {
                 { expression: 'x', value: '42', frameId: 1 }
             );
 
+            await Promise.resolve(); // flush microtask so sendRequestToPython writes to socket
             const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
             const sentJson = JSON.parse(sentData.subarray(8).toString('utf8'));
             const requestId = sentJson.id;
@@ -230,6 +232,7 @@ describe('DapperDebugSession - Extended', () => {
                 { frameId: 1 }
             );
 
+            await Promise.resolve(); // flush microtask so sendRequestToPython writes to socket
             expect(mockSocket.write).toHaveBeenCalled();
             const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
             const sentJson = JSON.parse(sentData.subarray(8).toString('utf8'));
@@ -273,6 +276,7 @@ describe('DapperDebugSession - Extended', () => {
                 { file: 'main.py' }
             );
 
+            await Promise.resolve(); // flush microtask so sendRequestToPython writes to socket
             expect(mockSocket.write).toHaveBeenCalled();
             const sentData = mockSocket.write.mock.calls[0][0] as Buffer;
             const sentJson = JSON.parse(sentData.subarray(8).toString('utf8'));

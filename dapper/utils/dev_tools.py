@@ -169,12 +169,15 @@ def build_dev() -> None:
     # uv-created venvs sometimes don't have pip installed, so try to bootrap it
     # with ensurepip before attempting any pip installs.
     try:
-        subprocess.run([
-            sys.executable,
-            "-m",
-            "ensurepip",
-            "--upgrade",
-        ], check=False)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ensurepip",
+                "--upgrade",
+            ],
+            check=False,
+        )
     except Exception:
         pass
 

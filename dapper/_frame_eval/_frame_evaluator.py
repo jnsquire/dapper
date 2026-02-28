@@ -20,14 +20,65 @@ BreakpointLines = set[int]
 FrameStats = dict[str, Union[int, float, bool]]
 
 
-# Module-level mutable state (not per-context)
-_frame_eval_active: bool = False
+class _FrameEvalModuleState:
+    """Mutable state for the pure-Python frame-evaluation fallback.
 
-# Context-local storage — mirrors the Cython ContextVar so that
-# ``Context.run()`` gives each context its own ThreadInfo.
-_thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
-    "thread_info", default=None
-)
+    Collects the module-level state that the Cython backend keeps as
+    ``cdef`` globals into a single object, making it easier to reset in
+    tests and avoiding the ``global`` statement.
+    """
+
+    __slots__ = ("active", "thread_info_var")
+
+    def __init__(self) -> None:
+        self.active: bool = False
+        #: Context-local storage — mirrors the Cython ContextVar so that
+        #: ``Context.run()`` gives each context its own ThreadInfo.
+        self.thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
+            "thread_info", default=None
+        )
+
+    # -- active flag -----------------------------------------------------------
+
+    def enable(self) -> None:
+        """Mark frame evaluation as active."""
+        self.active = True
+
+    def disable(self) -> None:
+        """Mark frame evaluation as inactive."""
+        self.active = False
+
+    # -- thread info -----------------------------------------------------------
+
+    def get_thread_info(self) -> ThreadInfo:
+        """Return the context-local ThreadInfo, creating one if needed."""
+        thread_info = self.thread_info_var.get()
+        if thread_info is None:
+            thread_info = ThreadInfo()
+            self.thread_info_var.set(thread_info)
+        return thread_info
+
+    def clear_thread_local_info(self) -> None:
+        """Reset the context-local ThreadInfo to ``None``."""
+        self.thread_info_var.set(None)
+
+    # -- stats -----------------------------------------------------------------
+
+    def get_stats(self) -> FrameStats:
+        """Return a snapshot of frame-evaluation statistics."""
+        return {
+            "active": self.active,
+            "has_breakpoint_manager": False,
+            "frames_evaluated": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "evaluation_time": 0.0,
+            "is_active": self.active,
+        }
+
+
+# Module-level singleton that all public helpers delegate to.
+_state = _FrameEvalModuleState()
 
 
 class ThreadInfo:
@@ -97,60 +148,11 @@ class FuncCodeInfo:
         self.always_skip_code = not bool(self.breakpoint_lines)
 
 
-def get_thread_info() -> ThreadInfo:
-    thread_info = _thread_info_var.get()
-    if thread_info is None:
-        thread_info = ThreadInfo()
-        _thread_info_var.set(thread_info)
-    return thread_info
-
-
 def get_func_code_info(frame_obj: FrameType, code_obj: CodeType) -> FuncCodeInfo:
     del frame_obj
     info = FuncCodeInfo()
     info.update_breakpoint_info(code_obj)
     return info
-
-
-def frame_eval_func() -> None:
-    global _frame_eval_active
-    _frame_eval_active = True
-
-
-def stop_frame_eval() -> None:
-    global _frame_eval_active
-    _frame_eval_active = False
-
-
-def clear_thread_local_info() -> None:
-    _thread_info_var.set(None)
-
-
-def get_frame_eval_stats() -> FrameStats:
-    return {
-        "active": _frame_eval_active,
-        "has_breakpoint_manager": False,
-        "frames_evaluated": 0,
-        "cache_hits": 0,
-        "cache_misses": 0,
-        "evaluation_time": 0.0,
-        "is_active": _frame_eval_active,
-    }
-
-
-
-def mark_thread_as_pydevd() -> None:
-    get_thread_info().is_pydevd_thread = True
-
-
-def unmark_thread_as_pydevd() -> None:
-    get_thread_info().is_pydevd_thread = False
-
-
-def set_thread_skip_all(skip: bool) -> None:
-    info = get_thread_info()
-    info.skip_all_frames = skip
-    info.step_mode = skip
 
 
 def dummy_trace_dispatch(frame: FrameType, event: str, arg: Any) -> Any:
@@ -173,14 +175,8 @@ __all__ = [
     "FrameStats",
     "FuncCodeInfo",
     "ThreadInfo",
-    "clear_thread_local_info",
+    "_FrameEvalModuleState",
+    "_state",
     "dummy_trace_dispatch",
-    "frame_eval_func",
-    "get_frame_eval_stats",
     "get_func_code_info",
-    "get_thread_info",
-    "mark_thread_as_pydevd",
-    "set_thread_skip_all",
-    "stop_frame_eval",
-    "unmark_thread_as_pydevd",
 ]

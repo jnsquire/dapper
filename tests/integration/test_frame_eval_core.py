@@ -47,48 +47,43 @@ class DefaultThreadInfo(ThreadInfoProtocol):
         self.step_mode = False
 
 
-# Define default implementations
-def default_frame_eval_func(*_args: Any, **_kwargs: Any) -> None:
-    """Default frame evaluation function."""
-    return
+# Define a default mock state class
+class _DefaultFrameEvalState:
+    """Default frame eval state when Cython is not available."""
 
+    def enable(self, *_args: Any, **_kwargs: Any) -> None:
+        return
 
-def default_get_frame_eval_stats() -> dict[str, Any]:
-    """Default implementation for get_frame_eval_stats."""
-    return {}
+    def disable(self) -> None:
+        return
 
+    def get_stats(self) -> dict[str, Any]:
+        return {
+            "active": False,
+            "has_breakpoint_manager": False,
+            "frames_processed": 0,
+            "frames_skipped": 0,
+        }
 
-def default_get_thread_info() -> ThreadInfoProtocol:
-    """Default implementation for get_thread_info."""
-    return DefaultThreadInfo()
+    def get_thread_info(self) -> ThreadInfoProtocol:
+        return DefaultThreadInfo()
 
-
-def default_stop_frame_eval() -> None:
-    """Default implementation for stop_frame_eval."""
-    return
+    def clear_thread_local_info(self) -> None:
+        return
 
 
 # Initialize with default values
 # Type ignore needed because we're dynamically assigning to ThreadInfo
 ThreadInfo: type = DefaultThreadInfo  # type: ignore[assignment]
-frame_eval_func = default_frame_eval_func
-get_frame_eval_stats = default_get_frame_eval_stats
-get_thread_info = default_get_thread_info
-stop_frame_eval = default_stop_frame_eval
+_frame_eval_state = _DefaultFrameEvalState()
 
 try:
     from dapper._frame_eval._frame_evaluator import ThreadInfo as CythonThreadInfo
-    from dapper._frame_eval._frame_evaluator import frame_eval_func as cy_frame_eval_func
-    from dapper._frame_eval._frame_evaluator import get_frame_eval_stats as cy_get_frame_eval_stats
-    from dapper._frame_eval._frame_evaluator import get_thread_info as cy_get_thread_info
-    from dapper._frame_eval._frame_evaluator import stop_frame_eval as cy_stop_frame_eval
+    from dapper._frame_eval._frame_evaluator import _state as cy_frame_eval_state
 
     # Only set these if the imports succeed
-    ThreadInfo = CythonThreadInfo
-    frame_eval_func = cy_frame_eval_func
-    get_frame_eval_stats = cy_get_frame_eval_stats
-    get_thread_info = cy_get_thread_info
-    stop_frame_eval = cy_stop_frame_eval
+    ThreadInfo = CythonThreadInfo  # type: ignore[assignment]
+    _frame_eval_state = cy_frame_eval_state
     CYTHON_AVAILABLE = True
 except ImportError:
     # Fallback implementations for testing when Cython is not available
@@ -100,28 +95,6 @@ except ImportError:
         is_pydevd_thread: bool = False
         skip_all_frames: bool = False
         step_mode: bool = False
-
-    def mock_get_thread_info() -> "ThreadInfo":
-        return ThreadInfo()
-
-    def mock_get_frame_eval_stats() -> dict[str, Any]:
-        return {
-            "active": False,
-            "has_breakpoint_manager": False,
-            "frames_processed": 0,
-            "frames_skipped": 0,
-        }
-
-    def mock_frame_eval_func(*args, **kwargs) -> None:
-        pass
-
-    def mock_stop_frame_eval() -> None:
-        pass
-
-    get_thread_info = mock_get_thread_info
-    get_frame_eval_stats = mock_get_frame_eval_stats
-    frame_eval_func = mock_frame_eval_func
-    stop_frame_eval = mock_stop_frame_eval
 
 
 class TestCoreDebuggerBridge:
@@ -331,7 +304,7 @@ class TestCoreCythonFunctions:
 
     def test_thread_info_basic_operations(self):
         """Test basic thread info operations."""
-        thread_info = get_thread_info()
+        thread_info = _frame_eval_state.get_thread_info()
 
         # Test that it's a ThreadInfo object
         assert isinstance(thread_info, ThreadInfo)
@@ -350,7 +323,7 @@ class TestCoreCythonFunctions:
 
     def test_frame_eval_stats_structure(self):
         """Test frame evaluation stats structure."""
-        stats = get_frame_eval_stats()
+        stats = _frame_eval_state.get_stats()
 
         # Test that it's a dict
         assert isinstance(stats, dict)
@@ -366,15 +339,15 @@ class TestCoreCythonFunctions:
     def test_frame_eval_activation_cycle(self):
         """Test frame evaluation activation cycle."""
         # Get initial state
-        initial_stats = get_frame_eval_stats()
+        initial_stats = _frame_eval_state.get_stats()
 
         # Activate frame evaluation
-        frame_eval_func()
-        active_stats = get_frame_eval_stats()
+        _frame_eval_state.enable()
+        active_stats = _frame_eval_state.get_stats()
 
         # Deactivate frame evaluation
-        stop_frame_eval()
-        inactive_stats = get_frame_eval_stats()
+        _frame_eval_state.disable()
+        inactive_stats = _frame_eval_state.get_stats()
 
         # Test that functions don't crash and return expected types
         assert isinstance(initial_stats["active"], bool)
@@ -386,7 +359,7 @@ class TestCoreCythonFunctions:
         results = []
 
         def get_thread_info_in_thread():
-            thread_info = get_thread_info()
+            thread_info = _frame_eval_state.get_thread_info()
             results.append(thread_info)
 
         # Create multiple threads
