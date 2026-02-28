@@ -528,6 +528,20 @@ class DebugSession:
         else:
             return True
 
+    def safe_send_response(self, **payload: Any) -> bool:
+        """Send a DAP response for the current request, swallowing transport errors.
+
+        Equivalent to ``safe_send("response", id=self.request_id, **payload)``
+        but removes the boilerplate that every command handler repeats.
+
+        Common usage::
+
+            session.safe_send_response(success=True)
+            session.safe_send_response(**result)
+            session.safe_send_response(success=False, message="...")
+        """
+        return self.safe_send("response", id=self.request_id, **payload)
+
     @property
     def ipc_enabled(self) -> bool:
         return self.transport.ipc_enabled

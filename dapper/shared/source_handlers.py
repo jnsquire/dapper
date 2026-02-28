@@ -186,15 +186,13 @@ def handle_source(
             mime_type = "text/plain; charset=utf-8"
 
     if content is None:
-        state.safe_send(
-            "response", id=state.request_id, success=False, message="Could not load source content"
-        )
+        state.safe_send_response(success=False, message="Could not load source content")
         return
 
     body: Payload = {"content": content}
     if mime_type:
         body["mimeType"] = mime_type
-    state.safe_send("response", id=state.request_id, success=True, body=body)
+    state.safe_send_response(success=True, body=body)
 
 
 def handle_legacy_source(

@@ -560,7 +560,7 @@ def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     lifecycle_handlers.handle_configuration_done_impl()
     # Acknowledge the request so the TS adapter's sendRequestToPython resolves
     session = _active_session()
-    session.safe_send("response", id=session.request_id, success=True)
+    session.safe_send_response(success=True)
     # Unblock the launcher main thread which is waiting before starting the program
     session.configuration_done_event.set()
     logger.debug("configurationDone: configuration_done_event set")
@@ -576,7 +576,7 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     # Return here so that the dispatch sends the response first, then
     # the resume event (set inside handle_terminate_impl) unblocks the
     # debugger thread.  Call exit_func *after* the response is sent.
-    state.safe_send("response", id=state.request_id, **result)
+    state.safe_send_response(**result)
     state.exit_func(0)
     return result  # won't reach if exit_func raises, but satisfies type
 
@@ -587,7 +587,7 @@ def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     result = lifecycle_handlers.handle_initialize_impl()
     session = _active_session()
     if result:
-        session.safe_send("response", id=session.request_id, **result)
+        session.safe_send_response(**result)
     # After responding to initialize, emit the 'initialized' event so the client
     # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
     session.safe_send("initialized")
@@ -606,7 +606,7 @@ def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
     """
     logger.info("launch acknowledged")
     session = _active_session()
-    session.safe_send("response", id=session.request_id, success=True)
+    session.safe_send_response(success=True)
 
 
 @command_handler("disconnect")
@@ -619,7 +619,7 @@ def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     logger.info("disconnect received")
     session = _active_session()
     session.terminate_session()
-    session.safe_send("response", id=session.request_id, success=True)
+    session.safe_send_response(success=True)
 
 
 @command_handler("restart")
