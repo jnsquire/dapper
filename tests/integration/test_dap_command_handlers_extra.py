@@ -13,7 +13,6 @@ import pytest
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
-from dapper.shared import command_handlers
 from dapper.shared import command_handlers as handlers
 from dapper.shared import debug_shared
 from dapper.shared import source_handlers
@@ -54,7 +53,7 @@ def _make_variable_for_tests(dbg, name, value, frame):
     )
 
 
-def _invoke_set_variable_via_domain(dbg, arguments):
+def _invoke_set_variable_via_domain(session, arguments):
     def _set_object_member_direct(parent_obj, name, value_str):
         return command_handler_helpers.set_object_member(
             parent_obj,
@@ -92,7 +91,7 @@ def _invoke_set_variable_via_domain(dbg, arguments):
         )
 
     result = variable_handlers.handle_set_variable_impl(
-        dbg,
+        session,
         arguments,
         error_response=handlers._error_response,
         set_object_member=_set_object_member_direct,
@@ -102,26 +101,25 @@ def _invoke_set_variable_via_domain(dbg, arguments):
         var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
     if result:
-        handlers._safe_send_debug_message("setVariable", **result)
+        session.safe_send("setVariable", **result)
 
 
-def capture_send(monkeypatch):
+def capture_send(session):
+    """Install a capturing transport.send on the session and return the messages list."""
     messages: list[tuple[str, dict]] = []
 
     def _send(event, **kwargs):
         messages.append((event, kwargs))
 
-    monkeypatch.setattr(debug_shared, "send_debug_message", _send)
-    monkeypatch.setattr(handlers, "send_debug_message", _send)
-    # Patch where the function is imported into command_handlers
-    monkeypatch.setattr(command_handlers, "send_debug_message", _send)
+    session.transport.send = _send  # type: ignore[assignment]
     return messages
 
 
 def test_set_breakpoints_and_state(monkeypatch):
     dbg = DebuggerBDB()
-    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
-    messages = capture_send(monkeypatch)
+    session = debug_shared.get_active_session()
+    session.debugger = cast("DebuggerLike", dbg)
+    messages = capture_send(session)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
         handle.write("\n".join(f"x_{line} = {line}" for line in range(1, 26)) + "\n")
@@ -136,12 +134,11 @@ def test_set_breakpoints_and_state(monkeypatch):
         dbg.breaks = {source_path: [5]}  # type: ignore[attr-defined]
 
         breakpoint_handlers.handle_set_breakpoints_impl(
-            dbg,
+            session,
             {
                 "source": {"path": source_path},
                 "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
             },
-            handlers._safe_send_debug_message,
             cast("LoggerLike", handlers.logger),
         )
 
@@ -155,8 +152,9 @@ def test_set_breakpoints_and_state(monkeypatch):
 
 def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
-    messages = capture_send(monkeypatch)
+    session = debug_shared.get_active_session()
+    session.debugger = cast("DebuggerLike", dbg)
+    messages = capture_send(session)
 
     class Frame:
         def __init__(self):
@@ -167,19 +165,20 @@ def test_create_variable_object_and_set_variable_scope(monkeypatch):
     dbg.frame_id_to_frame[42] = frame
     dbg.var_refs[1] = (42, "locals")
 
-    _invoke_set_variable_via_domain(dbg, {"variablesReference": 1, "name": "a", "value": "2"})
+    _invoke_set_variable_via_domain(session, {"variablesReference": 1, "name": "a", "value": "2"})
     assert frame.f_locals["a"] == 2
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
 
 def test_set_variable_on_object(monkeypatch):
     dbg = DummyDebugger()
-    debug_shared.get_active_session().debugger = cast("DebuggerLike", dbg)
-    messages = capture_send(monkeypatch)
+    session = debug_shared.get_active_session()
+    session.debugger = cast("DebuggerLike", dbg)
+    messages = capture_send(session)
 
     obj = {"x": 1}
     dbg.var_refs[2] = ("object", obj)
-    _invoke_set_variable_via_domain(dbg, {"variablesReference": 2, "name": "x", "value": "3"})
+    _invoke_set_variable_via_domain(session, {"variablesReference": 2, "name": "x", "value": "3"})
     assert obj["x"] == 3
     assert any(m[0] == "setVariable" and m[1].get("success") for m in messages)
 
@@ -202,10 +201,9 @@ def test_loaded_sources_collect(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "mymod", fake_mod)
 
     session = debug_shared.get_active_session()
+    messages = capture_send(session)
 
-    messages = capture_send(monkeypatch)
-
-    source_handlers.handle_loaded_sources(session, handlers._safe_send_debug_message)
+    source_handlers.handle_loaded_sources(session)
 
     resp = [m for m in messages if m[0] == "response"]
     assert resp

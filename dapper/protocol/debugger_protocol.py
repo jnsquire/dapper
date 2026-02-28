@@ -251,6 +251,7 @@ class DebuggerLike(
     SupportsVariableFactory,
     SupportsBreakpointCommands,
     SupportsTaskRegistry,
+    SupportsThreadTracker,
     Protocol,
 ):
     """Public debugger typing surface for shared helpers and command plumbing.
@@ -271,17 +272,16 @@ class DebuggerLike(
     VarRefList: Any
     VarRef: Any
 
+    stack: list[Any] | None
+
 
 @runtime_checkable
 class CommandHandlerDebuggerLike(
     DebuggerLike,
-    SupportsThreadTracker,
     SupportsSteppingCommands,
     Protocol,
 ):
     """Extended debugger surface consumed by command handler implementations."""
-
-    stack: list[Any] | None
 
 
 __all__ = [

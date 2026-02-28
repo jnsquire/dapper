@@ -11,7 +11,6 @@ from typing import Any
 
 if TYPE_CHECKING:
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
     from dapper.shared.debug_shared import DebugSession
 
 
@@ -112,7 +111,6 @@ def _collect_dynamic_sources(state: DebugSession) -> list[dict[str, Any]]:
 
 def handle_loaded_sources(
     state: DebugSession,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle loadedSources request to return all loaded source files."""
     seen_paths = set[str]()
@@ -137,18 +135,22 @@ def handle_loaded_sources(
     # Include dynamic (in-memory) sources — these already carry sourceReference.
     loaded_sources.extend(_collect_dynamic_sources(state))
 
-    safe_send_debug_message("response", success=True, body={"sources": loaded_sources})
+    state.safe_send(
+        "response", id=state.request_id, success=True, body={"sources": loaded_sources}
+    )
 
 
 def handle_source(
     arguments: Payload | None,
     state: DebugSession,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle source request to return source content."""
     if arguments is None:
-        safe_send_debug_message(
-            "response", success=False, message="Missing arguments for source request"
+        state.safe_send(
+            "response",
+            id=state.request_id,
+            success=False,
+            message="Missing arguments for source request",
         )
         return
 
@@ -184,19 +186,20 @@ def handle_source(
             mime_type = "text/plain; charset=utf-8"
 
     if content is None:
-        safe_send_debug_message("response", success=False, message="Could not load source content")
+        state.safe_send(
+            "response", id=state.request_id, success=False, message="Could not load source content"
+        )
         return
 
     body: Payload = {"content": content}
     if mime_type:
         body["mimeType"] = mime_type
-    safe_send_debug_message("response", success=True, body=body)
+    state.safe_send("response", id=state.request_id, success=True, body=body)
 
 
 def handle_legacy_source(
     arguments: Payload | None,
     state: DebugSession,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> Payload:
     """Handle source command for legacy (dbg, arguments) call shape."""
     arguments = arguments or {}
@@ -220,13 +223,13 @@ def handle_legacy_source(
             if resolved is not None:
                 content = resolved
 
-    safe_send_debug_message("source", content=content)
+    state.safe_send("source", content=content)
     return {"success": True, "body": {"content": content}}
 
 
 def handle_modules(
     arguments: Payload | None,
-    safe_send_debug_message: SafeSendDebugMessageFn,
+    state: DebugSession,
 ) -> None:
     """Handle modules request to return loaded Python modules."""
     all_modules: list[Payload] = []
@@ -272,8 +275,9 @@ def handle_modules(
     else:
         modules = all_modules
 
-    safe_send_debug_message(
+    state.safe_send(
         "response",
+        id=state.request_id,
         success=True,
         body={"modules": modules, "totalModules": len(all_modules)},
     )

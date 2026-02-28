@@ -7,15 +7,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from logging import Logger
 
-    from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
+    from dapper.shared.debug_shared import DebugSession
 
 
 def handle_set_breakpoints_impl(
-    dbg: DebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     logger: Logger,
 ) -> Payload | None:
     """Handle setBreakpoints command implementation."""
@@ -24,6 +22,7 @@ def handle_set_breakpoints_impl(
     bps = arguments.get("breakpoints", [])
     path = source.get("path")
 
+    dbg = session.debugger
     if path and dbg:
         try:
             dbg.clear_breaks_for_file(path)
@@ -74,20 +73,21 @@ def handle_set_breakpoints_impl(
 
                 verified_bps.append({"verified": verified, "line": line})
 
-        safe_send_debug_message("breakpoints", source=source, breakpoints=verified_bps)
+        session.safe_send("breakpoints", source=source, breakpoints=verified_bps)
         return {"success": True, "body": {"breakpoints": verified_bps}}
 
     return None
 
 
 def handle_set_function_breakpoints_impl(
-    dbg: DebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
 ) -> Payload | None:
     """Handle setFunctionBreakpoints command implementation."""
     arguments = arguments or {}
     bps = arguments.get("breakpoints", [])
 
+    dbg = session.debugger
     if dbg:
         dbg.clear_all_function_breakpoints()
 
@@ -131,7 +131,7 @@ def handle_set_function_breakpoints_impl(
 
 
 def handle_set_exception_breakpoints_impl(
-    dbg: DebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
 ) -> Payload | None:
     """Handle setExceptionBreakpoints command implementation."""
@@ -143,6 +143,7 @@ def handle_set_exception_breakpoints_impl(
     else:
         filters = []
 
+    dbg = session.debugger
     if not dbg:
         return None
 

@@ -10,9 +10,8 @@ from typing import Protocol
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
 
 if TYPE_CHECKING:
-    from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
+    from dapper.shared.debug_shared import DebugSession
 
 
 class GetThreadIdentFn(Protocol):
@@ -20,11 +19,10 @@ class GetThreadIdentFn(Protocol):
 
 
 def handle_stack_trace_impl(  # noqa: PLR0912
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
     get_thread_ident: GetThreadIdentFn,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> Payload:
     """Handle stackTrace command implementation."""
     arguments = arguments or {}
@@ -33,14 +31,10 @@ def handle_stack_trace_impl(  # noqa: PLR0912
     levels = arguments.get("levels")
 
     stack_frames: list[Payload] = []
+    dbg = session.debugger
 
     frames = None
-    if (
-        dbg
-        and hasattr(dbg, "thread_tracker")
-        and isinstance(thread_id, int)
-        and thread_id in getattr(dbg.thread_tracker, "frames_by_thread", {})
-    ):
+    if dbg and isinstance(thread_id, int) and thread_id in dbg.thread_tracker.frames_by_thread:
         raw_frames = dbg.thread_tracker.frames_by_thread[thread_id]
         for entry in raw_frames:
             if isinstance(entry, dict):
@@ -63,7 +57,7 @@ def handle_stack_trace_impl(  # noqa: PLR0912
                 )
     else:
         if dbg:
-            stack = getattr(dbg, "stack", None)
+            stack = dbg.stack
             if stack is not None and thread_id == get_thread_ident():
                 frames = stack[start_frame:]
         if levels is not None and frames is not None:
@@ -95,7 +89,7 @@ def handle_stack_trace_impl(  # noqa: PLR0912
         # DAP clients can fetch the in-memory source via the source request.
         annotate_stack_frames_with_source_refs(stack_frames)
 
-    safe_send_debug_message(
+    session.safe_send(
         "stackTrace",
         threadId=thread_id,
         stackFrames=stack_frames,
@@ -106,13 +100,13 @@ def handle_stack_trace_impl(  # noqa: PLR0912
 
 
 def handle_threads_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     _arguments: Payload | None,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> Payload:
     """Handle threads command implementation."""
     threads = []
-    if dbg and getattr(dbg.thread_tracker, "threads", None):
+    dbg = session.debugger
+    if dbg and dbg.thread_tracker.threads:
         # Build a live name map from threading.enumerate() so that names
         # changed after registration (e.g. thread.name = 'worker') are
         # reflected immediately rather than returning the stale stored value.
@@ -128,15 +122,14 @@ def handle_threads_impl(
             name = live_names.get(tid, stored_name)
             threads.append({"id": tid, "name": name})
 
-    safe_send_debug_message("threads", threads=threads)
+    session.safe_send("threads", threads=threads)
     return {"success": True, "body": {"threads": threads}}
 
 
 def handle_scopes_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     var_ref_tuple_size: int,  # noqa: ARG001
 ) -> Payload:
     """Handle scopes command implementation."""
@@ -144,13 +137,14 @@ def handle_scopes_impl(
     frame_id = arguments.get("frameId")
 
     scopes = []
+    dbg = session.debugger
     if frame_id is not None:
         frame = None
-        if dbg and getattr(dbg.thread_tracker, "frame_id_to_frame", None):
+        if dbg:
             frame = dbg.thread_tracker.frame_id_to_frame.get(frame_id)
-        elif dbg and getattr(dbg, "stack", None):
+        if not frame and dbg and dbg.stack:
             try:
-                stack = getattr(dbg, "stack", None)
+                stack = dbg.stack
                 if stack is not None and frame_id is not None and frame_id < len(stack):
                     frame, _ = stack[frame_id]
                 else:
@@ -177,5 +171,5 @@ def handle_scopes_impl(
                 },
             ]
 
-    safe_send_debug_message("scopes", scopes=scopes)
+    session.safe_send("scopes", scopes=scopes)
     return {"success": True, "body": {"scopes": scopes}}

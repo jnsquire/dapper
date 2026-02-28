@@ -101,9 +101,9 @@ class SessionTransport:
         self.ipc_pipe_conn: Any | None = None
         self.on_debug_message = EventEmitter()
         # The request id of the command currently being handled.  Set by
-        # ``begin_request()`` and cleared by ``end_request()``.  ``send()``
-        # auto-injects this into every outbound *response* message so the
-        # TypeScript adapter can correlate responses to requests.
+        # ``request_scope()`` and cleared on exit.  Handlers read this via
+        # ``_current_request_id()`` to attach the id explicitly when
+        # constructing response messages.
         self.current_request_id: int | str | None = None
         # Tracks whether a response has already been sent for the current
         # command dispatch cycle.  Set automatically by ``send()`` when a
@@ -115,9 +115,10 @@ class SessionTransport:
     def request_scope(self, request_id: int | str | None) -> Iterator[SessionTransport]:
         """Context manager that brackets a single request lifecycle.
 
-        Sets the current request id on entry and clears it on exit,
-        ensuring ``end_request()`` is always called — even if the
-        handler raises.
+        Sets ``current_request_id`` on entry (readable by handlers via
+        ``_current_request_id()``) and clears it on exit.  Also resets
+        ``response_sent`` so the dispatcher can detect whether a handler
+        already sent its own response.
         """
         self.current_request_id = request_id
         self.response_sent = False
@@ -143,12 +144,16 @@ class SessionTransport:
         message: dict[str, Any] = {"event": message_type}
         message.update(kwargs)
 
-        # Auto-inject the current request id into response messages so the
-        # TypeScript adapter can match them to the pending request.
+        # Track that a response has been sent for the current request
+        # lifecycle so the dispatcher knows not to send a default ack.
         if message_type == "response":
             self.response_sent = True
-            if "id" not in message and self.current_request_id is not None:
-                message["id"] = self.current_request_id
+            if "id" not in message or message["id"] is None:
+                logger.warning(
+                    "Sending response without id (current_request_id=%s, keys=%s)",
+                    self.current_request_id,
+                    list(message.keys()),
+                )
 
         with contextlib.suppress(Exception):
             self.on_debug_message.emit(message_type, **kwargs)
@@ -494,6 +499,34 @@ class DebugSession:
         logger.info("terminate_session: marking terminated (session_id=%s)", self.session_id)
         self.is_terminated = True
         self.signal_resume()
+
+    # ------------------------------------------------------------------
+    # Request lifecycle helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def request_id(self) -> int | str | None:
+        """The request id of the command currently being handled.
+
+        Reads the value set by :meth:`SessionTransport.request_scope` on the
+        transport.  Handlers use this when constructing response messages so
+        the ``id`` is attached explicitly at the construction site.
+        """
+        return self.transport.current_request_id
+
+    def safe_send(self, message_type: str, **payload: Any) -> bool:
+        """Send a debug message, swallowing transport errors.
+
+        Returns ``True`` on success, ``False`` if a transport-layer
+        exception was caught and suppressed.
+        """
+        try:
+            self.transport.send(message_type, **payload)
+        except (BrokenPipeError, ConnectionError, OSError, RuntimeError, TypeError, ValueError):
+            logger.debug("Failed to send debug message '%s'", message_type, exc_info=True)
+            return False
+        else:
+            return True
 
     @property
     def ipc_enabled(self) -> bool:

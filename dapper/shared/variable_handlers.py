@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
+    from dapper.shared.debug_shared import DebugSession
 
 
 class ResolveVariablesForReferenceFn(Protocol):
@@ -114,37 +114,33 @@ def format_evaluation_error(
 
 
 def handle_variables_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     resolve_variables_for_reference: ResolveVariablesForReferenceFn,
 ) -> Payload | None:
     """Handle variables command implementation."""
     arguments = arguments or {}
     variables_reference = arguments.get("variablesReference")
 
+    dbg = session.debugger
     variables: list[Payload] = []
     if not (
         dbg
         and isinstance(variables_reference, int)
         and variables_reference in getattr(dbg.var_manager, "var_refs", {})
     ):
-        safe_send_debug_message(
-            "variables", variablesReference=variables_reference, variables=variables
-        )
+        session.safe_send("variables", variablesReference=variables_reference, variables=variables)
         return None
 
     frame_info = dbg.var_manager.var_refs[variables_reference]
     variables = resolve_variables_for_reference(dbg, frame_info)
 
-    safe_send_debug_message(
-        "variables", variablesReference=variables_reference, variables=variables
-    )
+    session.safe_send("variables", variablesReference=variables_reference, variables=variables)
     return {"success": True, "body": {"variables": variables}}
 
 
 def handle_set_variable_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
     error_response: ErrorResponseFn,
@@ -160,6 +156,7 @@ def handle_set_variable_impl(
     name = arguments.get("name")
     value = arguments.get("value")
 
+    dbg = session.debugger
     if not (dbg and isinstance(variables_reference, int) and name and value is not None):
         return error_response("Invalid arguments")
 
@@ -190,7 +187,7 @@ def handle_set_variable_impl(
 
 
 def handle_set_variable_command_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
     dependencies: SetVariableCommandDependencies,
@@ -261,7 +258,7 @@ def handle_set_variable_command_impl(
         )
 
     return handle_set_variable_impl(
-        dbg,
+        session,
         arguments,
         error_response=error_response_fn,
         set_object_member=_set_object_member,
@@ -273,12 +270,11 @@ def handle_set_variable_command_impl(
 
 
 def handle_evaluate_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
     evaluate_with_policy: EvaluateWithPolicyFn,
     format_evaluation_error: FormatEvaluationErrorFn | None,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     logger: Logger,
 ) -> Payload:
     """Handle evaluate command implementation."""
@@ -289,11 +285,13 @@ def handle_evaluate_impl(
     result = "<error>"
     format_error_fn = format_evaluation_error or globals()["format_evaluation_error"]
 
+    dbg = session.debugger
+
     if dbg and expression:
         if not isinstance(expression, str):
             raise TypeError("expression must be a string")
         try:
-            stack = getattr(dbg, "stack", None)
+            stack = dbg.stack
             if stack and frame_id is not None and frame_id < len(stack):
                 frame, _ = stack[frame_id]
                 try:
@@ -310,7 +308,7 @@ def handle_evaluate_impl(
         except (AttributeError, IndexError, KeyError, NameError, TypeError):
             logger.debug("Evaluate context resolution failed", exc_info=True)
 
-    safe_send_debug_message(
+    session.safe_send(
         "evaluate",
         expression=expression,
         result=result,
@@ -327,7 +325,7 @@ def handle_evaluate_impl(
 
 
 def handle_set_data_breakpoints_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     logger: Logger,
 ) -> Payload:
@@ -335,6 +333,7 @@ def handle_set_data_breakpoints_impl(
     arguments = arguments or {}
     breakpoints = arguments.get("breakpoints", [])
 
+    dbg = session.debugger
     clear_all = getattr(dbg, "clear_all_data_breakpoints", None)
     if callable(clear_all):
         try:
@@ -448,7 +447,7 @@ def _append_watch_registration(
 
 
 def handle_data_breakpoint_info_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     *,
     max_value_repr_len: int,
@@ -460,6 +459,7 @@ def handle_data_breakpoint_info_impl(
     variables_reference = arguments.get("variablesReference")
 
     data_id = f"{variables_reference}:{name}" if variables_reference else name
+    dbg = session.debugger
 
     body: Payload = {
         "dataId": data_id,

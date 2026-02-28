@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from dapper.shared import command_handler_helpers
 from dapper.shared import command_handlers
 from dapper.shared import variable_handlers
+from dapper.shared.debug_shared import DebugSession
 from dapper.shared.value_conversion import convert_value_with_context
 
 _CONVERSION_FAILED = object()
@@ -44,6 +45,11 @@ class TestEnhancedSetVariable(unittest.TestCase):
         self.mock_frame = Mock()
         self.mock_frame.f_locals = {"x": 10, "items": [1, 2, 3]}
         self.mock_frame.f_globals = {"config": {"debug": True}}
+
+    def _make_session(self) -> DebugSession:
+        session = DebugSession()
+        session.debugger = self.mock_debugger
+        return session
 
     def _set_object_member_direct(self, parent_obj, name, value_str):
         return command_handler_helpers.set_object_member(
@@ -169,7 +175,7 @@ class TestEnhancedSetVariable(unittest.TestCase):
         }
 
         result = variable_handlers.handle_set_variable_impl(
-            self.mock_debugger,
+            self._make_session(),
             arguments,
             error_response=command_handlers._error_response,
             set_object_member=self._set_object_member_direct,

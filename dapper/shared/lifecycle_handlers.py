@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
     from dapper.shared.debug_shared import DebugSession
 
 
@@ -59,11 +58,10 @@ def handle_configuration_done_impl() -> Payload:
 
 def handle_terminate_impl(
     *,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     state: DebugSession,
 ) -> Payload:
     """Handle terminate command."""
-    safe_send_debug_message("exited", exitCode=0)
+    state.safe_send("exited", exitCode=0)
     state.terminate_session()
     # Return a success response so the dispatch sends it before we exit.
     # exit_func is called after the handler returns (or in a deferred manner).
@@ -87,12 +85,11 @@ def handle_initialize_impl() -> Payload:
 
 def handle_restart_impl(  # noqa: PLR0912, PLR0915
     *,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     state: DebugSession,
     logger: Logger,
 ) -> Payload:
     """Handle restart command."""
-    safe_send_debug_message("exited", exitCode=0)
+    state.safe_send("exited", exitCode=0)
 
     try:
         state.is_terminated = True
@@ -158,28 +155,25 @@ def cmd_exception_info(
     arguments: Payload | None,
     *,
     state: DebugSession,
-    safe_send_debug_message: SafeSendDebugMessageFn,
 ) -> None:
     """Handle exceptionInfo request on command registry pathway."""
     thread_id = arguments.get("threadId") if arguments else None
     if thread_id is None:
-        safe_send_debug_message("error", message="Missing required argument 'threadId'")
+        state.safe_send("error", message="Missing required argument 'threadId'")
         return
 
     dbg = state.debugger
     if not dbg:
-        safe_send_debug_message("error", message="Debugger not initialized")
+        state.safe_send("error", message="Debugger not initialized")
         return
 
     exception_handler = dbg.exception_handler
     if thread_id not in exception_handler.exception_info_by_thread:
-        safe_send_debug_message(
-            "error", message=f"No exception info available for thread {thread_id}"
-        )
+        state.safe_send("error", message=f"No exception info available for thread {thread_id}")
         return
 
     exception_info = exception_handler.exception_info_by_thread[thread_id]
-    safe_send_debug_message(
+    state.safe_send(
         "exceptionInfo",
         exceptionId=exception_info["exceptionId"],
         description=exception_info["description"],

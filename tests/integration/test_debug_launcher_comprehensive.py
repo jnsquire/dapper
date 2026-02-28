@@ -165,9 +165,9 @@ def _resolve_variables_for_reference(dbg: Any, frame_info: Any) -> list[dict[str
     )
 
 
-def _handle_set_variable(dbg: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+def _handle_set_variable(session: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     return variable_handlers.handle_set_variable_impl(
-        dbg,
+        session,
         arguments,
         error_response=handlers._error_response,
         set_object_member=_set_object_member_direct,
@@ -207,7 +207,7 @@ def _session_with_debugger(dbg: Any) -> tuple[debug_shared.DebugSession, Any]:
 
 def test_handle_set_breakpoints_success(tmp_path):
     """Test successful breakpoint setting with various conditions."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     src = tmp_path / "bp_success.py"
     src.write_text("\n".join(f"x = {i}" for i in range(1, 51)) + "\n", encoding="utf-8")
@@ -229,9 +229,8 @@ def test_handle_set_breakpoints_success(tmp_path):
     }
 
     result = breakpoint_handlers.handle_set_breakpoints_impl(
-        dbg,
+        s,
         arguments,
-        handlers._safe_send_debug_message,
         handlers.logger,
     )
 
@@ -264,7 +263,7 @@ def test_handle_set_breakpoints_success(tmp_path):
 
 def test_handle_set_breakpoints_failure(monkeypatch):
     """Test breakpoint setting when debugger returns False."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Create a mock function that will replace set_break
     def mock_set_break(
@@ -284,9 +283,8 @@ def test_handle_set_breakpoints_failure(monkeypatch):
     arguments = {"source": {"path": "/test/file.py"}, "breakpoints": [{"line": 10}]}
 
     result = breakpoint_handlers.handle_set_breakpoints_impl(
-        dbg,
+        s,
         arguments,
-        handlers._safe_send_debug_message,
         handlers.logger,
     )
 
@@ -299,7 +297,7 @@ def test_handle_set_breakpoints_failure(monkeypatch):
 
 def test_handle_set_breakpoints_exception_handling(monkeypatch):
     """Test graceful handling when set_break raises an exception."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Mock set_break to raise an exception using monkeypatch
     def mock_set_break(self, filename, lineno, temporary=False, cond=None, funcname=None):
@@ -310,9 +308,8 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
     arguments = {"source": {"path": "/test/file.py"}, "breakpoints": [{"line": 10}]}
 
     result = breakpoint_handlers.handle_set_breakpoints_impl(
-        dbg,
+        s,
         arguments,
-        handlers._safe_send_debug_message,
         handlers.logger,
     )
 
@@ -325,7 +322,7 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
 
 def test_handle_set_function_breakpoints():
     """Test setting function breakpoints."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     arguments = cast(
         "SetFunctionBreakpointsArguments",
@@ -341,7 +338,7 @@ def test_handle_set_function_breakpoints():
         },
     )
 
-    result = breakpoint_handlers.handle_set_function_breakpoints_impl(dbg, arguments)
+    result = breakpoint_handlers.handle_set_function_breakpoints_impl(s, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -368,7 +365,7 @@ def test_handle_set_function_breakpoints():
 
 def test_handle_set_function_breakpoints_empty():
     """Test setting function breakpoints with empty list."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Add some existing breakpoints first
     dbg.bp_manager.function_names = ["old_func"]
@@ -376,7 +373,7 @@ def test_handle_set_function_breakpoints_empty():
 
     arguments: SetFunctionBreakpointsArguments = {"breakpoints": []}
 
-    result = breakpoint_handlers.handle_set_function_breakpoints_impl(dbg, arguments)
+    result = breakpoint_handlers.handle_set_function_breakpoints_impl(s, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -386,12 +383,12 @@ def test_handle_set_function_breakpoints_empty():
 
 def test_handle_set_exception_breakpoints():
     """Test setting exception breakpoints."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Test with raised and uncaught filters
     arguments = {"filters": ["raised", "uncaught"]}
 
-    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(s, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -409,7 +406,7 @@ def test_handle_set_exception_breakpoints():
 
     # Test with only raised filter
     arguments = {"filters": ["raised"]}
-    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(s, arguments)
 
     assert dbg.exception_handler.config.break_on_raised is True
     assert dbg.exception_handler.config.break_on_uncaught is False
@@ -417,12 +414,12 @@ def test_handle_set_exception_breakpoints():
 
 def test_handle_set_exception_breakpoints_invalid_filters():
     """Test exception breakpoints with invalid filter types."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, _dbg = _session_with_debugger(DebuggerBDB())
 
     # Test with non-list filters
     arguments = {"filters": "invalid"}
 
-    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(s, arguments)
 
     assert result is not None
     assert result["success"] is True
@@ -450,12 +447,12 @@ def test_handle_set_exception_breakpoints_exception_handling():
             type(mock_config).break_on_uncaught = PropertyMock(side_effect=raise_on_set)
             self.exception_handler.config = mock_config
 
-    _s, failing_dbg = _session_with_debugger(FailingDebugger())
+    s, _failing_dbg = _session_with_debugger(FailingDebugger())
 
     # Test with one filter that will cause an exception
     arguments = {"filters": ["raised"]}
 
-    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(failing_dbg, arguments)
+    result = breakpoint_handlers.handle_set_exception_breakpoints_impl(s, arguments)
 
     # Verify the response structure
     assert result is not None
@@ -475,7 +472,7 @@ def test_handle_set_exception_breakpoints_exception_handling():
 
     # Also test with an empty filters list to ensure it handles that case
     empty_result = breakpoint_handlers.handle_set_exception_breakpoints_impl(
-        failing_dbg,
+        s,
         {"filters": []},
     )
     assert empty_result is not None
@@ -488,7 +485,7 @@ def test_handle_set_exception_breakpoints_exception_handling():
 
 def test_handle_continue():
     """Test continue command handling."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Add a stopped thread
     thread_id = 123
@@ -496,7 +493,7 @@ def test_handle_continue():
 
     arguments = {"threadId": thread_id}
 
-    stepping_handlers.handle_continue_impl(dbg, arguments)
+    stepping_handlers.handle_continue_impl(s, arguments)
 
     assert thread_id not in dbg.stopped_thread_ids
     assert dbg._continued is True
@@ -504,7 +501,7 @@ def test_handle_continue():
 
 def test_handle_continue_multiple_threads():
     """Test continue with multiple stopped threads."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Add multiple stopped threads
     thread_id1 = 123
@@ -512,14 +509,14 @@ def test_handle_continue_multiple_threads():
     dbg.stopped_thread_ids.update([thread_id1, thread_id2])
 
     # Continue one thread
-    stepping_handlers.handle_continue_impl(dbg, {"threadId": thread_id1})
+    stepping_handlers.handle_continue_impl(s, {"threadId": thread_id1})
 
     assert thread_id1 not in dbg.stopped_thread_ids
     assert thread_id2 in dbg.stopped_thread_ids
     assert dbg._continued is False  # Should not continue yet
 
     # Continue second thread
-    stepping_handlers.handle_continue_impl(dbg, {"threadId": thread_id2})
+    stepping_handlers.handle_continue_impl(s, {"threadId": thread_id2})
 
     assert thread_id2 not in dbg.stopped_thread_ids
     assert dbg._continued is True  # Should continue now
@@ -527,7 +524,7 @@ def test_handle_continue_multiple_threads():
 
 def test_handle_step_commands():
     """Test step in/out/next commands."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create a mock frame
     frame = MockFrame()
@@ -538,7 +535,7 @@ def test_handle_step_commands():
 
     # Test step in
     stepping_handlers.handle_step_in_impl(
-        dbg,
+        s,
         {"threadId": current_thread_id},
         handlers._get_thread_ident,
         handlers._set_dbg_stepping_flag,
@@ -552,7 +549,7 @@ def test_handle_step_commands():
 
     # Test step over (next)
     stepping_handlers.handle_next_impl(
-        dbg,
+        s,
         {"threadId": current_thread_id},
         handlers._get_thread_ident,
         handlers._set_dbg_stepping_flag,
@@ -566,7 +563,7 @@ def test_handle_step_commands():
 
     # Test step out
     stepping_handlers.handle_step_out_impl(
-        dbg,
+        s,
         {"threadId": current_thread_id},
         handlers._get_thread_ident,
         handlers._set_dbg_stepping_flag,
@@ -577,14 +574,13 @@ def test_handle_step_commands():
 
 def test_handle_pause():
     """Test pause command handling — thread should be marked stopped."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Pause the remote thread id and verify bookkeeping + stopped event
     stepping_handlers.handle_pause_impl(
-        dbg,
+        s,
         {"threadId": 123},
         handlers._get_thread_ident,
-        handlers._safe_send_debug_message,
         handlers.logger,
     )
 
@@ -593,7 +589,7 @@ def test_handle_pause():
 
 def test_handle_stack_trace():
     """Test stack trace command handling."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Create mock frames
     frame1 = {"id": 1, "name": "func1", "line": 10}
@@ -605,24 +601,22 @@ def test_handle_stack_trace():
 
     # Test full stack trace
     stack_handlers.handle_stack_trace_impl(
-        dbg,
+        s,
         {"threadId": thread_id},
         get_thread_ident=handlers._get_thread_ident,
-        safe_send_debug_message=handlers._safe_send_debug_message,
     )
 
     # Test with startFrame and levels
     stack_handlers.handle_stack_trace_impl(
-        dbg,
+        s,
         {"threadId": thread_id, "startFrame": 1, "levels": 2},
         get_thread_ident=handlers._get_thread_ident,
-        safe_send_debug_message=handlers._safe_send_debug_message,
     )
 
 
 def test_handle_stack_trace_pagination():
     """Test stack trace pagination with startFrame and levels."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Create many mock frames
     frames = [{"id": i, "name": f"func{i}", "line": i * 10} for i in range(1, 11)]
@@ -631,16 +625,15 @@ def test_handle_stack_trace_pagination():
 
     # Test pagination
     stack_handlers.handle_stack_trace_impl(
-        dbg,
+        s,
         {"threadId": thread_id, "startFrame": 2, "levels": 3},
         get_thread_ident=handlers._get_thread_ident,
-        safe_send_debug_message=handlers._safe_send_debug_message,
     )
 
 
 def test_handle_variables_cached_list():
     """Test variables command with cached list."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create cached variables list
     var_ref = 100
@@ -651,9 +644,8 @@ def test_handle_variables_cached_list():
     dbg.var_refs[var_ref] = cached_vars
 
     variable_handlers.handle_variables_impl(
-        dbg,
+        s,
         {"variablesReference": var_ref},
-        handlers._safe_send_debug_message,
         _resolve_variables_for_reference,
     )
     # Should not raise exception and should send message
@@ -661,7 +653,7 @@ def test_handle_variables_cached_list():
 
 def test_handle_variables_object_reference():
     """Test variables command with object reference."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create object reference
     var_ref = 101
@@ -669,9 +661,8 @@ def test_handle_variables_object_reference():
     dbg.var_refs[var_ref] = ("object", test_obj)
 
     variable_handlers.handle_variables_impl(
-        dbg,
+        s,
         {"variablesReference": var_ref},
-        handlers._safe_send_debug_message,
         _resolve_variables_for_reference,
     )
     # Should not raise exception and should send message
@@ -679,7 +670,7 @@ def test_handle_variables_object_reference():
 
 def test_handle_variables_scope_reference():
     """Test variables command with scope reference."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create frame and scope reference
     frame_id = 1
@@ -693,9 +684,8 @@ def test_handle_variables_scope_reference():
     dbg.var_refs[var_ref] = (frame_id, "locals")
 
     variable_handlers.handle_variables_impl(
-        dbg,
+        s,
         {"variablesReference": var_ref},
-        handlers._safe_send_debug_message,
         _resolve_variables_for_reference,
     )
     # Should not raise exception and should send message
@@ -703,13 +693,12 @@ def test_handle_variables_scope_reference():
 
 def test_handle_variables_invalid_reference():
     """Test variables command with invalid reference."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Test with non-existent reference
     variable_handlers.handle_variables_impl(
-        dbg,
+        s,
         {"variablesReference": 999},
-        handlers._safe_send_debug_message,
         _resolve_variables_for_reference,
     )
     # Should not raise exception
@@ -719,9 +708,8 @@ def test_handle_variables_invalid_reference():
     dbg.var_refs[var_ref] = "invalid_type"
 
     variable_handlers.handle_variables_impl(
-        dbg,
+        s,
         {"variablesReference": var_ref},
-        handlers._safe_send_debug_message,
         _resolve_variables_for_reference,
     )
     # Should not raise exception
@@ -729,7 +717,7 @@ def test_handle_variables_invalid_reference():
 
 def test_handle_set_variable_object_member():
     """Test setting variable on object."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create object reference
     var_ref = 104
@@ -737,7 +725,7 @@ def test_handle_set_variable_object_member():
     dbg.var_refs[var_ref] = ("object", test_obj)
 
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "existing_key", "value": "new_value"},
     )
 
@@ -748,7 +736,7 @@ def test_handle_set_variable_object_member():
 
 def test_handle_set_variable_list_member():
     """Test setting variable in list."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create list reference
     var_ref = 105
@@ -756,7 +744,7 @@ def test_handle_set_variable_list_member():
     dbg.var_refs[var_ref] = ("object", test_list)
 
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "1", "value": "new_item"},
     )
 
@@ -767,7 +755,7 @@ def test_handle_set_variable_list_member():
 
 def test_handle_set_variable_list_invalid_index():
     """Test setting variable with invalid list index."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create list reference
     var_ref = 106
@@ -776,7 +764,7 @@ def test_handle_set_variable_list_invalid_index():
 
     # Test invalid index
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "invalid", "value": "new_item"},
     )
 
@@ -786,7 +774,7 @@ def test_handle_set_variable_list_invalid_index():
 
     # Test out of range index
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "5", "value": "new_item"},
     )
 
@@ -797,7 +785,7 @@ def test_handle_set_variable_list_invalid_index():
 
 def test_handle_set_variable_tuple():
     """Test setting variable on tuple (should fail)."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create tuple reference
     var_ref = 107
@@ -805,7 +793,7 @@ def test_handle_set_variable_tuple():
     dbg.var_refs[var_ref] = ("object", test_tuple)
 
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "0", "value": "new_item"},
     )
 
@@ -816,7 +804,7 @@ def test_handle_set_variable_tuple():
 
 def test_handle_set_variable_scope_variable():
     """Test setting variable in frame scope."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create frame and scope reference
     frame_id = 2
@@ -827,7 +815,7 @@ def test_handle_set_variable_scope_variable():
     dbg.var_refs[var_ref] = (frame_id, "locals")
 
     result = _handle_set_variable(
-        dbg,
+        s,
         {"variablesReference": var_ref, "name": "y", "value": "new_value"},
     )
 
@@ -838,9 +826,9 @@ def test_handle_set_variable_scope_variable():
 
 def test_handle_set_variable_invalid_reference():
     """Test setting variable with invalid reference."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, _dbg = _session_with_debugger(DummyDebugger())
 
-    result = _handle_set_variable(dbg, {"variablesReference": 999, "name": "x", "value": "value"})
+    result = _handle_set_variable(s, {"variablesReference": 999, "name": "x", "value": "value"})
 
     assert result is not None
     assert result["success"] is False
@@ -849,7 +837,7 @@ def test_handle_set_variable_invalid_reference():
 
 def test_handle_evaluate():
     """Test evaluate command."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     # Create frame
     frame_id = 3
@@ -858,45 +846,41 @@ def test_handle_evaluate():
 
     # Test simple expression
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        s,
         {"expression": "x + y", "frameId": frame_id, "context": "watch"},
         evaluate_with_policy=handlers.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=handlers._safe_send_debug_message,
         logger=handlers.logger,
     )
 
     # Test expression that creates variable reference
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        s,
         {"expression": "{'a': 1}", "frameId": frame_id, "context": "watch"},
         evaluate_with_policy=handlers.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=handlers._safe_send_debug_message,
         logger=handlers.logger,
     )
 
     # Test expression with error
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        s,
         {"expression": "undefined_var", "frameId": frame_id, "context": "watch"},
         evaluate_with_policy=handlers.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=handlers._safe_send_debug_message,
         logger=handlers.logger,
     )
 
 
 def test_handle_evaluate_no_frame():
     """Test evaluate command without frame."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, _dbg = _session_with_debugger(DummyDebugger())
 
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        s,
         {"expression": "1 + 1", "context": "watch"},
         evaluate_with_policy=handlers.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=handlers._safe_send_debug_message,
         logger=handlers.logger,
     )
     # Should not raise exception
@@ -904,7 +888,7 @@ def test_handle_evaluate_no_frame():
 
 def test_handle_evaluate_invalid_expression():
     """Test evaluate command with invalid expression type."""
-    _s, dbg = _session_with_debugger(DummyDebugger())
+    s, dbg = _session_with_debugger(DummyDebugger())
 
     frame_id = 4
     frame = MockFrame()
@@ -913,7 +897,7 @@ def test_handle_evaluate_invalid_expression():
     # Test with non-string expression
     try:
         variable_handlers.handle_evaluate_impl(
-            dbg,
+            s,
             {
                 "expression": 123,  # Not a string
                 "frameId": frame_id,
@@ -921,7 +905,6 @@ def test_handle_evaluate_invalid_expression():
             },
             evaluate_with_policy=handlers.evaluate_with_policy,
             format_evaluation_error=variable_handlers.format_evaluation_error,
-            safe_send_debug_message=handlers._safe_send_debug_message,
             logger=handlers.logger,
         )
         raise AssertionError("Should have raised TypeError")
@@ -982,7 +965,6 @@ def test_handle_terminate():
         # calling exit_func directly (exit_func is called by the command
         # wrapper after the response is sent).
         result = lifecycle_handlers.handle_terminate_impl(
-            safe_send_debug_message=handlers._safe_send_debug_message,
             state=s,
         )
         assert result == {"success": True}
@@ -1033,7 +1015,6 @@ def test_handle_restart():
     try:
         with pytest.raises(SystemExit) as excinfo:
             lifecycle_handlers.handle_restart_impl(
-                safe_send_debug_message=handlers._safe_send_debug_message,
                 state=s,
                 logger=handlers.logger,
             )
@@ -1052,12 +1033,12 @@ def test_handle_restart():
 
 def test_handle_threads_with_data():
     """Test threads command with actual thread data."""
-    _s, dbg = _session_with_debugger(DebuggerBDB())
+    s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Add thread data
     dbg.thread_tracker.threads = {1: "MainThread", 2: "WorkerThread"}
 
-    result = stack_handlers.handle_threads_impl(dbg, {}, handlers._safe_send_debug_message)
+    result = stack_handlers.handle_threads_impl(s, {})
 
     assert result is not None
     assert result["success"] is True

@@ -7,12 +7,14 @@ import pytest
 
 from dapper.adapter.external_backend import ExternalProcessBackend
 from dapper.shared import command_handlers
+from dapper.shared import debug_shared
 
 
 def test_cmd_goto_targets_returns_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = debug_shared.get_active_session()
     dbg = MagicMock()
     dbg.goto_targets.return_value = [{"id": 9, "label": "Line 9", "line": 9}]
-    monkeypatch.setattr(command_handlers, "_active_debugger", lambda: dbg)
+    session.debugger = dbg
 
     result = command_handlers._cmd_goto_targets({"frameId": 3, "line": 9})
 
@@ -22,8 +24,9 @@ def test_cmd_goto_targets_returns_targets(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_cmd_goto_calls_debugger(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = debug_shared.get_active_session()
     dbg = MagicMock()
-    monkeypatch.setattr(command_handlers, "_active_debugger", lambda: dbg)
+    session.debugger = dbg
 
     result = command_handlers._cmd_goto({"threadId": 1, "targetId": 21})
 

@@ -68,14 +68,16 @@ def test_handle_initialize_minimal():
 
 def test_handle_threads_empty(use_debug_session):
     s, _dbg = _session_with_debugger(use_debug_session, DebuggerBDB())
+    s.transport.send = lambda *_a, **_kw: None  # type: ignore[assignment]
     # No threads
-    res = stack_handlers.handle_threads_impl(s.debugger, {}, handlers._safe_send_debug_message)
+    res = stack_handlers.handle_threads_impl(s, {})
     assert res["success"] is True
     assert res["body"]["threads"] == []
 
 
 def test_handle_scopes_and_variables(use_debug_session):
-    _s, dbg = _session_with_debugger(use_debug_session, DummyDebugger())
+    s, dbg = _session_with_debugger(use_debug_session, DummyDebugger())
+    s.transport.send = lambda *_a, **_kw: None  # type: ignore[assignment]
 
     frame = MockFrame(
         _locals={"a": 1, "b": [1, 2, 3]},
@@ -90,9 +92,8 @@ def test_handle_scopes_and_variables(use_debug_session):
 
     # Request scopes for frame id 1
     res = stack_handlers.handle_scopes_impl(
-        dbg,
+        s,
         {"frameId": 1},
-        safe_send_debug_message=handlers._safe_send_debug_message,
         var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
     assert res["success"] is True
@@ -102,9 +103,8 @@ def test_handle_scopes_and_variables(use_debug_session):
     locals_ref = next(s.get("variablesReference") for s in scopes if s.get("name") == "Locals")
 
     vars_res = variable_handlers.handle_variables_impl(
-        dbg,
+        use_debug_session,
         {"variablesReference": locals_ref},
-        handlers._safe_send_debug_message,
         lambda runtime_dbg, frame_info: (
             handlers.command_handler_helpers.resolve_variables_for_reference(
                 runtime_dbg,
@@ -135,7 +135,6 @@ def test_handle_source_reads_file(tmp_path: Path, use_debug_session):
     res = source_handlers.handle_legacy_source(
         {"path": str(p)},
         use_debug_session,
-        lambda *_args, **_kwargs: True,
     )
     assert res["success"] is True
     assert "hello world" in res["body"]["content"]
@@ -153,18 +152,17 @@ def test_handle_source_resolves_source_reference_from_state(tmp_path: Path, use_
     res = source_handlers.handle_legacy_source(
         {"sourceReference": ref},
         use_debug_session,
-        lambda *_args, **_kwargs: True,
     )
     assert res["success"] is True
     assert "hello reference" in res["body"]["content"]
 
 
 def test_set_data_breakpoints_and_info(use_debug_session):
-    _s, dbg = _session_with_debugger(use_debug_session, DebuggerBDB())
+    s, _dbg = _session_with_debugger(use_debug_session, DebuggerBDB())
 
     bps = [{"name": "x", "dataId": "d1"}, {"name": "y"}]
     res = variable_handlers.handle_set_data_breakpoints_impl(
-        dbg,
+        s,
         {"breakpoints": bps},
         handlers.logger,
     )
@@ -173,7 +171,7 @@ def test_set_data_breakpoints_and_info(use_debug_session):
     assert "breakpoints" in body
     # dataBreakpointInfo
     info = variable_handlers.handle_data_breakpoint_info_impl(
-        dbg,
+        s,
         {"name": "x"},
         max_value_repr_len=handlers.MAX_VALUE_REPR_LEN,
         trunc_suffix=handlers._TRUNC_SUFFIX,

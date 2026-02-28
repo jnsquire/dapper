@@ -97,6 +97,8 @@ class DummyDebugger:
         self.breaks = _BreaksCollection()
         # some tests expect a program_path attribute
         self.program_path: Any | None = None
+        # stack trace (DebuggerLike protocol — None means "use thread_tracker")
+        self.stack: list[Any] | None = None
 
         # Frame evaluation attributes (DebuggerLike protocol)
         self.breakpoints: dict[str, list[Any]] = {}

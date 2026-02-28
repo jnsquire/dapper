@@ -101,15 +101,6 @@ _error_response = command_handler_helpers.error_response
 send_debug_message = _d_shared.send_debug_message
 
 
-_safe_send_debug_message: command_handler_helpers.SafeSendDebugMessageFn = (
-    command_handler_helpers.build_safe_send_debug_message(
-        lambda: send_debug_message,
-        cast("command_handler_helpers.LoggerLike", logger),
-        dynamic=True,
-    )
-)
-
-
 def command_handler(command_name: str):
     """Decorator to register DAP command handlers in the COMMAND_HANDLERS registry."""
 
@@ -137,7 +128,7 @@ def handle_debug_command(
         logger.debug("handle_debug_command: cmd=%s id=%s", cmd, cmd_id)
         # Ensure the command name is a string before looking up the handler
         if not isinstance(cmd, str):
-            _safe_send_debug_message(
+            active_session.safe_send(
                 "response",
                 id=cmd_id,
                 success=False,
@@ -145,9 +136,8 @@ def handle_debug_command(
             )
             return
 
-        # Scope the request lifecycle on the transport so
-        # SessionTransport.send() auto-injects the request id into
-        # outbound response messages.
+        # Scope the request lifecycle on the transport so handlers
+        # can read session.request_id and response_sent is tracked.
         with active_session.transport.request_scope(cmd_id) as transport:
             # Look up the command handler in the mapping table and dispatch
             handler_func = COMMAND_HANDLERS.get(cmd)
@@ -157,15 +147,15 @@ def handle_debug_command(
                 # yet, send either the handler's return value or a default ack.
                 if cmd_id is not None and not transport.response_sent:
                     if isinstance(result, dict) and "success" in result:
-                        _safe_send_debug_message("response", **result)
+                        active_session.safe_send("response", id=cmd_id, **result)
                     else:
-                        _safe_send_debug_message("response", success=True)
+                        active_session.safe_send("response", id=cmd_id, success=True)
                 # Signal resume for stepping/continue/terminate commands so the
                 # debugger thread unblocks from process_queued_commands_launcher.
                 if cmd in _RESUME_COMMANDS:
                     active_session.signal_resume()
             else:
-                _safe_send_debug_message(
+                active_session.safe_send(
                     "response",
                     id=cmd_id,
                     success=False,
@@ -215,12 +205,11 @@ def _cmd_set_breakpoints(
         else "<unknown>"
     )
     logger.debug("setBreakpoints: source=%s", source)
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         return breakpoint_handlers.handle_set_breakpoints_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
-            _safe_send_debug_message,
             logger,
         )
     return None
@@ -228,10 +217,10 @@ def _cmd_set_breakpoints(
 
 @command_handler("setFunctionBreakpoints")
 def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         breakpoint_handlers.handle_set_function_breakpoints_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
         )
 
@@ -240,27 +229,27 @@ def _cmd_set_function_breakpoints(arguments: SetFunctionBreakpointsArguments) ->
 def _cmd_set_exception_breakpoints(
     arguments: SetExceptionBreakpointsArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         breakpoint_handlers.handle_set_exception_breakpoints_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
         )
 
 
 @command_handler("continue")
 def _cmd_continue(arguments: ContinueArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
-    if dbg:
-        stepping_handlers.handle_continue_impl(dbg, cast("dict[str, Any] | None", arguments))
+    session = _active_session()
+    if session.debugger:
+        stepping_handlers.handle_continue_impl(session, cast("dict[str, Any] | None", arguments))
 
 
 @command_handler("next")
 def _cmd_next(arguments: NextArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         stepping_handlers.handle_next_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             _get_thread_ident,
             _set_dbg_stepping_flag,
@@ -269,10 +258,10 @@ def _cmd_next(arguments: NextArguments | dict[str, Any] | None) -> None:
 
 @command_handler("stepIn")
 def _cmd_step_in(arguments: StepInArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         stepping_handlers.handle_step_in_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             _get_thread_ident,
             _set_dbg_stepping_flag,
@@ -281,10 +270,10 @@ def _cmd_step_in(arguments: StepInArguments | dict[str, Any] | None) -> None:
 
 @command_handler("stepOut")
 def _cmd_step_out(arguments: StepOutArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         stepping_handlers.handle_step_out_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             _get_thread_ident,
             _set_dbg_stepping_flag,
@@ -293,13 +282,12 @@ def _cmd_step_out(arguments: StepOutArguments | dict[str, Any] | None) -> None:
 
 @command_handler("pause")
 def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         stepping_handlers.handle_pause_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             _get_thread_ident,
-            _safe_send_debug_message,
             logger,
         )
 
@@ -308,7 +296,8 @@ def _cmd_pause(arguments: PauseArguments | dict[str, Any] | None) -> None:
 def _cmd_goto_targets(
     arguments: GotoTargetsArguments | dict[str, Any] | None,
 ) -> dict[str, Any]:
-    dbg = _active_debugger()
+    session = _active_session()
+    dbg = session.debugger
     if dbg is None:
         body: GotoTargetsResponseBody = {"targets": []}
         return {"success": True, "body": body}
@@ -340,7 +329,8 @@ def _cmd_goto_targets(
 
 @command_handler("goto")
 def _cmd_goto(arguments: GotoArguments | dict[str, Any] | None) -> dict[str, Any]:
-    dbg = _active_debugger()
+    session = _active_session()
+    dbg = session.debugger
     if dbg is None:
         return {"success": False, "message": "No active debugger"}
 
@@ -370,33 +360,31 @@ def _cmd_goto(arguments: GotoArguments | dict[str, Any] | None) -> dict[str, Any
 def _cmd_stack_trace(
     arguments: StackTraceArguments | dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         return stack_handlers.handle_stack_trace_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             get_thread_ident=_get_thread_ident,
-            safe_send_debug_message=_safe_send_debug_message,
         )
     return None
 
 
 @command_handler("threads")
 def _cmd_threads(arguments: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    dbg = _active_debugger()
-    if dbg:
-        return stack_handlers.handle_threads_impl(dbg, arguments, _safe_send_debug_message)
+    session = _active_session()
+    if session.debugger:
+        return stack_handlers.handle_threads_impl(session, arguments)
     return None
 
 
 @command_handler("scopes")
 def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> dict[str, Any] | None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         return stack_handlers.handle_scopes_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
-            safe_send_debug_message=_safe_send_debug_message,
             var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
         )
     return None
@@ -404,7 +392,8 @@ def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> dict[str,
 
 @command_handler("variables")
 def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Payload | None:
-    dbg = _active_debugger()
+    session = _active_session()
+    dbg = session.debugger
     if dbg:
 
         def _make_variable_fn(
@@ -445,9 +434,8 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Pay
             )
 
         return variable_handlers.handle_variables_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
-            _safe_send_debug_message,
             _resolve_variables_for_reference,
         )
     return None
@@ -455,7 +443,8 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Pay
 
 @command_handler("setVariable")
 def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -> None:
-    dbg = _active_debugger()
+    session = _active_session()
+    dbg = session.debugger
     if dbg:
 
         def _make_variable_fn(
@@ -472,7 +461,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
             )
 
         result = variable_handlers.handle_set_variable_command_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             dependencies=cast(
                 "variable_handlers.SetVariableCommandDependencies",
@@ -498,19 +487,18 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
             ),
         )
         if result:
-            _safe_send_debug_message("setVariable", **result)
+            session.safe_send("setVariable", **result)
 
 
 @command_handler("evaluate")
 def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> dict[str, Any] | None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         return variable_handlers.handle_evaluate_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             evaluate_with_policy=evaluate_with_policy,
             format_evaluation_error=variable_handlers.format_evaluation_error,
-            safe_send_debug_message=_safe_send_debug_message,
             logger=logger,
         )
     return None
@@ -520,10 +508,10 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> dict[
 def _cmd_set_data_breakpoints(
     arguments: SetDataBreakpointsArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         variable_handlers.handle_set_data_breakpoints_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             logger,
         )
@@ -533,10 +521,10 @@ def _cmd_set_data_breakpoints(
 def _cmd_data_breakpoint_info(
     arguments: DataBreakpointInfoArguments | dict[str, Any] | None,
 ) -> None:
-    dbg = _active_debugger()
-    if dbg:
+    session = _active_session()
+    if session.debugger:
         variable_handlers.handle_data_breakpoint_info_impl(
-            dbg,
+            session,
             cast("dict[str, Any] | None", arguments),
             max_value_repr_len=MAX_VALUE_REPR_LEN,
             trunc_suffix=_TRUNC_SUFFIX,
@@ -549,7 +537,6 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
     lifecycle_handlers.cmd_exception_info(
         arguments,
         state=_active_session(),
-        safe_send_debug_message=_safe_send_debug_message,
     )
 
 
@@ -558,9 +545,10 @@ def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     logger.info("configurationDone received")
     lifecycle_handlers.handle_configuration_done_impl()
     # Acknowledge the request so the TS adapter's sendRequestToPython resolves
-    _safe_send_debug_message("response", success=True)
+    session = _active_session()
+    session.safe_send("response", id=session.request_id, success=True)
     # Unblock the launcher main thread which is waiting before starting the program
-    _active_session().configuration_done_event.set()
+    session.configuration_done_event.set()
     logger.debug("configurationDone: configuration_done_event set")
 
 
@@ -569,13 +557,12 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     logger.info("terminate received")
     state = _active_session()
     result = lifecycle_handlers.handle_terminate_impl(
-        safe_send_debug_message=_safe_send_debug_message,
         state=state,
     )
     # Return here so that the dispatch sends the response first, then
     # the resume event (set inside handle_terminate_impl) unblocks the
     # debugger thread.  Call exit_func *after* the response is sent.
-    _safe_send_debug_message("response", **result)
+    state.safe_send("response", id=state.request_id, **result)
     state.exit_func(0)
     return result  # won't reach if exit_func raises, but satisfies type
 
@@ -584,11 +571,12 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
 def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     logger.info("initialize received")
     result = lifecycle_handlers.handle_initialize_impl()
+    session = _active_session()
     if result:
-        _safe_send_debug_message("response", **result)
+        session.safe_send("response", id=session.request_id, **result)
     # After responding to initialize, emit the 'initialized' event so the client
     # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
-    _safe_send_debug_message("initialized")
+    session.safe_send("initialized")
     logger.debug("initialize: sent initialized event")
 
 
@@ -603,7 +591,8 @@ def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
     (``setBreakpoints`` → ``configurationDone``).
     """
     logger.info("launch acknowledged")
-    _safe_send_debug_message("response", success=True)
+    session = _active_session()
+    session.safe_send("response", id=session.request_id, success=True)
 
 
 @command_handler("disconnect")
@@ -616,13 +605,12 @@ def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     logger.info("disconnect received")
     session = _active_session()
     session.terminate_session()
-    _safe_send_debug_message("response", success=True)
+    session.safe_send("response", id=session.request_id, success=True)
 
 
 @command_handler("restart")
 def _cmd_restart(_arguments: dict[str, Any] | None = None) -> None:
     lifecycle_handlers.handle_restart_impl(
-        safe_send_debug_message=_safe_send_debug_message,
         state=_active_session(),
         logger=logger,
     )
@@ -630,17 +618,25 @@ def _cmd_restart(_arguments: dict[str, Any] | None = None) -> None:
 
 @command_handler("loadedSources")
 def _cmd_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
-    source_handlers.handle_loaded_sources(_active_session(), _safe_send_debug_message)
+    source_handlers.handle_loaded_sources(
+        _active_session(),
+    )
 
 
 @command_handler("source")
 def _cmd_source(arguments: dict[str, Any] | None = None) -> None:
-    source_handlers.handle_source(arguments, _active_session(), _safe_send_debug_message)
+    source_handlers.handle_source(
+        arguments,
+        _active_session(),
+    )
 
 
 @command_handler("modules")
 def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
-    source_handlers.handle_modules(arguments, _safe_send_debug_message)
+    source_handlers.handle_modules(
+        arguments,
+        _active_session(),
+    )
 
 
 # ---------------------------------------------------------------------------

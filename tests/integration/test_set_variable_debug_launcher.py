@@ -9,6 +9,7 @@ from dapper.shared import command_handlers
 from dapper.shared import variable_handlers
 
 # Import the specific functions we want to test
+from dapper.shared.debug_shared import DebugSession
 from dapper.shared.debug_shared import make_variable_object
 from dapper.shared.value_conversion import convert_value_with_context
 
@@ -84,8 +85,10 @@ class TestSetVariable(unittest.TestCase):
         )
 
     def _handle_set_variable(self, arguments):
+        session = DebugSession()
+        session.debugger = self.mock_debugger
         return variable_handlers.handle_set_variable_impl(
-            self.mock_debugger,
+            session,
             arguments,
             error_response=command_handlers._error_response,
             set_object_member=self._set_object_member_direct,

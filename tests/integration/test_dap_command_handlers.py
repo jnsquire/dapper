@@ -16,7 +16,6 @@ import pytest
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import breakpoint_handlers
 from dapper.shared import command_handler_helpers
-from dapper.shared import command_handlers
 from dapper.shared import command_handlers as dch
 from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
@@ -95,7 +94,7 @@ def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> lis
     )
 
 
-def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None:
+def _invoke_set_variable_via_domain(session: Any, arguments: dict[str, Any]) -> None:
     def _set_object_member_direct(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
         return command_handler_helpers.set_object_member(
             parent_obj,
@@ -135,7 +134,7 @@ def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None
         )
 
     result = variable_handlers.handle_set_variable_impl(
-        dbg,
+        session,
         arguments,
         error_response=dch._error_response,
         set_object_member=_set_object_member_direct,
@@ -145,7 +144,7 @@ def _invoke_set_variable_via_domain(dbg: Any, arguments: dict[str, Any]) -> None
         var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
     )
     if result:
-        dch._safe_send_debug_message("setVariable", **result)
+        session.safe_send("setVariable", **result)
 
 
 def test_convert_value_with_context_literal_and_bool_and_none():
@@ -245,7 +244,7 @@ def test_set_scope_variable_locals_and_globals():
 
 
 def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
 
     # capture send_debug_message calls
     calls = []
@@ -253,14 +252,13 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     def fake_send_debug_message(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", fake_send_debug_message)
+    session.transport.send = fake_send_debug_message  # type: ignore[assignment]
 
     # setBreakpoints
     args = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
     breakpoint_handlers.handle_set_breakpoints_impl(
-        dbg,
+        session,
         cast("SetBreakpointsArguments", args),
-        dch._safe_send_debug_message,
         dch.logger,
     )
     assert ("file.py", 10, None) in dbg.breaks
@@ -268,7 +266,7 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     # setFunctionBreakpoints
     args = {"breakpoints": [{"name": "foo", "condition": "c", "hitCondition": 1}]}
     breakpoint_handlers.handle_set_function_breakpoints_impl(
-        dbg,
+        session,
         cast("SetFunctionBreakpointsArguments", args),
     )
     assert "foo" in dbg.function_breakpoints
@@ -277,7 +275,7 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     # setExceptionBreakpoints
     args = {"filters": ["raised", "uncaught"]}
     breakpoint_handlers.handle_set_exception_breakpoints_impl(
-        dbg,
+        session,
         cast("SetExceptionBreakpointsArguments", args),
     )
     assert dbg.exception_breakpoints_raised is True
@@ -285,14 +283,14 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
 
 
 def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DebuggerBDB())
+    session, dbg = _active_session_with_debugger(DebuggerBDB())
 
     calls = []
 
     def fake_send_debug_message(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", fake_send_debug_message)
+    session.transport.send = fake_send_debug_message  # type: ignore[assignment]
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as handle:
         handle.write("\n".join(f"x_{line} = {line}" for line in range(1, 31)) + "\n")
@@ -312,9 +310,8 @@ def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
             "breakpoints": [{"line": 10}, {"line": 20, "condition": "x > 1"}],
         }
         breakpoint_handlers.handle_set_breakpoints_impl(
-            dbg,
+            session,
             cast("SetBreakpointsArguments", args),
-            dch._safe_send_debug_message,
             dch.logger,
         )
 
@@ -327,7 +324,7 @@ def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
 
 
 def test_continue_next_step_out(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     tid = threading.get_ident()
     dbg.stopped_thread_ids.add(tid)
     dbg.current_frame = object()
@@ -336,14 +333,14 @@ def test_continue_next_step_out(monkeypatch):
     def _no_op(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(dch, "send_debug_message", _no_op)
+    session.transport.send = _no_op  # type: ignore[assignment]
 
-    stepping_handlers.handle_continue_impl(dbg, {"threadId": tid})
+    stepping_handlers.handle_continue_impl(session, {"threadId": tid})
     assert tid not in dbg.stopped_thread_ids
     assert dbg._continued is True
 
     stepping_handlers.handle_next_impl(
-        dbg,
+        session,
         {"threadId": tid},
         dch._get_thread_ident,
         dch._set_dbg_stepping_flag,
@@ -351,7 +348,7 @@ def test_continue_next_step_out(monkeypatch):
     assert dbg.stepping is True
 
     stepping_handlers.handle_step_in_impl(
-        dbg,
+        session,
         {"threadId": tid},
         dch._get_thread_ident,
         dch._set_dbg_stepping_flag,
@@ -359,7 +356,7 @@ def test_continue_next_step_out(monkeypatch):
     assert getattr(dbg, "_step", True) is True
 
     stepping_handlers.handle_step_out_impl(
-        dbg,
+        session,
         {"threadId": tid},
         dch._get_thread_ident,
         dch._set_dbg_stepping_flag,
@@ -368,7 +365,7 @@ def test_continue_next_step_out(monkeypatch):
 
 
 def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     tid = 12345
 
     calls = []
@@ -376,14 +373,13 @@ def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
     # Call the handler
     stepping_handlers.handle_pause_impl(
-        dbg,
+        session,
         {"threadId": tid},
         dch._get_thread_ident,
-        dch._safe_send_debug_message,
         dch.logger,
     )
 
@@ -396,7 +392,7 @@ def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
 
 
 def test_variables_and_set_variable(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_locals={"a": 1}, f_globals={"b": 2})
     dbg.frame_id_to_frame[1] = frame
     dbg.var_refs[7] = (1, "locals")
@@ -432,13 +428,11 @@ def test_variables_and_set_variable(monkeypatch):
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
     variable_handlers.handle_variables_impl(
-        dbg,
+        session,
         {"variablesReference": 7},
-        dch._safe_send_debug_message,
         _resolve_with_fake_make_variable,
     )
     assert calls
@@ -446,23 +440,26 @@ def test_variables_and_set_variable(monkeypatch):
 
     # setVariable invalid ref
     calls.clear()
-    _invoke_set_variable_via_domain(dbg, {"variablesReference": 999, "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(
+        session, {"variablesReference": 999, "name": "x", "value": "1"}
+    )
     assert calls
     assert calls[-1][0] == "setVariable"
 
 
 def test_set_variable_bad_args_failure_payload(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, _dbg = _active_session_with_debugger(DummyDebugger())
 
     calls = []
 
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
-    _invoke_set_variable_via_domain(dbg, {"variablesReference": "bad", "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(
+        session, {"variablesReference": "bad", "name": "x", "value": "1"}
+    )
 
     assert calls
     event, payload = calls[-1]
@@ -472,7 +469,7 @@ def test_set_variable_bad_args_failure_payload(monkeypatch):
 
 
 def test_set_variable_missing_frame_failure_payload(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     dbg.var_refs[10] = (999, "locals")
 
     calls = []
@@ -480,10 +477,9 @@ def test_set_variable_missing_frame_failure_payload(monkeypatch):
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
-    _invoke_set_variable_via_domain(dbg, {"variablesReference": 10, "name": "x", "value": "1"})
+    _invoke_set_variable_via_domain(session, {"variablesReference": 10, "name": "x", "value": "1"})
 
     assert calls
     event, payload = calls[-1]
@@ -493,7 +489,7 @@ def test_set_variable_missing_frame_failure_payload(monkeypatch):
 
 
 def test_set_variable_conversion_failure_payload(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     dbg.var_refs[11] = ("object", {"x": 1})
 
     calls = []
@@ -501,11 +497,10 @@ def test_set_variable_conversion_failure_payload(monkeypatch):
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
     _invoke_set_variable_via_domain(
-        dbg,
+        session,
         {"variablesReference": 11, "name": "x", "value": object()},
     )
 
@@ -549,19 +544,17 @@ def test_collect_module_and_linecache_and_handle_source(monkeypatch, tmp_path):
     def recorder2(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder2)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder2)
+    dch._active_session().transport.send = recorder2  # type: ignore[assignment]
     source_handlers.handle_source(
         {"path": str(p)},
         dch._active_session(),
-        dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "response"
 
 
 def test_handle_evaluate_and_create_variable_object(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_globals={"y": 2}, f_locals={})
     dbg.frame_id_to_frame[1] = frame
 
@@ -570,16 +563,14 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
     def recorder3(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder3)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder3)
+    session.transport.send = recorder3  # type: ignore[assignment]
 
     # successful eval
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        session,
         {"expression": "y + 3", "frameId": 1},
         evaluate_with_policy=dch.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=dch._safe_send_debug_message,
         logger=dch.logger,
     )
     assert calls
@@ -587,11 +578,10 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
 
     # eval error
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        session,
         {"expression": "unknown_var", "frameId": 1},
         evaluate_with_policy=dch.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=dch._safe_send_debug_message,
         logger=dch.logger,
     )
     assert calls
@@ -599,7 +589,7 @@ def test_handle_evaluate_and_create_variable_object(monkeypatch):
 
 
 def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
-    _session, dbg = _active_session_with_debugger(DummyDebugger())
+    session, dbg = _active_session_with_debugger(DummyDebugger())
     frame = SimpleNamespace(f_globals={"x": 2}, f_locals={})
     dbg.current_frame = frame
 
@@ -608,15 +598,13 @@ def test_handle_evaluate_blocks_hostile_expression(monkeypatch):
     def recorder(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder)
+    session.transport.send = recorder  # type: ignore[assignment]
 
     variable_handlers.handle_evaluate_impl(
-        dbg,
+        session,
         {"expression": "__import__('os').system('id')", "frameId": 1},
         evaluate_with_policy=dch.evaluate_with_policy,
         format_evaluation_error=variable_handlers.format_evaluation_error,
-        safe_send_debug_message=dch._safe_send_debug_message,
         logger=dch.logger,
     )
     assert calls
@@ -631,14 +619,12 @@ def test_handle_exception_info_variants(monkeypatch):
     def recorder4(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder4)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder4)
+    dch._active_session().transport.send = recorder4  # type: ignore[assignment]
 
     # missing threadId
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {}),
         state=dch._active_session(),
-        safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "error"
@@ -649,7 +635,6 @@ def test_handle_exception_info_variants(monkeypatch):
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 1}),
         state=dch._active_session(),
-        safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "error"
@@ -661,7 +646,6 @@ def test_handle_exception_info_variants(monkeypatch):
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 2}),
         state=dch._active_session(),
-        safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "error"
@@ -677,7 +661,6 @@ def test_handle_exception_info_variants(monkeypatch):
     lifecycle_handlers.cmd_exception_info(
         cast("ExceptionInfoArguments", {"threadId": 3}),
         state=dch._active_session(),
-        safe_send_debug_message=dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "exceptionInfo"
@@ -775,9 +758,8 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
     def recorder5(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder5)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder5)
-    source_handlers.handle_loaded_sources(dch._active_session(), dch._safe_send_debug_message)
+    dch._active_session().transport.send = recorder5  # type: ignore[assignment]
+    source_handlers.handle_loaded_sources(dch._active_session())
     assert calls
     assert calls[-1][0] == "response"
 
@@ -785,7 +767,7 @@ def test_loaded_sources_and_modules_paging(monkeypatch, tmp_path):
     calls.clear()
     source_handlers.handle_modules(
         {"startModule": 0, "moduleCount": 1},
-        dch._safe_send_debug_message,
+        dch._active_session(),
     )
     assert calls
     assert calls[-1][0] == "response"
@@ -809,12 +791,10 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
     def recorder6(kind, **kwargs):
         calls.append((kind, kwargs))
 
-    monkeypatch.setattr(dch, "send_debug_message", recorder6)
-    monkeypatch.setattr(command_handlers, "send_debug_message", recorder6)
+    dch._active_session().transport.send = recorder6  # type: ignore[assignment]
     source_handlers.handle_source(
         {"path": str(p)},
         dch._active_session(),
-        dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "response"
@@ -830,7 +810,6 @@ def test_handle_source_binary_and_reference(monkeypatch, tmp_path):
     source_handlers.handle_source(
         {"source": {"sourceReference": 1}},
         dch._active_session(),
-        dch._safe_send_debug_message,
     )
     assert calls
     assert calls[-1][0] == "response"

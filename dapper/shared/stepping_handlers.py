@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.shared.command_handler_helpers import Payload
-    from dapper.shared.command_handler_helpers import SafeSendDebugMessageFn
+    from dapper.shared.debug_shared import DebugSession
 
 
 class GetThreadIdentFn(Protocol):
@@ -40,13 +40,12 @@ class SetDbgSteppingFlagFn(Protocol):
     def __call__(self, dbg: CommandHandlerDebuggerLike) -> None: ...
 
 
-def handle_continue_impl(
-    dbg: CommandHandlerDebuggerLike | None, arguments: Payload | None
-) -> None:
+def handle_continue_impl(session: DebugSession, arguments: Payload | None) -> None:
     """Handle continue command implementation."""
     arguments = arguments or {}
     thread_id = arguments.get("threadId")
 
+    dbg = session.debugger
     if dbg and thread_id in dbg.thread_tracker.stopped_thread_ids:
         dbg.thread_tracker.stopped_thread_ids.remove(thread_id)
         if not dbg.thread_tracker.stopped_thread_ids:
@@ -54,7 +53,7 @@ def handle_continue_impl(
 
 
 def handle_next_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -64,6 +63,7 @@ def handle_next_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
+    dbg = session.debugger
     _thread_is_stopped = (
         (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
         if dbg
@@ -89,7 +89,7 @@ def handle_next_impl(
 
 
 def handle_step_in_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -99,6 +99,7 @@ def handle_step_in_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
+    dbg = session.debugger
     _thread_is_stopped = (
         (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
         if dbg
@@ -121,7 +122,7 @@ def handle_step_in_impl(
 
 
 def handle_step_out_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
     set_dbg_stepping_flag: SetDbgSteppingFlagFn,
@@ -131,6 +132,7 @@ def handle_step_out_impl(
     thread_id = arguments.get("threadId")
     granularity: str = arguments.get("granularity") or "line"
 
+    dbg = session.debugger
     _thread_is_stopped = (
         (thread_id is not None and thread_id in dbg.thread_tracker.stopped_thread_ids)
         if dbg
@@ -146,10 +148,9 @@ def handle_step_out_impl(
 
 
 def handle_pause_impl(
-    dbg: CommandHandlerDebuggerLike | None,
+    session: DebugSession,
     arguments: Payload | None,
     get_thread_ident: GetThreadIdentFn,
-    safe_send_debug_message: SafeSendDebugMessageFn,
     logger: Logger,
 ) -> None:
     """Handle pause command implementation."""
@@ -161,6 +162,8 @@ def handle_pause_impl(
         thread_id = int(thread_id) if thread_id is not None else get_thread_ident()
     except Exception:
         return
+
+    dbg = session.debugger
 
     try:
         pause_fn = getattr(dbg, "pause", None)
@@ -194,7 +197,7 @@ def handle_pause_impl(
                 except Exception:
                     logger.debug("Failed to build/store stack frames for pause", exc_info=True)
 
-            safe_send_debug_message(
+            session.safe_send(
                 "stopped",
                 threadId=thread_id,
                 reason="pause",

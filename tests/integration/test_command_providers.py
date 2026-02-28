@@ -6,7 +6,6 @@ from typing import cast
 import pytest
 
 from dapper.ipc.ipc_receiver import DapMappingProvider
-import dapper.shared.command_handlers as ch
 from dapper.shared.command_handlers import COMMAND_HANDLERS
 from dapper.shared.command_handlers import handle_debug_command
 import dapper.shared.debug_shared as ds
@@ -253,7 +252,10 @@ def test_pipe_and_socket_dispatch_initialize_emit_same_payload(
     def capture_send(event_type: str, **kwargs):
         capture_messages.append((event_type, kwargs))
 
-    monkeypatch.setattr(ch, "send_debug_message", capture_send)
+    # handle_debug_command sends via session.safe_send → transport.send
+    use_debug_session.transport.send = capture_send  # type: ignore[assignment]
+    # dispatch_debug_command sends via module-level send_debug_message
+    monkeypatch.setattr(ds, "send_debug_message", capture_send)
 
     use_debug_session.register_command_provider(
         cast("Any", DapMappingProvider(COMMAND_HANDLERS)),

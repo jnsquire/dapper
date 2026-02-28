@@ -488,14 +488,15 @@ class TestHandleLoadedSourcesIncludesDynamic:
 
         captured: list[dict] = []
 
-        def capture(*args, **kwargs) -> bool:
+        def capture(*args, **kwargs) -> None:
             if args[0] == "response":
                 captured.append(kwargs)
-            return True
 
-        handle_loaded_sources(session, capture)
+        session.transport.send = capture  # type: ignore[assignment]
 
-        assert captured, "safe_send_debug_message was not called"
+        handle_loaded_sources(session)
+
+        assert captured, "transport.send was not called"
         sources = captured[-1].get("body", {}).get("sources", [])
         dynamic_paths = [s["path"] for s in sources if s.get("sourceReference")]
         assert "<my-eval>" in dynamic_paths
@@ -507,12 +508,13 @@ class TestHandleLoadedSourcesIncludesDynamic:
 
         captured: list[dict] = []
 
-        def capture(*args, **kwargs) -> bool:
+        def capture(*args, **kwargs) -> None:
             if args[0] == "response":
                 captured.append(kwargs)
-            return True
 
-        handle_loaded_sources(session, capture)
+        session.transport.send = capture  # type: ignore[assignment]
+
+        handle_loaded_sources(session)
 
         sources = captured[-1].get("body", {}).get("sources", [])
         matching = [s for s in sources if s.get("path") == "<check-ref>"]

@@ -143,8 +143,17 @@ export class DapperDebugSession extends LoggingDebugSession {
           return;
         }
         logger.warn(`Response id=${msgId} has no matching pending request (pending: ${[...this._pendingRequestsMap.keys()]})`);
+      } else if (this._pendingRequestsMap.size > 0) {
+        // Fallback: Python response arrived without an id.  Match it to the
+        // oldest pending request (FIFO) so the caller isn't left hanging.
+        const firstKey = this._pendingRequestsMap.keys().next().value!;
+        const resolve = this._pendingRequestsMap.get(firstKey)!;
+        this._pendingRequestsMap.delete(firstKey);
+        logger.warn(`Response has no id — FIFO-matched to pending request ${firstKey}`);
+        resolve(message);
+        return;
       } else {
-        logger.warn(`Response with no id — cannot match to pending request. Keys: ${Object.keys(message).join(', ')}`);
+        logger.warn(`Response with no id and no pending requests. Keys: ${Object.keys(message).join(', ')}`);
       }
     }
 

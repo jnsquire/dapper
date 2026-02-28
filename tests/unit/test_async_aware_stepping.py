@@ -21,6 +21,7 @@ import pytest
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.debugger_bdb import _is_event_loop_frame
 from dapper.core.stepping_controller import SteppingController
+from dapper.shared.debug_shared import DebugSession
 from dapper.shared.stepping_handlers import _frame_is_coroutine
 from dapper.shared.stepping_handlers import handle_next_impl
 from dapper.shared.stepping_handlers import handle_step_in_impl
@@ -148,13 +149,21 @@ def _make_dbg_with_frame(frame: SimpleNamespace) -> MagicMock:
     return dbg
 
 
+def _make_session_with_frame(frame: SimpleNamespace) -> tuple[DebugSession, MagicMock]:
+    """Create a DebugSession wrapping a mock debugger with the given frame."""
+    dbg = _make_dbg_with_frame(frame)
+    session = DebugSession()
+    session.debugger = dbg
+    return session, dbg
+
+
 def test_handle_next_impl_sets_async_step_over_for_coroutine_frame() -> None:
     frame = _make_frame("app.py", _coroutine_flags())
-    dbg = _make_dbg_with_frame(frame)
+    session, dbg = _make_session_with_frame(frame)
     thread_id = 1
 
     handle_next_impl(
-        dbg,
+        session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
         set_dbg_stepping_flag=lambda _d: None,
@@ -166,11 +175,11 @@ def test_handle_next_impl_sets_async_step_over_for_coroutine_frame() -> None:
 
 def test_handle_next_impl_no_async_flag_for_regular_frame() -> None:
     frame = _make_frame("app.py", _plain_flags())
-    dbg = _make_dbg_with_frame(frame)
+    session, dbg = _make_session_with_frame(frame)
     thread_id = 1
 
     handle_next_impl(
-        dbg,
+        session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
         set_dbg_stepping_flag=lambda _d: None,
@@ -184,10 +193,12 @@ def test_handle_next_impl_no_frame_does_not_set_async_flag() -> None:
     dbg = MagicMock()
     dbg.stepping_controller = SteppingController()
     dbg.stepping_controller.current_frame = None
+    session = DebugSession()
+    session.debugger = dbg
     thread_id = 1
 
     handle_next_impl(
-        dbg,
+        session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
         set_dbg_stepping_flag=lambda _d: None,
@@ -203,11 +214,11 @@ def test_handle_next_impl_no_frame_does_not_set_async_flag() -> None:
 
 def test_handle_step_in_impl_sets_async_step_over_for_coroutine_frame() -> None:
     frame = _make_frame("app.py", _coroutine_flags())
-    dbg = _make_dbg_with_frame(frame)
+    session, dbg = _make_session_with_frame(frame)
     thread_id = 1
 
     handle_step_in_impl(
-        dbg,
+        session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
         set_dbg_stepping_flag=lambda _d: None,
@@ -219,11 +230,11 @@ def test_handle_step_in_impl_sets_async_step_over_for_coroutine_frame() -> None:
 
 def test_handle_step_in_impl_no_async_flag_for_regular_frame() -> None:
     frame = _make_frame("app.py", _plain_flags())
-    dbg = _make_dbg_with_frame(frame)
+    session, dbg = _make_session_with_frame(frame)
     thread_id = 1
 
     handle_step_in_impl(
-        dbg,
+        session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
         set_dbg_stepping_flag=lambda _d: None,

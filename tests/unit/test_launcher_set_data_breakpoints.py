@@ -1,20 +1,23 @@
 import logging
-from typing import TYPE_CHECKING
-from typing import cast
 from unittest.mock import MagicMock
 
 from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.shared import variable_handlers
+from dapper.shared.debug_shared import DebugSession
 from dapper.shared.variable_handlers import handle_set_data_breakpoints_impl
 from tests.mocks import FakeDebugger
 from tests.mocks import make_real_frame
 
-if TYPE_CHECKING:
-    from dapper.protocol.debugger_protocol import DebuggerLike
+
+def _make_session(dbg) -> DebugSession:
+    session = DebugSession()
+    session.debugger = dbg
+    return session
 
 
 def test_set_data_breakpoints_registers_watches_and_calls_set():
     dbg = FakeDebugger()
+    session = _make_session(dbg)
     args = {
         "breakpoints": [
             {"dataId": "frame:1:var:x", "accessType": "write"},
@@ -24,7 +27,7 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
     }
 
     result = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg),
+        session,
         args,
         logging.getLogger(__name__),
     )
@@ -49,6 +52,7 @@ def test_set_data_breakpoints_registers_watches_and_calls_set():
 
 def test_set_data_breakpoints_when_set_raises_still_registers():
     dbg = FakeDebugger(raise_on_set=True)
+    session = _make_session(dbg)
     args = {
         "breakpoints": [
             {"dataId": "frame:10:var:a", "accessType": "write"},
@@ -56,7 +60,7 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
     }
 
     result = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg),
+        session,
         args,
         logging.getLogger(__name__),
     )
@@ -74,6 +78,7 @@ def test_set_data_breakpoints_when_set_raises_still_registers():
 
 def test_read_access_type_downgrades_to_write_when_monitoring_unavailable(monkeypatch):
     dbg = FakeDebugger()
+    session = _make_session(dbg)
     monkeypatch.setattr(variable_handlers, "_supports_read_watchpoints", lambda: False)
 
     args = {
@@ -83,7 +88,7 @@ def test_read_access_type_downgrades_to_write_when_monitoring_unavailable(monkey
     }
 
     result = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg),
+        session,
         args,
         logging.getLogger(__name__),
     )
@@ -97,11 +102,12 @@ def test_handler_with_real_debugger_triggers_on_change():
 
     mock_send = MagicMock()
     dbg = DebuggerBDB(send_message=mock_send)
+    session = _make_session(dbg)
 
     args = {"breakpoints": [{"dataId": "frame:100:var:x", "accessType": "write"}]}
 
     res = handle_set_data_breakpoints_impl(
-        cast("DebuggerLike", dbg),
+        session,
         args,
         logging.getLogger(__name__),
     )

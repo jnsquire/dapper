@@ -123,6 +123,9 @@ class DebuggerBDB(bdb.Bdb):
         # Consolidated thread and frame tracking
         self.thread_tracker = ThreadTracker()
 
+        # Legacy stack attribute (DebuggerLike protocol); prefer thread_tracker.
+        self.stack: list[Any] | None = None
+
         # Variable reference management
         self.var_manager = VariableManager()
 

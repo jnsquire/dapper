@@ -42,12 +42,8 @@ def test_debugger_dependent_handlers_noop_without_debugger(
 
 def test_handle_debug_command_rejects_non_string_command(monkeypatch: pytest.MonkeyPatch):
     sent: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr(
-        handlers,
-        "_safe_send_debug_message",
-        lambda message_type, **payload: sent.append((message_type, payload)) or True,
-    )
     session = DebugSession()
+    session.transport.send = lambda message_type, **payload: sent.append((message_type, payload))  # type: ignore[assignment]
 
     handlers.handle_debug_command({"id": 7, "command": 123, "arguments": {}}, session=session)
 
@@ -61,12 +57,8 @@ def test_handle_debug_command_rejects_non_string_command(monkeypatch: pytest.Mon
 
 def test_handle_debug_command_rejects_unknown_command(monkeypatch: pytest.MonkeyPatch):
     sent: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr(
-        handlers,
-        "_safe_send_debug_message",
-        lambda message_type, **payload: sent.append((message_type, payload)) or True,
-    )
     session = DebugSession()
+    session.transport.send = lambda message_type, **payload: sent.append((message_type, payload))  # type: ignore[assignment]
 
     handlers.handle_debug_command(
         {"id": 8, "command": "definitelyUnknown", "arguments": {}},
@@ -89,12 +81,11 @@ def test_set_breakpoints_handler_exercises_debugger_clear_breaks_for_file(
 
     cleared_lines: list[int] = []
     monkeypatch.setattr(dbg, "clear_break", lambda _path, line: cleared_lines.append(line))
-    monkeypatch.setattr(handlers, "_active_debugger", lambda: dbg)
-    monkeypatch.setattr(
-        handlers,
-        "_safe_send_debug_message",
-        lambda _message_type, **_payload: True,
-    )
+
+    session = DebugSession()
+    session.debugger = dbg
+    session.transport.send = lambda *_a, **_kw: None  # type: ignore[assignment]
+    monkeypatch.setattr(handlers, "_active_session", lambda: session)
 
     handlers._cmd_set_breakpoints({"source": {"path": "/tmp/sample.py"}, "breakpoints": []})
 
