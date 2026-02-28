@@ -460,31 +460,45 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
                 frame,
             )
 
-        result = variable_handlers.handle_set_variable_command_impl(
+        conversion_failed_sentinel = object()
+
+        def _try_convert(
+            value_str: str,
+            frame: object | None = None,
+            parent_obj: object | None = None,
+        ) -> object:
+            try:
+                return convert_value_with_context(value_str, frame, parent_obj)
+            except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
+                logger.debug("Context conversion fallback failed", exc_info=True)
+                return conversion_failed_sentinel
+
+        result = variable_handlers.handle_set_variable_impl(
             session,
             cast("dict[str, Any] | None", arguments),
-            dependencies=cast(
-                "variable_handlers.SetVariableCommandDependencies",
-                {
-                    "convert_value_with_context_fn": convert_value_with_context,
-                    "evaluate_with_policy_fn": evaluate_with_policy,
-                    "set_object_member_helper": (
-                        command_handler_helpers.set_object_member_with_dependencies
-                    ),
-                    "set_scope_variable_helper": (
-                        command_handler_helpers.set_scope_variable_with_dependencies
-                    ),
-                    "assign_to_parent_member_fn": (
-                        command_handler_helpers.assign_to_parent_member
-                    ),
-                    "error_response_fn": command_handler_helpers.error_response,
-                    "conversion_error_message": _CONVERSION_ERROR_MESSAGE,
-                    "get_state_debugger": _active_debugger,
-                    "make_variable_fn": _make_variable_fn,
-                    "logger": logger,
-                    "var_ref_tuple_size": VAR_REF_TUPLE_SIZE,
-                },
+            object_member_deps=command_handler_helpers.ObjectMemberDependencies(
+                assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+                try_custom_convert=_try_convert,
+                conversion_failed_sentinel=conversion_failed_sentinel,
+                convert_value_with_context_fn=convert_value_with_context,
+                error_response_fn=command_handler_helpers.error_response,
+                conversion_error_message=_CONVERSION_ERROR_MESSAGE,
+                get_state_debugger=_active_debugger,
+                make_variable_fn=_make_variable_fn,
+                logger=logger,
             ),
+            scope_variable_deps=command_handler_helpers.ScopeVariableDependencies(
+                evaluate_with_policy_fn=evaluate_with_policy,
+                try_custom_convert=_try_convert,
+                conversion_failed_sentinel=conversion_failed_sentinel,
+                convert_value_with_context_fn=convert_value_with_context,
+                error_response_fn=command_handler_helpers.error_response,
+                conversion_error_message=_CONVERSION_ERROR_MESSAGE,
+                get_state_debugger=_active_debugger,
+                make_variable_fn=_make_variable_fn,
+                logger=logger,
+            ),
+            var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
         )
         if result:
             session.safe_send("setVariable", **result)

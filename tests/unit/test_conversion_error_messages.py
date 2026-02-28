@@ -28,20 +28,23 @@ def _make_variable_for_tests(dbg, name, value, frame):
 
 def test_set_scope_variable_conversion_failure_message_is_standardized():
     frame = SimpleNamespace(f_locals={}, f_globals={})
-    result = command_handler_helpers.set_scope_variable(
-        frame,
-        "locals",
-        "x",
-        object(),
+    deps = command_handler_helpers.ScopeVariableDependencies(
         try_custom_convert=_try_test_convert,
         conversion_failed_sentinel=_CONVERSION_FAILED,
-        evaluate_with_policy_fn=handlers.evaluate_with_policy,
         convert_value_with_context_fn=convert_value_with_context,
-        logger=handlers.logger,
+        evaluate_with_policy_fn=handlers.evaluate_with_policy,
         error_response_fn=handlers._error_response,
         conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
         get_state_debugger=lambda: None,
         make_variable_fn=_make_variable_for_tests,
+        logger=handlers.logger,
+    )
+    result = command_handler_helpers.set_scope_variable_with_dependencies(
+        frame,
+        "locals",
+        "x",
+        object(),
+        deps=deps,
     )
     assert result["success"] is False
     assert result["message"] == "Conversion failed"

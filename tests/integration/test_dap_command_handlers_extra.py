@@ -21,8 +21,6 @@ from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
 
 if TYPE_CHECKING:
-    from logging import Logger
-
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.shared.command_handler_helpers import LoggerLike
 
@@ -54,50 +52,33 @@ def _make_variable_for_tests(dbg, name, value, frame):
 
 
 def _invoke_set_variable_via_domain(session, arguments):
-    def _set_object_member_direct(parent_obj, name, value_str):
-        return command_handler_helpers.set_object_member(
-            parent_obj,
-            name,
-            value_str,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            convert_value_with_context_fn=convert_value_with_context,
-            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-            error_response_fn=handlers._error_response,
-            conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=handlers._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
-            logger=cast("LoggerLike", handlers.logger),
-        )
+    def _eval_with_policy(expression: str, frame: Any, allow_builtins: bool = False) -> Any:
+        return handlers.evaluate_with_policy(expression, frame, allow_builtins=allow_builtins)
 
-    def _set_scope_variable_direct(frame, scope, name, value_str):
-        def _eval_with_policy(expression: str, frame: Any, allow_builtins: bool = False) -> Any:
-            return handlers.evaluate_with_policy(expression, frame, allow_builtins=allow_builtins)
-
-        return command_handler_helpers.set_scope_variable(
-            frame,
-            scope,
-            name,
-            value_str,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            evaluate_with_policy_fn=_eval_with_policy,
-            convert_value_with_context_fn=convert_value_with_context,
-            logger=cast("LoggerLike", handlers.logger),
-            error_response_fn=handlers._error_response,
-            conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=handlers._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
-        )
+    _common = dict(
+        try_custom_convert=_try_test_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        error_response_fn=handlers._error_response,
+        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=handlers._active_debugger,
+        make_variable_fn=_make_variable_for_tests,
+        logger=cast("LoggerLike", handlers.logger),
+    )
+    _obj_deps = command_handler_helpers.ObjectMemberDependencies(
+        **_common,
+        assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+    )
+    _scope_deps = command_handler_helpers.ScopeVariableDependencies(
+        **_common,
+        evaluate_with_policy_fn=_eval_with_policy,
+    )
 
     result = variable_handlers.handle_set_variable_impl(
         session,
         arguments,
-        error_response=handlers._error_response,
-        set_object_member=_set_object_member_direct,
-        set_scope_variable=_set_scope_variable_direct,
-        logger=cast("Logger", handlers.logger),
-        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        object_member_deps=_obj_deps,
+        scope_variable_deps=_scope_deps,
         var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
     if result:

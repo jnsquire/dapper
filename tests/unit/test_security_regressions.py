@@ -149,20 +149,22 @@ class TestEvalPolicyEnforcement:
 
         failing_convert_value_with_context = MagicMock(side_effect=ValueError("fail"))
 
-        result = command_handler_helpers.set_scope_variable(
+        result = command_handler_helpers.set_scope_variable_with_dependencies(
             frame,
             "locals",
             "x",
             "__import__('os')",
-            try_custom_convert=_fail_convert,
-            conversion_failed_sentinel=conversion_failed_sentinel,
-            evaluate_with_policy_fn=evaluate_with_policy,
-            convert_value_with_context_fn=failing_convert_value_with_context,
-            logger=command_handlers.logger,
-            error_response_fn=command_handlers._error_response,
-            conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=lambda: None,
-            make_variable_fn=_make_variable_for_tests,
+            deps=command_handler_helpers.ScopeVariableDependencies(
+                try_custom_convert=_fail_convert,
+                conversion_failed_sentinel=conversion_failed_sentinel,
+                convert_value_with_context_fn=failing_convert_value_with_context,
+                evaluate_with_policy_fn=evaluate_with_policy,
+                error_response_fn=command_handlers._error_response,
+                conversion_error_message=command_handlers._CONVERSION_ERROR_MESSAGE,
+                get_state_debugger=lambda: None,
+                make_variable_fn=_make_variable_for_tests,
+                logger=command_handlers.logger,
+            ),
         )
         # Policy blocks it via ValueError; fallback also fails → error
         assert result.get("success") is not True

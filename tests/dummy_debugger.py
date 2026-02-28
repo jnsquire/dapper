@@ -100,6 +100,9 @@ class DummyDebugger:
         # stack trace (DebuggerLike protocol — None means "use thread_tracker")
         self.stack: list[Any] | None = None
 
+        # debugging frames sometimes referenced directly
+        self.botframe: Any | None = None
+
         # Frame evaluation attributes (DebuggerLike protocol)
         self.breakpoints: dict[str, list[Any]] = {}
         self._frame_eval_enabled: bool = False

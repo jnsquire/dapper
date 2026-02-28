@@ -94,46 +94,6 @@ def _try_convert(value_str: str, frame: Any | None = None, parent_obj: Any | Non
         return _CONVERSION_FAILED
 
 
-def _set_object_member_direct(parent_obj: Any, name: str, value_str: str) -> dict[str, Any]:
-    return command_handler_helpers.set_object_member(
-        parent_obj,
-        name,
-        value_str,
-        try_custom_convert=_try_convert,
-        conversion_failed_sentinel=_CONVERSION_FAILED,
-        convert_value_with_context_fn=convert_value_with_context,
-        assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-        error_response_fn=handlers._error_response,
-        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-        get_state_debugger=lambda: _session().debugger,
-        make_variable_fn=_make_variable,
-        logger=handlers.logger,
-    )
-
-
-def _set_scope_variable_direct(
-    frame: Any,
-    scope: str,
-    name: str,
-    value_str: str,
-) -> dict[str, Any]:
-    return command_handler_helpers.set_scope_variable(
-        frame,
-        scope,
-        name,
-        value_str,
-        try_custom_convert=_try_convert,
-        conversion_failed_sentinel=_CONVERSION_FAILED,
-        evaluate_with_policy_fn=handlers.evaluate_with_policy,
-        convert_value_with_context_fn=convert_value_with_context,
-        logger=handlers.logger,
-        error_response_fn=handlers._error_response,
-        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
-        get_state_debugger=lambda: _session().debugger,
-        make_variable_fn=_make_variable,
-    )
-
-
 def _make_variable(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[str, Any]:
     return command_handler_helpers.make_variable(
         dbg,
@@ -141,6 +101,28 @@ def _make_variable(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[s
         value,
         frame,
     )
+
+
+_common_deps = dict(
+    try_custom_convert=_try_convert,
+    conversion_failed_sentinel=_CONVERSION_FAILED,
+    convert_value_with_context_fn=convert_value_with_context,
+    error_response_fn=handlers._error_response,
+    conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+    get_state_debugger=lambda: _session().debugger,
+    make_variable_fn=_make_variable,
+    logger=handlers.logger,
+)
+
+_obj_deps = command_handler_helpers.ObjectMemberDependencies(
+    **_common_deps,
+    assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+)
+
+_scope_deps = command_handler_helpers.ScopeVariableDependencies(
+    **_common_deps,
+    evaluate_with_policy_fn=handlers.evaluate_with_policy,
+)
 
 
 def _resolve_variables_for_reference(dbg: Any, frame_info: Any) -> list[dict[str, Any]]:
@@ -169,11 +151,8 @@ def _handle_set_variable(session: Any, arguments: dict[str, Any]) -> dict[str, A
     return variable_handlers.handle_set_variable_impl(
         session,
         arguments,
-        error_response=handlers._error_response,
-        set_object_member=_set_object_member_direct,
-        set_scope_variable=_set_scope_variable_direct,
-        logger=handlers.logger,
-        conversion_error_message=handlers._CONVERSION_ERROR_MESSAGE,
+        object_member_deps=_obj_deps,
+        scope_variable_deps=_scope_deps,
         var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
 

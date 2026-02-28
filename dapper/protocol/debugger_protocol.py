@@ -18,9 +18,14 @@ from typing import runtime_checkable
 
 if TYPE_CHECKING:
     import types
+    from typing import TypeAlias
 
     from dapper.protocol.structures import StackFrame as StackFrameDict
     from dapper.protocol.structures import Thread
+
+    # A single stack entry is either a (frame, lineno) tuple produced by bdb
+    # or a pre-built DAP StackFrame dict from the thread tracker.
+    StackEntry: TypeAlias = tuple[types.FrameType, int] | dict[str, Any]
 
 
 class PresentationHint(TypedDict, total=False):
@@ -250,6 +255,7 @@ class DebuggerLike(
     SupportsDataBreakpointState,
     SupportsVariableFactory,
     SupportsBreakpointCommands,
+    SupportsSteppingCommands,
     SupportsTaskRegistry,
     SupportsThreadTracker,
     Protocol,
@@ -261,8 +267,6 @@ class DebuggerLike(
     and maps to the adapter-side ``PyDebugger`` compatibility surface.
     """
 
-    stepping_controller: Any  # stepping/current_frame-compatible delegate
-
     def run(self, code: str) -> Any: ...
 
     # VarRef aliases (exposed for tests). Use broad `Any`-typed names so
@@ -272,13 +276,41 @@ class DebuggerLike(
     VarRefList: Any
     VarRef: Any
 
-    stack: list[Any] | None
+    stack: list[StackEntry] | None
+
+    # additional convenient attributes exposed by real debuggers and
+    # relied on by tests.  types aim to be permissive but more informative
+    # than plain ``Any`` where the code actually exercises them.
+    current_frame: types.FrameType | None
+    botframe: types.FrameType | None
+    program_path: str | None
+
+    # break storage is either a custom container (DummyDebugger) or a
+    # plain mapping used by bdb; callers treat it as an iterable/dict.
+    breaks: object
+
+    # data-breakpoints list held by DummyDebugger
+    data_breakpoints: list[dict[str, Any]] | None
+
+    # legacy/watch bookkeeping accessed in a few handlers/tests
+    data_watch_names: set[str] | list[str] | None
+    data_watch_meta: dict[str, Any] | None
+    _data_watches: dict[str, Any] | None
+    _frame_watches: dict[int, list[str]] | None
+
+    # function/exception breakpoint helpers
+    function_breakpoints: list[str]
+    function_breakpoint_meta: dict[str, dict[str, Any]]
+
+    # exception handling flags and storage
+    current_exception_info: dict[int, ExceptionInfo]
+    exception_breakpoints_raised: bool
+    exception_breakpoints_uncaught: bool
 
 
 @runtime_checkable
 class CommandHandlerDebuggerLike(
     DebuggerLike,
-    SupportsSteppingCommands,
     Protocol,
 ):
     """Extended debugger surface consumed by command handler implementations."""

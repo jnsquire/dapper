@@ -80,7 +80,7 @@ def _collect_main_program_source(
     sources: list[dict[str, Any]] = []
 
     if state.debugger:
-        program_path = getattr(state.debugger, "program_path", None)
+        program_path = state.debugger.program_path
         if program_path and program_path not in seen_paths:
             try:
                 program_file_path = Path(program_path).resolve()

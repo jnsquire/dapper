@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 from typing import Protocol
-from typing import TypedDict
 from typing import cast
 
 from dapper.core.structured_model import get_model_fields
@@ -79,33 +79,49 @@ class EvaluateWithPolicyFn(Protocol):
     ) -> object: ...
 
 
-class ScopeVariableDependencies(TypedDict):
+@dataclass(frozen=True, slots=True)
+class CommonSetterDependencies:
+    """Shared fields for variable setter dependency injection."""
+
     try_custom_convert: ConvertWithContextFn
     conversion_failed_sentinel: object
-    evaluate_with_policy_fn: EvaluateWithPolicyFn
     convert_value_with_context_fn: ConvertWithContextFn
-    logger: LoggerLike
     error_response_fn: ErrorResponseFn
     conversion_error_message: str
     get_state_debugger: Callable[[], DebuggerLike | None]
     make_variable_fn: MakeVariableFn
+    logger: LoggerLike
 
 
-class ObjectMemberDependencies(TypedDict):
-    try_custom_convert: ConvertWithContextFn
-    conversion_failed_sentinel: object
-    convert_value_with_context_fn: ConvertWithContextFn
+@dataclass(frozen=True, slots=True)
+class ObjectMemberDependencies(CommonSetterDependencies):
+    """Dependencies for setting object attributes/items."""
+
     assign_to_parent_member_fn: Callable[[object, str, object], str | None]
-    error_response_fn: ErrorResponseFn
-    conversion_error_message: str
-    get_state_debugger: Callable[[], DebuggerLike | None]
-    make_variable_fn: MakeVariableFn
-    logger: LoggerLike
+
+
+@dataclass(frozen=True, slots=True)
+class ScopeVariableDependencies(CommonSetterDependencies):
+    """Dependencies for setting frame-scope variables."""
+
+    evaluate_with_policy_fn: EvaluateWithPolicyFn
 
 
 def error_response(message: str) -> Payload:
     """Return a standardized failed handler response payload."""
     return {"success": False, "message": message}
+
+
+def _success_var_body(var_obj: Payload) -> Payload:
+    """Build a success response from a variable object."""
+    return {
+        "success": True,
+        "body": {
+            "value": var_obj["value"],
+            "type": var_obj["type"],
+            "variablesReference": var_obj["variablesReference"],
+        },
+    }
 
 
 def get_thread_ident(threading_module: ThreadingLike) -> int:
@@ -272,123 +288,36 @@ def assign_to_parent_member(parent_obj: Any, name: str, new_value: Any) -> str |
     return err
 
 
-def set_scope_variable(  # noqa: PLR0913
-    frame: FrameLike,
-    scope: str,
-    name: str,
-    value_str: str,
-    *,
-    try_custom_convert: ConvertWithContextFn,
-    conversion_failed_sentinel: object,
-    evaluate_with_policy_fn: EvaluateWithPolicyFn,
-    convert_value_with_context_fn: ConvertWithContextFn,
-    logger: LoggerLike,
-    error_response_fn: ErrorResponseFn,
-    conversion_error_message: str,
-    get_state_debugger: Callable[[], DebuggerLike | None],
-    make_variable_fn: MakeVariableFn,
-) -> Payload:
-    """Set a variable in frame locals/globals scope."""
-    return set_scope_variable_with_dependencies(
-        frame,
-        scope,
-        name,
-        value_str,
-        dependencies={
-            "try_custom_convert": try_custom_convert,
-            "conversion_failed_sentinel": conversion_failed_sentinel,
-            "evaluate_with_policy_fn": evaluate_with_policy_fn,
-            "convert_value_with_context_fn": convert_value_with_context_fn,
-            "logger": logger,
-            "error_response_fn": error_response_fn,
-            "conversion_error_message": conversion_error_message,
-            "get_state_debugger": get_state_debugger,
-            "make_variable_fn": make_variable_fn,
-        },
-    )
-
-
 def set_scope_variable_with_dependencies(
     frame: FrameLike,
     scope: str,
     name: str,
     value_str: str,
     *,
-    dependencies: ScopeVariableDependencies,
+    deps: ScopeVariableDependencies,
 ) -> Payload:
     """Set a variable in frame locals/globals scope."""
-    try_custom_convert = dependencies["try_custom_convert"]
-    conversion_failed_sentinel = dependencies["conversion_failed_sentinel"]
-    evaluate_with_policy_fn = dependencies["evaluate_with_policy_fn"]
-    convert_value_with_context_fn = dependencies["convert_value_with_context_fn"]
-    logger = dependencies["logger"]
-    error_response_fn = dependencies["error_response_fn"]
-    conversion_error_message = dependencies["conversion_error_message"]
-    get_state_debugger = dependencies["get_state_debugger"]
-    make_variable_fn = dependencies["make_variable_fn"]
-
     try:
-        new_value = try_custom_convert(value_str, frame, None)
-        if new_value is conversion_failed_sentinel:
-            new_value = evaluate_with_policy_fn(value_str, frame, allow_builtins=True)
+        new_value = deps.try_custom_convert(value_str, frame, None)
+        if new_value is deps.conversion_failed_sentinel:
+            new_value = deps.evaluate_with_policy_fn(value_str, frame, allow_builtins=True)
     except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
         try:
-            new_value = convert_value_with_context_fn(value_str, frame)
+            new_value = deps.convert_value_with_context_fn(value_str, frame)
         except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
-            logger.debug("Failed to convert value for scope assignment", exc_info=True)
-            return error_response_fn(conversion_error_message)
+            deps.logger.debug("Failed to convert value for scope assignment", exc_info=True)
+            return deps.error_response_fn(deps.conversion_error_message)
 
     if scope == "locals":
         frame.f_locals[name] = new_value
     elif scope == "globals":
         frame.f_globals[name] = new_value
     else:
-        return error_response_fn(f"Unknown scope: {scope}")
+        return deps.error_response_fn(f"Unknown scope: {scope}")
 
-    dbg = get_state_debugger()
-    var_obj = make_variable_fn(dbg, name, new_value, frame)
-    return {
-        "success": True,
-        "body": {
-            "value": var_obj["value"],
-            "type": var_obj["type"],
-            "variablesReference": var_obj["variablesReference"],
-        },
-    }
-
-
-def set_object_member(  # noqa: PLR0913
-    parent_obj: object,
-    name: str,
-    value_str: str,
-    *,
-    try_custom_convert: ConvertWithContextFn,
-    conversion_failed_sentinel: object,
-    convert_value_with_context_fn: ConvertWithContextFn,
-    assign_to_parent_member_fn: Callable[[object, str, object], str | None],
-    error_response_fn: ErrorResponseFn,
-    conversion_error_message: str,
-    get_state_debugger: Callable[[], DebuggerLike | None],
-    make_variable_fn: MakeVariableFn,
-    logger: LoggerLike,
-) -> Payload:
-    """Set an attribute or item of an object."""
-    return set_object_member_with_dependencies(
-        parent_obj,
-        name,
-        value_str,
-        dependencies={
-            "try_custom_convert": try_custom_convert,
-            "conversion_failed_sentinel": conversion_failed_sentinel,
-            "convert_value_with_context_fn": convert_value_with_context_fn,
-            "assign_to_parent_member_fn": assign_to_parent_member_fn,
-            "error_response_fn": error_response_fn,
-            "conversion_error_message": conversion_error_message,
-            "get_state_debugger": get_state_debugger,
-            "make_variable_fn": make_variable_fn,
-            "logger": logger,
-        },
-    )
+    dbg = deps.get_state_debugger()
+    var_obj = deps.make_variable_fn(dbg, name, new_value, frame)
+    return _success_var_body(var_obj)
 
 
 def set_object_member_with_dependencies(
@@ -396,45 +325,28 @@ def set_object_member_with_dependencies(
     name: str,
     value_str: str,
     *,
-    dependencies: ObjectMemberDependencies,
+    deps: ObjectMemberDependencies,
 ) -> Payload:
     """Set an attribute or item of an object."""
-    try_custom_convert = dependencies["try_custom_convert"]
-    conversion_failed_sentinel = dependencies["conversion_failed_sentinel"]
-    convert_value_with_context_fn = dependencies["convert_value_with_context_fn"]
-    assign_to_parent_member_fn = dependencies["assign_to_parent_member_fn"]
-    error_response_fn = dependencies["error_response_fn"]
-    conversion_error_message = dependencies["conversion_error_message"]
-    get_state_debugger = dependencies["get_state_debugger"]
-    make_variable_fn = dependencies["make_variable_fn"]
-    logger = dependencies["logger"]
-
     try:
-        new_value = try_custom_convert(value_str, None, parent_obj)
-        if new_value is conversion_failed_sentinel:
-            new_value = convert_value_with_context_fn(value_str, None, parent_obj)
+        new_value = deps.try_custom_convert(value_str, None, parent_obj)
+        if new_value is deps.conversion_failed_sentinel:
+            new_value = deps.convert_value_with_context_fn(value_str, None, parent_obj)
     except (AttributeError, NameError, SyntaxError, TypeError, ValueError):
-        logger.debug("Failed to convert value for object member assignment", exc_info=True)
-        return error_response_fn(conversion_error_message)
+        deps.logger.debug("Failed to convert value for object member assignment", exc_info=True)
+        return deps.error_response_fn(deps.conversion_error_message)
 
-    err = assign_to_parent_member_fn(parent_obj, name, new_value)
+    err = deps.assign_to_parent_member_fn(parent_obj, name, new_value)
 
     try:
         if err is not None:
-            return error_response_fn(err)
+            return deps.error_response_fn(err)
 
-        dbg = get_state_debugger()
-        var_obj = make_variable_fn(dbg, name, new_value, None)
-        return {
-            "success": True,
-            "body": {
-                "value": var_obj["value"],
-                "type": var_obj["type"],
-                "variablesReference": var_obj["variablesReference"],
-            },
-        }
+        dbg = deps.get_state_debugger()
+        var_obj = deps.make_variable_fn(dbg, name, new_value, None)
+        return _success_var_body(var_obj)
     except (AttributeError, KeyError, TypeError, ValueError) as e:
-        return error_response_fn(f"Failed to set object member '{name}': {e!s}")
+        return deps.error_response_fn(f"Failed to set object member '{name}': {e!s}")
 
 
 def extract_variables(

@@ -95,52 +95,34 @@ def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> lis
 
 
 def _invoke_set_variable_via_domain(session: Any, arguments: dict[str, Any]) -> None:
-    def _set_object_member_direct(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
-        return command_handler_helpers.set_object_member(
-            parent_obj,
-            name,
-            value,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            convert_value_with_context_fn=convert_value_with_context,
-            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-            error_response_fn=dch._error_response,
-            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=dch._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
-            logger=dch.logger,
-        )
-
-    def _set_scope_variable_direct(
-        frame: Any,
-        scope: str,
-        name: str,
-        value: str,
-    ) -> dict[str, Any]:
-        return command_handler_helpers.set_scope_variable(
-            frame,
-            scope,
-            name,
-            value,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            evaluate_with_policy_fn=dch.evaluate_with_policy,
-            convert_value_with_context_fn=convert_value_with_context,
-            logger=dch.logger,
-            error_response_fn=dch._error_response,
-            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=dch._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
-        )
+    _obj_deps = command_handler_helpers.ObjectMemberDependencies(
+        try_custom_convert=_try_test_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+        error_response_fn=dch._error_response,
+        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=dch._active_debugger,
+        make_variable_fn=_make_variable_for_tests,
+        logger=dch.logger,
+    )
+    _scope_deps = command_handler_helpers.ScopeVariableDependencies(
+        try_custom_convert=_try_test_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        evaluate_with_policy_fn=dch.evaluate_with_policy,
+        error_response_fn=dch._error_response,
+        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=dch._active_debugger,
+        make_variable_fn=_make_variable_for_tests,
+        logger=dch.logger,
+    )
 
     result = variable_handlers.handle_set_variable_impl(
         session,
         arguments,
-        error_response=dch._error_response,
-        set_object_member=_set_object_member_direct,
-        set_scope_variable=_set_scope_variable_direct,
-        logger=dch.logger,
-        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        object_member_deps=_obj_deps,
+        scope_variable_deps=_scope_deps,
         var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
     )
     if result:
@@ -160,20 +142,24 @@ def test_convert_value_with_context_eval_with_frame():
 
 
 def test_set_object_member_dict_list_tuple_and_attribute():
+    _obj_deps = command_handler_helpers.ObjectMemberDependencies(
+        try_custom_convert=_try_test_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
+        error_response_fn=dch._error_response,
+        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=dch._active_debugger,
+        make_variable_fn=_make_variable_for_tests,
+        logger=dch.logger,
+    )
+
     def _set_object_member_direct(parent_obj: Any, name: str, value: str) -> dict[str, Any]:
-        return command_handler_helpers.set_object_member(
+        return command_handler_helpers.set_object_member_with_dependencies(
             parent_obj,
             name,
             value,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            convert_value_with_context_fn=convert_value_with_context,
-            assign_to_parent_member_fn=command_handler_helpers.assign_to_parent_member,
-            error_response_fn=dch._error_response,
-            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=dch._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
-            logger=dch.logger,
+            deps=_obj_deps,
         )
 
     # dict
@@ -208,26 +194,30 @@ def test_set_object_member_dict_list_tuple_and_attribute():
 
 
 def test_set_scope_variable_locals_and_globals():
+    _scope_deps = command_handler_helpers.ScopeVariableDependencies(
+        try_custom_convert=_try_test_convert,
+        conversion_failed_sentinel=_CONVERSION_FAILED,
+        convert_value_with_context_fn=convert_value_with_context,
+        evaluate_with_policy_fn=dch.evaluate_with_policy,
+        error_response_fn=dch._error_response,
+        conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
+        get_state_debugger=dch._active_debugger,
+        make_variable_fn=_make_variable_for_tests,
+        logger=dch.logger,
+    )
+
     def _set_scope_variable_direct(
         frame: Any,
         scope: str,
         name: str,
         value: str,
     ) -> dict[str, Any]:
-        return command_handler_helpers.set_scope_variable(
+        return command_handler_helpers.set_scope_variable_with_dependencies(
             frame,
             scope,
             name,
             value,
-            try_custom_convert=_try_test_convert,
-            conversion_failed_sentinel=_CONVERSION_FAILED,
-            evaluate_with_policy_fn=dch.evaluate_with_policy,
-            convert_value_with_context_fn=convert_value_with_context,
-            logger=dch.logger,
-            error_response_fn=dch._error_response,
-            conversion_error_message=dch._CONVERSION_ERROR_MESSAGE,
-            get_state_debugger=dch._active_debugger,
-            make_variable_fn=_make_variable_for_tests,
+            deps=_scope_deps,
         )
 
     frame = SimpleNamespace(f_locals={}, f_globals={})

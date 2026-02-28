@@ -10,6 +10,7 @@ from typing import Protocol
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
 
 if TYPE_CHECKING:
+    from dapper.protocol.debugger_protocol import StackEntry
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.debug_shared import DebugSession
 
@@ -33,28 +34,29 @@ def handle_stack_trace_impl(  # noqa: PLR0912
     stack_frames: list[Payload] = []
     dbg = session.debugger
 
-    frames = None
+    frames: list[StackEntry] | None = None
     if dbg and isinstance(thread_id, int) and thread_id in dbg.thread_tracker.frames_by_thread:
-        raw_frames = dbg.thread_tracker.frames_by_thread[thread_id]
-        for entry in raw_frames:
-            if isinstance(entry, dict):
-                stack_frames.append(entry)
-            elif hasattr(entry, "to_dict"):
-                stack_frames.append(entry.to_dict())
-            else:
-                # (frame, lineno) tuple fallback
-                frame, lineno = entry
-                name = frame.f_code.co_name
-                source_path = frame.f_code.co_filename
-                stack_frames.append(
-                    {
-                        "id": len(stack_frames),
-                        "name": name,
-                        "source": {"name": Path(source_path).name, "path": source_path},
-                        "line": lineno,
-                        "column": 0,
-                    }
-                )
+        raw_frames = dbg.thread_tracker.frames_by_thread.get(thread_id)
+        if raw_frames is not None:
+            for entry in raw_frames:
+                if isinstance(entry, dict):
+                    stack_frames.append(entry)
+                elif hasattr(entry, "to_dict"):
+                    stack_frames.append(entry.to_dict())
+                else:
+                    # (frame, lineno) tuple fallback
+                    frame, lineno = entry
+                    name = frame.f_code.co_name
+                    source_path = frame.f_code.co_filename
+                    stack_frames.append(
+                        {
+                            "id": len(stack_frames),
+                            "name": name,
+                            "source": {"name": Path(source_path).name, "path": source_path},
+                            "line": lineno,
+                            "column": 0,
+                        }
+                    )
     else:
         if dbg:
             stack = dbg.stack
