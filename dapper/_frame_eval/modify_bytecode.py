@@ -74,7 +74,6 @@ class BytecodeErrorInfo(TypedDict):
     name: str
 
 
-
 class BytecodeModifier:
     """Advanced bytecode modification system for frame evaluation."""
 

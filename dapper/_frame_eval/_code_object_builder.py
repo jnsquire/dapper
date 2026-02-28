@@ -65,8 +65,7 @@ def rebuild_code_object(  # noqa: PLR0912
         "co_argcount": original_code.co_argcount,
         "co_kwonlyargcount": original_code.co_kwonlyargcount,
         "co_nlocals": original_code.co_nlocals,
-        "co_stacksize": original_code.co_stacksize
-        + 2,  # Increase stack size for breakpoint calls
+        "co_stacksize": original_code.co_stacksize + 2,  # Increase stack size for breakpoint calls
         "co_flags": original_code.co_flags,
         "co_code": bytes(bytecode),
         "co_consts": tuple(constants),
@@ -157,9 +156,7 @@ def rebuild_code_object(  # noqa: PLR0912
     if sys.version_info >= (3, 11):
         args.extend(
             [
-                original_code.co_positions()
-                if hasattr(original_code, "co_positions")
-                else None,
+                original_code.co_positions() if hasattr(original_code, "co_positions") else None,
                 original_code.co_exceptiontable
                 if hasattr(original_code, "co_exceptiontable")
                 else b"",

@@ -5,7 +5,7 @@ This document collects actionable suggestions for enhancing the `dapper` codebas
 ## 🔧 Code Quality & Typing
 
 * Remove `# type: ignore` comments by adding missing stubs and tightening signatures.  Consider enabling strict type checking in CI (`pyright`/Pylance `typeCheckingMode = "strict"`).
-* Split very large modules (e.g. `modify_bytecode.py`, `reload_helpers.py`) into smaller, single‑responsibility files.
+* Split very large modules (e.g. `reload_helpers.py`) into smaller, single‑responsibility files.
 * Resolve `TODO`/`FIXME` notes in code and docs:
   * `doc/reference/dap-extensions.md` has placeholders.
   * Tests hint at missing coverage for restart/terminate behaviour.

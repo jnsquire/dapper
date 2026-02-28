@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -209,3 +210,159 @@ async def test_close_unlinks_pipe(tmp_path):
     await conn.close()
 
     assert not p.exists()
+
+
+def test_get_pipe_path_linux(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    conn = NamedPipeServerConnection("mypipe")
+    assert conn.pipe_path == "/tmp/mypipe"
+
+
+def test_get_pipe_path_windows_format(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    conn = NamedPipeServerConnection("mypipe")
+    assert conn.pipe_path == r"\\.\pipe\mypipe"
+
+
+def test_is_connected_property():
+    conn = NamedPipeServerConnection("prop")
+    assert conn.is_connected is False
+    conn.is_connected = True
+    assert conn._is_connected is True
+    conn.is_connected = False
+    assert conn._is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_close_noop_no_resources():
+    """close() with no writer/server/listener/client must not raise."""
+    conn = NamedPipeServerConnection("noop")
+    conn._is_connected = True
+    # pipe_path may not exist on disk - no-op on POSIX
+    await conn.close()
+    assert conn._is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_close_pipe_path_already_absent(tmp_path):
+    """close() must not raise when pipe file was already removed."""
+    conn = NamedPipeServerConnection("absent")
+    conn.pipe_path = str(tmp_path / "gone")
+    conn._is_connected = True
+    await conn.close()  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_close_with_pipe_conn():
+    """_pipe_conn.close() is called and reference is cleared."""
+    conn = NamedPipeServerConnection("pc")
+    mock_conn = MagicMock()
+    conn._pipe_conn = mock_conn
+    conn._is_connected = True
+
+    await conn.close()
+
+    mock_conn.close.assert_called_once()
+    assert conn._pipe_conn is None
+
+
+@pytest.mark.asyncio
+async def test_close_with_client_and_listener():
+    """client and listener are each closed exactly once."""
+    conn = NamedPipeServerConnection("cl")
+    mock_client = MagicMock()
+    mock_listener = MagicMock()
+    conn.client = mock_client
+    conn.listener = mock_listener
+    conn._is_connected = True
+
+    await conn.close()
+
+    mock_client.close.assert_called_once()
+    mock_listener.close.assert_called_once()
+    assert conn.client is None
+    assert conn.listener is None
+
+
+@pytest.mark.asyncio
+async def test_close_pipe_conn_error_suppressed():
+    """Exceptions from _pipe_conn.close() are suppressed."""
+    conn = NamedPipeServerConnection("err")
+    mock_conn = MagicMock()
+    mock_conn.close.side_effect = OSError("boom")
+    conn._pipe_conn = mock_conn
+    conn._is_connected = True
+
+    await conn.close()  # must not raise
+    assert conn._is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_handle_client_no_event_does_not_raise():
+    """`_handle_client` must work when _awaiting_connection_event is None."""
+    conn = NamedPipeServerConnection("noev")
+    conn._awaiting_connection_event = None
+    reader = DummyReader([b"\r\n"], content=b"")
+    writer = DummyWriter()
+
+    await conn._handle_client(reader, writer)
+
+    assert conn._is_connected is True
+    assert conn.reader is reader
+    assert conn.writer is writer
+
+
+@pytest.mark.asyncio
+async def test_handle_client_clears_event():
+    """After `_handle_client` fires the event, the reference is cleared."""
+    conn = NamedPipeServerConnection("clr")
+    event = asyncio.Event()
+    conn._awaiting_connection_event = event
+    reader = DummyReader([], content=b"")
+    writer = DummyWriter()
+
+    await conn._handle_client(reader, writer)
+
+    assert event.is_set()
+    assert conn._awaiting_connection_event is None
+
+
+@pytest.mark.asyncio
+async def test_read_message_multiple_headers():
+    """Extra headers alongside Content-Length must still be parsed correctly."""
+    conn = NamedPipeServerConnection("mh")
+    message = {"seq": 1, "type": "request"}
+    content = json.dumps(message).encode("utf-8")
+    lines = [
+        f"Content-Length: {len(content)}\r\n".encode(),
+        b"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n",
+        b"\r\n",
+    ]
+    conn.reader = DummyReader(lines, content=content)
+
+    out = await conn.read_message()
+    assert out == message
+
+
+@pytest.mark.asyncio
+async def test_read_message_invalid_json_raises():
+    """A payload that is not valid JSON must raise json.JSONDecodeError."""
+    conn = NamedPipeServerConnection("ij")
+    payload = b"not-json!!!"
+    lines = [f"Content-Length: {len(payload)}\r\n".encode(), b"\r\n"]
+    conn.reader = DummyReader(lines, content=payload)
+
+    with pytest.raises(json.JSONDecodeError):
+        await conn.read_message()
+
+
+@pytest.mark.asyncio
+async def test_write_message_drain_called():
+    """write_message must call drain() exactly once when using a writer."""
+    conn = NamedPipeServerConnection("d")
+    writer = DummyWriter()
+    conn.writer = writer
+
+    await conn.write_message({"cmd": "continue"})
+
+    assert writer._drained == 1
