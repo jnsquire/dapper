@@ -78,13 +78,28 @@ uv run ruff check . --fix
 
 ### Building the Package
 
+There are a couple of useful build-related commands:
+
 ```bash
-# Build distribution packages
+# Build distribution packages (regular PEP 517 backend invocation)
 uv build
 
-# Or using setuptools
-python -m build
+# Build the Cython frame‑eval extension only
+uv run build-dev
+
+# Build and then install the project in editable mode
+# with the ``dev`` and ``frame-eval`` extras:
+uv run build-dev -- --install
+# or equivalently
+uv run install-dev
 ```
+
+(If you just want a production build of the extension,
+`uv run build-prod` still works as before.)
+
+When run with ``--install`` the helper will perform the same
+`pip install -e .[dev,frame-eval]` step that you used previously, saving
+you the extra manual command.
 
 ## Project Structure
 

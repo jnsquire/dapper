@@ -39,12 +39,11 @@ cdef class FuncCodeInfo:
     cdef void update_breakpoint_info(self, code_obj)
 
 # Function declarations
-cpdef ThreadInfo get_thread_info()
+
 cpdef FuncCodeInfo get_func_code_info(frame_obj, code_obj)
 cpdef frame_eval_func()
 cpdef stop_frame_eval()
 cpdef dummy_trace_dispatch(frame, str event, arg)
-cpdef clear_thread_local_info()
 cpdef get_frame_eval_stats()
 cpdef mark_thread_as_pydevd()
 cpdef unmark_thread_as_pydevd()

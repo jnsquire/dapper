@@ -7,7 +7,7 @@ where C extensions are not built.
 
 from __future__ import annotations
 
-import threading
+import contextvars
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Union
@@ -20,13 +20,14 @@ BreakpointLines = set[int]
 FrameStats = dict[str, Union[int, float, bool]]
 
 
-class _FallbackState:
-    def __init__(self) -> None:
-        self.thread_local = threading.local()
-        self.frame_eval_active = False
+# Module-level mutable state (not per-context)
+_frame_eval_active: bool = False
 
-
-_state = _FallbackState()
+# Context-local storage — mirrors the Cython ContextVar so that
+# ``Context.run()`` gives each context its own ThreadInfo.
+_thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
+    "thread_info", default=None
+)
 
 
 class ThreadInfo:
@@ -97,10 +98,10 @@ class FuncCodeInfo:
 
 
 def get_thread_info() -> ThreadInfo:
-    thread_info = getattr(_state.thread_local, "thread_info", None)
+    thread_info = _thread_info_var.get()
     if thread_info is None:
         thread_info = ThreadInfo()
-        _state.thread_local.thread_info = thread_info
+        _thread_info_var.set(thread_info)
     return thread_info
 
 
@@ -112,27 +113,30 @@ def get_func_code_info(frame_obj: FrameType, code_obj: CodeType) -> FuncCodeInfo
 
 
 def frame_eval_func() -> None:
-    _state.frame_eval_active = True
+    global _frame_eval_active
+    _frame_eval_active = True
 
 
 def stop_frame_eval() -> None:
-    _state.frame_eval_active = False
+    global _frame_eval_active
+    _frame_eval_active = False
 
 
 def clear_thread_local_info() -> None:
-    _state.thread_local = threading.local()
+    _thread_info_var.set(None)
 
 
 def get_frame_eval_stats() -> FrameStats:
     return {
-        "active": _state.frame_eval_active,
+        "active": _frame_eval_active,
         "has_breakpoint_manager": False,
         "frames_evaluated": 0,
         "cache_hits": 0,
         "cache_misses": 0,
         "evaluation_time": 0.0,
-        "is_active": _state.frame_eval_active,
+        "is_active": _frame_eval_active,
     }
+
 
 
 def mark_thread_as_pydevd() -> None:

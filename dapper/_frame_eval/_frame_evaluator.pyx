@@ -97,10 +97,15 @@ cdef class FuncCodeInfo:
         self.is_valid = True
 
 
-cpdef ThreadInfo get_thread_info():
-    """Get context-local debugging information."""
-    cdef ThreadInfo thread_info
+def get_thread_info():
+    """Get context-local debugging information.
 
+    Pure-Python implementation ensures the usual Python call path is used when
+    Context.run() switches contexts.  cpdef/C-level entrypoints appeared to
+    bypass the interpreter machinery in a way that confused the contextvar
+    runtime, resulting in all contexts seeing the same value.
+    """
+    # use Python locals for clarity; this function is always called from Python
     thread_info = _thread_info_var.get()
     if thread_info is None:
         thread_info = ThreadInfo()
@@ -233,8 +238,12 @@ cpdef stop_frame_eval():
         _frame_eval_active = 0
 
 
-cpdef clear_thread_local_info():
-    """Clear context-local debugging information."""
+def clear_thread_local_info():
+    """Clear context-local debugging information.
+
+    We give callers a simple way to wipe the current context entry so that
+    future ``get_thread_info`` calls will lazily create a new ``ThreadInfo``.
+    """
     _thread_info_var.set(None)
 
 

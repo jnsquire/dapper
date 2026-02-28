@@ -366,6 +366,18 @@ version = "0.6.2"
 source = { editable = "." }
 
 [package.optional-dependencies]
+dev = [
+    { name = "coverage" },
+    { name = "cython" },
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+]
 frame-eval = [
     { name = "cython" },
 ]
@@ -389,10 +401,20 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "cython", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "cython", marker = "extra == 'frame-eval'", specifier = ">=3.0" },
+    { name = "mkdocs", marker = "extra == 'dev'" },
+    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.7.2" },
+    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.405" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.15.1" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
 ]
-provides-extras = ["test", "frame-eval"]
+provides-extras = ["dev", "test", "frame-eval"]
 
 [package.metadata.requires-dev]
 dev = [

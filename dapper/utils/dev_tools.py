@@ -6,6 +6,7 @@ console scripts so tools like `uv run <name>` can invoke them.
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 import runpy
@@ -149,8 +150,48 @@ def build_dev() -> None:
     """Build frame-eval extensions in development mode.
 
     Entry point for `uv run build-dev`.
+
+    Accepts a ``--install`` flag (passed after ``--`` when using uv) which
+    will run an editable install of the package with development and frame-
+    eval extras after the build completes.  This gives approximately the same
+    behaviour as the earlier ``scripts/build_frame_eval.py install_dev`` step.
     """
+    # parse optional arguments forwarded by `uv run build-dev -- --install`
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--install",
+        action="store_true",
+        help="perform `pip install -e .[dev,frame-eval]` after building",
+    )
+    args, _ = parser.parse_known_args()
+
+    # ensure that pip (and setuptools) are available in this environment.
+    # uv-created venvs sometimes don't have pip installed, so try to bootrap it
+    # with ensurepip before attempting any pip installs.
+    try:
+        subprocess.run([
+            sys.executable,
+            "-m",
+            "ensurepip",
+            "--upgrade",
+        ], check=False)
+    except Exception:
+        pass
+
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "setuptools"],
+            check=False,
+        )
+    except Exception:
+        # best effort; if this fails the subsequent build will likely error in a
+        # more obvious way
+        pass
+
     _run_frame_eval_script("build-dev")
+
+    if args.install:
+        install_dev()
 
 
 def build_prod() -> None:
@@ -175,6 +216,23 @@ def test_frame_eval() -> None:
     Entry point for `uv run frame-eval-test`.
     """
     _run_frame_eval_script("test")
+
+
+def install_dev() -> None:
+    """Install the project in editable mode with development extras.
+
+    This is a convenience wrapper for the same command used manually in the
+    previous workflow:
+
+        python -m pip install -e .[dev,frame-eval]
+
+    Entry point for `uv run install-dev`.
+    """
+    cmd = [sys.executable, "-m", "pip", "install", "-e", " .[dev,frame-eval]"]
+    # `run_command` defined earlier is not imported here; replicate logic.
+    result = subprocess.run(" ".join(cmd), shell=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":
