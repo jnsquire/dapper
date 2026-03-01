@@ -7,7 +7,6 @@ import tempfile
 import threading
 import types
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -24,16 +23,6 @@ from dapper.shared import stepping_handlers
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
-
-if TYPE_CHECKING:
-    from dapper.protocol.debugger_protocol import Variable
-    from dapper.protocol.requests import ExceptionInfoArguments
-
-    # DAP argument shapes used by handlers (only for type-checking)
-    from dapper.protocol.requests import SetBreakpointsArguments
-    from dapper.protocol.requests import SetExceptionBreakpointsArguments
-    from dapper.protocol.requests import SetFunctionBreakpointsArguments
-
 
 _CONVERSION_FAILED = object()
 
@@ -245,11 +234,10 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     session.transport.send = fake_send_debug_message  # type: ignore[assignment]
 
     # setBreakpoints
-    args = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
+    args: dict[str, Any] = {"source": {"path": "file.py"}, "breakpoints": [{"line": 10}]}
     breakpoint_handlers.handle_set_breakpoints_impl(
         session,
-        cast("SetBreakpointsArguments", args),
-        dch.logger,
+        args,
     )
     assert ("file.py", 10, None) in dbg.breaks
 
@@ -257,7 +245,7 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     args = {"breakpoints": [{"name": "foo", "condition": "c", "hitCondition": 1}]}
     breakpoint_handlers.handle_set_function_breakpoints_impl(
         session,
-        cast("SetFunctionBreakpointsArguments", args),
+        args,
     )
     assert "foo" in dbg.function_breakpoints
     assert dbg.function_breakpoint_meta.get("foo", {}).get("condition") == "c"
@@ -266,7 +254,7 @@ def test_handle_set_breakpoints_and_set_function_and_exception(monkeypatch):
     args = {"filters": ["raised", "uncaught"]}
     breakpoint_handlers.handle_set_exception_breakpoints_impl(
         session,
-        cast("SetExceptionBreakpointsArguments", args),
+        args,
     )
     assert dbg.exception_breakpoints_raised is True
     assert dbg.exception_breakpoints_uncaught is True
@@ -301,8 +289,7 @@ def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
         }
         breakpoint_handlers.handle_set_breakpoints_impl(
             session,
-            cast("SetBreakpointsArguments", args),
-            dch.logger,
+            cast("dict[str, Any]", args),
         )
 
         assert cleared_lines == [7]
@@ -388,11 +375,8 @@ def test_variables_and_set_variable(monkeypatch):
     dbg.var_refs[7] = (1, "locals")
 
     # stub variable factory to predictable output
-    def fake_make_variable(_dbg, _name, value, _frame):
-        return cast(
-            "Variable",
-            {"value": str(value), "type": type(value).__name__, "variablesReference": 0},
-        )
+    def fake_make_variable(_dbg, _name, value, _frame) -> dict[str, Any]:
+        return {"value": str(value), "type": type(value).__name__, "variablesReference": 0}
 
     def _resolve_with_fake_make_variable(
         runtime_dbg: Any,
@@ -613,7 +597,7 @@ def test_handle_exception_info_variants(monkeypatch):
 
     # missing threadId
     lifecycle_handlers.cmd_exception_info(
-        cast("ExceptionInfoArguments", {}),
+        cast("dict[str, Any]", {}),
         state=dch._active_session(),
     )
     assert calls
@@ -623,7 +607,7 @@ def test_handle_exception_info_variants(monkeypatch):
     monkeypatch.setattr(dch._active_session(), "debugger", None)
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
-        cast("ExceptionInfoArguments", {"threadId": 1}),
+        cast("dict[str, Any]", {"threadId": 1}),
         state=dch._active_session(),
     )
     assert calls
@@ -634,7 +618,7 @@ def test_handle_exception_info_variants(monkeypatch):
     monkeypatch.setattr(dch._active_session(), "debugger", dbg)
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
-        cast("ExceptionInfoArguments", {"threadId": 2}),
+        cast("dict[str, Any]", {"threadId": 2}),
         state=dch._active_session(),
     )
     assert calls
@@ -649,7 +633,7 @@ def test_handle_exception_info_variants(monkeypatch):
     }
     calls.clear()
     lifecycle_handlers.cmd_exception_info(
-        cast("ExceptionInfoArguments", {"threadId": 3}),
+        cast("dict[str, Any]", {"threadId": 3}),
         state=dch._active_session(),
     )
     assert calls
@@ -659,20 +643,17 @@ def test_handle_exception_info_variants(monkeypatch):
 def test_create_variable_object_debugger_override_and_fallback(monkeypatch):
     # override returns dict
     class DbgWithMake(DummyDebugger):
-        def make_variable_object(
+        def make_variable_object(  # type: ignore[override]
             self,
             name: Any,
             value: Any,
             frame: Any | None = None,
             *,
             max_string_length: int = 1000,
-        ):
+        ) -> Any:
             # reference parameters to satisfy linters and preserve protocol shape
             _ = (name, frame, max_string_length)
-            return cast(
-                "Variable",
-                {"value": f"dbg:{value}", "type": "int", "variablesReference": 0},
-            )
+            return {"value": f"dbg:{value}", "type": "int", "variablesReference": 0}
 
     _session, dbg = _active_session_with_debugger(DbgWithMake())
     res = debug_shared.make_variable_object("n", 5, dbg)

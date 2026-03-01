@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import inspect
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,7 +32,7 @@ from dapper.shared.stepping_handlers import handle_step_in_impl
 # ---------------------------------------------------------------------------
 
 
-def _make_frame(filename: str, flags: int = 0) -> SimpleNamespace:
+def _make_frame(filename: str, flags: int = 0) -> Any:
     """Minimal frame-like object with f_code.co_filename and co_flags."""
     code = SimpleNamespace(co_filename=filename, co_flags=flags)
     return SimpleNamespace(f_code=code)
@@ -70,7 +71,7 @@ def test_frame_is_coroutine_async_generator() -> None:
 
 
 def test_frame_is_coroutine_missing_f_code() -> None:
-    assert _frame_is_coroutine(SimpleNamespace()) is False
+    assert _frame_is_coroutine(SimpleNamespace()) is False  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +167,7 @@ def test_handle_next_impl_sets_async_step_over_for_coroutine_frame() -> None:
         session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
-        set_dbg_stepping_flag=lambda _d: None,
+        set_dbg_stepping_flag=lambda dbg: None,
     )
 
     assert dbg.stepping_controller.async_step_over is True
@@ -182,7 +183,7 @@ def test_handle_next_impl_no_async_flag_for_regular_frame() -> None:
         session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
-        set_dbg_stepping_flag=lambda _d: None,
+        set_dbg_stepping_flag=lambda dbg: None,
     )
 
     assert dbg.stepping_controller.async_step_over is False
@@ -201,7 +202,7 @@ def test_handle_next_impl_no_frame_does_not_set_async_flag() -> None:
         session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
-        set_dbg_stepping_flag=lambda _d: None,
+        set_dbg_stepping_flag=lambda dbg: None,
     )
 
     assert dbg.stepping_controller.async_step_over is False
@@ -221,7 +222,7 @@ def test_handle_step_in_impl_sets_async_step_over_for_coroutine_frame() -> None:
         session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
-        set_dbg_stepping_flag=lambda _d: None,
+        set_dbg_stepping_flag=lambda dbg: None,
     )
 
     assert dbg.stepping_controller.async_step_over is True
@@ -237,7 +238,7 @@ def test_handle_step_in_impl_no_async_flag_for_regular_frame() -> None:
         session,
         {"threadId": thread_id},
         get_thread_ident=lambda: thread_id,
-        set_dbg_stepping_flag=lambda _d: None,
+        set_dbg_stepping_flag=lambda dbg: None,
     )
 
     assert dbg.stepping_controller.async_step_over is False

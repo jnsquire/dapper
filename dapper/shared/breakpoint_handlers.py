@@ -2,19 +2,67 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
+from typing import Any
+from typing import NamedTuple
 
 if TYPE_CHECKING:
-    from logging import Logger
-
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.debug_shared import DebugSession
+
+_log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+class _BpMeta(NamedTuple):
+    """Common breakpoint metadata extracted from a DAP breakpoint descriptor."""
+
+    condition: str | None
+    hit_condition: str | None
+    log_message: str | None
+
+
+def _extract_bp_metadata(bp: dict[str, Any]) -> _BpMeta:
+    """Pull condition / hitCondition / logMessage from a DAP breakpoint dict."""
+    return _BpMeta(
+        condition=bp.get("condition"),
+        hit_condition=bp.get("hitCondition"),
+        log_message=bp.get("logMessage"),
+    )
+
+
+def _clear_file_breakpoints(dbg: Any, path: str) -> None:
+    """Clear all breakpoints and associated metadata for *path*."""
+    dbg.clear_breaks_for_file(path)
+    dbg.clear_break_meta_for_file(path)
+
+
+def _register_function_breakpoint(dbg: Any, name: str, meta: _BpMeta) -> None:
+    """Append *name* to the debugger's function-breakpoint list and store metadata."""
+    dbg.bp_manager.function_names.append(name)
+    fbm = getattr(dbg.bp_manager, "function_meta", None)
+    if isinstance(fbm, dict):
+        entry = fbm.get(name, {})
+        entry.setdefault("hit", 0)
+        entry["condition"] = meta.condition
+        entry["hitCondition"] = meta.hit_condition
+        entry["logMessage"] = meta.log_message
+        fbm[name] = entry
+
+
+# ---------------------------------------------------------------------------
+# Public handler implementations
+# ---------------------------------------------------------------------------
 
 
 def handle_set_breakpoints_impl(
     session: DebugSession,
     arguments: Payload | None,
-    logger: Logger,
 ) -> Payload | None:
     """Handle setBreakpoints command implementation."""
     arguments = arguments or {}
@@ -23,60 +71,44 @@ def handle_set_breakpoints_impl(
     path = source.get("path")
 
     dbg = session.debugger
-    if path and dbg:
-        try:
-            dbg.clear_breaks_for_file(path)
-        except (AttributeError, TypeError, ValueError):
-            try:
-                dbg.clear_break(path)
-            except (AttributeError, TypeError, ValueError):
-                try:
-                    dbg.clear_break_meta_for_file(path)
-                except (AttributeError, TypeError, ValueError):
-                    logger.debug(
-                        "Failed to clear existing breakpoints for %s",
-                        path,
-                        exc_info=True,
-                    )
+    if not (path and dbg):
+        return None
 
-        verified_bps: list[Payload] = []
-        for bp in bps:
-            line = bp.get("line")
-            condition = bp.get("condition")
-            hit_condition = bp.get("hitCondition")
-            log_message = bp.get("logMessage")
+    _clear_file_breakpoints(dbg, path)
 
-            verified = True
-            if line:
-                try:
-                    res = dbg.set_break(path, line, cond=condition)
-                except Exception:
-                    verified = False
-                else:
-                    verified = res is not False
+    verified_bps: list[Payload] = []
+    for bp in bps:
+        line = bp.get("line")
+        if not line:
+            continue
 
-                try:
-                    dbg.record_breakpoint(
-                        path,
-                        int(line),
-                        condition=condition,
-                        hit_condition=hit_condition,
-                        log_message=log_message,
-                    )
-                except (AttributeError, TypeError, ValueError):
-                    logger.debug(
-                        "Failed to record breakpoint metadata for %s:%s",
-                        path,
-                        line,
-                        exc_info=True,
-                    )
+        meta = _extract_bp_metadata(bp)
+        verified = _try_set_break(dbg, path, line, meta.condition)
+        dbg.record_breakpoint(
+            path,
+            int(line),
+            condition=meta.condition,
+            hit_condition=meta.hit_condition,
+            log_message=meta.log_message,
+        )
+        verified_bps.append({"verified": verified, "line": line})
 
-                verified_bps.append({"verified": verified, "line": line})
+    session.safe_send("breakpoints", source=source, breakpoints=verified_bps)
+    return {"success": True, "body": {"breakpoints": verified_bps}}
 
-        session.safe_send("breakpoints", source=source, breakpoints=verified_bps)
-        return {"success": True, "body": {"breakpoints": verified_bps}}
 
-    return None
+def _try_set_break(
+    dbg: Any,
+    path: str,
+    line: int,
+    condition: str | None,
+) -> bool:
+    """Attempt to set a breakpoint; return whether it was verified."""
+    try:
+        res = dbg.set_break(path, line, cond=condition)
+    except Exception:
+        return False
+    return res is not False
 
 
 def handle_set_function_breakpoints_impl(
@@ -88,46 +120,23 @@ def handle_set_function_breakpoints_impl(
     bps = arguments.get("breakpoints", [])
 
     dbg = session.debugger
-    if dbg:
-        dbg.clear_all_function_breakpoints()
+    if not dbg:
+        return None
 
-        for bp in bps:
-            name = bp.get("name")
-            if not name:
-                continue
+    dbg.clear_all_function_breakpoints()
 
-            condition = bp.get("condition")
-            hit_condition = bp.get("hitCondition")
-            log_message = bp.get("logMessage")
+    registered_names: set[str] = set()
+    for bp in bps:
+        name = bp.get("name")
+        if not name:
+            continue
+        _register_function_breakpoint(dbg, name, _extract_bp_metadata(bp))
+        registered_names.add(name)
 
-            dbg.bp_manager.function_names.append(name)
-            try:
-                fbm = dbg.bp_manager.function_meta
-            except AttributeError:
-                fbm = None
-            if isinstance(fbm, dict):
-                mb = fbm.get(name, {})
-                mb.setdefault("hit", 0)
-                mb["condition"] = condition
-                mb["hitCondition"] = hit_condition
-                mb["logMessage"] = log_message
-                fbm[name] = mb
-
-        results: list[Payload] = []
-        fb_list = getattr(dbg.bp_manager, "function_names", [])
-        for bp in bps:
-            name = bp.get("name")
-            verified = False
-            if name and isinstance(fb_list, list):
-                try:
-                    verified = name in fb_list
-                except (TypeError, ValueError):
-                    verified = False
-            results.append({"verified": verified})
-
-        return {"success": True, "body": {"breakpoints": results}}
-
-    return None
+    results: list[Payload] = [
+        {"verified": bool(bp.get("name") and bp.get("name") in registered_names)} for bp in bps
+    ]
+    return {"success": True, "body": {"breakpoints": results}}
 
 
 def handle_set_exception_breakpoints_impl(
@@ -138,10 +147,9 @@ def handle_set_exception_breakpoints_impl(
     arguments = arguments or {}
     raw_filters = arguments.get("filters", [])
 
-    if isinstance(raw_filters, (list, tuple)):
-        filters: list[str] = [str(f) for f in raw_filters]
-    else:
-        filters = []
+    filters: list[str] = (
+        [str(f) for f in raw_filters] if isinstance(raw_filters, (list, tuple)) else []
+    )
 
     dbg = session.debugger
     if not dbg:
@@ -155,5 +163,4 @@ def handle_set_exception_breakpoints_impl(
         verified_all = False
 
     body = {"breakpoints": [{"verified": verified_all} for _ in filters]}
-    response: Payload = {"success": True, "body": body}
-    return response
+    return {"success": True, "body": body}

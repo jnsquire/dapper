@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from typing import cast
 from unittest.mock import MagicMock
 
 from dapper.shared.breakpoint_handlers import handle_set_breakpoints_impl
@@ -13,10 +14,6 @@ from dapper.shared.debug_shared import DebugSession
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_logger() -> MagicMock:
-    return MagicMock()
 
 
 def _make_session(dbg=None) -> DebugSession:
@@ -50,7 +47,6 @@ class TestHandleSetBreakpointsImpl:
         result = handle_set_breakpoints_impl(
             session,
             {"source": {"path": "/x/y.py"}, "breakpoints": [{"line": 5}]},
-            _make_logger(),
         )
         assert result is None
 
@@ -60,7 +56,6 @@ class TestHandleSetBreakpointsImpl:
         result = handle_set_breakpoints_impl(
             session,
             {"source": {}, "breakpoints": [{"line": 5}]},
-            _make_logger(),
         )
         assert result is None
 
@@ -74,7 +69,6 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 10}],
             },
-            _make_logger(),
         )
 
         assert result is not None
@@ -93,7 +87,6 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 10}],
             },
-            _make_logger(),
         )
         assert result is not None
         bps = result["body"]["breakpoints"]
@@ -109,7 +102,6 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 5}],
             },
-            _make_logger(),
         )
         assert result is not None
         bps = result["body"]["breakpoints"]
@@ -124,7 +116,6 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 1}, {"line": 2}, {"line": 3}],
             },
-            _make_logger(),
         )
         assert result is not None
         assert len(result["body"]["breakpoints"]) == 3
@@ -138,25 +129,8 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 10}],
             },
-            _make_logger(),
         )
         dbg.clear_breaks_for_file.assert_called_once_with("/app/main.py")
-
-    def test_clear_fallback_chain(self) -> None:
-        """If clear_breaks_for_file raises, falls back to clear_break and then
-        clear_break_meta_for_file."""
-        dbg = _make_dbg(clear_raises=True)
-        session = _make_session(dbg)
-        # Should not raise — all clear methods fail gracefully
-        result = handle_set_breakpoints_impl(
-            session,
-            {
-                "source": {"path": "/app/main.py"},
-                "breakpoints": [{"line": 5}],
-            },
-            _make_logger(),
-        )
-        assert result is not None
 
     def test_condition_passed_to_set_break(self) -> None:
         dbg = _make_dbg()
@@ -167,7 +141,6 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 10, "condition": "x > 5"}],
             },
-            _make_logger(),
         )
         dbg.set_break.assert_called_once_with("/app/main.py", 10, cond="x > 5")
 
@@ -180,10 +153,10 @@ class TestHandleSetBreakpointsImpl:
                 "source": {"path": "/app/main.py"},
                 "breakpoints": [{"line": 1}],
             },
-            _make_logger(),
         )
-        session.transport.send.assert_called_once()
-        call_args = session.transport.send.call_args
+        send_mock = cast("MagicMock", session.transport.send)
+        send_mock.assert_called_once()
+        call_args = send_mock.call_args
         assert call_args[0][0] == "breakpoints"
 
     def test_empty_breakpoints_list(self) -> None:
@@ -192,7 +165,6 @@ class TestHandleSetBreakpointsImpl:
         result = handle_set_breakpoints_impl(
             session,
             {"source": {"path": "/app/main.py"}, "breakpoints": []},
-            _make_logger(),
         )
         assert result is not None
         assert result["body"]["breakpoints"] == []
@@ -202,7 +174,6 @@ class TestHandleSetBreakpointsImpl:
         result = handle_set_breakpoints_impl(
             session,
             None,
-            _make_logger(),
         )
         assert result is None
 

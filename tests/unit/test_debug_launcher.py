@@ -267,7 +267,6 @@ class TestBreakpointHandling:
                 "source": {"path": path},
                 "breakpoints": [{"line": line1}, {"line": line2, "condition": "x > 5"}],
             },
-            handlers.logger,
         )
 
         # Verify breakpoints were set

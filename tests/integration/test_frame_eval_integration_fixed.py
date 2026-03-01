@@ -1,6 +1,7 @@
 """Fixed tests for frame evaluation integration system."""
 
 import threading
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -25,6 +26,8 @@ try:
     CYTHON_AVAILABLE = True
 except ImportError:
     CYTHON_AVAILABLE = False
+    ThreadInfo: Any = None
+    _frame_eval_state: Any = None
 
 
 class TestFrameEvalConfig:

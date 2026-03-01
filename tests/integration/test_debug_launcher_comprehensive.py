@@ -10,9 +10,7 @@ import io
 import json
 import queue
 import threading
-from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 
@@ -30,10 +28,6 @@ from dapper.shared import stepping_handlers
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from tests.dummy_debugger import DummyDebugger
-
-if TYPE_CHECKING:
-    from dapper.protocol.requests import FunctionBreakpoint
-    from dapper.protocol.requests import SetFunctionBreakpointsArguments
 
 
 class MockWFile(io.TextIOBase):
@@ -103,7 +97,7 @@ def _make_variable(dbg: Any, name: str, value: Any, frame: Any | None) -> dict[s
     )
 
 
-_common_deps = dict(
+_common_deps: dict[str, Any] = dict(
     try_custom_convert=_try_convert,
     conversion_failed_sentinel=_CONVERSION_FAILED,
     convert_value_with_context_fn=convert_value_with_context,
@@ -210,7 +204,6 @@ def test_handle_set_breakpoints_success(tmp_path):
     result = breakpoint_handlers.handle_set_breakpoints_impl(
         s,
         arguments,
-        handlers.logger,
     )
 
     assert result is not None
@@ -264,7 +257,6 @@ def test_handle_set_breakpoints_failure(monkeypatch):
     result = breakpoint_handlers.handle_set_breakpoints_impl(
         s,
         arguments,
-        handlers.logger,
     )
 
     assert result is not None
@@ -289,7 +281,6 @@ def test_handle_set_breakpoints_exception_handling(monkeypatch):
     result = breakpoint_handlers.handle_set_breakpoints_impl(
         s,
         arguments,
-        handlers.logger,
     )
 
     assert result is not None
@@ -303,19 +294,13 @@ def test_handle_set_function_breakpoints():
     """Test setting function breakpoints."""
     s, dbg = _session_with_debugger(DebuggerBDB())
 
-    arguments = cast(
-        "SetFunctionBreakpointsArguments",
-        {
-            "breakpoints": [
-                cast(
-                    "FunctionBreakpoint",
-                    {"name": "test_func1", "condition": "x > 5", "hitCondition": ">3"},
-                ),
-                cast("FunctionBreakpoint", {"name": "test_func2"}),
-                cast("FunctionBreakpoint", {"name": "test_func3", "logMessage": "Function hit"}),
-            ],
-        },
-    )
+    arguments: dict[str, Any] = {
+        "breakpoints": [
+            {"name": "test_func1", "condition": "x > 5", "hitCondition": ">3"},
+            {"name": "test_func2"},
+            {"name": "test_func3", "logMessage": "Function hit"},
+        ],
+    }
 
     result = breakpoint_handlers.handle_set_function_breakpoints_impl(s, arguments)
 
@@ -350,7 +335,7 @@ def test_handle_set_function_breakpoints_empty():
     dbg.bp_manager.function_names = ["old_func"]
     dbg.bp_manager.function_meta["old_func"] = {"condition": "old"}
 
-    arguments: SetFunctionBreakpointsArguments = {"breakpoints": []}
+    arguments: dict[str, Any] = {"breakpoints": []}
 
     result = breakpoint_handlers.handle_set_function_breakpoints_impl(s, arguments)
 
@@ -1251,7 +1236,7 @@ def test_handle_command_bytes():
 
     mock_queue = MockQueue()
     s.command_queue = mock_queue
-    s.debugger = DummyDebugger()
+    s.debugger = DummyDebugger()  # type: ignore[assignment]
 
     # Test valid command
     command_data = json.dumps({"command": "initialize", "arguments": {}}).encode("utf-8")

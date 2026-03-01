@@ -55,7 +55,7 @@ def _invoke_set_variable_via_domain(session, arguments):
     def _eval_with_policy(expression: str, frame: Any, allow_builtins: bool = False) -> Any:
         return handlers.evaluate_with_policy(expression, frame, allow_builtins=allow_builtins)
 
-    _common = dict(
+    _common: dict[str, Any] = dict(
         try_custom_convert=_try_test_convert,
         conversion_failed_sentinel=_CONVERSION_FAILED,
         convert_value_with_context_fn=convert_value_with_context,
@@ -120,7 +120,6 @@ def test_set_breakpoints_and_state(monkeypatch):
                 "source": {"path": source_path},
                 "breakpoints": [{"line": 10}, {"line": 20, "condition": "x>1"}],
             },
-            cast("LoggerLike", handlers.logger),
         )
 
         assert cleared_lines == [5]

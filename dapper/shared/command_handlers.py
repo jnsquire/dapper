@@ -210,7 +210,6 @@ def _cmd_set_breakpoints(
         return breakpoint_handlers.handle_set_breakpoints_impl(
             session,
             cast("dict[str, Any] | None", arguments),
-            logger,
         )
     return None
 
