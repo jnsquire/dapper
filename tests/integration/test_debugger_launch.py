@@ -79,7 +79,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                         stop_on_entry=False,
                         no_debug=False,
                     ),
-                    ipc=IPCConfig(use_binary=True),
+                    ipc=IPCConfig(),
                 )
 
                 # Should not raise an exception (with timeout)
@@ -125,7 +125,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                             stop_on_entry=True,
                             no_debug=False,
                         ),
-                        ipc=IPCConfig(use_binary=True),
+                        ipc=IPCConfig(),
                     )
 
                     await asyncio.wait_for(
@@ -157,7 +157,7 @@ class TestDebuggerLaunch(BaseDebuggerTest):
                 program="python",
                 args=["test.py"],
             ),
-            ipc=IPCConfig(use_binary=True),
+            ipc=IPCConfig(),
         )
         with pytest.raises(RuntimeError) as context:
             await self.debugger.launch(config)

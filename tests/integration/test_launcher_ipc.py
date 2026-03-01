@@ -175,8 +175,8 @@ def test_setup_ipc_socket_with_connector(use_debug_session):
     """Test that we can inject a mock connector into _setup_ipc_socket."""
 
     class FakeSock:
-        def makefile(self, mode, encoding=None, newline=None):  # noqa: ARG002
-            return io.StringIO()
+        def makefile(self, mode, **kwargs):  # noqa: ARG002
+            return io.BytesIO()
 
         def close(self):
             pass
@@ -197,7 +197,6 @@ def test_setup_ipc_socket_with_connector(use_debug_session):
         None,
         None,
         "/tmp/x",
-        ipc_binary=False,
         connector=connector,
     )
     assert session.ipc_enabled is True
@@ -214,7 +213,6 @@ def test_setup_ipc_socket_with_connector(use_debug_session):
         "127.0.0.1",
         12345,
         None,
-        ipc_binary=False,
         connector=connector,
     )
     assert session.ipc_enabled is True

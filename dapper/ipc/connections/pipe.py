@@ -13,6 +13,10 @@ import sys
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import pack_frame
+
+# Binary frame kind for adapter→launcher commands
+_KIND_COMMAND = 2
 
 logger = logging.getLogger(__name__)
 traffic_logger = logging.getLogger("dapper.connection.traffic")
@@ -32,7 +36,6 @@ class NamedPipeServerConnection(ConnectionBase):
         # for static analysis and clarity.
         self.pipe_file: Any | None = None
         # Whether DBGP frames are exchanged in binary mode (header+payload)
-        self.use_binary = False
         # Windows named-pipe endpoints managed via multiprocessing.connection
         self.listener: mp_conn.Listener | None = None
         self.client: mp_conn.Connection | None = None
@@ -139,7 +142,7 @@ class NamedPipeServerConnection(ConnectionBase):
         self._is_connected = False
         logger.info("Named pipe connection closed")
 
-    async def read_message(self) -> dict[str, Any] | None:  # noqa: PLR0911,PLR0912,PLR0915
+    async def read_message(self) -> dict[str, Any] | None:  # noqa: PLR0911
         if sys.platform == "win32" and self._pipe_conn is not None:
             loop = asyncio.get_running_loop()
             pipe_conn = self._pipe_conn
@@ -167,16 +170,6 @@ class NamedPipeServerConnection(ConnectionBase):
             else:
                 payload = str(incoming).encode("utf-8")
 
-            if payload.startswith(b"Content-Length:"):
-                header_end = payload.find(b"\r\n\r\n")
-                if header_end != -1:
-                    content = payload[header_end + 4 :]
-                    if not content:
-                        return None
-                    message = json.loads(content.decode("utf-8"))
-                    traffic_logger.debug("Received message: %s", message)
-                    return message
-
             message = json.loads(payload.decode("utf-8"))
             traffic_logger.debug("Received message: %s", message)
             return message
@@ -185,55 +178,44 @@ class NamedPipeServerConnection(ConnectionBase):
             msg = "No active connection"
             raise RuntimeError(msg)
 
-        headers: dict[str, str] = {}
-        while True:
-            line = await self.reader.readline()
-            if not line:
-                return None
+        # Binary frame: read 8-byte header then payload
+        from dapper.ipc.ipc_binary import HEADER_SIZE  # noqa: PLC0415
+        from dapper.ipc.ipc_binary import unpack_header  # noqa: PLC0415
 
-            line = line.decode("utf-8").strip()
-            if not line:
-                break
-
-            key, value = line.split(":", 1)
-            headers[key.strip()] = value.strip()
-
-        content_len_header = headers.get("Content-Length")
-        if content_len_header is None:
-            msg = "Content-Length header missing"
-            raise RuntimeError(msg)
-
-        try:
-            content_length = int(content_len_header)
-        except ValueError as err:
-            msg = f"Malformed Content-Length header: {content_len_header!r}"
-            raise RuntimeError(msg) from err
-
-        content = await self.reader.readexactly(content_length)
-        if not content:
+        header_data = await self.reader.readexactly(HEADER_SIZE)
+        if not header_data:
             return None
 
-        message = json.loads(content.decode("utf-8"))
+        try:
+            _kind, length = unpack_header(header_data)
+        except ValueError:
+            logger.exception("Failed to unpack binary header")
+            return None
+
+        if length == 0:
+            payload_bytes = b""
+        else:
+            payload_bytes = await self.reader.readexactly(length)
+            if not payload_bytes:
+                return None
+
+        message = json.loads(payload_bytes.decode("utf-8"))
         traffic_logger.debug("Received message: %s", message)
         return message
 
     async def write_message(self, message: dict[str, Any]) -> None:
-        """Write a DAP message to the named pipe connection."""
+        """Write a binary DAP message to the named pipe connection."""
+        content = json.dumps(message).encode("utf-8")
+        payload = pack_frame(_KIND_COMMAND, content)
+
         if sys.platform == "win32" and self._pipe_conn is not None:
             loop = asyncio.get_running_loop()
-            content = json.dumps(message).encode("utf-8")
-            header = f"Content-Length: {len(content)}\r\n\r\n".encode()
-            payload = header + content
             await loop.run_in_executor(None, self._pipe_conn.send_bytes, payload)
             logger.debug("Sent message: %s", message)
             return
 
         if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
             raise RuntimeError("No active connection")
-
-        content = json.dumps(message).encode("utf-8")
-        header = f"Content-Length: {len(content)}\r\n\r\n".encode()
-        payload = header + content
 
         if getattr(self, "writer", None):
             self.writer.write(payload)

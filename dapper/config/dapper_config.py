@@ -32,7 +32,6 @@ class IPCConfig:
     port: int | None = None
     path: str | None = None
     pipe_name: str | None = None
-    use_binary: bool = True
 
     def __post_init__(self) -> None:
         """Set defaults based on platform and transport type."""
@@ -120,7 +119,6 @@ class DapperConfig:
         ipc = IPCConfig(
             transport=_get("ipcTransport", default="auto"),
             pipe_name=_get("ipcPipeName", default=None),
-            use_binary=_get("useBinaryIpc", default=True),
         )
 
         return cls(
@@ -154,7 +152,6 @@ class DapperConfig:
             port=_get_attach("ipcPort", default=None),
             path=_get_attach("ipcPath", default=None),
             pipe_name=_get_attach("ipcPipeName", default=None),
-            use_binary=_get_attach("useBinaryIpc", default=True),
         )
 
         return cls(
@@ -223,7 +220,6 @@ class DapperConfig:
             "stopOnEntry": self.debuggee.stop_on_entry,
             "noDebug": self.debuggee.no_debug,
             "inProcess": self.in_process,
-            "useBinaryIpc": self.ipc.use_binary,
             "subprocessAutoAttach": self.subprocess_auto_attach,
         }
 

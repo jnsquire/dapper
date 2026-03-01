@@ -129,7 +129,6 @@ async def test_launch_forwards_ipc_pipe_kwargs(mock_debugger_class):
     assert config.debuggee.no_debug is False
     assert config.ipc.transport == "pipe"
     assert config.ipc.pipe_name == r"\\.\pipe\dapper-test-pipe"
-    assert config.ipc.use_binary is True
 
 
 @pytest.mark.asyncio
@@ -210,48 +209,3 @@ async def test_launch_generates_pipe_name_when_missing(monkeypatch):
     assert captured_args[ipc_index + 1] == "pipe"
     pipe_arg_index = captured_args.index("--ipc-pipe")
     assert captured_args[pipe_arg_index + 1] == generated_pipe
-
-
-@pytest.mark.asyncio
-@patch("dapper.adapter.server_core.PyDebugger")
-async def test_launch_forwards_binary_ipc_flag(mock_debugger_class):
-    """
-    Server should forward useBinaryIpc to debugger.launch as use_binary_ipc.
-    """
-    # Setup the mock debugger
-    mock_debugger = mock_debugger_class.return_value
-    mock_debugger.launch = AsyncCallRecorder(return_value=None)
-    mock_debugger.shutdown = AsyncCallRecorder(return_value=None)
-
-    # Create server with patched debugger
-    with patch("dapper.adapter.server_core.PyDebugger", return_value=mock_debugger):
-        mock_connection = MockConnection()
-        loop = asyncio.get_event_loop()
-        server = DebugAdapterServer(mock_connection, loop)
-
-    # Provide a launch request that enables IPC and binary IPC
-    mock_connection.add_request(
-        "launch",
-        {
-            "program": "test.py",
-            "useIpc": True,
-            "useBinaryIpc": True,
-            "ipcTransport": "tcp",
-            "ipcHost": "127.0.0.1",
-            "ipcPort": 5001,
-        },
-        seq=1,
-    )
-
-    server_task = asyncio.create_task(server.start())
-    await asyncio.wait_for(server_task, timeout=1.0)
-
-    # Verify debugger.launch received the config object
-    assert len(mock_debugger.launch.calls) == 1
-    args, _kwargs = mock_debugger.launch.calls[0]
-    config_arg = args[0]  # First positional argument (config)
-
-    # Check that the config contains the expected IPC settings
-    assert isinstance(config_arg, DapperConfig)
-    assert config_arg.ipc.use_binary is True
-    assert config_arg.ipc.transport == "tcp"

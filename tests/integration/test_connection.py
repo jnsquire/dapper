@@ -15,6 +15,9 @@ import pytest
 
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.connections.tcp import TCPServerConnection
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_binary import unpack_header
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -73,8 +76,9 @@ async def test_tcp_accept_message_flow():
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         request = {"seq": 1, "type": "request", "command": "test"}
         content = json.dumps(request).encode("utf-8")
-        header = f"Content-Length: {len(content)}\r\n\r\n".encode()
-        writer.write(header + content)
+        # Send a binary DP frame (kind=2 for commands)
+        frame = pack_frame(2, content)
+        writer.write(frame)
         await writer.drain()
 
         # Ensure server registered the client
@@ -95,19 +99,11 @@ async def test_tcp_accept_message_flow():
         }
         await conn.write_message(response)
 
-        # Client reads response headers
-        headers = {}
-        while True:
-            line = await reader.readline()
-            line = line.decode("utf-8").strip()
-            if not line:
-                break
-            key, value = line.split(":", 1)
-            headers[key.strip()] = value.strip()
-
-        content_length = int(headers["Content-Length"])
-        content = await reader.readexactly(content_length)
-        got_response = json.loads(content.decode("utf-8"))
+        # Client reads response as binary frame
+        header_data = await reader.readexactly(HEADER_SIZE)
+        _kind, length = unpack_header(header_data)
+        payload = await reader.readexactly(length)
+        got_response = json.loads(payload.decode("utf-8"))
         assert got_response == response
 
         writer.close()

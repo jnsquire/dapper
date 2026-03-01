@@ -6,26 +6,27 @@ from unittest.mock import MagicMock
 import pytest
 
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import pack_frame
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Non-Windows pipe tests")
 
 
 class DummyReader:
-    def __init__(self, lines, content=b""):
-        # lines: iterable of bytes to return from readline
-        self._lines = list(lines)
-        self._content = content
+    def __init__(self, exact_reads=None):
+        # exact_reads: list of bytes to return from readexactly calls
+        self._exact = list(exact_reads or [])
 
     async def readline(self):
-        if not self._lines:
-            return b""
-        return self._lines.pop(0)
+        return b""
 
     async def readexactly(self, n):
-        # return exactly n bytes (or raise)
-        if len(self._content) < n:
-            raise asyncio.IncompleteReadError(partial=self._content, expected=n)
-        return self._content[:n]
+        if not self._exact:
+            raise asyncio.IncompleteReadError(partial=b"", expected=n)
+        data = self._exact.pop(0)
+        if len(data) < n:
+            raise asyncio.IncompleteReadError(partial=data, expected=n)
+        return data[:n]
 
 
 class DummyWriter:
@@ -82,9 +83,11 @@ async def test_read_message_success():
     conn = NamedPipeServerConnection("x")
     message = {"hello": "world"}
     content = json.dumps(message).encode("utf-8")
-    # Provide header line and blank line as separate readline items
-    lines = [f"Content-Length: {len(content)}\r\n".encode(), b"\r\n"]
-    conn.reader = DummyReader(lines, content=content)
+    # Build a binary frame: 8-byte header + payload
+    frame = pack_frame(2, content)  # kind=2 for commands
+    header = frame[:HEADER_SIZE]
+    payload = frame[HEADER_SIZE:]
+    conn.reader = DummyReader(exact_reads=[header, payload])
 
     out = await conn.read_message()
     assert out == message
@@ -99,19 +102,19 @@ async def test_read_message_no_reader_raises():
 
 
 @pytest.mark.asyncio
-async def test_read_message_missing_content_length():
+async def test_read_message_bad_header():
     conn = NamedPipeServerConnection("z")
-    # immediate blank line -> headers empty
-    conn.reader = DummyReader([b"\r\n"], content=b"")
-    with pytest.raises(RuntimeError, match="Content-Length header missing"):
-        await conn.read_message()
+    # Bad header (not a valid DP frame)
+    conn.reader = DummyReader(exact_reads=[b"\x00" * HEADER_SIZE])
+    out = await conn.read_message()
+    assert out is None
 
 
 @pytest.mark.asyncio
-async def test_read_message_malformed_content_length():
+async def test_read_message_incomplete_header():
     conn = NamedPipeServerConnection("m")
-    conn.reader = DummyReader([b"Content-Length: nope\r\n", b"\r\n"], content=b"")
-    with pytest.raises(RuntimeError, match="Malformed Content-Length header"):
+    conn.reader = DummyReader(exact_reads=[])  # no data -> IncompleteReadError
+    with pytest.raises(asyncio.IncompleteReadError):
         await conn.read_message()
 
 
@@ -129,9 +132,10 @@ async def test_write_message_and_close():
     msg = {"x": 1}
     await conn.write_message(msg)
 
-    # verify header and content are present in writer.buffer
+    # verify binary frame is present in writer.buffer
     buf = bytes(writer.buffer)
-    assert b"Content-Length:" in buf
+    # Binary frame starts with magic "DP"
+    assert buf[:2] == b"DP"
     assert json.dumps(msg).encode() in buf
 
     # now close and ensure server and writer close paths are invoked
@@ -159,32 +163,39 @@ async def test_write_message_pipe_file():
     await conn.write_message(msg)
 
     data = pf.getvalue()
-    assert b"Content-Length:" in data
+    # Binary frame starts with magic "DP"
+    assert data[:2] == b"DP"
     assert json.dumps(msg).encode() in data
 
 
 @pytest.mark.asyncio
 async def test_read_message_eof_returns_none():
     conn = NamedPipeServerConnection("eof")
-    # reader that immediately returns EOF
-    conn.reader = DummyReader([])
-    out = await conn.read_message()
-    assert out is None
+    # reader that immediately returns EOF on readexactly
+    conn.reader = DummyReader(exact_reads=[])
+    # readexactly with no data raises IncompleteReadError
+    with pytest.raises(asyncio.IncompleteReadError):
+        await conn.read_message()
 
 
 @pytest.mark.asyncio
-async def test_read_message_zero_length_returns_none():
+async def test_read_message_zero_length_payload():
     conn = NamedPipeServerConnection("zero")
-    conn.reader = DummyReader([b"Content-Length: 0\r\n", b"\r\n"], content=b"")
-    out = await conn.read_message()
-    assert out is None
+    # Build a frame with 0-length payload
+    frame = pack_frame(2, b"")
+    header = frame[:HEADER_SIZE]
+    conn.reader = DummyReader(exact_reads=[header])
+    # Empty payload cannot be JSON-decoded, so it should raise or return None
+    # json.loads(b"") raises JSONDecodeError
+    with pytest.raises(json.JSONDecodeError):
+        await conn.read_message()
 
 
 @pytest.mark.asyncio
 async def test_handle_client_sets_state():
     conn = NamedPipeServerConnection("hc")
     conn._awaiting_connection_event = asyncio.Event()
-    reader = DummyReader([b"\r\n"], content=b"")
+    reader = DummyReader(exact_reads=[])
     writer = DummyWriter()
 
     await conn._handle_client(reader, writer)
@@ -302,7 +313,7 @@ async def test_handle_client_no_event_does_not_raise():
     """`_handle_client` must work when _awaiting_connection_event is None."""
     conn = NamedPipeServerConnection("noev")
     conn._awaiting_connection_event = None
-    reader = DummyReader([b"\r\n"], content=b"")
+    reader = DummyReader(exact_reads=[])
     writer = DummyWriter()
 
     await conn._handle_client(reader, writer)
@@ -318,7 +329,7 @@ async def test_handle_client_clears_event():
     conn = NamedPipeServerConnection("clr")
     event = asyncio.Event()
     conn._awaiting_connection_event = event
-    reader = DummyReader([], content=b"")
+    reader = DummyReader(exact_reads=[])
     writer = DummyWriter()
 
     await conn._handle_client(reader, writer)
@@ -328,17 +339,15 @@ async def test_handle_client_clears_event():
 
 
 @pytest.mark.asyncio
-async def test_read_message_multiple_headers():
-    """Extra headers alongside Content-Length must still be parsed correctly."""
+async def test_read_message_binary_frame_round_trip():
+    """A binary-framed message must round-trip correctly through read_message."""
     conn = NamedPipeServerConnection("mh")
     message = {"seq": 1, "type": "request"}
     content = json.dumps(message).encode("utf-8")
-    lines = [
-        f"Content-Length: {len(content)}\r\n".encode(),
-        b"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n",
-        b"\r\n",
-    ]
-    conn.reader = DummyReader(lines, content=content)
+    frame = pack_frame(2, content)
+    header = frame[:HEADER_SIZE]
+    payload = frame[HEADER_SIZE:]
+    conn.reader = DummyReader(exact_reads=[header, payload])
 
     out = await conn.read_message()
     assert out == message
@@ -348,9 +357,11 @@ async def test_read_message_multiple_headers():
 async def test_read_message_invalid_json_raises():
     """A payload that is not valid JSON must raise json.JSONDecodeError."""
     conn = NamedPipeServerConnection("ij")
-    payload = b"not-json!!!"
-    lines = [f"Content-Length: {len(payload)}\r\n".encode(), b"\r\n"]
-    conn.reader = DummyReader(lines, content=payload)
+    bad_payload = b"not-json!!!"
+    frame = pack_frame(2, bad_payload)
+    header = frame[:HEADER_SIZE]
+    payload = frame[HEADER_SIZE:]
+    conn.reader = DummyReader(exact_reads=[header, payload])
 
     with pytest.raises(json.JSONDecodeError):
         await conn.read_message()

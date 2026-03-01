@@ -16,10 +16,18 @@ def test_cmd_goto_targets_returns_targets(monkeypatch: pytest.MonkeyPatch) -> No
     dbg.goto_targets.return_value = [{"id": 9, "label": "Line 9", "line": 9}]
     session.debugger = dbg
 
-    result = command_handlers._cmd_goto_targets({"frameId": 3, "line": 9})
+    sent: list[tuple[str, dict]] = []
+    session.transport.send = lambda mtype, **kwargs: sent.append((mtype, kwargs))  # type: ignore[assignment]
 
-    assert result["success"] is True
-    assert result["body"]["targets"][0]["id"] == 9
+    with session.transport.request_scope(77):
+        command_handlers._cmd_goto_targets({"frameId": 3, "line": 9})
+
+    # should have emitted a response frame with the computed body
+    assert sent, "no message sent"
+    msg_type, payload = sent[-1]
+    assert msg_type == "response"
+    assert payload.get("success") is True
+    assert payload.get("body", {}).get("targets", [])[0].get("id") == 9
     dbg.goto_targets.assert_called_once_with(3, 9)
 
 
@@ -28,9 +36,16 @@ def test_cmd_goto_calls_debugger(monkeypatch: pytest.MonkeyPatch) -> None:
     dbg = MagicMock()
     session.debugger = dbg
 
-    result = command_handlers._cmd_goto({"threadId": 1, "targetId": 21})
+    sent: list[tuple[str, dict]] = []
+    session.transport.send = lambda mtype, **kwargs: sent.append((mtype, kwargs))  # type: ignore[assignment]
 
-    assert result["success"] is True
+    with session.transport.request_scope(88):
+        command_handlers._cmd_goto({"threadId": 1, "targetId": 21})
+
+    assert sent, "expected a response"
+    msg_type, payload = sent[-1]
+    assert msg_type == "response"
+    assert payload.get("success") is True
     dbg.goto.assert_called_once_with(1, 21)
 
 

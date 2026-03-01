@@ -53,10 +53,11 @@ Extract helper functions for module source collection to eliminate
    git diff --staged
    ```
 
-4. **Run tests before committing:**
+4. **Run tests and quality checks before committing:**
    ```bash
-   uv run pytest
-   uv run ruff check .
+   uv run pytest               # run all tests
+   uv run ruff check .         # lint code
+   uv run format               # format code and ensure no changes remain
    ```
 
 5. **Commit with descriptive message:**
@@ -77,6 +78,7 @@ Extract helper functions for module source collection to eliminate
 
 - [ ] All tests pass: `uv run pytest`
 - [ ] Code passes linting: `uv run ruff check .`
+- [ ] Code is formatted: `uv run format` (no diffs)
 - [ ] Changes are properly documented
 - [ ] Commit messages are clear and descriptive
 - [ ] Each commit represents a logical unit of work

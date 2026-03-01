@@ -150,7 +150,6 @@ class LauncherHarness:
         self.session.ipc_rfile = sock.makefile("rb", buffering=0)
         self.session.ipc_wfile = sock.makefile("wb", buffering=0)
         self.session.ipc_enabled = True
-        self.session.ipc_binary = True
         # Accept the other end so we can read what the launcher sends
         self.client_sock, _ = self._server_sock.accept()
 

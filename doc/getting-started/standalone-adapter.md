@@ -170,7 +170,6 @@ In `.vscode/launch.json`, set `"debugServer"` to tell VS Code to connect to the 
 | `inProcess` | boolean | Use in-process backend instead of a subprocess (default `false`). |
 | `ipcTransport` | `"auto"\|"pipe"\|"unix"\|"tcp"` | Adapter↔launcher transport (default `auto`). |
 | `ipcPipeName` | string | Named pipe path when using `pipe`. |
-| `useBinaryIpc` | boolean | Binary framing for IPC (default `true`). |
 | `subprocessAutoAttach` | boolean | Auto-attach Python child processes (default `false`). |
 
 ### Example: advanced launch

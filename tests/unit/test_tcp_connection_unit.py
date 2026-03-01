@@ -70,19 +70,13 @@ async def test_read_message_without_reader_raises():
 
 
 @pytest.mark.asyncio
-async def test_read_dap_message_missing_content_length_raises():
-    conn = TCPServerConnection(host="127.0.0.1", port=0)
-    conn.reader = _DummyReader(lines=[b"Header: value\r\n", b"\r\n"])
-    with pytest.raises(RuntimeError, match="Content-Length header missing"):
-        await conn._read_dap_message()
-
-
-@pytest.mark.asyncio
-async def test_write_message():
+async def test_write_message_binary_frame():
     conn = TCPServerConnection(host="127.0.0.1", port=0)
     writer = _DummyWriter()
     conn.writer = writer
 
     await conn.write_message({"event": "ok"})
-    assert b"Content-Length:" in bytes(writer.data)
-    assert json.dumps({"event": "ok"}).encode("utf-8") in bytes(writer.data)
+    data = bytes(writer.data)
+    # Binary frame starts with magic "DP"
+    assert data[:2] == b"DP"
+    assert json.dumps({"event": "ok"}).encode("utf-8") in data

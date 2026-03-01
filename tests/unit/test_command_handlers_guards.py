@@ -35,9 +35,49 @@ def test_debugger_dependent_handlers_noop_without_debugger(
     handler,
     args,
 ):
+    # This test merely ensures the handler can be invoked without blowing up
+    # when no debugger is attached.  behaviour is covered by more precise
+    # assertions below.
     monkeypatch.setattr(handlers, "_active_debugger", lambda: None)
 
     handler(args)
+
+
+def test_handlers_send_error_response_without_debugger(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no debugger is configured handlers should still reply.
+
+    We exercise a handful of commands that historically returned ``None`` and
+    therefore would produce no response.  The new contract requires an
+    explicit failure message so clients don't hang.
+    """
+    monkeypatch.setattr(handlers, "_active_debugger", lambda: None)
+
+    session = DebugSession()
+    sent: list[tuple[str, dict]] = []
+    session.transport.send = lambda mtype, **kw: sent.append((mtype, kw))  # type: ignore[assignment]
+    monkeypatch.setattr(handlers, "_active_session", lambda: session)
+
+    # choose a representative sample of handlers that formerly silenced
+    # themselves when no debugger was present
+    handlers_to_call = [
+        handlers._cmd_set_breakpoints,
+        handlers._cmd_threads,
+        handlers._cmd_scopes,
+        handlers._cmd_variables,
+        handlers._cmd_set_variable,
+        handlers._cmd_evaluate,
+        handlers._cmd_set_data_breakpoints,
+        handlers._cmd_data_breakpoint_info,
+    ]
+
+    for handler in handlers_to_call:
+        sent.clear()
+        handler({})
+        assert sent, f"{handler.__name__} did not send a response"
+        typ, payload = sent[-1]
+        assert typ == "response"
+        # at minimum, indicate failure or empty success
+        assert "success" in payload
 
 
 def test_handle_debug_command_rejects_non_string_command(monkeypatch: pytest.MonkeyPatch):

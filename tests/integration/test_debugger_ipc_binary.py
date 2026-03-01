@@ -27,8 +27,8 @@ class _StubServer(DebugAdapterServer):
 
 
 @pytest.mark.asyncio
-async def test_launcher_args_include_ipc_binary_flag_when_requested():
-    """When use_binary_ipc is True, PyDebugger should add --ipc-binary to argv."""
+async def test_launcher_args_include_ipc_flag():
+    """PyDebugger should include --ipc in its launcher argv."""
     # Capture the debug command that would be used to start the debuggee
     captured_args: list[list[str]] = []
 
@@ -57,7 +57,6 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
             ),
             ipc=IPCConfig(
                 transport=ipc_transport,
-                use_binary=True,
             ),
             in_process=False,
         )
@@ -73,10 +72,10 @@ async def test_launcher_args_include_ipc_binary_flag_when_requested():
     assert captured_args, "debuggee process was not started"
     argv = captured_args[0]
 
-    # Verify the binary flag is present
-    assert "--ipc-binary" in argv
+    # The --ipc-binary flag is no longer emitted (binary is the only protocol)
+    assert "--ipc-binary" not in argv
 
-    # Also sanity check that the base --ipc args exist
+    # Sanity check that the base --ipc args exist
     assert "--ipc" in argv
 
     await dbg.shutdown()

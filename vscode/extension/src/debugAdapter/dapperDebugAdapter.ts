@@ -28,6 +28,8 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
   console?: 'internalConsole' | 'integratedTerminal' | 'externalTerminal';
   cwd?: string;
   env?: { [key: string]: string };
+  /** Force reinstall of the dapper Python wheel before starting the session. */
+  forceReinstall?: boolean;
 }
 
 export class DapperDebugSession extends LoggingDebugSession {
@@ -729,7 +731,8 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       try {
         const config = session.configuration;
         const installMode = (vscode.workspace.getConfiguration('dapper.python').get<string>('installMode') || 'auto') as InstallMode;
-        const forceReinstall = !!vscode.workspace.getConfiguration('dapper.python').get<boolean>('forceReinstall');
+        const forceReinstall = !!vscode.workspace.getConfiguration('dapper.python').get<boolean>('forceReinstall')
+          || !!(config.forceReinstall as boolean | undefined);
 
         // Prepare environment (create venv & install dapper if needed)
         const envInfo = await this.envManager.prepareEnvironment(this.extensionVersion, installMode, forceReinstall, session.workspaceFolder);
@@ -848,6 +851,21 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           } else {
             outChannel.warn('Terminal closed but no active debug session to notify');
           }
+          // Reset all session state so the next createDebugAdapterDescriptor call
+          // starts a completely fresh Python process.  Without this, the guard
+          // `if (!this.server)` would return the stale TCP port and any subsequent
+          // launch request would hang waiting for a Python process that is gone.
+          outChannel.info('Resetting adapter factory state after terminal exit');
+          if (this.server) {
+            this.server.close();
+            this.server = undefined;
+          }
+          if (this._pythonIpcServer) {
+            this._pythonIpcServer.close();
+            this._pythonIpcServer = undefined;
+          }
+          this._pythonSocket = undefined;
+          this._currentSession = undefined;
         });
       } catch (error) {
         const outChannel = this.envManager.getOutputChannel();

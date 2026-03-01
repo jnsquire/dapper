@@ -1,6 +1,7 @@
 """Shared debug adapter state and utilities to break circular imports."""
 
 from __future__ import annotations
+# ruff: noqa: I001
 
 import contextlib
 import contextvars
@@ -94,12 +95,17 @@ class SessionTransport:
 
     def __init__(self) -> None:
         self.ipc_enabled: bool = False
-        self.ipc_binary: bool = False
         self.ipc_sock: Any | None = None
         self.ipc_rfile: Any | None = None
         self.ipc_wfile: Any | None = None
         self.ipc_pipe_conn: Any | None = None
         self.on_debug_message = EventEmitter()
+        # Lock protecting IPC write operations.  Both the command-receiver
+        # thread (which calls ``safe_send_response``) and the debugger main
+        # thread (which emits events like *stopped*) can write concurrently.
+        # Without serialisation, partial binary frames would interleave on
+        # the wire and corrupt the IPC stream.
+        self._write_lock = threading.Lock()
         # The request id of the command currently being handled.  Set by
         # ``request_scope()`` and cleared on exit.  Handlers read this via
         # ``_current_request_id()`` to attach the id explicitly when
@@ -147,13 +153,49 @@ class SessionTransport:
         # Track that a response has been sent for the current request
         # lifecycle so the dispatcher knows not to send a default ack.
         if message_type == "response":
+            # Mark that a response has been sent for this request lifecycle so
+            # the dispatcher can avoid synthesising a duplicate acknowledgement.
             self.response_sent = True
+
+            # If the caller neglected to include an ``id`` (or explicitly
+            # provided ``None``) attempt to recover by filling in the value
+            # from ``current_request_id``.  The absence of an id is a bug, but
+            # one that occasionally slips through during early handshake steps
+            # when the adapter or launcher mishandles requests.  Filling in the
+            # missing identifier prevents the client from logging a warning and
+            # gives the TypeScript side a chance to match the response correctly
+            # (it will still log if the id ultimately remains ``None``).
             if "id" not in message or message["id"] is None:
                 logger.warning(
                     "Sending response without id (current_request_id=%s, keys=%s)",
                     self.current_request_id,
                     list(message.keys()),
                 )
+                if self.current_request_id is not None:
+                    # retroactively attach the id we should have echoed
+                    message["id"] = self.current_request_id
+        # Always log outgoing messages for debugging (responses and events)
+        # always append raw text to the session log file as well so that
+        # logging configuration changes in the debuggee cannot prevent us
+        # from capturing events.
+        log_path = getattr(self, "session_log_file", None)
+        if log_path:
+            try:
+                # use Path.open() to satisfy ruff PTH123
+                with Path(log_path).open("a", encoding="utf-8") as lf:
+                    lf.write(
+                        f"transport.send: type={message_type} id={message.get('id')} "
+                        f"current_request_id={self.current_request_id} keys={list(message.keys())}\n"
+                    )
+            except Exception:
+                pass
+        send_logger.debug(
+            "transport.send: type=%s id=%s current_request_id=%s keys=%s",
+            message_type,
+            message.get("id"),
+            self.current_request_id,
+            list(message.keys()),
+        )
 
         with contextlib.suppress(Exception):
             self.on_debug_message.emit(message_type, **kwargs)
@@ -164,16 +206,17 @@ class SessionTransport:
         payload = json.dumps(message).encode("utf-8")
         frame = pack_frame(1, payload)
 
-        conn = self.ipc_pipe_conn
-        if conn is not None:
-            conn.send_bytes(frame)
-            return
+        with self._write_lock:
+            conn = self.ipc_pipe_conn
+            if conn is not None:
+                conn.send_bytes(frame)
+                return
 
-        wfile = self.ipc_wfile
-        assert wfile is not None  # guaranteed by require_ipc_write_channel
-        wfile.write(frame)
-        with contextlib.suppress(Exception):
-            wfile.flush()
+            wfile = self.ipc_wfile
+            assert wfile is not None  # guaranteed by require_ipc_write_channel
+            wfile.write(frame)
+            with contextlib.suppress(Exception):
+                wfile.flush()
 
 
 class SourceCatalog:
@@ -472,6 +515,9 @@ class DebugSession:
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None
 
+        # path to per-session log file (populated by launcher)
+        self.session_log_file: str | None = None
+
         self.transport = SessionTransport()
         self.sources = SourceCatalog()
         self.dispatcher = CommandDispatcher()
@@ -549,14 +595,6 @@ class DebugSession:
     @ipc_enabled.setter
     def ipc_enabled(self, value: bool) -> None:
         self.transport.ipc_enabled = bool(value)
-
-    @property
-    def ipc_binary(self) -> bool:
-        return self.transport.ipc_binary
-
-    @ipc_binary.setter
-    def ipc_binary(self, value: bool) -> None:
-        self.transport.ipc_binary = bool(value)
 
     @property
     def ipc_sock(self) -> Any | None:

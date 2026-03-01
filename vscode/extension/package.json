@@ -2,7 +2,7 @@
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
   "description": "Python debugging support with style",
-  "version": "0.6.2",
+  "version": "0.6.6",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"

@@ -1201,7 +1201,6 @@ def test_send_debug_message_ipc_pipe():
     """Test send_debug_message with IPC pipe connection."""
     s = _session()
     s.ipc_enabled = True
-    s.ipc_binary = True
 
     # Create a simple mock pipe connection
     class MockConn:

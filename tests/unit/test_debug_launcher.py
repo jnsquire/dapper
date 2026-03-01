@@ -84,7 +84,6 @@ class TestDebugLauncherBasic:
             "localhost",
             "--ipc-port",
             "5678",
-            "--ipc-binary",
             "--strict-expression-watch-policy",
             "--arg",
             "arg1",
@@ -100,7 +99,6 @@ class TestDebugLauncherBasic:
         assert args.ipc_port == 5678
         assert args.program == "script.py"
         assert args.arg == ["arg1", "arg2"]  # Changed from args.args to args.arg
-        assert args.ipc_binary is True
         assert args.strict_expression_watch_policy is True
 
     def test_parse_args_requires_ipc(self) -> None:
@@ -216,9 +214,40 @@ class TestDebugLauncherBasic:
 
     def test_handle_initialize(self) -> None:
         """Test initialize command handling."""
-        # Call the function and get the response
+        # Call the function and get the response and verify structure.
         response = lifecycle_handlers.handle_initialize_impl()
+        assert isinstance(response, dict), "Response should be a dictionary"
+        assert response.get("success") is True, "Response should indicate success"
+        body = response.get("body", {})
+        assert isinstance(body, dict), "Response body should be a dictionary"
 
+        # Check for required capabilities
+        required_capabilities = [
+            "supportsConfigurationDoneRequest",
+            "supportsEvaluateForHovers",
+            "supportsSetVariable",
+            "supportsRestartRequest",
+        ]
+
+        for capability in required_capabilities:
+            assert capability in body, f"Missing capability: {capability}"
+
+    def test_log_installed_version(self) -> None:
+        """Verify that version helper logs something sensible."""
+        # Patch the global logger so we can inspect calls without emitting to
+        # the real logging system.
+        with patch.object(dl, "logger") as mock_log:
+            # We just call the helper directly, not main(), so we don't have to
+            # worry about command-line parsing and environment setup.
+            dl._log_installed_version()
+            # Should have attempted to log at info level at least once.
+            assert mock_log.info.called
+            # The message should mention 'dapper package'
+            args = mock_log.info.call_args[0]
+            assert "dapper package" in args[0]
+
+        # call initialize again so we have a response to inspect
+        response = lifecycle_handlers.handle_initialize_impl()
         # Verify the response structure
         assert isinstance(response, dict), "Response should be a dictionary"
         assert response.get("success") is True, "Response should indicate success"
@@ -499,7 +528,6 @@ def test_setup_ipc_socket_uses_default_connector_when_none(
         ipc_rfile=None,
         ipc_wfile=None,
         ipc_enabled=False,
-        ipc_binary=False,
     )
 
     monkeypatch.setattr(dl, "default_connector", connector)
@@ -508,7 +536,6 @@ def test_setup_ipc_socket_uses_default_connector_when_none(
         "127.0.0.1",
         9000,
         None,
-        ipc_binary=False,
         connector=None,
         session=session,
     )
@@ -911,7 +938,6 @@ class TestUtilityFunctions:
             ipc_host=None,
             ipc_port=None,
             ipc_path=None,
-            ipc_binary=True,
         )
         session = SimpleNamespace()
         dl.setup_ipc_from_args(args, session=session)
@@ -924,8 +950,8 @@ class TestUtilityFunctions:
         def _pipe(*_args, **_kwargs):
             calls.append(("pipe", None))
 
-        def _socket(kind, host, port, path, ipc_binary, session=None):
-            calls.append(("socket", kind, host, port, path, ipc_binary, session))
+        def _socket(kind, host, port, path, session=None):
+            calls.append(("socket", kind, host, port, path, session))
 
         monkeypatch.setattr(dl, "_setup_ipc_pipe", _pipe)
         monkeypatch.setattr(dl, "_setup_ipc_socket", _socket)
@@ -936,13 +962,12 @@ class TestUtilityFunctions:
             ipc_host="127.0.0.1",
             ipc_port=7777,
             ipc_path=None,
-            ipc_binary=False,
         )
         session = SimpleNamespace()
         dl.setup_ipc_from_args(args, session=session)
 
         assert calls == [
-            ("socket", "tcp", "127.0.0.1", 7777, None, False, session),
+            ("socket", "tcp", "127.0.0.1", 7777, None, session),
         ]
 
     def test_setup_ipc_pipe_raises_on_non_windows(self) -> None:
@@ -1186,7 +1211,6 @@ class TestUtilityFunctions:
             ipc_port=4444,
             ipc_path=None,
             ipc_pipe=None,
-            ipc_binary=True,
         )
 
         def _setup_ipc_from_args(parsed, session=None):
@@ -1242,7 +1266,6 @@ class TestUtilityFunctions:
             ipc_port=4444,
             ipc_path=None,
             ipc_pipe=None,
-            ipc_binary=True,
         )
 
         def _setup_ipc_from_args(parsed, session=None):
@@ -1303,7 +1326,6 @@ class TestUtilityFunctions:
             ipc_port=4444,
             ipc_path=None,
             ipc_pipe=None,
-            ipc_binary=True,
         )
 
         calls: list[str] = []
@@ -1345,7 +1367,6 @@ class TestUtilityFunctions:
                 "127.0.0.1",
                 1234,
                 None,
-                ipc_binary=False,
                 connector=connector,
                 session=SimpleNamespace(),
             )
@@ -1366,7 +1387,6 @@ class TestUtilityFunctions:
                 "127.0.0.1",
                 1234,
                 None,
-                ipc_binary=False,
                 connector=connector,
                 session=SimpleNamespace(),
             )
@@ -1396,7 +1416,6 @@ class TestUtilityFunctions:
             ipc_host=None,
             ipc_port=None,
             ipc_path=None,
-            ipc_binary=True,
         )
         with pytest.raises(RuntimeError, match="Pipe IPC requested"):
             dl.setup_ipc_from_args(args, session=SimpleNamespace())
@@ -1408,7 +1427,6 @@ class TestUtilityFunctions:
             ipc_host=None,
             ipc_port=None,
             ipc_path=None,
-            ipc_binary=True,
         )
         connector = SimpleNamespace(
             connect_unix=lambda _path: None,
@@ -1420,12 +1438,11 @@ class TestUtilityFunctions:
                 args.ipc_host,
                 args.ipc_port,
                 args.ipc_path,
-                args.ipc_binary,
                 connector=connector,
                 session=SimpleNamespace(),
             )
 
-    def test_setup_ipc_socket_binary_and_text_mode_file_setup(self) -> None:
+    def test_setup_ipc_socket_binary_file_setup(self) -> None:
         class FakeSock:
             def __init__(self):
                 self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -1448,38 +1465,11 @@ class TestUtilityFunctions:
             "127.0.0.1",
             9999,
             None,
-            ipc_binary=True,
             connector=connector_bin,
             session=session_bin,
         )
         assert session_bin.ipc_enabled is True
-        assert session_bin.ipc_binary is True
         assert sock_bin.calls == [("rb", {"buffering": 0}), ("wb", {"buffering": 0})]
-
-        sock_txt = FakeSock()
-        connector_txt = SimpleNamespace(
-            connect_unix=lambda _path: None,
-            connect_tcp=lambda _host, _port: sock_txt,
-        )
-        session_txt = SimpleNamespace(
-            ipc_sock=None, ipc_rfile=None, ipc_wfile=None, ipc_enabled=False
-        )
-
-        dl._setup_ipc_socket(
-            "tcp",
-            "127.0.0.1",
-            9999,
-            None,
-            ipc_binary=False,
-            connector=connector_txt,
-            session=session_txt,
-        )
-        assert session_txt.ipc_enabled is True
-        assert session_txt.ipc_binary is False
-        assert sock_txt.calls == [
-            ("r", {"encoding": "utf-8", "newline": ""}),
-            ("w", {"encoding": "utf-8", "newline": ""}),
-        ]
 
 
 # Type checking

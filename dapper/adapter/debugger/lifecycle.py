@@ -87,11 +87,8 @@ class _PyDebuggerLifecycleManager:
             host=config.ipc.host,
             port=config.ipc.port,
             path=config.ipc.path,
-            use_binary=config.ipc.use_binary,
         )
         debug_args.extend(self._debugger.ipc.create_listener(config=transport_config))
-        if transport_config.use_binary:
-            debug_args.append("--ipc-binary")
 
         return debug_args, transport_config
 
@@ -231,7 +228,6 @@ class _PyDebuggerLifecycleManager:
             host=config.ipc.host,
             port=config.ipc.port,
             path=config.ipc.path,
-            use_binary=config.ipc.use_binary,
         )
 
         self._debugger.ipc.connect(transport_config)

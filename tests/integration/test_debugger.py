@@ -232,7 +232,7 @@ async def test_launch_success(debugger, mock_server):
                 stop_on_entry=False,
                 no_debug=False,
             ),
-            ipc=IPCConfig(use_binary=True),
+            ipc=IPCConfig(),
         )
         await debugger.launch(config)
 
@@ -262,7 +262,7 @@ async def test_launch_already_running_error(debugger):
             program="test.py",
             args=[],
         ),
-        ipc=IPCConfig(use_binary=True),
+        ipc=IPCConfig(),
     )
 
     with pytest.raises(RuntimeError) as exc_info:
@@ -293,7 +293,7 @@ async def test_launch_with_args(debugger):
                     stop_on_entry=False,
                     no_debug=False,
                 ),
-                ipc=IPCConfig(use_binary=True),
+                ipc=IPCConfig(),
             )
             await debugger.launch(config)
             # Wait a tiny bit to allow run_coroutine_threadsafe to enqueue exit task

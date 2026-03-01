@@ -322,4 +322,84 @@ describe('DapperDebugSession - Extended', () => {
             expect(sent.message).toContain('Unrecognized custom request');
         });
     });
+
+    // ─── initialization / launch behaviour ───────────────────────────────
+
+    describe('initialize/launch forwarding', () => {
+        it('initializeRequest attaches an id before sending', async () => {
+            const response: DebugProtocol.InitializeResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 1,
+                command: 'initialize',
+                success: true,
+                // `body` will be populated by the adapter; type is generic so
+                // start with an empty object and cast later when inspecting.
+                body: {} as any
+            };
+
+            const promise = (session as any).initializeRequest(response, { adapterID: 'dapper' });
+            await Promise.resolve();
+            expect(mockSocket.write).toHaveBeenCalled();
+            const sent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const sentJson = JSON.parse(sent.subarray(8).toString('utf8'));
+            expect(sentJson.command).toBe('initialize');
+            expect(sentJson.id).toBeDefined();
+
+            // reply back from Python to complete the promise
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: sentJson.id,
+                success: true,
+                body: { capabilities: 42 }
+            }));
+            await promise;
+            // cast to any to avoid strict type complaints
+            expect((response.body as any).capabilities).toBe(42);
+        });
+
+        it('launchRequest attaches an id before sending', async () => {
+            const response: DebugProtocol.LaunchResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 2,
+                command: 'launch',
+                success: true,
+                body: {}
+            };
+
+            const promise = (session as any).launchRequest(response, { program: 'file.py' });
+            await Promise.resolve();
+            expect(mockSocket.write).toHaveBeenCalled();
+            const sent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const sentJson = JSON.parse(sent.subarray(8).toString('utf8'));
+            expect(sentJson.command).toBe('launch');
+            expect(sentJson.id).toBeDefined();
+
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: sentJson.id,
+                success: true
+            }));
+            await promise;
+            expect((session as any)._isRunning).toBe(true);
+        });
+
+        it('FIFO fallback matches idless responses in order', async () => {
+            // call private sendRequestToPython directly to create pending entries
+            const p1 = (session as any).sendRequestToPython('foo', {});
+            const p2 = (session as any).sendRequestToPython('bar', {});
+            await Promise.resolve();
+            expect(mockSocket.write).toHaveBeenCalledTimes(2);
+
+            // emit two responses with no id
+            mockSocket.emit('data', createFrame({ event: 'response', success: true, body: { foo: 1 } }));
+            mockSocket.emit('data', createFrame({ event: 'response', success: true, body: { bar: 2 } }));
+
+            const r1 = await p1;
+            const r2 = await p2;
+            expect(r1.body.foo).toBe(1);
+            expect(r2.body.bar).toBe(2);
+        });
+    });
 });

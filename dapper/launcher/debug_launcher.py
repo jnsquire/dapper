@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import runpy
 import sys
+import tempfile
 import threading
 import traceback
 from typing import Any
@@ -36,6 +37,43 @@ Debug launcher entry point. Delegates to split modules.
 logger = logging.getLogger(__name__)
 
 KIND_COMMAND = 2
+
+
+def _setup_session_log_file(session_id: str | None) -> str:
+    """Create a per-session log file and attach it to the root dapper logger.
+
+    ``session_id`` may be ``None`` during static analysis; if so we fall back
+    to a freshly generated UUID.  In practise callers always supply a string
+    (see ``main()``) but the loosened signature keeps the type checker happy.
+
+    The file captures every DEBUG+ record from the *entire* dapper namespace
+    from the moment it is installed, including records emitted before IPC is
+    open.  This makes it useful for diagnosing transport/handshake failures
+    where sending logs over the connection itself is unreliable.
+
+    Returns the path of the log file so callers can print it.
+    """
+    # use pathlib for better typing
+    log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{session_id}.log")
+    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8", delay=False)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
+    logging.getLogger("dapper").addHandler(fh)
+    # also remember on the active session object so other components can write
+    try:
+        from dapper.shared.debug_shared import get_active_session  # noqa: PLC0415 - dynamic import
+
+        sess = get_active_session()
+        sess.session_log_file = log_path
+    except Exception:
+        pass
+    return log_path
+
 
 # Backward compatibility: tests/legacy code reference debug_launcher.send_debug_message.
 send_debug_message = debug_shared.send_debug_message
@@ -191,12 +229,6 @@ def parse_args():
     parser.add_argument("--ipc-path", type=str, help="IPC UNIX socket path")
     parser.add_argument("--ipc-pipe", type=str, help="IPC Windows pipe name")
     parser.add_argument(
-        "--ipc-binary",
-        action="store_true",
-        default=True,
-        help="Use binary IPC frames (default: True)",
-    )
-    parser.add_argument(
         "--subprocess",
         action="store_true",
         help="Indicates this launcher invocation is for a child subprocess.",
@@ -242,7 +274,6 @@ def _setup_ipc_socket(
     host: str | None,
     port: int | None,
     path: str | None,
-    ipc_binary: bool = False,
     connector: Any = None,
     session: Any | None = None,
 ) -> None:
@@ -268,16 +299,10 @@ def _setup_ipc_socket(
 
     active_session = session if session is not None else debug_shared.get_active_session()
     active_session.ipc_sock = sock
-    if ipc_binary:
-        # binary sockets use buffering=0 for raw bytes
-        active_session.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
-        active_session.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
-    else:
-        active_session.ipc_rfile = cast("Any", sock.makefile("r", encoding="utf-8", newline=""))
-        active_session.ipc_wfile = cast("Any", sock.makefile("w", encoding="utf-8", newline=""))
+    # Always open binary file handles for DP-frame IPC
+    active_session.ipc_rfile = cast("Any", sock.makefile("rb", buffering=0))
+    active_session.ipc_wfile = cast("Any", sock.makefile("wb", buffering=0))
     active_session.ipc_enabled = True
-    # record whether binary frames are used
-    active_session.ipc_binary = bool(ipc_binary)
 
 
 def setup_ipc_from_args(args: Any, session: Any | None = None) -> None:
@@ -293,7 +318,6 @@ def setup_ipc_from_args(args: Any, session: Any | None = None) -> None:
             args.ipc_host,
             args.ipc_port,
             args.ipc_path,
-            args.ipc_binary,
             session=session,
         )
 
@@ -441,6 +465,27 @@ def _register_terminal_crash_handler() -> None:
     atexit.register(_pause_on_crash)
 
 
+def _log_installed_version() -> None:
+    """Log the currently installed dapper package version.
+
+    This is mostly for diagnostics when investigating whether the Python
+    adapter process is running the code we just installed.  It prints both
+    ``__version__`` and the file path so we can confirm which wheel is being
+    used.
+    """
+    try:
+        # import locally to avoid potential early-import side effects
+        import dapper  # type: ignore[import]  # noqa: PLC0415
+
+        logger.info(
+            "dapper package %s loaded from %s",
+            getattr(dapper, "__version__", "<unknown>"),
+            getattr(dapper, "__file__", "<no file>"),
+        )
+    except Exception as e:  # pragma: no cover - paranoid safety
+        logger.warning("could not import dapper for version logging: %s", e)
+
+
 def main():  # noqa: PLR0912, PLR0915
     """Main entry point for the debug launcher"""
     _register_terminal_crash_handler()
@@ -468,7 +513,22 @@ def main():  # noqa: PLR0912, PLR0915
     session.module_search_paths = list(getattr(args, "module_search_path", []))
 
     # Configure logging for debug messages
-    logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+
+    # Per-session log file — set up before IPC so transport/handshake issues
+    # are captured.  Print the path so it's visible in the terminal.
+    # ``session.session_id`` is assigned above and therefore always a str,
+    # but the helper accepts Optional[str] so we can pass it directly.
+    log_path = _setup_session_log_file(session.session_id)
+    sys.stderr.write(f"[dapper] session log: {log_path}\n")
+    sys.stderr.flush()
+
+    # Log the version of the dapper package that is being executed.  This
+    # provides a deterministic clue in the session log when debugging "old
+    # behaviour" problems like stale wheels.
+    _log_installed_version()
 
     logger.info(
         "Launcher started: %s=%s session_id=%s stop_on_entry=%s no_debug=%s",
@@ -531,22 +591,38 @@ def main():  # noqa: PLR0912, PLR0915
             logger.info("Waiting for configurationDone (timeout=30s)...")
             if not session.configuration_done_event.wait(timeout=30):
                 logger.warning("Timed out waiting for configurationDone; starting anyway")
+                # Surface the timeout to the user via a visible DAP output
+                # event so they know breakpoints may not be set.
+                try:
+                    send_debug_message(
+                        "output",
+                        category="important",
+                        output=(
+                            "WARNING: Timed out waiting for configurationDone from the "
+                            "debug adapter (30 s).  Breakpoints may not be active.\n"
+                        ),
+                    )
+                except Exception:
+                    pass  # IPC itself may be the problem
             else:
                 logger.info("configurationDone received, starting program")
             # Run the program with debugging
             logger.info(
                 "Starting debugger: %s=%s args=%s", target_kind, target_value, program_args
             )
-            if target_kind == "program":
-                run_with_debugger(target_value, program_args, session=session)
-            else:
-                run_with_debugger(
-                    target_value,
-                    program_args,
-                    session=session,
-                    target_kind=target_kind,
-                )
-            logger.info("Program execution completed")
+            try:
+                if target_kind == "program":
+                    run_with_debugger(target_value, program_args, session=session)
+                else:
+                    run_with_debugger(
+                        target_value,
+                        program_args,
+                        session=session,
+                        target_kind=target_kind,
+                    )
+                logger.info("Program execution completed")
+            except KeyboardInterrupt:
+                logger.info("Program interrupted by KeyboardInterrupt")
     finally:
         # Notify the adapter that the program has finished so the debug
         # session in VS Code terminates instead of hanging indefinitely.

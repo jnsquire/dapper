@@ -152,7 +152,6 @@ Force a specific transport when needed:
    "program": "examples/sample_programs/simple_app.py",
    "useIpc": true,
    "ipcTransport": "tcp", // or "pipe" (Windows), "unix" (POSIX)
-   "useBinaryIpc": true,
    "subprocessAutoAttach": true,
    "justMyCode": true,
    "strictExpressionWatchPolicy": false,

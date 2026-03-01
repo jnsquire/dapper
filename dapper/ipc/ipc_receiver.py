@@ -136,6 +136,8 @@ def receive_debug_commands(
     """Continuously reads debug commands from the IPC channel, parses them,
     and dispatches them for processing until termination is requested.
 
+    Commands are read as binary DP-framed IPC messages.
+
     IPC is mandatory; raises RuntimeError if IPC is not enabled.
     """
     active_session = _active_session(session)
@@ -146,17 +148,62 @@ def receive_debug_commands(
         msg = "IPC is enabled but no read channel is available."
         raise RuntimeError(msg)
 
-    reader = active_session.ipc_rfile
+    _receive_binary_commands(active_session, error_sender=error_sender)
+
+
+def _receive_binary_commands(
+    active_session: debug_shared.DebugSession,
+    *,
+    error_sender: ErrorSender | None = None,
+) -> None:
+    """Read binary DP-framed commands from ``ipc_rfile``."""
+    from typing import BinaryIO  # noqa: PLC0415
+    from typing import cast  # noqa: PLC0415
+
+    from dapper.ipc.ipc_binary import HEADER_SIZE  # noqa: PLC0415
+    from dapper.ipc.ipc_binary import read_exact  # noqa: PLC0415
+    from dapper.ipc.ipc_binary import unpack_header  # noqa: PLC0415
+
+    KIND_COMMAND = 2  # noqa: N806
+    # ``require_ipc`` in the caller already ensures ``ipc_rfile`` is not None,
+    # but the attribute is typed ``Any | None`` so mypy/ruff complain.  Cast
+    # to ``BinaryIO`` for clarity and assert to satisfy the type checker.
+    rfile = cast("BinaryIO", active_session.ipc_rfile)
+    assert rfile is not None
+
     while not active_session.is_terminated:
-        line = reader.readline()
-        if not line:
-            active_session.exit_func(0)
-        # Each line is a JSON command
-        command_json = line.strip()
-        if command_json:
+        try:
+            header = read_exact(rfile, HEADER_SIZE)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            active_session.exit_if_alive(0)
+            return
+        if not header:
+            active_session.exit_if_alive(0)
+            return
+
+        try:
+            kind, length = unpack_header(header)
+        except Exception as e:
+            _send_error(f"Bad frame header: {e!s}", active_session, error_sender=error_sender)
+            continue
+
+        try:
+            payload = read_exact(rfile, length)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            active_session.exit_if_alive(0)
+            return
+        if not payload:
+            active_session.exit_if_alive(0)
+            return
+
+        if kind == KIND_COMMAND:
             try:
-                command = json.loads(command_json)
+                command = json.loads(payload.decode("utf-8"))
                 active_session.command_queue.put(command)
+                with debug_shared.use_session(active_session):
+                    active_session.dispatch_debug_command(command)
+            except SystemExit:
+                return
             except Exception as e:
                 _send_error(
                     f"Error receiving command: {e!s}",

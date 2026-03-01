@@ -44,7 +44,6 @@ class TransportConfig:
     port: int | None = None
     path: str | None = None
     pipe_name: str | None = None
-    use_binary: bool = True
 
 
 class TransportFactory:
@@ -214,8 +213,6 @@ class TransportFactory:
         connection = TCPServerConnection(host=effective_host, port=port)
         # Store the actual socket on the connection for backward compatibility
         connection.socket = listen
-        # Store the use_binary flag for the connection to know how to read/write
-        connection.use_binary = config.use_binary
         # args already returned by create_tcp_listener_socket contain the
         # resolved host and ephemeral port, reuse them
         return connection, args

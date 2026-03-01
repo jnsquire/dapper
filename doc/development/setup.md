@@ -58,13 +58,16 @@ uv run pytest tests/test_debugger_core.py
 uv run pytest --cov=dapper
 ```
 
-### Linting and Type Checking
+### Linting, Formatting, and Type Checking
 
 Run these checks before submitting changes:
 
 ```bash
 # Lint
 uv run ruff check .
+
+# Format (and verify no further edits are needed)
+uv run format
 
 # Type checking
 uv run pyright dapper tests

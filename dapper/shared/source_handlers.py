@@ -14,6 +14,12 @@ if TYPE_CHECKING:
     from dapper.shared.debug_shared import DebugSession
 
 
+def _resolve_path(raw: str) -> tuple[Path, str]:
+    """Resolve *raw* to an absolute `Path` and its string form."""
+    resolved = Path(raw).resolve()
+    return resolved, str(resolved)
+
+
 def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
     """Collect sources from sys.modules."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
@@ -29,8 +35,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
             if module_file is None:
                 continue
 
-            module_path = Path(module_file).resolve()
-            module_file = str(module_path)
+            module_path, module_file = _resolve_path(module_file)
 
             if module_file in seen_paths:
                 continue
@@ -58,8 +63,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
     for filename in linecache.cache:
         if filename not in seen_paths and filename.endswith((".py", ".pyw")):
             try:
-                file_path = Path(filename).resolve()
-                abs_path = str(file_path)
+                file_path, abs_path = _resolve_path(filename)
                 if abs_path not in seen_paths and file_path.exists():
                     seen_paths.add(abs_path)
                     source = Source(name=file_path.name, path=abs_path, origin="linecache")
@@ -83,8 +87,7 @@ def _collect_main_program_source(
         program_path = state.debugger.program_path
         if program_path and program_path not in seen_paths:
             try:
-                program_file_path = Path(program_path).resolve()
-                abs_path = str(program_file_path)
+                program_file_path, abs_path = _resolve_path(program_path)
                 if program_file_path.exists():
                     sources.append(
                         dict(Source(name=program_file_path.name, path=abs_path, origin="main"))
@@ -245,10 +248,9 @@ def handle_modules(
 
             module_file = getattr(module, "__file__", None)
             if module_file:
-                module_path = Path(module_file).resolve()
-                module_info["path"] = str(module_path)
+                _, path_str = _resolve_path(module_file)
+                module_info["path"] = path_str
 
-                path_str = str(module_path)
                 is_user_code = not any(
                     part in path_str.lower()
                     for part in ["site-packages", "lib/python", "lib\\python", "Lib"]

@@ -130,7 +130,15 @@ class IPCManager:
         await self._connection.write_message(message)
 
     def cleanup(self) -> None:
-        """Clean up IPC resources."""
+        """Clean up IPC resources.
+
+        Closes the connection synchronously.  When an asyncio event loop is
+        already running we schedule the async close and **wait** for it to
+        finish (via ``run_coroutine_threadsafe``) so that the connection is
+        fully torn down before we null the reference.  Previously the task
+        was fire-and-forget which caused a race where the connection was
+        set to ``None`` before the close coroutine had finished.
+        """
         # Stop reader thread
         if self._reader_thread and self._reader_thread.is_alive():
             # Reader thread will exit when connection is closed
@@ -142,15 +150,23 @@ class IPCManager:
             close_method = getattr(self._connection, "close", None)
             if close_method:
                 if asyncio.iscoroutinefunction(close_method):
-                    # For sync cleanup, try to run async close
                     try:
-                        asyncio.get_running_loop()
-                        # If there's already a running loop, create a task but don't await
-                        # This is for legacy sync cleanup calls
-                        task = asyncio.create_task(close_method())
-                        task.add_done_callback(lambda _: None)
+                        loop = asyncio.get_running_loop()
                     except RuntimeError:
-                        # No running loop, safe to create new one
+                        loop = None
+
+                    if loop is not None and loop.is_running():
+                        # Schedule on the running loop and wait for completion
+                        # (with a timeout to avoid deadlocking shutdown).
+                        future = asyncio.run_coroutine_threadsafe(close_method(), loop)
+                        try:
+                            future.result(timeout=5.0)
+                        except Exception:
+                            logger.debug(
+                                "Timed out or failed waiting for async close", exc_info=True
+                            )
+                    else:
+                        # No running loop — safe to create a throwaway one.
                         asyncio.run(close_method())
                 else:
                     close_method()

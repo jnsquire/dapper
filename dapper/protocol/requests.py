@@ -102,7 +102,6 @@ class LaunchRequestArguments(TypedDict, total=False):
     # adapter-specific optional fields (camelCase only)
     stopOnEntry: NotRequired[bool]
     inProcess: NotRequired[bool]
-    useBinaryIpc: NotRequired[bool]
     ipcTransport: NotRequired[str]
     ipcPipeName: NotRequired[str]
     cwd: NotRequired[str]
@@ -142,7 +141,6 @@ class AttachRequestArguments(TypedDict, total=False):
     ipcPort: NotRequired[int]
     ipcPath: NotRequired[str]
     ipcPipeName: NotRequired[str]
-    useBinaryIpc: NotRequired[bool]
 
 
 class AttachRequest(TypedDict):

@@ -8,6 +8,8 @@ export type InstallMode = 'auto' | 'wheel' | 'pypi' | 'workspace';
 export interface EnvManifest {
   dapperVersionInstalled: string;
   installSource: 'wheel' | 'pypi';
+  // SHA256 of the bundle wheel directory contents; used to detect rebuilds
+  wheelHash?: string;
   created: string;
   updated: string;
 }
@@ -84,9 +86,9 @@ export class EnvironmentManager {
     // In auto mode, prefer the workspace's own .venv so the target program runs with its
     // full project environment (e.g. requests, numpy, etc. are available).
     // We install dapper into the workspace venv from bundled wheels if it's not already there.
-    if (mode === 'auto' && !forceReinstall) {
+    if (mode === 'auto') {
       const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
-      const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder);
+      const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
       if (wsResult) {
         this.lock.active = false;
         return wsResult;
@@ -133,7 +135,18 @@ export class EnvironmentManager {
       `Manifest: ${manifest ? `installed=${manifest.dapperVersionInstalled} source=${manifest.installSource}` : 'none'}` +
       ` | bundled wheels dir: ${wheelDir ?? 'none'}`
     );
-    const reinstallNeeded = this.shouldReinstall(manifest, effectiveDesiredVersion, forceReinstall);
+    
+    let currentWheelHash: string | undefined;
+    if (wheelDir) {
+      currentWheelHash = await this.computeWheelHash(wheelDir);
+      this.output.info(`Current wheel hash: ${currentWheelHash}`);
+    }
+    const reinstallNeeded = this.shouldReinstall(
+      manifest,
+      effectiveDesiredVersion,
+      forceReinstall,
+      currentWheelHash,
+    );
     this.output.info(`Reinstall needed: ${reinstallNeeded}`);
 
     let performedInstall = false;
@@ -141,7 +154,7 @@ export class EnvironmentManager {
       if (mode === 'auto' || mode === 'wheel') {
         if (wheelDir) {
           this.output.info(`Installing dapper from bundled wheels in: ${wheelDir}`);
-          await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion);
+          await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion, true);
           if (!await this.checkDapperImportable(pythonPath)) {
             throw new Error(
               `Wheel installed (pip exit 0) but 'import dapper' still fails. ` +
@@ -156,7 +169,7 @@ export class EnvironmentManager {
       if (!performedInstall && (mode === 'auto' || mode === 'pypi')) {
         this.output.info(`Installing dapper from PyPI: dapper==${effectiveDesiredVersion}`);
         try {
-          await this.installFromPyPI(pythonPath, effectiveDesiredVersion);
+          await this.installFromPyPI(pythonPath, effectiveDesiredVersion, true);
           performedInstall = true;
         } catch (err) {
           if (mode === 'pypi') {
@@ -185,6 +198,7 @@ export class EnvironmentManager {
         const newManifest: EnvManifest = {
           dapperVersionInstalled: effectiveDesiredVersion,
           installSource: wheelDir ? 'wheel' : 'pypi',
+          wheelHash: currentWheelHash,
           created: manifest?.created || new Date().toISOString(),
           updated: new Date().toISOString(),
         };
@@ -229,7 +243,8 @@ export class EnvironmentManager {
   private async tryWorkspaceVenv(
     version: string,
     wheelDir: string | undefined,
-    workspaceFolder?: vscode.WorkspaceFolder
+    workspaceFolder?: vscode.WorkspaceFolder,
+    forceReinstall = false
   ): Promise<PythonEnvInfo | undefined> {
     const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
     const pyExe = process.platform === 'win32' ? 'python.exe' : 'python';
@@ -251,10 +266,34 @@ export class EnvironmentManager {
 
         this.output.info(`auto mode: found workspace venv at ${candidate}`);
 
-        // Check if dapper is already importable
+        // If dapper can be imported, check whether the version matches or a reinstall was forced.
         if (await this.checkDapperImportable(candidate)) {
-          this.output.info(`auto mode: dapper already installed in workspace venv, using it.`);
-          return { pythonPath: candidate, needsInstall: false };
+          const installedVersion = await this.getDapperVersion(candidate);
+          if (!forceReinstall && installedVersion === version) {
+            this.output.info(`auto mode: dapper already installed in workspace venv (version ${installedVersion}), using it.`);
+            return { pythonPath: candidate, needsInstall: false };
+          }
+          // Either version mismatch or forceReinstall requested; attempt a forced install
+          if (wheelDir) {
+            this.output.info(
+              `auto mode: workspace venv has dapper ${installedVersion}, ` +
+              `reinstalling ${version}${forceReinstall ? ' (forced)' : ''}...`
+            );
+            try {
+              await this.installWheel(candidate, wheelDir, version, true);
+              if (await this.checkDapperImportable(candidate)) {
+                this.output.info(`auto mode: dapper installed into workspace venv successfully.`);
+                return { pythonPath: candidate, needsInstall: true };
+              }
+              this.output.warn(`auto mode: wheel installed but dapper still not importable from ${candidate}; falling back.`);
+            } catch (err) {
+              this.output.warn(`auto mode: could not install dapper into workspace venv (${err}); falling back.`);
+            }
+          } else {
+            this.output.info(`auto mode: workspace venv has dapper but no bundled wheels available; falling back to managed venv.`);
+          }
+          // Treat this candidate as "used" even if the install failed; don't keep scanning
+          return undefined;
         }
 
         // Not installed — try to install from bundled wheels
@@ -325,7 +364,7 @@ export class EnvironmentManager {
 
   private async installWheel(pythonPath: string, wheelDir: string, version: string, force = false): Promise<void> {
     // Let pip select the right platform/ABI-specific wheel from the directory.
-    const pipArgs = ['-m', 'pip', 'install', `dapper==${version}`, '--find-links', wheelDir, '--no-index'];
+    const pipArgs = ['-m', 'pip', 'install', `dapper==${version}`, '--find-links', wheelDir, '--no-index', '--no-cache-dir'];
     if (force) pipArgs.push('--force-reinstall');
     const label = `install wheel ${version}${force ? ' (forced)' : ''}`;
     try {
@@ -344,8 +383,12 @@ export class EnvironmentManager {
     }
   }
 
-  private async installFromPyPI(pythonPath: string, version: string): Promise<void> {
-    await this.runProcess(pythonPath, ['-m', 'pip', 'install', `dapper==${version}`], { label: `install PyPI ${version}` });
+  private async installFromPyPI(pythonPath: string, version: string, force = false): Promise<void> {
+    const args = ['-m', 'pip', 'install', `dapper==${version}`];
+    if (force) {
+      args.push('--force-reinstall');
+    }
+    await this.runProcess(pythonPath, args, { label: `install PyPI ${version}${force ? ' (forced)' : ''}` });
   }
 
   private async checkDapperImportable(pythonPath: string): Promise<boolean> {
@@ -464,10 +507,28 @@ export class EnvironmentManager {
     return undefined;
   }
 
-  private shouldReinstall(manifest: EnvManifest | undefined, desiredVersion: string, force: boolean): boolean {
-    if (force) return true;
-    if (!manifest) return true;
-    return manifest.dapperVersionInstalled !== desiredVersion;
+  private shouldReinstall(
+    manifest: EnvManifest | undefined,
+    desiredVersion: string,
+    force: boolean,
+    wheelHash?: string,
+  ): boolean {
+    if (force) {
+      return true;
+    }
+    if (!manifest) {
+      return true;
+    }
+    if (manifest.dapperVersionInstalled !== desiredVersion) {
+      return true;
+    }
+    if (wheelHash && manifest.wheelHash !== wheelHash) {
+      // rebuild of the same version; force reinstall so the venv reflects
+      // the freshly built wheel.
+      this.output.info('Wheel hash changed; reinstall required');
+      return true;
+    }
+    return false;
   }
 
   private manifestPath(venvPath: string): string {
@@ -500,6 +561,39 @@ export class EnvironmentManager {
     if (files.length === 0) return undefined;
     this.output.debug(`findBundledWheelDir: found ${files.length} wheel(s) for v${version}: ${files.join(', ')}`);
     return wheelDir;
+  }
+
+  private async computeWheelHash(wheelDir: string): Promise<string> {
+    // compute SHA256 of concatenated wheel filenames and contents
+    const hash = await new Promise<string>((resolve, reject) => {
+      const crypto = require('crypto');
+      const h = crypto.createHash('sha256');
+      fs.readdirSync(wheelDir)
+        .filter(f => f.endsWith('.whl'))
+        .sort()
+        .forEach(fn => {
+          const p = path.join(wheelDir, fn);
+          h.update(fn);
+          const data = fs.readFileSync(p);
+          h.update(data);
+        });
+      resolve(h.digest('hex'));
+    });
+    return hash;
+  }
+
+  /** Return the installed dapper.__version__ from the given interpreter, or undefined if import fails. */
+  private async getDapperVersion(pythonPath: string): Promise<string | undefined> {
+    // spawnSync is used for simplicity since we just need the stdout result.
+    try {
+      const r = spawnSync(pythonPath, ['-c', 'import dapper; print(dapper.__version__)'], { encoding: 'utf8' });
+      if (r.status === 0) {
+        return (r.stdout || '').trim();
+      }
+    } catch {
+      // ignore
+    }
+    return undefined;
   }
 
   /** Expose output channel for other components (e.g., descriptor factory) */

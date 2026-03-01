@@ -135,7 +135,6 @@ async def test_initialization_sequence(mock_debugger_class):
     assert config.debuggee.args == []
     assert config.debuggee.stop_on_entry is False
     assert config.debuggee.no_debug is False
-    assert config.ipc.use_binary is True
 
 
 @pytest.mark.asyncio

@@ -30,7 +30,6 @@ class TestDapperConfig:
         # Transport is resolved from "auto" based on platform
         expected_transport = "pipe" if os.name == "nt" else "unix"
         assert config.ipc.transport == expected_transport
-        assert config.ipc.use_binary is True
         assert config.debuggee.program == ""
         assert config.debuggee.module == ""
         assert config.debuggee.module_search_paths == []
@@ -70,7 +69,6 @@ class TestDapperConfig:
                     "inProcess": True,
                     "strictExpressionWatchPolicy": True,
                     "subprocessAutoAttach": True,
-                    "useBinaryIpc": False,
                     "ipcTransport": "tcp",
                     "ipcPipeName": "test-pipe",
                     "cwd": "/working/dir",
@@ -89,7 +87,6 @@ class TestDapperConfig:
         assert config.strict_expression_watch_policy is True
         assert config.subprocess_auto_attach is True
         assert config.ipc.transport == "tcp"
-        assert config.ipc.use_binary is False
         assert config.ipc.pipe_name == "test-pipe"
         assert config.debuggee.working_directory == "/working/dir"
         assert config.debuggee.environment == {"PATH": "/custom/path"}
@@ -106,7 +103,6 @@ class TestDapperConfig:
                     "ipcTransport": "tcp",
                     "ipcHost": "localhost",
                     "ipcPort": 4711,
-                    "useBinaryIpc": True,
                     "strictExpressionWatchPolicy": True,
                 },
             },
@@ -118,7 +114,6 @@ class TestDapperConfig:
         assert config.ipc.transport == "tcp"
         assert config.ipc.host == "localhost"
         assert config.ipc.port == 4711
-        assert config.ipc.use_binary is True
         assert config.strict_expression_watch_policy is True
 
     def test_validate_launch_missing_program(self) -> None:
@@ -218,7 +213,6 @@ class TestDapperConfig:
         config.subprocess_auto_attach = True
         config.ipc.transport = "tcp"
         config.ipc.pipe_name = "test-pipe"
-        config.ipc.use_binary = False
 
         kwargs = config.to_launch_kwargs()
 
@@ -231,7 +225,6 @@ class TestDapperConfig:
             "stopOnEntry": True,
             "noDebug": False,
             "inProcess": True,
-            "useBinaryIpc": False,
             "subprocessAutoAttach": True,
             "ipcTransport": "tcp",
             "ipcPipeName": "test-pipe",

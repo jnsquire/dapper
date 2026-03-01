@@ -5,6 +5,7 @@ from queue import Queue
 import pytest
 
 from dapper.ipc import ipc_receiver
+from dapper.ipc.ipc_binary import pack_frame
 from dapper.shared import debug_shared
 
 
@@ -52,26 +53,21 @@ def test_receive_debug_commands_ipc():
     session.ipc_enabled = True
     session.command_queue = Queue()
 
-    # fake reader that returns a JSON line
+    # Build a binary DP-frame for the command
     cmd = {"command": "dummy", "seq": 1}
-    line = json.dumps(cmd) + "\n"
+    payload = json.dumps(cmd).encode("utf-8")
+    frame = pack_frame(2, payload)  # kind=2 = command
 
-    # use StringIO which implements TextIOBase for typing compatibility
-    session.ipc_rfile = io.StringIO(line)
+    # use BytesIO for binary IPC
+    session.ipc_rfile = io.BytesIO(frame)
+    session.ipc_wfile = io.BytesIO()  # dispatch may send responses
 
-    class DummyLock:
-        def __enter__(self):
-            return None
-
-        def __exit__(self, exc_type, exc, tb):
-            return None
-
-    # run receiver - it will queue the command, then encounter EOF
-    # which triggers exit_func(0) -> SystemExit in test mode
+    # run receiver - it will read one frame, dispatch, then encounter EOF
+    # which triggers exit_if_alive(0) -> SystemExit in test mode
     with pytest.raises(SystemExit):
         ipc_receiver.receive_debug_commands(session=session)
 
-    # queue should have exactly one item (no double-dispatch)
+    # queue should have exactly one item
     assert not session.command_queue.empty()
     got = session.command_queue.get_nowait()
     assert got["command"] == "dummy"
@@ -114,9 +110,11 @@ def test_receive_debug_commands_malformed_json_ipc():
     session.ipc_enabled = True
     session.command_queue = Queue()
 
-    # malformed JSON line
-    line = "{ not-a-json }\n"
-    session.ipc_rfile = io.StringIO(line)
+    # Build a binary frame with malformed JSON payload
+    bad_payload = b"{ not-a-json }"
+    frame = pack_frame(2, bad_payload)  # kind=2 = command
+    session.ipc_rfile = io.BytesIO(frame)
+    session.ipc_wfile = io.BytesIO()
 
     called = []
 

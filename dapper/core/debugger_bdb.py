@@ -1,4 +1,4 @@
-# ruff: noqa: PLC0415
+# ruff: noqa: PLC0415, I001
 """DebuggerBDB class and related helpers for debug launcher."""
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ import contextlib
 import logging
 import threading
 import types
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -460,6 +461,14 @@ class DebuggerBDB(bdb.Bdb):
         False if no breakpoint exists at this location.
         """
         canonical_filename = self.canonic(filename)
+        # debug info about breakpoint table membership
+        logger.debug(
+            "_handle_regular_breakpoint checking %s:%s (canonical=%s) breaks=%r",
+            filename,
+            line,
+            canonical_filename,
+            self.breaks.get(filename) or self.breaks.get(canonical_filename),
+        )
         has_line_in_break_table = False
         with contextlib.suppress(Exception):
             has_line_in_break_table = int(line) in [
@@ -530,6 +539,20 @@ class DebuggerBDB(bdb.Bdb):
         self.send_message("stopped", **event_args)
 
     def user_line(self, frame: types.FrameType) -> None:
+        # Log every line executed for diagnostic purposes (also to session log file)
+        filename = frame.f_code.co_filename
+        line = frame.f_lineno
+        msg = f"user_line: {filename}:{line}\n"
+        logger.debug(msg.strip())
+        # append raw message so logger level changes don't suppress it
+        log_path = getattr(self, "session_log_file", None)
+        if log_path:
+            try:
+                with Path(log_path).open("a", encoding="utf-8") as lf:
+                    lf.write(msg)
+            except Exception:
+                pass
+
         # Async-aware stepping: when we're stepping over/into an await expression
         # the event loop resumes before the user coroutine does.  Skip any
         # internal asyncio / concurrent.futures frames so the debugger stops at
@@ -538,24 +561,23 @@ class DebuggerBDB(bdb.Bdb):
             self.set_continue()
             return
 
-        # Just My Code: when enabled and the frame is library / stdlib code,
-        # keep stepping without stopping.  Explicit breakpoints set inside
-        # library code are still honoured (checked later via _handle_regular_breakpoint).
-        if self.just_my_code and not is_user_frame(frame):
-            filename = frame.f_code.co_filename
-            line = frame.f_lineno
-            canonical = self.canonic(filename)
-            # Only honour an explicit breakpoint; otherwise transparently skip.
-            has_explicit_bp = bool(
-                self.get_break(filename, line)
-                or self.get_break(canonical, line)
+        # Just My Code: if the frame is non-user code *and* there isn't an
+        # explicit breakpoint we want to hit, slip past it by stepping again.
+        if (
+            self.just_my_code
+            and not is_user_frame(frame)
+            and not (
+                self.get_break(frame.f_code.co_filename, frame.f_lineno)
+                or self.get_break(self.canonic(frame.f_code.co_filename), frame.f_lineno)
                 or (
-                    filename in self.bp_manager.custom and line in self.bp_manager.custom[filename]
-                ),
+                    frame.f_code.co_filename in self.bp_manager.custom
+                    and frame.f_code.co_filename
+                    and frame.f_lineno in self.bp_manager.custom[frame.f_code.co_filename]
+                )
             )
-            if not has_explicit_bp:
-                self.set_step()
-                return
+        ):
+            self.set_step()
+            return
 
         # Arriving at user code — clear the flag so subsequent steps are
         # unaffected regardless of whether the frame is a coroutine.
@@ -567,7 +589,8 @@ class DebuggerBDB(bdb.Bdb):
 
         self.botframe = frame  # to satisfy bdb expectations
 
-        # Check for data watch changes first
+        # Check for data watch changes first; if any watch triggered we emit
+        # the corresponding stopped event(s) and bail out.
         changed_names = self._check_data_watch_changes(frame)
         changed_expressions = self._check_expression_watch_changes(frame)
         self._update_watch_snapshots(frame)
@@ -591,8 +614,7 @@ class DebuggerBDB(bdb.Bdb):
                         "data breakpoint",
                         f"{changed_expression} changed",
                     )
-            if changed_names or changed_expressions:
-                return
+            return
 
         # Handle regular breakpoints
         if self._handle_regular_breakpoint(filename, line, frame):

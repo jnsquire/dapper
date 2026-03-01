@@ -10,7 +10,11 @@ import socket
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
+
+# Binary frame kind for adapter→launcher commands
+_KIND_COMMAND = 2
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,6 @@ class TCPServerConnection(ConnectionBase):
         self.port = port
         self.server: asyncio.Server | None = None
         self._client_connected: asyncio.Future[bool] | None = None
-        self.use_binary = False  # Default to regular DAP protocol
         self.socket: Any = None  # For backward compatibility
         self._warn_if_not_loopback(self.host)
 
@@ -188,15 +191,12 @@ class TCPServerConnection(ConnectionBase):
         logger.info("TCP connection closed")
 
     async def read_message(self) -> dict[str, Any] | None:
-        """Read a DAP message from the TCP connection."""
+        """Read a binary DAP message from the TCP connection."""
         if not self.reader:
             msg = "No active connection"
             raise RuntimeError(msg)
 
-        if self.use_binary:
-            return await self._read_binary_message()
-
-        return await self._read_dap_message()
+        return await self._read_binary_message()
 
     async def _read_binary_message(self) -> dict[str, Any] | None:
         """Read a binary frame message."""
@@ -233,46 +233,16 @@ class TCPServerConnection(ConnectionBase):
         else:
             return message
 
-    async def _read_dap_message(self) -> dict[str, Any] | None:
-        """Read a regular DAP protocol message with Content-Length headers."""
-        headers: dict[str, str] = {}
-
-        # Read headers
-        while True:
-            line = await self.reader.readline()
-            if not line:
-                return None  # Connection closed
-
-            line = line.decode("utf-8").strip()
-            if not line:
-                break
-
-            key, value = line.split(":", 1)
-            headers[key.strip()] = value.strip()
-
-        if "Content-Length" not in headers:
-            msg = "Content-Length header missing"
-            raise RuntimeError(msg)
-
-        content_length = int(headers["Content-Length"])
-        content = await self.reader.readexactly(content_length)
-        if not content:
-            return None
-
-        message = json.loads(content.decode("utf-8"))
-        logger.debug("Received message: %s", message)
-        return message
-
     async def write_message(self, message: dict[str, Any]) -> None:
-        """Write a DAP message to the TCP connection."""
+        """Write a binary DAP message to the TCP connection."""
         if not self.writer:
             msg = "No active connection"
             raise RuntimeError(msg)
 
         content = json.dumps(message).encode("utf-8")
-        header = f"Content-Length: {len(content)}\r\n\r\n".encode()
+        frame = pack_frame(_KIND_COMMAND, content)
+        self.writer.write(frame)
 
-        self.writer.write(header + content)
         await self.writer.drain()
         logger.debug("Sent message: %s", message)
 

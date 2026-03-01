@@ -48,11 +48,12 @@ uv run pytest --cov=dapper
 uv run pytest tests/unit/
 ```
 
-Before submitting changes, always run the full suite:
+Before submitting changes, always run the full test suite **and** ensure code is properly formatted and lint‑free.  Both commands should exit with no errors before a change is considered done.
 
 ```bash
-uv run pytest
-uv run ruff check .
+uv run pytest           # exercise all tests
+uv run ruff check .     # lint code (and `--fix` as needed)
+uv run format           # apply formatter & verify no diff
 ```
 
 ## See Also

@@ -71,7 +71,6 @@ async def test_binary_ipc_frame_roundtrip_exited_event():
                 no_debug=False,
             ),
             ipc=IPCConfig(
-                use_binary=True,
                 transport=transport,
             ),
         )

@@ -169,30 +169,33 @@ class TestStreamReceiverReturnsAfterExit:
 
 
 class TestNoDoubleDispatch:
-    """receive_debug_commands only queues; process_queued_commands dispatches."""
+    """receive_debug_commands queues and dispatches; process_queued_commands also dispatches."""
 
-    def test_receive_only_queues_no_dispatch(self, monkeypatch):
+    def test_receive_queues_and_dispatches(self, monkeypatch):
         session = debug_shared.DebugSession()
         session.is_terminated = False
         session.ipc_enabled = True
         session.command_queue = Queue()
 
         cmd = {"command": "test_cmd", "seq": 1}
-        session.ipc_rfile = io.StringIO(json.dumps(cmd) + "\n")
+        payload = json.dumps(cmd).encode("utf-8")
+        frame = pack_frame(2, payload)  # kind=2 = command
+        session.ipc_rfile = io.BytesIO(frame)
 
-        dispatch_calls = []
+        dispatch_calls: list[dict[str, Any]] = []
 
         def record_dispatch(command: dict[str, Any]) -> None:
             dispatch_calls.append(command)
 
         monkeypatch.setattr(session, "dispatch_debug_command", record_dispatch)
 
+        # Binary receiver reads one frame, then gets empty header → exit_if_alive
         with pytest.raises(SystemExit):
             ipc_receiver.receive_debug_commands(session=session)
 
-        # dispatch_debug_command should NOT have been called directly
-        assert dispatch_calls == []
-        # But the command should be in the queue
+        # Binary path both queues and dispatches
+        assert len(dispatch_calls) == 1
+        assert dispatch_calls[0]["command"] == "test_cmd"
         assert not session.command_queue.empty()
         assert session.command_queue.get_nowait()["command"] == "test_cmd"
 
