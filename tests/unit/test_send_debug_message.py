@@ -59,8 +59,8 @@ def test_send_debug_message_binary_ipc(debug_session):
     assert len(payload) == length
     data = json.loads(payload.decode("utf-8"))
     assert data["event"] == "event"
-    assert data["kind"] == "test"
-    assert data["value"] == 5
+    assert data["body"]["kind"] == "test"
+    assert data["body"]["value"] == 5
 
 
 def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session):

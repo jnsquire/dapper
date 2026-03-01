@@ -148,7 +148,17 @@ class SessionTransport:
     def send(self, message_type: str, **kwargs: Any) -> None:
         """Send a debug message via IPC and emit to subscribers."""
         message: dict[str, Any] = {"event": message_type}
-        message.update(kwargs)
+        if message_type == "response":
+            # For responses the standard DAP envelope fields (id, success,
+            # message, body) are passed as top-level kwargs and should remain
+            # flat in the serialized dict.
+            message.update(kwargs)
+        elif kwargs:
+            # For events every payload field belongs inside a nested ``body``
+            # dict per the DAP specification.  Callers continue to pass fields
+            # as plain keyword arguments — the transport is responsible for
+            # wrapping them correctly.
+            message["body"] = kwargs
 
         # Track that a response has been sent for the current request
         # lifecycle so the dispatcher knows not to send a default ack.

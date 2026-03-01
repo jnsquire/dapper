@@ -175,11 +175,11 @@ export class DapperDebugSession extends LoggingDebugSession {
   private handleGeneralEvent(message: any) {
     const body = message.body ?? {};
     if (message.event === 'stopped') {
-      this.sendEvent(new StoppedEvent(body.reason ?? message.reason, body.threadId ?? DapperDebugSession.THREAD_ID, body.text));
+      this.sendEvent(new StoppedEvent(body.reason, body.threadId ?? DapperDebugSession.THREAD_ID, body.text));
     } else if (message.event === 'continued') {
       this.sendEvent(new ContinuedEvent(body.threadId ?? DapperDebugSession.THREAD_ID, body.allThreadsContinued ?? true));
     } else if (message.event === 'output') {
-      this.sendEvent(new OutputEvent(body.output ?? message.output, body.category ?? message.category));
+      this.sendEvent(new OutputEvent(body.output, body.category));
     } else if (message.event === 'initialized') {
       this.sendEvent(new InitializedEvent());
     } else if (message.event === 'terminated') {

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 
 export class Logger {
-    private static outputChannel: vscode.OutputChannel;
+    // use the newer LogOutputChannel so we get convenience methods
+    private static outputChannel: vscode.LogOutputChannel;
     private static instance: Logger;
     private static logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
     private static logToConsole: boolean = false;
@@ -13,7 +14,10 @@ export class Logger {
     public static getInstance(): Logger {
         if (!Logger.instance) {
             Logger.instance = new Logger();
-            Logger.outputChannel = vscode.window.createOutputChannel('Dapper Debugger');
+            // with our minimum VS Code target the `{ log: true }` option returns a
+            // LogOutputChannel; tests also provide a fake channel with the same
+            // methods.  we no longer need to massage the object.
+            Logger.outputChannel = vscode.window.createOutputChannel('Dapper Debugger', { log: true }) as vscode.LogOutputChannel;
             
             // Load configuration
             const config = vscode.workspace.getConfiguration('dapper');
@@ -38,7 +42,8 @@ export class Logger {
         const validLevels = ['debug', 'info', 'warn', 'error'];
         if (validLevels.includes(level)) {
             Logger.logLevel = level as 'debug' | 'info' | 'warn' | 'error';
-            Logger.outputChannel.appendLine(`[${new Date().toISOString()}] Log level set to: ${level}`);
+            // log the change via the log output channel
+            Logger.outputChannel.info(`Log level set to: ${level}`);
         }
     }
 
@@ -47,78 +52,78 @@ export class Logger {
         return levels.indexOf(level) >= levels.indexOf(Logger.logLevel);
     }
 
-    private logMessage(level: string, message: string, data?: any): void {
+    /**
+     * Core helper that writes a message (and optional data) at a given level.
+     * Uses the dedicated LogOutputChannel methods rather than appendLine.
+     */
+    private logMessage(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: any): void {
         const timestamp = new Date().toISOString();
-        const logMessage = `[${timestamp}] ${level}: ${message}`;
-        
-        // Log to output channel
-        Logger.outputChannel.appendLine(logMessage);
-        
-        // Log additional data if provided
+        const logMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
+
+        // send the main line using the appropriate method
+        switch (level) {
+            case 'debug':
+                Logger.outputChannel.debug(logMessage);
+                break;
+            case 'info':
+                Logger.outputChannel.info(logMessage);
+                break;
+            case 'warn':
+                Logger.outputChannel.warn(logMessage);
+                break;
+            case 'error':
+                Logger.outputChannel.error(logMessage);
+                break;
+        }
+
+        // log any attached data using the same level method
         if (data !== undefined) {
+            const writer = Logger.outputChannel[level];
             if (data instanceof Error) {
-                Logger.outputChannel.appendLine(data.toString());
+                writer.call(Logger.outputChannel, data.toString());
                 if (data.stack) {
-                    Logger.outputChannel.appendLine(data.stack);
+                    writer.call(Logger.outputChannel, data.stack);
                 }
             } else if (typeof data === 'object') {
                 try {
-                    Logger.outputChannel.appendLine(JSON.stringify(data, null, 2));
-                } catch (e) {
-                    Logger.outputChannel.appendLine(String(data));
+                    writer.call(Logger.outputChannel, JSON.stringify(data, null, 2));
+                } catch {
+                    writer.call(Logger.outputChannel, String(data));
                 }
             } else {
-                Logger.outputChannel.appendLine(String(data));
+                writer.call(Logger.outputChannel, String(data));
             }
         }
-        
-        // Log to console if enabled
+
         if (Logger.logToConsole) {
-            const consoleMethod = level === 'DEBUG' ? 'debug' : 
-                               level === 'INFO' ? 'log' : 
-                               level === 'WARN' ? 'warn' : 'error';
-            (console as any)[consoleMethod](`[Dapper] ${logMessage}`, data || '');
+            const consoleMap: Record<string, string> = {
+                debug: 'debug',
+                info: 'log',
+                warn: 'warn',
+                error: 'error',
+            };
+            (console as any)[consoleMap[level]](`[Dapper] ${logMessage}`, data || '');
         }
     }
 
     public debug(message: string, data?: any): void {
         if (!this.shouldLog('debug')) return;
-        this.logMessage('DEBUG', message, data);
+        this.logMessage('debug', message, data);
     }
 
     public log(message: string, data?: any): void {
         if (!this.shouldLog('info')) return;
-        this.logMessage('INFO', message, data);
+        this.logMessage('info', message, data);
     }
 
     public warn(message: string, data?: any): void {
         if (!this.shouldLog('warn')) return;
-        this.logMessage('WARN', message, data);
+        this.logMessage('warn', message, data);
     }
 
     public error(message: string, error?: Error | unknown): void {
         if (!this.shouldLog('error')) return;
-        
-        const timestamp = new Date().toISOString();
-        const errorMessage = `[${timestamp}] ERROR: ${message}`;
-        
-        // Log to output channel
-        Logger.outputChannel.appendLine(errorMessage);
-        
-        // Log error details if provided
-        if (error instanceof Error) {
-            Logger.outputChannel.appendLine(error.toString());
-            if (error.stack) {
-                Logger.outputChannel.appendLine(error.stack);
-            }
-        } else if (error) {
-            Logger.outputChannel.appendLine(JSON.stringify(error, null, 2));
-        }
-        
-        // Log to console if enabled
-        if (Logger.logToConsole) {
-            console.error(`[Dapper] ${errorMessage}`, error || '');
-        }
+        this.logMessage('error', message, error);
     }
 
     public show(): void {

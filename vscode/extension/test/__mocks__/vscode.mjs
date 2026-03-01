@@ -17,7 +17,16 @@ export const window = {
   showInformationMessage: () => {},
   showQuickPick: () => {},
   showTextDocument: () => {},
-  createOutputChannel: (name) => ({ appendLine: () => {}, show: () => {}, dispose: () => {} })
+  createOutputChannel: (name) => ({
+      appendLine: () => {},
+      show: () => {},
+      dispose: () => {},
+      // LogOutputChannel helpers (do nothing by default)
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+  })
 };
 
 // createWebviewPanel should return an object that mimics VS Code WebviewPanel API

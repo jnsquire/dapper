@@ -50,7 +50,7 @@ describe('DapperDebugSession', () => {
     });
 
     it('should parse complete messages from Python', () => {
-        const payload = { event: 'output', output: 'hello', category: 'console' };
+        const payload = { event: 'output', body: { output: 'hello', category: 'console' } };
         const frame = createFrame(payload);
         
         const sendEventSpy = vi.spyOn(session as any, 'sendEvent');
@@ -64,7 +64,7 @@ describe('DapperDebugSession', () => {
     });
 
     it('should handle split messages (chunked data)', () => {
-        const payload = { event: 'output', output: 'split', category: 'console' };
+        const payload = { event: 'output', body: { output: 'split', category: 'console' } };
         const frame = createFrame(payload);
         
         const part1 = frame.subarray(0, 5);
@@ -82,8 +82,8 @@ describe('DapperDebugSession', () => {
     });
 
     it('should handle multiple messages in one chunk', () => {
-        const payload1 = { event: 'output', output: 'msg1' };
-        const payload2 = { event: 'output', output: 'msg2' };
+        const payload1 = { event: 'output', body: { output: 'msg1' } };
+        const payload2 = { event: 'output', body: { output: 'msg2' } };
         const frame1 = createFrame(payload1);
         const frame2 = createFrame(payload2);
         const combined = Buffer.concat([frame1, frame2]);

@@ -68,10 +68,10 @@ class TestBreakpointConfiguration:
         script = _fixture("simple_assign.py")
         dbg_harness.run_script_after_handshake(script, breakpoints={script: [4]})
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped["reason"] == "breakpoint"
+        assert stopped["body"]["reason"] == "breakpoint"
 
         # Resume so the debugger thread finishes cleanly
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
         dbg_harness.wait_for_runner(timeout=10)
 
     def test_multiple_breakpoints_in_one_file(self, dbg_harness: DebuggerHarness):
@@ -81,13 +81,13 @@ class TestBreakpointConfiguration:
 
         # First stop
         stopped1 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped1["reason"] == "breakpoint"
-        dbg_harness.send_continue(stopped1.get("threadId", 0))
+        assert stopped1["body"]["reason"] == "breakpoint"
+        dbg_harness.send_continue(stopped1.get("body", {}).get("threadId", 0))
 
         # Second stop
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "breakpoint"
-        dbg_harness.send_continue(stopped2.get("threadId", 0))
+        assert stopped2["body"]["reason"] == "breakpoint"
+        dbg_harness.send_continue(stopped2.get("body", {}).get("threadId", 0))
 
         dbg_harness.wait_for_runner(timeout=10)
 
@@ -98,13 +98,13 @@ class TestBreakpointConfiguration:
         dbg_harness.run_script_after_handshake(script, breakpoints={script: [3]})
 
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped["reason"] == "breakpoint"
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        assert stopped["body"]["reason"] == "breakpoint"
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
 
         # add() is called twice (line 10 and line 12) so we get a second stop
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "breakpoint"
-        dbg_harness.send_continue(stopped2.get("threadId", 0))
+        assert stopped2["body"]["reason"] == "breakpoint"
+        dbg_harness.send_continue(stopped2.get("body", {}).get("threadId", 0))
 
         dbg_harness.wait_for_runner(timeout=10)
 
@@ -138,9 +138,9 @@ class TestBreakpointConfiguration:
 
         # Let it stop/continue
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
         dbg_harness.wait_for_runner(timeout=10)
 
     def test_function_breakpoint(self, dbg_harness: DebuggerHarness):
@@ -160,8 +160,8 @@ class TestBreakpointConfiguration:
         dbg_harness.run_script(script)
 
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped["reason"] == "function breakpoint"
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        assert stopped["body"]["reason"] == "function breakpoint"
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
         dbg_harness.wait_for_runner(timeout=10)
 
     def test_exception_breakpoint_on_raised(self, dbg_harness: DebuggerHarness):
@@ -181,15 +181,15 @@ class TestBreakpointConfiguration:
         dbg_harness.run_script(script)
 
         stopped = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped["reason"] == "exception"
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        assert stopped["body"]["reason"] == "exception"
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
 
         # The "raised" filter may fire multiple times as the exception
         # propagates through frames.  Keep resuming until the script ends.
         while not dbg_harness._runner_done.wait(timeout=0.5):
             try:
                 extra = dbg_harness.wait_for_event("stopped", timeout=1)
-                dbg_harness.send_continue(extra.get("threadId", 0))
+                dbg_harness.send_continue(extra.get("body", {}).get("threadId", 0))
             except AssertionError:  # noqa: PERF203
                 break
 
@@ -222,7 +222,7 @@ class TestStoppedStateInspection:
         threads = body.get("threads", [])
         assert len(threads) >= 1
 
-        dbg_harness.send_continue(stopped.get("threadId", 0))
+        dbg_harness.send_continue(stopped.get("body", {}).get("threadId", 0))
         dbg_harness.wait_for_runner(timeout=10)
 
     def test_stack_trace_has_frames(self, dbg_harness: DebuggerHarness):
@@ -230,7 +230,7 @@ class TestStoppedStateInspection:
         script = _fixture("call_stack.py")
         # Stop inside level3() at line 3
         stopped = self._stop_at(dbg_harness, script, 3)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         rid, msgs = dbg_harness.send_and_collect_response("stackTrace", {"threadId": tid})
         resp = _get_response(msgs, rid)
@@ -250,7 +250,7 @@ class TestStoppedStateInspection:
         script = _fixture("nested_vars.py")
         # Stop at line 7 where all variables are defined
         stopped = self._stop_at(dbg_harness, script, 7)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         # stackTrace to get frameId
         rid, msgs = dbg_harness.send_and_collect_response("stackTrace", {"threadId": tid})
@@ -314,7 +314,7 @@ class TestVariableMutation:
         """evaluate returns the result of a Python expression at the stopped frame."""
         script = _fixture("simple_assign.py")
         stopped = self._stop_at(dbg_harness, script, 5)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         frame_id, _ = self._get_frame_and_scope(dbg_harness, tid)
 
@@ -348,11 +348,11 @@ class TestStepping:
         """'next' steps to the next statement in the same frame."""
         script = _fixture("simple_assign.py")
         stopped = self._stop_at(dbg_harness, script, 3)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         dbg_harness.send_command("next", {"threadId": tid})
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "step"
+        assert stopped2["body"]["reason"] == "step"
 
         # Verify we're now on line 4 via stackTrace
         rid, msgs = dbg_harness.send_and_collect_response("stackTrace", {"threadId": tid})
@@ -367,11 +367,11 @@ class TestStepping:
         script = _fixture("function_calls.py")
         # Stop at line 10: x = add(10, 20)
         stopped = self._stop_at(dbg_harness, script, 10)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         dbg_harness.send_command("stepIn", {"threadId": tid})
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "step"
+        assert stopped2["body"]["reason"] == "step"
 
         # Should now be inside add(), on line 3
         rid, msgs = dbg_harness.send_and_collect_response("stackTrace", {"threadId": tid})
@@ -387,11 +387,11 @@ class TestStepping:
         script = _fixture("function_calls.py")
         # Stop inside add() at line 3
         stopped = self._stop_at(dbg_harness, script, 3)
-        tid = stopped.get("threadId", 0)
+        tid = stopped.get("body", {}).get("threadId", 0)
 
         dbg_harness.send_command("stepOut", {"threadId": tid})
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "step"
+        assert stopped2["body"]["reason"] == "step"
 
         # Should now be back in the module-level code
         rid, msgs = dbg_harness.send_and_collect_response("stackTrace", {"threadId": tid})
@@ -416,12 +416,12 @@ class TestStepping:
         dbg_harness.run_script_after_handshake(script, breakpoints={script: [3, 5]})
 
         stopped1 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped1["reason"] == "breakpoint"
-        tid = stopped1.get("threadId", 0)
+        assert stopped1["body"]["reason"] == "breakpoint"
+        tid = stopped1.get("body", {}).get("threadId", 0)
 
         dbg_harness.send_continue(tid)
         stopped2 = dbg_harness.wait_for_event("stopped", timeout=10)
-        assert stopped2["reason"] == "breakpoint"
+        assert stopped2["body"]["reason"] == "breakpoint"
 
         dbg_harness.send_continue(tid)
         dbg_harness.wait_for_runner(timeout=10)
@@ -540,9 +540,9 @@ class TestStopOnEntry:
 
             stopped = h.wait_for_event("stopped", timeout=10)
             # Reason should indicate "entry" or "step" (BDB-implementation specific)
-            assert stopped["reason"] in ("entry", "step")
+            assert stopped["body"]["reason"] in ("entry", "step")
 
-            h.send_continue(stopped.get("threadId", 0))
+            h.send_continue(stopped.get("body", {}).get("threadId", 0))
             h.wait_for_runner(timeout=10)
         finally:
             h.close()
