@@ -339,7 +339,6 @@ class SubprocessManager:
             self._config.ipc_host,
             "--ipc-port",
             str(port),
-            "--ipc-binary",
             "--subprocess",
         ]
 

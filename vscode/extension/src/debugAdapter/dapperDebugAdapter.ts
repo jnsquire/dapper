@@ -791,7 +791,6 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         // Pass the IPC port to Python so it can connect back
         args.push('--ipc', 'tcp');
         args.push('--ipc-port', pythonIpcPort.toString());
-        args.push('--ipc-binary');
 
         // Create server for VS Code <-> DapperDebugSession Protocol
         const server = Net.createServer(vscodeSocket => {
