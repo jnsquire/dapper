@@ -71,9 +71,7 @@ def handle_next_impl(
         tid = None
 
     _thread_is_stopped = (
-        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids)
-        if dbg
-        else False
+        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids) if dbg else False
     )
     if dbg and (tid == get_thread_ident() or _thread_is_stopped):
         if _thread_is_stopped and tid is not None:
@@ -112,9 +110,7 @@ def handle_step_in_impl(
         tid = None
 
     _thread_is_stopped = (
-        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids)
-        if dbg
-        else False
+        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids) if dbg else False
     )
     if dbg and (tid == get_thread_ident() or _thread_is_stopped):
         if _thread_is_stopped and tid is not None:
@@ -150,9 +146,7 @@ def handle_step_out_impl(
         tid = None
 
     _thread_is_stopped = (
-        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids)
-        if dbg
-        else False
+        (tid is not None and tid in dbg.thread_tracker.stopped_thread_ids) if dbg else False
     )
     if dbg and (tid == get_thread_ident() or _thread_is_stopped):
         if _thread_is_stopped and tid is not None:

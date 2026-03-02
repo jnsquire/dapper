@@ -252,7 +252,13 @@ class LauncherHarness:
                 except Exception:
                     pass
         # Clear BDB class-level breakpoint state so it doesn't leak between tests
-        bdb.Breakpoint.clearBreakpoints()
+        if hasattr(bdb.Breakpoint, "clearBreakpoints"):
+            bdb.Breakpoint.clearBreakpoints()
+        else:
+            # Python < 3.12 fallback: manually clear class-level state
+            bdb.Breakpoint.next = 1
+            bdb.Breakpoint.bplist = {}
+            bdb.Breakpoint.bpbynumber = [None]
 
     # -- send helpers --
 

@@ -494,10 +494,11 @@ class InProcessDebugger:
                 target[name] = evaluate_with_policy(value, frame, allow_builtins=True)
                 # Sync fast locals so the change is visible in running code
                 try:
-                    pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
-                    pyframe_locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
-                    pyframe_locals_to_fast.restype = None
-                    pyframe_locals_to_fast(frame, 0)
+                    if isinstance(frame, types.FrameType):
+                        pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
+                        pyframe_locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
+                        pyframe_locals_to_fast.restype = None
+                        pyframe_locals_to_fast(frame, 0)
                 except (AttributeError, OSError):
                     pass  # Not available on all Python versions
                 return {

@@ -64,6 +64,8 @@ describe('EnvironmentManager helpers', () => {
 
   describe('workspace venv handling', () => {
     let tmpRoot: string | undefined;
+    const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
+    const pyExe = process.platform === 'win32' ? 'python.exe' : 'python';
     beforeEach(() => {
       // create a temporary folder to act as the workspace root
       tmpRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'dapper-test-'));
@@ -78,7 +80,7 @@ describe('EnvironmentManager helpers', () => {
 
     it('reinstalls when version mismatches', async () => {
       // create a fake python executable file inside the workspace venv
-      const candidate = path.join(tmpRoot!, '.venv', 'bin', 'python');
+      const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
       fs.writeFileSync(candidate, '');
       // pretend dapper importable with wrong version
@@ -93,7 +95,7 @@ describe('EnvironmentManager helpers', () => {
 
     it('forces reinstall when forceReinstall flag provided', async () => {
       // choose the second venvDir entry so we exercise a different path
-      const candidate = path.join(tmpRoot!, 'venv', 'bin', 'python');
+      const candidate = path.join(tmpRoot!, 'venv', binDir, pyExe);
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
       fs.writeFileSync(candidate, '');
       (envMgr as any).checkDapperImportable = async () => true;
