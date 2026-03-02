@@ -18,7 +18,6 @@ flowchart TB
         direction TB
         L1["PyDebugger state, DAP handlers, IPC tasks"]
     end
-    click loop "" ""
     L1 -->|spawn_threadsafe / call_soon_threadsafe|Reader
     L1 -->|spawn_threadsafe / call_soon_threadsafe|Process
     subgraph Reader[stdin reader thread(s)]
