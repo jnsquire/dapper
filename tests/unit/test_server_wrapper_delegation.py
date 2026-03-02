@@ -63,13 +63,15 @@ async def _install_wrapper_stubs(debugger: PyDebugger) -> None:
     async def _scopes(_frame_id: int):
         return [{"name": "Locals", "variablesReference": 1, "expensive": False}]
 
-    async def _vars(_ref: int, _f: str = "", _s: int = 0, _c: int = 0):
+    async def _vars(_ref: int, _f: str = "", _s: int = 0, _c: int = 0, *, format_options=None):
         return [{"name": "x", "value": "1", "variablesReference": 0}]
 
     async def _set_var(_ref: int, _name: str, _value: str):
         return {"value": "2", "type": "int", "variablesReference": 0}
 
-    async def _evaluate(_expr: str, _frame_id: int | None = None, _ctx: str | None = None):
+    async def _evaluate(
+        _expr: str, _frame_id: int | None = None, _ctx: str | None = None, *, format_options=None
+    ):
         return {"result": "ok", "variablesReference": 0}
 
     async def _exc_info(_thread_id: int):

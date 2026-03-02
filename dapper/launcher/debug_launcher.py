@@ -29,6 +29,7 @@ from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.launcher_ipc import connector as default_connector
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import handle_debug_command
+from dapper.utils.logging_levels import TRACE
 
 """
 Debug launcher entry point. Delegates to split modules.
@@ -39,31 +40,46 @@ logger = logging.getLogger(__name__)
 KIND_COMMAND = 2
 
 
-def _setup_session_log_file(session_id: str | None) -> str:
+def _setup_session_log_file(
+    session_id: str | None,
+    *,
+    log_file: str | None = None,
+    log_level: int | None = None,
+) -> str:
     """Create a per-session log file and attach it to the root dapper logger.
 
     ``session_id`` may be ``None`` during static analysis; if so we fall back
     to a freshly generated UUID.  In practise callers always supply a string
     (see ``main()``) but the loosened signature keeps the type checker happy.
 
-    The file captures every DEBUG+ record from the *entire* dapper namespace
-    from the moment it is installed, including records emitted before IPC is
-    open.  This makes it useful for diagnosing transport/handshake failures
-    where sending logs over the connection itself is unreliable.
+    If ``log_file`` is supplied (e.g. from the ``DAPPER_LOG_FILE`` env var
+    set by the VS Code extension) that path is used directly; otherwise a
+    path is derived from ``session_id`` in the system temp directory.
 
-    Returns the path of the log file so callers can print it.
+    ``log_level`` controls the minimum severity written to the file.  When
+    ``None`` it defaults to ``TRACE`` so that full DAP message contents are
+    captured.  Pass ``logging.DEBUG`` (or higher) to reduce verbosity.
+
+    Returns the path of the log file.
     """
+    effective_level = log_level if log_level is not None else TRACE
     # use pathlib for better typing
-    log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{session_id}.log")
+    if log_file:
+        log_path = log_file
+    else:
+        sid = session_id or uuid.uuid4().hex
+        log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{sid}.log")
     fh = logging.FileHandler(log_path, mode="w", encoding="utf-8", delay=False)
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(effective_level)
     fh.setFormatter(
         logging.Formatter(
             "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
             datefmt="%H:%M:%S",
         )
     )
-    logging.getLogger("dapper").addHandler(fh)
+    dapper_logger = logging.getLogger("dapper")
+    dapper_logger.setLevel(effective_level)
+    dapper_logger.addHandler(fh)
     # also remember on the active session object so other components can write
     try:
         from dapper.shared.debug_shared import get_active_session  # noqa: PLC0415 - dynamic import
@@ -518,12 +534,25 @@ def main():  # noqa: PLR0912, PLR0915
     )
 
     # Per-session log file — set up before IPC so transport/handshake issues
-    # are captured.  Print the path so it's visible in the terminal.
-    # ``session.session_id`` is assigned above and therefore always a str,
-    # but the helper accepts Optional[str] so we can pass it directly.
-    log_path = _setup_session_log_file(session.session_id)
-    sys.stderr.write(f"[dapper] session log: {log_path}\n")
-    sys.stderr.flush()
+    # are captured.  ``session.session_id`` is assigned above and therefore
+    # always a str, but the helper accepts Optional[str] so we can pass it
+    # directly.
+    # Prefer a log file path and level injected by the VS Code extension via
+    # environment variables so the extension can display the path in its output
+    # channel and the user can control verbosity through the settings UI.
+    _env_log_file = os.environ.get("DAPPER_LOG_FILE") or None
+    _env_log_level_str = os.environ.get("DAPPER_LOG_LEVEL", "").upper()
+    _env_log_level: int | None = None
+    if _env_log_level_str:
+        _resolved = logging.getLevelName(_env_log_level_str)
+        if isinstance(_resolved, int):
+            _env_log_level = _resolved
+    log_path = _setup_session_log_file(
+        session.session_id,
+        log_file=_env_log_file,
+        log_level=_env_log_level,
+    )
+    logger.info("Session log file: %s", log_path)
 
     # Log the version of the dapper package that is being executed.  This
     # provides a deterministic clue in the session log when debugging "old

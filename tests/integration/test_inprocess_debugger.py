@@ -111,7 +111,7 @@ def test_variables_and_stack_trace_and_evaluate_and_set_variable():
     fake.frame_id_to_frame[3] = frame3
     fake.var_refs[99] = (3, "globals")
     set_resp = ip.set_variable(99, "new", "5")
-    assert set_resp.get("value") == 5
+    assert set_resp.get("value") == "5"
     assert set_resp.get("type") == "int"
 
     # invalid var ref

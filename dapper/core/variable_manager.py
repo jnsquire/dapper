@@ -8,6 +8,7 @@ This module provides a unified API for:
 
 from __future__ import annotations
 
+import types as _types
 from typing import Any
 from typing import Literal
 from typing import Union
@@ -63,6 +64,10 @@ class VariableManager:
         """
         self.next_var_ref: int = start_ref
         self.var_refs: dict[int, VarRef] = {}
+        # Request-scoped flag: set before a batch of make_variable calls
+        # and cleared afterwards.  Used so that deep call-chains do not need
+        # to thread a ``hex_format`` parameter through every layer.
+        self.hex_format: bool = False
 
     def allocate_ref(self, value: Any) -> int:
         """Allocate a variable reference for an expandable value.
@@ -141,7 +146,18 @@ class VariableManager:
 
     def _is_expandable(self, value: Any) -> bool:
         """Check if a value should be expandable in the debugger UI."""
-        return hasattr(value, "__dict__") or isinstance(value, (dict, list, tuple))
+        # Containers are always expandable (even empty ones, for consistency).
+        if isinstance(value, (dict, list, tuple, set, frozenset)):
+            return True
+        # Functions and methods have __dict__ but are not meaningfully
+        # expandable in a debugger; exclude them explicitly.
+        if isinstance(
+            value,
+            (_types.FunctionType, _types.BuiltinFunctionType, _types.MethodType),
+        ):
+            return False
+        # Generic object with instance attributes.
+        return hasattr(value, "__dict__")
 
     def make_variable(
         self,
@@ -151,6 +167,7 @@ class VariableManager:
         max_string_length: int = 1000,
         data_bp_state: Any | None = None,
         frame: Any | None = None,
+        hex_format: bool = False,
     ) -> VariableDict:
         """Create a DAP-compliant Variable object.
 
@@ -160,12 +177,15 @@ class VariableManager:
             max_string_length: Maximum length for string representation.
             data_bp_state: Optional data breakpoint state for hasDataBreakpoint detection.
             frame: Optional frame for data breakpoint context.
+            hex_format: Display integers in hexadecimal when True.
 
         Returns:
             A Variable-shaped dict with proper presentation hints.
 
         """
-        val_str = self._format_value(value, max_string_length)
+        val_str = self._format_value(
+            value, max_string_length, hex_format=hex_format or self.hex_format
+        )
         var_ref = self.allocate_ref(value)
         type_name = type(value).__name__
         kind, attrs = self._detect_kind_and_attrs(value, max_string_length)
@@ -204,10 +224,13 @@ class VariableManager:
             result["namedVariables"] = named_variables
         return result
 
-    def _format_value(self, value: Any, max_length: int) -> str:
+    def _format_value(self, value: Any, max_length: int, *, hex_format: bool = False) -> str:
         """Format a value for display."""
         try:
-            s = repr(value)
+            if hex_format and isinstance(value, int) and not isinstance(value, bool):
+                s = hex(value)
+            else:
+                s = repr(value)
         except Exception:
             return "<Error getting value>"
         else:

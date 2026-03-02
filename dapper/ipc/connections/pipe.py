@@ -14,6 +14,7 @@ from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
 from dapper.ipc.ipc_binary import pack_frame
+from dapper.utils.logging_levels import TRACE
 
 # Binary frame kind for adapter→launcher commands
 _KIND_COMMAND = 2
@@ -171,7 +172,7 @@ class NamedPipeServerConnection(ConnectionBase):
                 payload = str(incoming).encode("utf-8")
 
             message = json.loads(payload.decode("utf-8"))
-            traffic_logger.debug("Received message: %s", message)
+            traffic_logger.log(TRACE, "Received message: %s", message)
             return message
 
         if not self.reader:
@@ -200,7 +201,7 @@ class NamedPipeServerConnection(ConnectionBase):
                 return None
 
         message = json.loads(payload_bytes.decode("utf-8"))
-        traffic_logger.debug("Received message: %s", message)
+        traffic_logger.log(TRACE, "Received message: %s", message)
         return message
 
     async def write_message(self, message: dict[str, Any]) -> None:
@@ -211,7 +212,7 @@ class NamedPipeServerConnection(ConnectionBase):
         if sys.platform == "win32" and self._pipe_conn is not None:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._pipe_conn.send_bytes, payload)
-            logger.debug("Sent message: %s", message)
+            logger.log(TRACE, "Sent message: %s", message)
             return
 
         if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
@@ -226,4 +227,4 @@ class NamedPipeServerConnection(ConnectionBase):
             pf.write(payload)
             pf.flush()
 
-        logger.debug("Sent message: %s", message)
+        logger.log(TRACE, "Sent message: %s", message)

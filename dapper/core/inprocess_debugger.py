@@ -22,6 +22,8 @@ from dapper.core.debugger_bdb import DebuggerBDB
 from dapper.core.stepping_controller import StepGranularity
 from dapper.ipc.ipc_receiver import process_queued_commands
 from dapper.shared.value_conversion import _enforce_eval_policy
+from dapper.shared.value_conversion import _exec_statement_in_frame
+from dapper.shared.value_conversion import convert_value_with_context
 from dapper.shared.value_conversion import evaluate_with_policy
 from dapper.utils.events import EventEmitter
 
@@ -120,6 +122,8 @@ class InProcessDebugger:
             for bp in breakpoints:
                 line = bp.get("line")
                 cond = bp.get("condition")
+                hit_cond = bp.get("hitCondition")
+                log_msg = bp.get("logMessage")
                 verified = True
                 if line:
                     try:
@@ -133,6 +137,19 @@ class InProcessDebugger:
                         # installation as unsuccessful. Treat True/None/other
                         # values as success for backward compatibility.
                         verified = res is not False
+                    # Record per-breakpoint metadata (condition, hit-count,
+                    # log-message) so the BreakpointResolver can evaluate
+                    # them at hit time.
+                    try:
+                        self.debugger.record_breakpoint(
+                            path,
+                            line,
+                            condition=cond,
+                            hit_condition=hit_cond,
+                            log_message=log_msg,
+                        )
+                    except AttributeError:
+                        pass
                 results.append({"verified": verified, "line": line})
             return results
 
@@ -193,13 +210,32 @@ class InProcessDebugger:
                 results.append({"verified": verified})
             return results
 
-    def set_exception_breakpoints(self, filters: list[str]) -> list[Breakpoint]:
+    def set_exception_breakpoints(
+        self,
+        filters: list[str],
+        filter_options: list[dict[str, Any]] | None = None,
+    ) -> list[Breakpoint]:
         with self.command_lock:
+            # Extract per-filter conditions
+            condition_map: dict[str, str | None] = {}
+            for opt in filter_options or []:
+                fid = opt.get("filterId", "")
+                cond = opt.get("condition") or None
+                condition_map[fid] = cond
+                if fid and fid not in filters:
+                    filters.append(fid)
+
             # Set boolean flags if present, fallback to dict otherwise
             verified_all = True
             try:
                 self.debugger.exception_handler.config.break_on_raised = "raised" in filters
                 self.debugger.exception_handler.config.break_on_uncaught = "uncaught" in filters
+                self.debugger.exception_handler.config.raised_condition = condition_map.get(
+                    "raised"
+                )
+                self.debugger.exception_handler.config.uncaught_condition = condition_map.get(
+                    "uncaught"
+                )
             except Exception:
                 # If setting flags fails, mark all as unverified
                 verified_all = False
@@ -337,15 +373,43 @@ class InProcessDebugger:
         _filter: str | None = None,  # unused
         _start: int | None = None,  # unused
         _count: int | None = None,  # unused
+        hex_format: bool = False,
     ) -> VariablesResponseBody:
         dbg = self.debugger
         var_ref = variables_reference
         if var_ref not in dbg.var_manager.var_refs:
             return {"variables": []}
 
+        # Set hex_format on var_manager for this batch of make_variable calls
+        old_hex = dbg.var_manager.hex_format
+        if hex_format:
+            dbg.var_manager.hex_format = True
+        try:
+            return self._variables_inner(var_ref, dbg)
+        finally:
+            dbg.var_manager.hex_format = old_hex
+
+    def _variables_inner(
+        self,
+        var_ref: int,
+        dbg: DebuggerBDB,
+    ) -> VariablesResponseBody:
         frame_info = dbg.var_manager.var_refs[var_ref]
-        # scope ref is a tuple of (frame_id, scope)
-        if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
+
+        # Object ref: stored as ("object", actual_value) by allocate_ref.
+        # Must be checked BEFORE the scope-ref branch because both are 2-tuples.
+        if (
+            isinstance(frame_info, tuple)
+            and len(frame_info) == SCOPE_TUPLE_LEN
+            and frame_info[0] == "object"
+        ):
+            return cast(
+                "VariablesResponseBody",
+                {"variables": self._expand_object_ref(frame_info[1])},
+            )
+
+        # Scope ref: (frame_id, "locals" | "globals")
+        if isinstance(frame_info, tuple) and len(frame_info) == SCOPE_TUPLE_LEN:
             frame_id, scope = frame_info
             frame = self._frame_by_id(frame_id) if isinstance(frame_id, int) else None
             variables: list[Variable] = []
@@ -358,6 +422,27 @@ class InProcessDebugger:
             # The `make_variable_object` helper returns Variable-shaped dicts
             return cast("VariablesResponseBody", {"variables": variables})
         return cast("VariablesResponseBody", {"variables": []})
+
+    def _expand_object_ref(self, value: Any) -> list[Variable]:
+        """Return child Variable dicts for an expandable object."""
+        from dapper.core.structured_model import get_model_fields  # noqa: PLC0415
+        from dapper.core.structured_model import is_structured_model  # noqa: PLC0415
+
+        dbg = self.debugger
+        children: list[Variable] = []
+        if isinstance(value, dict):
+            for k, v in value.items():
+                children.append(dbg.make_variable_object(repr(k), v))
+        elif is_structured_model(value):
+            for field_name, field_val in get_model_fields(value):
+                children.append(dbg.make_variable_object(field_name, field_val))
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            for i, v in enumerate(value):
+                children.append(dbg.make_variable_object(repr(i), v))
+        elif hasattr(value, "__dict__"):
+            for k, v in value.__dict__.items():
+                children.append(dbg.make_variable_object(k, v))
+        return children
 
     def set_variable(
         self,
@@ -374,17 +459,49 @@ class InProcessDebugger:
             }
 
         frame_info = dbg.var_manager.var_refs[var_ref]
-        if isinstance(frame_info, tuple) and len(frame_info) == (SCOPE_TUPLE_LEN):
-            frame_id, scope = frame_info
-            frame = self._frame_by_id(frame_id) if isinstance(frame_id, int) else None
+
+        # Handle object-member references: ("object", parent_obj)
+        if isinstance(frame_info, tuple) and len(frame_info) == SCOPE_TUPLE_LEN:
+            tag = frame_info[0]
+            if tag == "object":
+                parent_obj = frame_info[1]
+                new_val = convert_value_with_context(value, self._resolve_frame(None), parent_obj)
+                try:
+                    if isinstance(parent_obj, dict):
+                        parent_obj[name] = new_val
+                    else:
+                        setattr(parent_obj, name, new_val)
+                    result_val = (
+                        parent_obj[name]
+                        if isinstance(parent_obj, dict)
+                        else getattr(parent_obj, name)
+                    )
+                    return {
+                        "value": repr(result_val),
+                        "type": type(result_val).__name__,
+                        "variablesReference": 0,
+                    }
+                except Exception as exc:
+                    return {"success": False, "message": str(exc)}
+
+            # Scope reference: (frame_id, "locals"|"globals")
+            frame_id_val, scope = frame_info
+            frame = self._frame_by_id(frame_id_val) if isinstance(frame_id_val, int) else None
             if not frame:
                 return {"success": False, "message": "Frame not found"}
             try:
-                # Evaluate through policy checker to block dangerous expressions
                 target = frame.f_locals if scope == "locals" else frame.f_globals
                 target[name] = evaluate_with_policy(value, frame, allow_builtins=True)
+                # Sync fast locals so the change is visible in running code
+                try:
+                    pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
+                    pyframe_locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
+                    pyframe_locals_to_fast.restype = None
+                    pyframe_locals_to_fast(frame, 0)
+                except (AttributeError, OSError):
+                    pass  # Not available on all Python versions
                 return {
-                    "value": target[name],
+                    "value": repr(target[name]),
                     "type": type(target[name]).__name__,
                     "variablesReference": 0,
                 }
@@ -396,8 +513,11 @@ class InProcessDebugger:
         self,
         expression: str,
         frame_id: int | None = None,
-        _context: str | None = None,
+        context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
+        use_hex = isinstance(format_options, dict) and bool(format_options.get("hex"))
         frame = self._resolve_frame(frame_id)
         if not frame:
             return {
@@ -407,14 +527,34 @@ class InProcessDebugger:
             }
         try:
             result = evaluate_with_policy(expression, frame, allow_builtins=True)
+            var_ref = self.debugger.var_manager.allocate_ref(result)
+            if use_hex and isinstance(result, int) and not isinstance(result, bool):
+                result_str = hex(result)
+            else:
+                result_str = repr(result)
             return {
-                "result": repr(result),
+                "result": result_str,
                 "type": type(result).__name__,
-                "variablesReference": 0,
+                "variablesReference": var_ref,
             }
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as eval_exc:
+            # In REPL context, fall back to exec() for statements
+            if context == "repl":
+                try:
+                    _exec_statement_in_frame(expression, frame)
+                    return {
+                        "result": "",
+                        "type": "statement",
+                        "variablesReference": 0,
+                    }
+                except Exception as exec_exc:
+                    return {
+                        "result": str(exec_exc),
+                        "type": "error",
+                        "variablesReference": 0,
+                    }
             return {
-                "result": str(exc),
+                "result": str(eval_exc),
                 "type": "error",
                 "variablesReference": 0,
             }

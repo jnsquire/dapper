@@ -122,6 +122,9 @@ class VariableStoreLike(Protocol):
 
     next_var_ref: int
     var_refs: dict[int, object]
+    hex_format: bool
+
+    def allocate_ref(self, value: object) -> int: ...
 
 
 class SupportsVariableManager(Protocol):

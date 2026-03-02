@@ -151,6 +151,17 @@ def handle_set_exception_breakpoints_impl(
         [str(f) for f in raw_filters] if isinstance(raw_filters, (list, tuple)) else []
     )
 
+    # Extract per-filter conditions from filterOptions (DAP 1.51+)
+    filter_options: list[dict[str, Any]] = arguments.get("filterOptions", [])
+    condition_map: dict[str, str | None] = {}
+    for opt in filter_options:
+        fid = opt.get("filterId", "")
+        cond = opt.get("condition") or None
+        condition_map[fid] = cond
+        # filterOptions also activates the filter (even if not in "filters")
+        if fid and fid not in filters:
+            filters.append(fid)
+
     dbg = session.debugger
     if not dbg:
         return None
@@ -159,8 +170,68 @@ def handle_set_exception_breakpoints_impl(
     try:
         dbg.exception_handler.config.break_on_raised = "raised" in filters
         dbg.exception_handler.config.break_on_uncaught = "uncaught" in filters
+        dbg.exception_handler.config.raised_condition = condition_map.get("raised")
+        dbg.exception_handler.config.uncaught_condition = condition_map.get("uncaught")
     except (AttributeError, TypeError, ValueError):
         verified_all = False
 
     body = {"breakpoints": [{"verified": verified_all} for _ in filters]}
     return {"success": True, "body": body}
+
+
+def handle_breakpoint_locations_impl(
+    arguments: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Handle breakpointLocations request.
+
+    Returns valid breakable lines within the given source range using
+    Python's code-object line number table.
+    """
+    import dis
+    import linecache
+
+    arguments = arguments or {}
+    source = arguments.get("source", {})
+    path = source.get("path", "")
+    start_line = arguments.get("line", 1)
+    end_line = arguments.get("endLine", start_line)
+
+    locations: list[dict[str, int]] = []
+
+    if not path:
+        return {"success": True, "body": {"breakpoints": locations}}
+
+    try:
+        # Read and compile the source to get the line-number table
+        source_text = linecache.getlines(path)
+        if not source_text:
+            # File not in cache — try reading directly
+            with open(path, encoding="utf-8") as f:  # noqa: PTH123
+                source_text = f.readlines()
+        code = compile("".join(source_text), path, "exec")
+        # Collect all lines that have associated bytecode
+        valid_lines: set[int] = set()
+        _collect_code_lines(code, valid_lines, dis)
+
+        for line_no in sorted(valid_lines):
+            if start_line <= line_no <= end_line:
+                locations.append({"line": line_no})
+    except Exception:
+        # Fallback: return every line in the range (best-effort)
+        locations = [{"line": ln} for ln in range(start_line, end_line + 1)]
+
+    return {"success": True, "body": {"breakpoints": locations}}
+
+
+def _collect_code_lines(
+    code: Any,
+    out: set[int],
+    dis_module: Any,
+) -> None:
+    """Recursively collect lines from a code object and its nested code objects."""
+    for _offset, line in dis_module.findlinestarts(code):
+        if line is not None:
+            out.add(line)
+    for const in code.co_consts:
+        if hasattr(const, "co_code"):
+            _collect_code_lines(const, out, dis_module)

@@ -63,7 +63,6 @@ def test_handle_initialize_minimal():
     assert res["success"] is True
     body = res["body"]
     assert body["supportsConfigurationDoneRequest"] is True
-    assert "supportsRestartRequest" in body
 
 
 def test_handle_threads_empty(use_debug_session):

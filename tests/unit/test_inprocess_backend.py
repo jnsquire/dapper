@@ -223,7 +223,9 @@ class TestGetVariables:
         bridge.variables.return_value = vars_
         backend = _backend(bridge)
         result = await backend.get_variables(5, "named", 2, 10)
-        bridge.variables.assert_called_once_with(5, filter_type="named", start=2, count=10)
+        bridge.variables.assert_called_once_with(
+            5, filter_type="named", start=2, count=10, hex_format=False
+        )
         assert result == vars_
 
     @pytest.mark.asyncio
@@ -232,7 +234,9 @@ class TestGetVariables:
         bridge.variables.return_value = []
         backend = _backend(bridge)
         await backend.get_variables(1, "", 0, 0)
-        bridge.variables.assert_called_once_with(1, filter_type=None, start=None, count=None)
+        bridge.variables.assert_called_once_with(
+            1, filter_type=None, start=None, count=None, hex_format=False
+        )
 
     @pytest.mark.asyncio
     async def test_passes_none_for_empty_filter_type(self) -> None:
@@ -301,7 +305,7 @@ class TestEvaluate:
         bridge.evaluate.return_value = expected
         backend = _backend(bridge)
         result = await backend.evaluate("21+21", frame_id=2, context="repl")
-        bridge.evaluate.assert_called_once_with("21+21", 2, "repl")
+        bridge.evaluate.assert_called_once_with("21+21", 2, "repl", format_options=None)
         assert result == expected
 
     @pytest.mark.asyncio

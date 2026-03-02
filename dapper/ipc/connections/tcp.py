@@ -12,6 +12,7 @@ from typing import Any
 from dapper.ipc.connections.base import ConnectionBase
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
+from dapper.utils.logging_levels import TRACE
 
 # Binary frame kind for adapter→launcher commands
 _KIND_COMMAND = 2
@@ -226,7 +227,7 @@ class TCPServerConnection(ConnectionBase):
         # Parse JSON payload
         try:
             message = json.loads(payload.decode("utf-8"))
-            logger.debug("Received binary message: %s", message)
+            logger.log(TRACE, "Received binary message: %s", message)
         except json.JSONDecodeError:
             logger.exception("Failed to decode binary message JSON")
             return None
@@ -244,7 +245,7 @@ class TCPServerConnection(ConnectionBase):
         self.writer.write(frame)
 
         await self.writer.drain()
-        logger.debug("Sent message: %s", message)
+        logger.log(TRACE, "Sent message: %s", message)
 
     def __del__(self):  # pragma: no cover - best-effort cleanup
         # Ensure underlying server socket is closed if user forgot.

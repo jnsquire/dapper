@@ -228,9 +228,6 @@ def resolve_variables_for_reference(  # noqa: PLR0912
             if isinstance(parent_obj, dict):
                 for name, val in parent_obj.items():
                     vars_out.append(make_variable_fn(dbg, name, val, None))
-            elif isinstance(parent_obj, list):
-                for idx, val in enumerate(parent_obj):
-                    vars_out.append(make_variable_fn(dbg, str(idx), val, None))
             elif is_structured_model(parent_obj):
                 for field_name, field_val in get_model_fields(parent_obj):
                     var = make_variable_fn(dbg, field_name, field_val, None)
@@ -239,6 +236,9 @@ def resolve_variables_for_reference(  # noqa: PLR0912
                     if isinstance(hint, dict):
                         hint["kind"] = "property"
                     vars_out.append(var)
+            elif isinstance(parent_obj, (list, tuple, set, frozenset)):
+                for idx, val in enumerate(parent_obj):
+                    vars_out.append(make_variable_fn(dbg, str(idx), val, None))
             else:
                 for name in dir(parent_obj):
                     if name.startswith("_"):

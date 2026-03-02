@@ -8,8 +8,9 @@ import {
 } from '@vscode/debugadapter';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import * as Net from 'net';
+import * as os from 'os';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join as pathJoin } from 'path';
 import { EnvironmentManager, InstallMode } from '../environment/EnvironmentManager.js';
 import { logger } from '../utils/logger.js';
 
@@ -532,15 +533,6 @@ export class DapperDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected async restartRequest(
-    response: DebugProtocol.RestartResponse,
-    args: DebugProtocol.RestartArguments,
-    _request?: DebugProtocol.Request
-  ): Promise<void> {
-    await this.sendRequestToPython('restart', args);
-    this.sendResponse(response);
-  }
-
   protected async loadedSourcesRequest(
     response: DebugProtocol.LoadedSourcesResponse,
     args: DebugProtocol.LoadedSourcesArguments,
@@ -549,6 +541,18 @@ export class DapperDebugSession extends LoggingDebugSession {
     const result = await this.sendRequestToPython('loadedSources', args);
     response.body = {
       sources: (result.body && result.body.sources) || []
+    };
+    this.sendResponse(response);
+  }
+
+  protected async breakpointLocationsRequest(
+    response: DebugProtocol.BreakpointLocationsResponse,
+    args: DebugProtocol.BreakpointLocationsArguments,
+    _request?: DebugProtocol.Request
+  ): Promise<void> {
+    const result = await this.sendRequestToPython('breakpointLocations', args);
+    response.body = {
+      breakpoints: (result.body && result.body.breakpoints) || []
     };
     this.sendResponse(response);
   }
@@ -719,7 +723,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private _pythonIpcServer?: Net.Server;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.envManager = new EnvironmentManager(context);
+    this.envManager = new EnvironmentManager(context, logger.getChannel());
     this.extensionVersion = context.extension.packageJSON.version || '0.0.0';
   }
 
@@ -803,9 +807,16 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         this.server = server;
 
         // Build environment — terminal env must be Record<string, string>
+        const logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
+        const debugLogLevel = vscode.workspace
+          .getConfiguration('dapper.debugger')
+          .get<string>('logLevel', 'DEBUG')
+          .toUpperCase();
         const rawEnv = { ...process.env, ...(config.env || {}),
           DAPPER_MANAGED_VENV: envInfo.venvPath || '',
           DAPPER_VERSION_EXPECTED: this.extensionVersion,
+          DAPPER_LOG_FILE: logFile,
+          DAPPER_LOG_LEVEL: debugLogLevel,
         };
         const terminalEnv: Record<string, string> = {};
         for (const [k, v] of Object.entries(rawEnv)) {
@@ -813,6 +824,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         }
 
         const outChannel = this.envManager.getOutputChannel();
+        outChannel.info(`Session log file: ${logFile}`);
         const sessionName = session.name || (config.name as string | undefined) || 'Debug';
         const cwd = (config.cwd as string | undefined) || session.workspaceFolder?.uri.fsPath || process.cwd();
 

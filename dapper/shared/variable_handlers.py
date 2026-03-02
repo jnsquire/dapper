@@ -8,6 +8,7 @@ from typing import Protocol
 
 from dapper.shared.command_handler_helpers import set_object_member_with_dependencies
 from dapper.shared.command_handler_helpers import set_scope_variable_with_dependencies
+from dapper.shared.value_conversion import _exec_statement_in_frame
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -112,8 +113,19 @@ def handle_variables_impl(
         session.safe_send("variables", variablesReference=variables_reference, variables=variables)
         return None
 
-    frame_info = dbg.var_manager.var_refs[variables_reference]
-    variables = resolve_variables_for_reference(dbg, frame_info)
+    # Extract format.hex from DAP request arguments
+    fmt = arguments.get("format")
+    use_hex = isinstance(fmt, dict) and bool(fmt.get("hex"))
+    vm = dbg.var_manager
+    old_hex = getattr(vm, "hex_format", False)
+    if use_hex:
+        vm.hex_format = True
+
+    try:
+        frame_info = vm.var_refs[variables_reference]
+        variables = resolve_variables_for_reference(dbg, frame_info)
+    finally:
+        vm.hex_format = old_hex
 
     session.safe_send("variables", variablesReference=variables_reference, variables=variables)
     return {"success": True, "body": {"variables": variables}}
@@ -190,8 +202,15 @@ def handle_evaluate_impl(
     arguments = arguments or {}
     expression = arguments.get("expression", "")
     frame_id = arguments.get("frameId")
+    context = arguments.get("context", "hover")
+
+    # Extract format.hex from DAP request arguments
+    fmt = arguments.get("format")
+    use_hex = isinstance(fmt, dict) and bool(fmt.get("hex"))
 
     result = "<error>"
+    result_type = "string"
+    var_ref = 0
     format_error_fn = format_evaluation_error or globals()["format_evaluation_error"]
 
     dbg = session.debugger
@@ -199,38 +218,125 @@ def handle_evaluate_impl(
     if dbg and expression:
         if not isinstance(expression, str):
             raise TypeError("expression must be a string")
+        frame = None
         try:
             stack = dbg.stack
             if stack and frame_id is not None and frame_id < len(stack):
                 frame, _ = stack[frame_id]
-                try:
-                    value = evaluate_with_policy(expression, frame)
-                    result = repr(value)
-                except Exception as e:
-                    result = format_error_fn(e)
             elif hasattr(dbg, "stepping_controller") and dbg.stepping_controller.current_frame:
-                try:
-                    value = evaluate_with_policy(expression, dbg.stepping_controller.current_frame)
-                    result = repr(value)
-                except Exception as e:
-                    result = format_error_fn(e)
+                frame = dbg.stepping_controller.current_frame
         except (AttributeError, IndexError, KeyError, NameError, TypeError):
             logger.debug("Evaluate context resolution failed", exc_info=True)
+
+        if frame is not None:
+            try:
+                value = evaluate_with_policy(expression, frame)
+                if use_hex and isinstance(value, int) and not isinstance(value, bool):
+                    result = hex(value)
+                else:
+                    result = repr(value)
+                result_type = type(value).__name__
+                # Allocate a variable reference for expandable results
+                if hasattr(dbg, "var_manager"):
+                    var_ref = dbg.var_manager.allocate_ref(value)
+            except Exception as eval_exc:
+                # In REPL context, fall back to exec() for statements
+                if context == "repl" and frame is not None:
+                    try:
+                        _exec_statement_in_frame(expression, frame)
+                        result = ""
+                        result_type = "statement"
+                    except Exception as exec_exc:
+                        result = format_error_fn(exec_exc)
+                        result_type = "error"
+                else:
+                    result = format_error_fn(eval_exc)
+                    result_type = "error"
 
     session.safe_send(
         "evaluate",
         expression=expression,
         result=result,
-        variablesReference=0,
+        type=result_type,
+        variablesReference=var_ref,
     )
 
     return {
         "success": True,
         "body": {
             "result": result,
-            "variablesReference": 0,
+            "type": result_type,
+            "variablesReference": var_ref,
         },
     }
+
+
+def handle_set_expression_impl(
+    session: DebugSession,
+    arguments: Payload | None,
+    *,
+    evaluate_with_policy: EvaluateWithPolicyFn,
+    logger: Logger,
+) -> Payload:
+    """Handle setExpression command implementation.
+
+    Compiles ``<expression> = <value>`` and executes it in the target frame.
+    Then re-evaluates the expression to return the new value.
+    """
+    arguments = arguments or {}
+    expression = arguments.get("expression", "").strip()
+    value_str = arguments.get("value", "").strip()
+    frame_id = arguments.get("frameId")
+
+    dbg = session.debugger
+    if not dbg or not expression or not value_str:
+        return {"success": False, "message": "expression and value are required"}
+
+    frame = None
+    try:
+        stack = dbg.stack
+        if stack and frame_id is not None and frame_id < len(stack):
+            frame, _ = stack[frame_id]
+        elif hasattr(dbg, "stepping_controller") and dbg.stepping_controller.current_frame:
+            frame = dbg.stepping_controller.current_frame
+    except (AttributeError, IndexError, KeyError, NameError, TypeError):
+        logger.debug("setExpression frame resolution failed", exc_info=True)
+
+    if frame is None:
+        return {"success": False, "message": "Frame not available"}
+
+    try:
+        from dapper.shared.value_conversion import _enforce_eval_policy
+
+        _enforce_eval_policy(expression)
+        _enforce_eval_policy(value_str)
+
+        code = compile(f"{expression} = {value_str}", "<setExpression>", "exec")
+        exec(code, frame.f_globals, frame.f_locals)
+
+        # Sync fast locals
+        import ctypes
+
+        try:
+            pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
+            pyframe_locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
+            pyframe_locals_to_fast.restype = None
+            pyframe_locals_to_fast(frame, 0)
+        except (AttributeError, OSError):
+            pass
+
+        # Re-evaluate to get the new value
+        result = evaluate_with_policy(expression, frame)
+        return {
+            "success": True,
+            "body": {
+                "value": repr(result),
+                "type": type(result).__name__,
+                "variablesReference": 0,
+            },
+        }
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
 
 
 def handle_set_data_breakpoints_impl(

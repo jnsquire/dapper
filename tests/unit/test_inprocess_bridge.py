@@ -162,7 +162,9 @@ class TestVariables:
         inproc.variables.return_value = []
         bridge = _make_bridge(inproc)
         bridge.variables(5, filter_type="named", start=2, count=10)
-        inproc.variables.assert_called_once_with(5, _filter="named", _start=2, _count=10)
+        inproc.variables.assert_called_once_with(
+            5, _filter="named", _start=2, _count=10, hex_format=False
+        )
 
     def test_returns_list_directly(self) -> None:
         inproc = _make_inproc()
@@ -189,7 +191,9 @@ class TestVariables:
         inproc.variables.return_value = []
         bridge = _make_bridge(inproc)
         bridge.variables(3)
-        inproc.variables.assert_called_once_with(3, _filter=None, _start=None, _count=None)
+        inproc.variables.assert_called_once_with(
+            3, _filter=None, _start=None, _count=None, hex_format=False
+        )
 
 
 class TestSetVariable:

@@ -25,6 +25,7 @@ from dapper.errors import create_dap_response
 from dapper.protocol.data_breakpoints import DataBreakpointInfoResponse
 from dapper.protocol.data_breakpoints import SetDataBreakpointsResponse
 from dapper.protocol.requests import AttachResponse
+from dapper.protocol.requests import BreakpointLocationsResponse
 from dapper.protocol.requests import CompletionsResponse
 from dapper.protocol.requests import ConfigurationDoneResponse
 from dapper.protocol.requests import ContinueResponse
@@ -203,19 +204,23 @@ class RequestHandler:
                         "filter": "raised",
                         "label": "Raised Exceptions",
                         "default": False,
+                        "supportsCondition": True,
+                        "conditionDescription": "Exception type or expression, e.g. ValueError",
                     },
                     {
                         "filter": "uncaught",
                         "label": "Uncaught Exceptions",
                         "default": True,
+                        "supportsCondition": True,
+                        "conditionDescription": "Exception type or expression, e.g. ValueError",
                     },
                 ],
+                "supportsExceptionFilterOptions": True,
                 "supportsStepInTargetsRequest": True,
                 "supportsCompletionsRequest": True,
                 "supportsModulesRequest": True,
                 "supportsLoadedSourcesRequest": True,
-                "supportsRestartRequest": True,
-                "supportsExceptionOptions": True,
+                "supportsBreakpointLocationsRequest": True,
                 "supportsValueFormattingOptions": True,
                 "supportsExceptionInfoRequest": True,
                 "supportTerminateDebuggee": True,
@@ -328,8 +333,25 @@ class RequestHandler:
         args = request.get("arguments", {})
         filters: list[str] = args.get("filters", [])
 
+        # Extract per-filter conditions from filterOptions (DAP 1.51+)
+        filter_options: list[dict[str, Any]] = args.get("filterOptions", [])
+        condition_map: dict[str, str | None] = {}
+        for opt in filter_options:
+            fid = opt.get("filterId", "")
+            cond = opt.get("condition") or None
+            condition_map[fid] = cond
+            if fid and fid not in filters:
+                filters.append(fid)
+
         self.server.debugger.exception_breakpoints_raised = "raised" in filters
         self.server.debugger.exception_breakpoints_uncaught = "uncaught" in filters
+        # Pass conditions through to the exception handler config
+        try:
+            eh_config = self.server.debugger.debugger.exception_handler.config
+            eh_config.raised_condition = condition_map.get("raised")
+            eh_config.uncaught_condition = condition_map.get("uncaught")
+        except AttributeError:
+            pass
 
         return self._make_response(
             request,
@@ -815,11 +837,14 @@ class RequestHandler:
         filter_ = args.get("filter", "")
         start = args.get("start", 0)
         count = args.get("count", 0)
+        fmt = args.get("format")
+        format_options = fmt if isinstance(fmt, dict) else None
         variables = await self.server.debugger.get_variables(
             variables_reference,
             filter_,
             start,
             count,
+            format_options=format_options,
         )
         return self._make_response(
             request,
@@ -855,7 +880,14 @@ class RequestHandler:
         expression = args["expression"]
         frame_id = args.get("frameId")
         context = args.get("context")
-        result = await self.server.debugger.evaluate(expression, frame_id, context)
+        fmt = args.get("format")
+        format_options = fmt if isinstance(fmt, dict) else None
+        result = await self.server.debugger.evaluate(
+            expression,
+            frame_id,
+            context,
+            format_options=format_options,
+        )
         return self._make_response(request, "evaluate", EvaluateResponse, body=result)
 
     async def _handle_set_expression(
@@ -1021,6 +1053,27 @@ class RequestHandler:
                         return str(prev.argval)
                 break
         return None
+
+    async def _handle_breakpoint_locations(
+        self,
+        request: Any,
+    ) -> Any:
+        """Handle breakpointLocations request.
+
+        Uses the shared breakpoint handler to compile the source file and
+        report which lines in the requested range have associated bytecode.
+        """
+        from dapper.shared.breakpoint_handlers import handle_breakpoint_locations_impl
+
+        args = request.get("arguments", {})
+        result = handle_breakpoint_locations_impl(args)
+        body = result.get("body", {"breakpoints": []})
+        return self._make_response(
+            request,
+            "breakpointLocations",
+            BreakpointLocationsResponse,
+            body=body,
+        )
 
     async def _handle_data_breakpoint_info(
         self,

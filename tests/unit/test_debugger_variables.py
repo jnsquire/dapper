@@ -108,7 +108,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
         result = await self.debugger.evaluate("x + 1", frame_id=1, context="watch")
 
         # Should call the backend's evaluate method
-        mock_backend.evaluate.assert_called_once_with("x + 1", 1, "watch")
+        mock_backend.evaluate.assert_called_once_with("x + 1", 1, "watch", format_options=None)
 
         # Check the response format
         assert "result" in result
@@ -126,7 +126,9 @@ class TestDebuggerVariables(BaseDebuggerTest):
         result = await self.debugger.get_variables(123, filter_type="named", start=1, count=10)
 
         # Verify backend's get_variables was called
-        mock_backend.get_variables.assert_called_once_with(123, "named", 1, 10)
+        mock_backend.get_variables.assert_called_once_with(
+            123, "named", 1, 10, format_options=None
+        )
 
         # Verify result
         assert len(result) == 1
@@ -151,6 +153,7 @@ class TestDebuggerVariables(BaseDebuggerTest):
             filter_type="indexed",
             start=5,
             count=20,
+            hex_format=False,
         )
         assert result == expected_variables
 

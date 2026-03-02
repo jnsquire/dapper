@@ -31,8 +31,8 @@ export class EnvironmentManager {
   private preparePromise: Promise<PythonEnvInfo> | undefined;
   private readonly lock: { active: boolean } = { active: false }; // simple in-memory guard
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.output = vscode.window.createOutputChannel('Dapper Python Env', { log: true });
+  constructor(private readonly context: vscode.ExtensionContext, output: vscode.LogOutputChannel) {
+    this.output = output;
   }
 
   /** Main entrypoint to ensure environment is ready. */

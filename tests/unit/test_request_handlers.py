@@ -476,7 +476,9 @@ async def test_variables(handler, mock_server):
     result = await handler._handle_variables(request)
 
     # Check that we called get_variables with right arguments
-    mock_server.debugger.get_variables.assert_called_once_with(1001, "named", 0, 100)
+    mock_server.debugger.get_variables.assert_called_once_with(
+        1001, "named", 0, 100, format_options=None
+    )
 
     # Check the response
     assert result["type"] == "response"
@@ -502,7 +504,7 @@ async def test_evaluate(handler, mock_server):
     result = await handler._handle_evaluate(request)
 
     # Check that we called evaluate with right arguments
-    mock_server.debugger.evaluate.assert_called_once_with("x + 1", 1, "watch")
+    mock_server.debugger.evaluate.assert_called_once_with("x + 1", 1, "watch", format_options=None)
 
     # Check the response
     assert result["type"] == "response"

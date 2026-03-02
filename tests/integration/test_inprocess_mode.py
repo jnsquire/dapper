@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import sys
+import types
 from typing import Any
 from unittest.mock import patch
 
@@ -75,7 +76,14 @@ async def test_inprocess_variables_bridge():
     debugger.in_process = True
 
     class FakeBridge:
-        def variables(self, var_ref, *, filter_type=None, start=None, count=None):
+        def __init__(self):
+            self.debugger = types.SimpleNamespace(
+                var_manager=types.SimpleNamespace(hex_format=False)
+            )
+
+        def variables(
+            self, var_ref, *, filter_type=None, start=None, count=None, hex_format=False
+        ):
             # record call for assertion
             FakeBridge.called = (var_ref, filter_type, start, count)
             return [{"name": "x", "value": "1", "variablesReference": 0}]

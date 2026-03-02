@@ -29,11 +29,15 @@ class ExceptionBreakpointConfig:
     Attributes:
         break_on_raised: Break when any exception is raised.
         break_on_uncaught: Break only on uncaught exceptions.
+        raised_condition: Optional condition expression for the raised filter.
+        uncaught_condition: Optional condition expression for the uncaught filter.
 
     """
 
     break_on_raised: bool = False
     break_on_uncaught: bool = False
+    raised_condition: str | None = None
+    uncaught_condition: str | None = None
 
     def is_enabled(self) -> bool:
         """Check if any exception breakpoint is enabled."""
@@ -73,11 +77,14 @@ class ExceptionHandler:
     def should_break(
         self,
         frame: types.FrameType | Any,
+        exc_info: tuple[type[BaseException], BaseException, Any] | None = None,
     ) -> bool:
         """Determine if execution should break for this exception.
 
         Args:
             frame: The frame where the exception occurred.
+            exc_info: Optional (exc_type, exc_value, exc_traceback) tuple.
+                Used to evaluate condition expressions on exception filters.
 
         Returns:
             True if we should break on this exception.
@@ -86,18 +93,60 @@ class ExceptionHandler:
         if not self.config.is_enabled():
             return False
 
-        # "raised" mode breaks on all exceptions
+        # "raised" mode breaks on all exceptions (subject to condition)
         if self.config.break_on_raised:
-            return True
+            if self._matches_condition(self.config.raised_condition, frame, exc_info):
+                return True
 
         # "uncaught" mode only breaks if exception won't be handled
         if self.config.break_on_uncaught:
             # Ask the helper whether the current frame will handle this exception
             # True or None means it's handled, so we don't break
             res = frame_may_handle_exception(frame)
-            return res is False
+            if res is False:
+                return self._matches_condition(self.config.uncaught_condition, frame, exc_info)
 
         return False
+
+    @staticmethod
+    def _matches_condition(
+        condition: str | None,
+        frame: types.FrameType | Any,
+        exc_info: tuple[type[BaseException], BaseException, Any] | None = None,
+    ) -> bool:
+        """Evaluate an exception filter condition.
+
+        The condition can be:
+        - An exception type name like ``"ValueError"`` (matched against the
+          exception type's name or its MRO).
+        - A Python expression evaluated in the frame's context.
+        - ``None`` or empty string — always matches.
+        """
+        if not condition:
+            return True
+
+        # Try matching as an exception type name first
+        if exc_info is not None:
+            exc_type = exc_info[0]
+            # Check if the condition matches the exception type name or any
+            # parent in the MRO (e.g. "OSError" matches "FileNotFoundError")
+            try:
+                mro_names = [cls.__name__ for cls in exc_type.__mro__]
+                if condition.strip() in mro_names:
+                    return True
+            except (AttributeError, TypeError):
+                pass
+
+        # Fallback: evaluate as expression in the frame context
+        try:
+            ns = {}
+            if hasattr(frame, "f_globals"):
+                ns.update(frame.f_globals)
+            if hasattr(frame, "f_locals"):
+                ns.update(frame.f_locals)
+            return bool(eval(condition, ns))
+        except Exception:
+            return False
 
     def get_break_mode(self) -> str:
         """Get the DAP break mode string.

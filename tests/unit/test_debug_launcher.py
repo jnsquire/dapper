@@ -226,7 +226,6 @@ class TestDebugLauncherBasic:
             "supportsConfigurationDoneRequest",
             "supportsEvaluateForHovers",
             "supportsSetVariable",
-            "supportsRestartRequest",
         ]
 
         for capability in required_capabilities:
@@ -261,7 +260,6 @@ class TestDebugLauncherBasic:
             "supportsConfigurationDoneRequest",
             "supportsEvaluateForHovers",
             "supportsSetVariable",
-            "supportsRestartRequest",
         ]
 
         for capability in required_capabilities:

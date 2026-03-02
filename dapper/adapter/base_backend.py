@@ -382,16 +382,21 @@ class BaseBackend(DebuggerBackend, ABC):
         filter_type: str = "",
         start: int = 0,
         count: int = 0,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> list[Variable]:
         """Get variables for the given reference."""
+        args: dict[str, Any] = {
+            "variables_reference": variables_reference,
+            "filter": filter_type,
+            "start": start,
+            "count": count,
+        }
+        if format_options is not None:
+            args["format"] = format_options
         return await self._execute_and_extract(
             "get_variables",
-            {
-                "variables_reference": variables_reference,
-                "filter": filter_type,
-                "start": start,
-                "count": count,
-            },
+            args,
             extract_key="variables",
             return_type=list[Variable],
         )
@@ -436,15 +441,20 @@ class BaseBackend(DebuggerBackend, ABC):
         expression: str,
         frame_id: int | None = None,
         context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
+        args: dict[str, Any] = {
+            "expression": expression,
+            "frame_id": frame_id,
+            "context": context,
+        }
+        if format_options is not None:
+            args["format"] = format_options
         return await self._execute_and_extract(
             "evaluate",
-            {
-                "expression": expression,
-                "frame_id": frame_id,
-                "context": context,
-            },
+            args,
             return_type=EvaluateResponseBody,
         )
 

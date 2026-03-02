@@ -60,6 +60,35 @@ def evaluate_with_policy(
     return eval(expr, globals_ctx, locals_ctx)
 
 
+def _exec_statement_in_frame(
+    statement: str,
+    frame: Any,
+) -> None:
+    """Execute a statement (assignment, import, etc.) in the frame context.
+
+    Used by the REPL evaluate path when ``eval()`` fails because the
+    expression is a statement rather than an expression.
+
+    The same safety policy as ``evaluate_with_policy`` is applied.
+
+    Raises on any compilation or runtime error.
+    """
+    stmt = statement.strip()
+    if not stmt:
+        msg = "statement cannot be empty"
+        raise ValueError(msg)
+
+    _enforce_eval_policy(stmt)
+
+    if frame is None or not hasattr(frame, "f_globals") or not hasattr(frame, "f_locals"):
+        msg = "frame context is required"
+        raise ValueError(msg)
+
+    globals_ctx = dict(getattr(frame, "f_globals", {}) or {})
+    locals_ctx = dict(getattr(frame, "f_locals", {}) or {})
+    exec(compile(stmt, "<debug-console>", "exec"), globals_ctx, locals_ctx)
+
+
 def convert_value_with_context(
     value_str: str,
     frame: Any | None = None,

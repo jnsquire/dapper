@@ -602,6 +602,22 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
         session.safe_send_response(success=False, message="No active debugger")
 
 
+@command_handler("setExpression")
+def _cmd_set_expression(arguments: dict[str, Any] | None = None) -> None:
+    session = _active_session()
+    if session.debugger:
+        result = variable_handlers.handle_set_expression_impl(
+            session,
+            cast("dict[str, Any] | None", arguments),
+            evaluate_with_policy=evaluate_with_policy,
+            logger=logger,
+        )
+        if result:
+            session.safe_send_response(**result)
+    else:
+        session.safe_send_response(success=False, message="No active debugger")
+
+
 @command_handler("setDataBreakpoints")
 def _cmd_set_data_breakpoints(
     arguments: SetDataBreakpointsArguments | dict[str, Any] | None,
@@ -758,6 +774,16 @@ def _cmd_loaded_sources(_arguments: dict[str, Any] | None = None) -> None:
     source_handlers.handle_loaded_sources(
         _active_session(),
     )
+
+
+@command_handler("breakpointLocations")
+def _cmd_breakpoint_locations(arguments: dict[str, Any] | None = None) -> None:
+    session = _active_session()
+    result = breakpoint_handlers.handle_breakpoint_locations_impl(
+        cast("dict[str, Any] | None", arguments),
+    )
+    if result:
+        session.safe_send_response(**result)
 
 
 @command_handler("source")

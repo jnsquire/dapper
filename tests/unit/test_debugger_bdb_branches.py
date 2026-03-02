@@ -389,7 +389,7 @@ def test_user_exception_stop_path_emits_and_stores_exception(monkeypatch):
     frame = _make_frame()
     exc = ValueError("boom")
 
-    monkeypatch.setattr(dbg.exception_handler, "should_break", lambda _frame: True)
+    monkeypatch.setattr(dbg.exception_handler, "should_break", lambda _frame, exc_info=None: True)
     monkeypatch.setattr(
         dbg.exception_handler,
         "build_exception_info",

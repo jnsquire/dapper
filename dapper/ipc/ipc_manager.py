@@ -15,6 +15,7 @@ from typing import Callable
 
 from dapper.ipc.transport_factory import TransportConfig
 from dapper.ipc.transport_factory import TransportFactory
+from dapper.utils.logging_levels import TRACE
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -231,7 +232,7 @@ class IPCManager:
                         # EOF - connection closed
                         logger.debug("Connection closed, exiting reader loop")
                         break
-                    logger.debug("Received IPC message: %s", message)
+                    logger.log(TRACE, "Received IPC message: %s", message)
                     self._message_handler(message)
                 except BaseException as exc:
                     if _is_expected_loop_shutdown_error(exc):

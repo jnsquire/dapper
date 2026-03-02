@@ -11,23 +11,22 @@ const fakeContext: any = {
   globalStorageUri: { fsPath: '/tmp/does-not-exist' }
 };
 
+const fakeOutputChannel: any = {
+  info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, trace: () => {}
+};
+
 describe('EnvironmentManager helpers', () => {
   let envMgr: EnvironmentManager;
   let runCalls: Array<{ cmd: string; args: string[]; opts: any }>;
 
   beforeEach(() => {
-    envMgr = new EnvironmentManager(fakeContext);
+    envMgr = new EnvironmentManager(fakeContext, fakeOutputChannel);
     runCalls = [];
 
     // stub runProcess so we can inspect the arguments passed and avoid spawning real processes
     (envMgr as any).runProcess = async (cmd: string, args: string[], opts: any) => {
       runCalls.push({ cmd, args, opts });
       return Promise.resolve();
-    };
-
-    // provide a no-op output channel to satisfy logging calls
-    (envMgr as any).output = {
-      info: () => {}, debug: () => {}, warn: () => {}, trace: () => {}
     };
   });
 

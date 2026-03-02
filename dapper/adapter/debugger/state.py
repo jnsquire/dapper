@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import cast
 
 from dapper.adapter.types import BreakpointResponse
@@ -203,11 +204,19 @@ class _PyDebuggerStateManager:
         filter_type: str = "",
         start: int = 0,
         count: int = 0,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         backend = self._debugger.get_active_backend()
         if backend is not None:
-            result = await backend.get_variables(variables_reference, filter_type, start, count)
+            result = await backend.get_variables(
+                variables_reference,
+                filter_type,
+                start,
+                count,
+                format_options=format_options,
+            )
             if result:
                 return result
 
@@ -271,11 +280,18 @@ class _PyDebuggerStateManager:
         expression: str,
         frame_id: int | None = None,
         context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
         backend = self._debugger.get_active_backend()
         if backend is not None:
-            return await backend.evaluate(expression, frame_id, context)
+            return await backend.evaluate(
+                expression,
+                frame_id,
+                context,
+                format_options=format_options,
+            )
         return {
             "result": f"<evaluation of '{expression}' not available>",
             "type": "string",

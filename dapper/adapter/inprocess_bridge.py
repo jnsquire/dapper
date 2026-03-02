@@ -139,6 +139,7 @@ class InProcessBridge:
         filter_type: str | None = None,
         start: int | None = None,
         count: int | None = None,
+        hex_format: bool = False,
     ) -> list[Any]:
         """Get variables for a reference."""
         result = self._inproc.variables(
@@ -146,6 +147,7 @@ class InProcessBridge:
             _filter=filter_type,
             _start=start,
             _count=count,
+            hex_format=hex_format,
         )
         # Handle both list and dict responses
         if isinstance(result, list):

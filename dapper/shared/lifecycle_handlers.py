@@ -73,12 +73,35 @@ def handle_initialize_impl() -> Payload:
     capabilities = {
         "supportsConfigurationDoneRequest": True,
         "supportsFunctionBreakpoints": True,
+        "supportsConditionalBreakpoints": True,
+        "supportsHitConditionalBreakpoints": True,
         "supportsExceptionBreakpoints": True,
+        "exceptionBreakpointFilters": [
+            {
+                "filter": "raised",
+                "label": "Raised Exceptions",
+                "default": False,
+                "supportsCondition": True,
+                "conditionDescription": "Exception type or expression, e.g. ValueError",
+            },
+            {
+                "filter": "uncaught",
+                "label": "Uncaught Exceptions",
+                "default": True,
+                "supportsCondition": True,
+                "conditionDescription": "Exception type or expression, e.g. ValueError",
+            },
+        ],
+        "supportsExceptionFilterOptions": True,
+        "supportsExceptionInfoRequest": True,
         "supportsDataBreakpoints": True,
         "supportsSetVariable": True,
+        "supportsSetExpression": True,
         "supportsEvaluateForHovers": True,
+        "supportsCompletionsRequest": True,
+        "supportsBreakpointLocationsRequest": True,
         "supportsLogPoints": True,
-        "supportsRestartRequest": True,
+        "supportsValueFormattingOptions": True,
     }
     return {"success": True, "body": capabilities}
 

@@ -130,6 +130,10 @@ export class Logger {
         Logger.outputChannel.show();
     }
 
+    public getChannel(): vscode.LogOutputChannel {
+        return Logger.outputChannel;
+    }
+
     public dispose(): void {
         Logger.outputChannel.dispose();
     }

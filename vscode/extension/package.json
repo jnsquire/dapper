@@ -69,6 +69,25 @@
           "default": "",
           "description": "Override the expected dapper package version. By default the extension's version is used."
         },
+        "dapper.debugger.logLevel": {
+          "type": "string",
+          "enum": [
+            "TRACE",
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR"
+          ],
+          "enumDescriptions": [
+            "Log everything, including the full contents of every DAP message.",
+            "Log debug-level information (default).",
+            "Log informational messages and above.",
+            "Log warnings and errors only.",
+            "Log errors only."
+          ],
+          "default": "DEBUG",
+          "description": "Log level for the Python debugger process log file. Set to TRACE to capture the full contents of every DAP message."
+        },
         "dapper.hotReload.autoOnSave": {
           "type": "boolean",
           "default": true,

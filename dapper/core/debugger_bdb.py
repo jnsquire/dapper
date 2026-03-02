@@ -676,7 +676,7 @@ class DebuggerBDB(bdb.Bdb):
         exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None],
     ) -> None:
         """Handle exception breakpoints using the exception handler."""
-        if not self.exception_handler.should_break(frame):
+        if not self.exception_handler.should_break(frame, exc_info=exc_info):
             return
 
         thread_id = threading.get_ident()

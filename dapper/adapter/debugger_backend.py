@@ -137,6 +137,8 @@ class DebuggerBackend(Protocol):
         filter_type: str = "",
         start: int = 0,
         count: int = 0,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         ...
@@ -159,6 +161,8 @@ class DebuggerBackend(Protocol):
         expression: str,
         frame_id: int | None = None,
         context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
         ...

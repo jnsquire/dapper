@@ -849,6 +849,8 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         filter_type: str = "",
         start: int = 0,
         count: int = 0,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         return await self._state_manager.get_variables(
@@ -856,6 +858,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
             filter_type,
             start,
             count,
+            format_options=format_options,
         )
 
     async def set_variable(
@@ -881,9 +884,16 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
         expression: str,
         frame_id: int | None = None,
         context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
-        return await self._state_manager.evaluate(expression, frame_id, context)
+        return await self._state_manager.evaluate(
+            expression,
+            frame_id,
+            context,
+            format_options=format_options,
+        )
 
     async def completions(
         self,

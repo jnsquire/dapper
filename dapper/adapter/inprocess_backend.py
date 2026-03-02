@@ -332,14 +332,18 @@ class InProcessBackend(BaseBackend):
         filter_type: str = "",
         start: int = 0,
         count: int = 0,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> list[Variable]:
         """Get variables for the given reference."""
         try:
+            use_hex = isinstance(format_options, dict) and bool(format_options.get("hex"))
             return self._bridge.variables(
                 variables_reference,
                 filter_type=filter_type or None,
                 start=start if start > 0 else None,
                 count=count if count > 0 else None,
+                hex_format=use_hex,
             )
         except Exception:
             logger.exception("in-process variables failed")
@@ -371,10 +375,14 @@ class InProcessBackend(BaseBackend):
         expression: str,
         frame_id: int | None = None,
         context: str | None = None,
+        *,
+        format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression."""
         try:
-            return self._bridge.evaluate(expression, frame_id, context)
+            return self._bridge.evaluate(
+                expression, frame_id, context, format_options=format_options
+            )
         except Exception:
             logger.exception("in-process evaluate failed")
             return {
