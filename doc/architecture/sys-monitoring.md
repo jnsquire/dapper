@@ -31,24 +31,28 @@ fallback for Python 3.9–3.11.
 
 ## Architecture
 
-```
-                     ┌──────────────────────────────┐
-                     │       DebuggerBDB (core)      │
-                     │  user_line / user_call / ...  │
-                     └──────────┬───────────────────┘
-                                │
-                     ┌──────────▼───────────────────┐
-                     │    TracingBackend (ABC)        │   ← NEW
-                     │  install() / shutdown()       │
-                     │  set_breakpoints()            │
-                     │  set_stepping()               │
-                     └──┬───────────────────────┬───┘
-                        │                       │
-           ┌────────────▼──────┐    ┌───────────▼──────────┐
-           │ SettraceBackend   │    │ SysMonitoringBackend  │   ← NEW
-           │ (Python 3.9-3.11) │    │ (Python ≥ 3.12)       │
-           │ existing code     │    │ sys.monitoring API     │
-           └───────────────────┘    └──────────────────────┘
+```mermaid
+flowchart TB
+    subgraph DB[DebuggerBDB (core)]
+        direction TB
+        DBtxt["user_line / user_call / ..."]
+    end
+    subgraph TB[TracingBackend (ABC)]
+        direction TB
+        TBtxt["install()/shutdown()\nset_breakpoints()\nset_stepping()"]
+    end
+    subgraph ST[SettraceBackend]
+        direction TB
+        STtxt["(Python 3.9-3.11)\nexisting code"]
+    end
+    subgraph SM[SysMonitoringBackend]
+        direction TB
+        SMtxt["(Python ≥ 3.12)\nsys.monitoring API"]
+    end
+
+    DB --> TB
+    TB --> ST
+    TB --> SM
 ```
 
 ---

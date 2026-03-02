@@ -313,50 +313,59 @@ _EXTRACTORS["dapper/hotReloadResult"] = _hot_reload_result
 
 ## Message Sequence Diagram
 
-```
-Client (VS Code)                       Adapter (Dapper)
-      │                                       │
-      │  ── stopped event ──────────────────► │
-      │     { reason: "breakpoint", ... }     │
-      │                                       │
-      │  (user edits source file on disk)     │
-      │                                       │
-      │  ── dapper/hotReload request ───────► │
-      │     { source: { path: "…" },          │
-      │       options: {} }                   │
-      │                                       │
-      │                          ┌────────────┤
-      │                          │ 1. Resolve module from path
-      │                          │ 2. Validate preconditions
-      │                          │ 3. invalidate_caches()
-      │                          │ 4. Delete .pyc
-      │                          │ 5. linecache.checkcache()
-      │                          │ 6. importlib.reload(mod)
-      │                          │ 7. Invalidate frame-eval caches
-      │                          │ 8. Clear + re-set breakpoints
-      │                          │ 9. Rebind frame locals
-      │                          │ 10. Emit events
-      │                          └────────────┤
-      │                                       │
-      │  ◄── dapper/hotReload response ────── │
-      │     { success: true,                  │
-      │       body: {                         │
-      │         reloadedModule: "pkg.utils",  │
-      │         reboundFrames: 2,             │
-      │         warnings: ["…"]               │
-      │       } }                             │
-      │                                       │
-      │  ◄── loadedSource event ───────────── │
-      │     { reason: "changed",              │
-      │       source: { path: "…" } }         │
-      │                                       │
-      │  ◄── dapper/hotReloadResult event ──  │
-      │     { module: "pkg.utils",            │
-      │       durationMs: 42.3,               │
-      │       warnings: ["…"] }               │
-      │                                       │
-      │  ── continue request ───────────────► │
-      │     (execution resumes with new code) │
+```mermaid
+sequenceDiagram
+    participant Client as VS Code (or DAP client)
+    participant Adapter as Adapter (Dapper)
+
+    Client->>Adapter: stopped event
+    Note right of Adapter: { reason: "breakpoint", ... }
+
+    Note left of Client: (user edits source file on disk)
+
+    Client->>Adapter: dapper/hotReload request
+    Note right of Adapter: {
+      source: { path: "…" },
+      options: {}
+    }
+
+    Note right of Adapter: |
+      1. Resolve module from path\n
+      2. Validate preconditions\n
+      3. invalidate_caches()\n
+      4. Delete .pyc\n
+      5. linecache.checkcache()\n
+      6. importlib.reload(mod)\n
+      7. Invalidate frame-eval caches\n
+      8. Clear + re-set breakpoints\n
+      9. Rebind frame locals\n
+     10. Emit events
+
+    Adapter-->>Client: dapper/hotReload response
+    Note left of Client: {
+      success: true,
+      body: {
+        reloadedModule: "pkg.utils",
+        reboundFrames: 2,
+        warnings: ["…"]
+      }
+    }
+
+    Adapter-->>Client: loadedSource event
+    Note left of Client: {
+      reason: "changed",
+      source: { path: "…" }
+    }
+
+    Adapter-->>Client: dapper/hotReloadResult event
+    Note left of Client: {
+      module: "pkg.utils",
+      durationMs: 42.3,
+      warnings: ["…"]
+    }
+
+    Client->>Adapter: continue request
+    Note right of Adapter: (execution resumes with new code)
 ```
 
 ---

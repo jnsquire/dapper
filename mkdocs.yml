@@ -74,7 +74,6 @@ nav:
       - Frame Eval Build Guide: architecture/frame-eval/build-guide.md
       - sys.monitoring Integration: architecture/sys-monitoring.md
       - Analysis Notes: architecture/current-analysis.md
-      - Architecture Index: architecture/index.md
   - Roadmap:
     - Feature Ideas: roadmap/feature-ideas.md
     - "DEP-001: Hot Reload Protocol": roadmap/dep-001-hot-reload.md

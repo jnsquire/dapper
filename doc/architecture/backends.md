@@ -46,10 +46,16 @@ All backends now inherit from `BaseBackend` which includes:
 ## State Transitions
 
 ### Valid State Flow
-```
-UNINITIALIZED → INITIALIZING → READY → BUSY ↔ READY
-                     ↓           ↓           ↓
-                   ERROR ←─────┘    TERMINATING → TERMINATED
+```mermaid
+flowchart LR
+    UNINITIALIZED --> INITIALIZING --> READY --> BUSY
+    BUSY <-->
+    READY
+
+    INITIALIZING --> ERROR
+    READY --> TERMINATING --> TERMINATED
+    ERROR --> TERMINATING
+    ERROR -->|recover| READY
 ```
 
 ### State Descriptions

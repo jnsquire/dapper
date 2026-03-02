@@ -15,28 +15,27 @@ optionally rebinds function references on live stack frames.
 
 ### Data flow
 
-```
-VS Code (or DAP client)
-  │  request: "dapper/hotReload" { source: { path: "/foo/bar.py" } }
-  ▼
-RequestHandler._handle_dapper_hot_reload()
-  │  validates debugger is stopped, resolves module from path
-  ▼
-PyDebugger.hot_reload(module_path)
-  │  ┌──────────────────────────────────────────────┐
-  │  │ 1. Resolve sys.modules entry from file path  │
-  │  │ 2. importlib.invalidate_caches()              │
-  │  │ 3. Delete stale .pyc from __pycache__         │
-  │  │ 4. linecache.checkcache(path)                 │
-  │  │ 5. importlib.reload(module)                   │
-  │  │ 6. Invalidate frame-eval caches for file      │
-  │  │ 7. Clear + re-set bdb breakpoints             │
-  │  │ 8. Rebind frame locals on call stack           │
-  │  │ 9. Emit "loadedSource" { reason: "changed" }  │
-  │  └──────────────────────────────────────────────┘
-  ▼
-Client receives response + loadedSource event
-  → editor refreshes gutter decorations & breakpoint markers
+```mermaid
+flowchart LR
+    A[VS Code (or DAP client)]
+    B[RequestHandler._handle_dapper_hot_reload()]
+    C[PyDebugger.hot_reload(module_path)]
+    D[Client receives response + loadedSource event]
+    E[Editor refreshes gutter decorations & breakpoint markers]
+
+    A -->|request: "dapper/hotReload" {source path}| B
+    B -->|validate stopped, resolve module| C
+    C --> F[1. Resolve sys.modules entry from file path]
+    C --> G[2. importlib.invalidate_caches()]
+    C --> H[3. Delete stale .pyc from __pycache__]
+    C --> I[4. linecache.checkcache(path)]
+    C --> J[5. importlib.reload(module)]
+    C --> K[6. Invalidate frame-eval caches for file]
+    C --> L[7. Clear + re-set bdb breakpoints]
+    C --> M[8. Rebind frame locals on call stack]
+    C --> N[9. Emit "loadedSource" {reason: "changed"}]
+    C --> D
+    D --> E
 ```
 
 ---
