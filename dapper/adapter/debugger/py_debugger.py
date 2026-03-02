@@ -164,6 +164,25 @@ class PyDebuggerExceptionConfigAdapter:
     def break_on_uncaught(self, value: bool) -> None:
         self._debugger.exception_breakpoints_uncaught = bool(value)
 
+    # the condition properties are used by shared handlers when the client
+    # supplies ``filterOptions``.  store them on the main debugger's exception
+    # handler configuration so the policy code can read them later.
+    @property
+    def raised_condition(self) -> str | None:
+        return self._debugger.exception_handler.config.raised_condition
+
+    @raised_condition.setter
+    def raised_condition(self, value: str | None) -> None:
+        self._debugger.exception_handler.config.raised_condition = value
+
+    @property
+    def uncaught_condition(self) -> str | None:
+        return self._debugger.exception_handler.config.uncaught_condition
+
+    @uncaught_condition.setter
+    def uncaught_condition(self, value: str | None) -> None:
+        self._debugger.exception_handler.config.uncaught_condition = value
+
 
 class PyDebuggerExceptionHandlerAdapter:
     """Adapter exposing exception config via `exception_handler.config`.

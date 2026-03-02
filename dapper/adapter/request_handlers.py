@@ -59,10 +59,12 @@ from dapper.protocol.requests import VariablesResponse
 from dapper.shared import debug_shared
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from types import FrameType
 
     from dapper.adapter.server_core import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
+    from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.data_breakpoints import DataBreakpointInfoRequest
     from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
     from dapper.protocol.data_breakpoints import SetDataBreakpointsRequest
@@ -334,8 +336,11 @@ class RequestHandler:
         args = request.get("arguments", {})
         filters: list[str] = args.get("filters", [])
 
-        # Extract per-filter conditions from filterOptions (DAP 1.51+)
-        filter_options: list[dict[str, Any]] = args.get("filterOptions", [])
+        # Extract per-filter conditions from filterOptions (DAP 1.51+).
+        # ``ExceptionFilterOptions`` is imported under ``TYPE_CHECKING`` above.
+        # Sequence is covariant so we can accept the untyped list coming
+        # from the request without triggering pyright's invariance error.
+        filter_options: Sequence[ExceptionFilterOptions] = args.get("filterOptions", [])  # type: ignore[name-defined]
         condition_map: dict[str, str | None] = {}
         for opt in filter_options:
             fid = opt.get("filterId", "")
@@ -348,7 +353,10 @@ class RequestHandler:
         self.server.debugger.exception_breakpoints_uncaught = "uncaught" in filters
         # Pass conditions through to the exception handler config
         try:
-            eh_config = self.server.debugger.debugger.exception_handler.config
+            # ``self.server.debugger`` is already the PyDebugger instance; there
+            # is no nested ``debugger`` attribute on it.  the previous code
+            # triggered a pyright error and would never succeed at runtime.
+            eh_config = self.server.debugger.exception_handler.config
             eh_config.raised_condition = condition_map.get("raised")
             eh_config.uncaught_condition = condition_map.get("uncaught")
         except AttributeError:

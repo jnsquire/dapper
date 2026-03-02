@@ -172,10 +172,19 @@ class BreakpointManagerLike(Protocol):
 
 
 class ExceptionConfigLike(Protocol):
-    """Minimum exception-breakpoint flag storage."""
+    """Minimum exception-breakpoint flag storage.
+
+    The shared handlers occasionally assign conditional expressions to the
+    configuration, so the protocol must advertise those attributes even though
+    not all debugger implementations use them.
+    """
 
     break_on_raised: bool
     break_on_uncaught: bool
+    # following two attrs are not defined in the original protocol but we
+    # mutate them internally when the client supplies ``filterOptions``.
+    raised_condition: str | None
+    uncaught_condition: str | None
 
 
 class ExceptionHandlerLike(Protocol):
