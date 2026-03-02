@@ -74,7 +74,7 @@ Enable strict mode with launch/attach config:
 Or with launcher CLI:
 
 ```bash
-python -m dapper.launcher.debug_launcher \
+python -m dapper.launcher \
   --program app.py \
   --ipc tcp --ipc-host 127.0.0.1 --ipc-port 4711 \
   --strict-expression-watch-policy

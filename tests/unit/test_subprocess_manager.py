@@ -29,7 +29,7 @@ def test_build_launcher_args_rewrites_script_and_program_args() -> None:
 
     args = manager.build_launcher_args(["python", "child.py", "--name", "alice"], port=5710)
 
-    assert args[:3] == ["python", "-m", "dapper.launcher.debug_launcher"]
+    assert args[:3] == ["python", "-m", "dapper.launcher"]
     assert "--program" in args
     program_idx = args.index("--program")
     assert args[program_idx + 1] == "child.py"
@@ -46,7 +46,7 @@ def test_build_launcher_args_rewrites_module_mode() -> None:
     original = ["python", "-m", "http.server", "8000"]
     args = manager.build_launcher_args(original, port=5710)
 
-    assert args[:3] == ["python", "-m", "dapper.launcher.debug_launcher"]
+    assert args[:3] == ["python", "-m", "dapper.launcher"]
     assert "--module" in args
     module_idx = args.index("--module")
     assert args[module_idx + 1] == "http.server"
@@ -62,7 +62,7 @@ def test_build_launcher_args_rewrites_code_mode() -> None:
     original = ["python", "-c", "print('ok')", "arg1"]
     args = manager.build_launcher_args(original, port=5710)
 
-    assert args[:3] == ["python", "-m", "dapper.launcher.debug_launcher"]
+    assert args[:3] == ["python", "-m", "dapper.launcher"]
     assert "--code" in args
     code_idx = args.index("--code")
     assert args[code_idx + 1] == "print('ok')"
@@ -91,7 +91,7 @@ def test_enable_patches_and_disable_restores_popen(monkeypatch) -> None:
     assert captured, "Expected patched Popen to call original __init__"
     rewritten = captured[0]
     assert isinstance(rewritten, list)
-    assert "dapper.launcher.debug_launcher" in rewritten
+    assert "dapper.launcher" in rewritten
     assert recorder.calls, "Expected child process event to be emitted"
     event_name, payload = recorder.calls[0]
     assert event_name == "dapper/childProcess"
@@ -146,7 +146,7 @@ def test_already_instrumented_command_is_not_rewritten(monkeypatch) -> None:
             [
                 "python",
                 "-m",
-                "dapper.launcher.debug_launcher",
+                "dapper.launcher",
                 "--subprocess",
                 "--program",
                 "child.py",
@@ -155,11 +155,12 @@ def test_already_instrumented_command_is_not_rewritten(monkeypatch) -> None:
     finally:
         manager.disable()
 
+    # instrumentation detection should prevent rewriting; the args are unchanged
     assert captured == [
         [
             "python",
             "-m",
-            "dapper.launcher.debug_launcher",
+            "dapper.launcher",
             "--subprocess",
             "--program",
             "child.py",

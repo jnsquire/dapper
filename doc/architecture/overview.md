@@ -9,7 +9,7 @@ The debugger is split into two main runtime roles:
 
 - Debug adapter (controller): an asyncio-based debugger implementing high-level control and protocol handling (see `PyDebugger` in `dapper/adapter/debugger/py_debugger.py`, re-exported via `dapper/adapter/server.py`). This component exposes async APIs (launch, breakpoints, evaluate, shutdown) and communicates with the client via `server.send_event(...)`.
 
-- Debuggee (target): the debugged Python program, driven by a bdb-based engine implemented in `dapper/launcher/debug_launcher.py` (`DebuggerBDB`).
+- Debuggee (target): the debugged Python program, driven by a bdb-based engine implemented in `dapper/launcher/debug_launcher.py` (`DebuggerBDB`).  The launcher is invoked via `python -m dapper.launcher` when running subprocess mode.
 
 There are now two transport/execution modes:
 

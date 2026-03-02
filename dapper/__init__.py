@@ -37,6 +37,6 @@ def main() -> None:
 
        ``python -m dapper`` starts the *debuggee launcher*, not the
        adapter.  See :mod:`dapper.__main__` and
-       :mod:`dapper.launcher.debug_launcher`.
+       :mod:`dapper.launcher`.
     """
     _adapter_main()

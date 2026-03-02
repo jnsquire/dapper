@@ -25,6 +25,7 @@ Legend
 - ✅ Step In
 - ✅ Step Out
 - ✅ Async-aware stepping — `next`/`stepIn` over `await` skips event-loop internals and lands in user code (asyncio / concurrent.futures frames filtered via `_is_event_loop_frame`); see [Async Debugging reference](../guides/async-debugging.md)
+- ✅ Automatic sys.monitoring tracing backend on Python 3.12+ (configurable via `FrameEvalConfig.tracing_backend`) for lower-overhead breakpoints and stepping
 - ❌ Reverse Continue (reverse debugging)
 - ✅ Step granularity (instruction-level stepping) — `StepGranularity` enum; `line`/`statement`/`instruction` forwarded end-to-end; `user_opcode` + `f_trace_opcodes` for instruction stepping
 

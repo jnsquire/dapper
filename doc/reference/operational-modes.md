@@ -20,7 +20,7 @@ graph TB
     end
     
     subgraph "Debuggee Process (New Subprocess)"
-        Launcher[debug_launcher.py]
+        Launcher[dapper.launcher]
         Debuggee[User Program]
         IPC_Bridge[IPC Bridge]
     end
@@ -50,7 +50,7 @@ sequenceDiagram
     participant Adapter as DebugAdapterServer
     participant Debugger as PyDebugger
     participant IPC as IPCManager
-    participant Launcher as debug_launcher.py
+    participant Launcher as dapper.launcher
     participant Debuggee as User Program
     
     Client->>Adapter: launch request
@@ -91,7 +91,7 @@ graph TB
     end
     
     subgraph "Existing Debuggee Process"
-        Launcher[debug_launcher.py]
+        Launcher[dapper.launcher]
         Debuggee[User Program]
         IPC_Bridge[IPC Bridge]
     end
@@ -121,7 +121,7 @@ sequenceDiagram
     participant Adapter as DebugAdapterServer
     participant Debugger as PyDebugger
     participant IPC as IPCManager
-    participant Launcher as debug_launcher.py
+    participant Launcher as dapper.launcher
     participant Debuggee as User Program
     
     Note over Client,Debuggee: Debuggee already running
@@ -231,7 +231,7 @@ graph LR
     
     subgraph "Debuggee"
         PipeClient[mp_conn.Client]
-        Launcher[debug_launcher.py]
+        Launcher[dapper.launcher]
     end
     
     DA --> PipeListener
@@ -250,7 +250,7 @@ graph LR
     
     subgraph "Debuggee"
         UnixClient[socket.AF_UNIX]
-        Launcher[debug_launcher.py]
+        Launcher[dapper.launcher]
     end
     
     DA --> UnixListener
@@ -269,7 +269,7 @@ graph LR
     
     subgraph "Debuggee"
         TCPClient[socket.AF_INET]
-        Launcher[debug_launcher.py]
+        Launcher[dapper.launcher]
     end
     
     DA --> TCPListener

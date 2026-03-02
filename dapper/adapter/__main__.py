@@ -13,7 +13,7 @@ Usage::
 .. note::
 
    This is **not** the debuggee launcher.  The adapter spawns the
-   launcher internally via ``python -m dapper.launcher.debug_launcher``.
+   launcher internally via ``python -m dapper.launcher``.
    To run the launcher directly (rare), use ``python -m dapper``.
 """
 

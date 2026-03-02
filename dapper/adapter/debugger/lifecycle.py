@@ -53,7 +53,7 @@ class _PyDebuggerLifecycleManager:
         self, config: DapperConfig
     ) -> tuple[list[str], TransportConfig]:
         python_executable = self._resolve_python_executable(config)
-        debug_args = [python_executable, "-m", "dapper.launcher.debug_launcher"]
+        debug_args = [python_executable, "-m", "dapper.launcher"]
 
         if config.debuggee.module:
             debug_args.extend(["--module", config.debuggee.module])

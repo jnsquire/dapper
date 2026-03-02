@@ -332,7 +332,7 @@ class SubprocessManager:
         launcher_args = [
             python_exe,
             "-m",
-            "dapper.launcher.debug_launcher",
+            "dapper.launcher",
             "--ipc",
             "tcp",
             "--ipc-host",
@@ -391,7 +391,7 @@ class SubprocessManager:
             else:
                 args_list = [str(args)]
 
-            if "dapper.launcher.debug_launcher" in args_list or "--subprocess" in args_list:
+            if "dapper.launcher" in args_list or "--subprocess" in args_list:
                 original_init(self, args, *popen_rest, **kwargs)
                 return
 
