@@ -451,6 +451,9 @@ class TestRebindStackFrames:
         )
         assert result["reboundFrames"] == 1
         assert f_locals_dict["fn"] is new_fn
+        # flush step is skipped for MagicMock frames; a warning should be
+        # emitted (and the failure previously caused a segfault on CI).
+        assert any("frame is not built-in FrameType" in w for w in result["warnings"])
 
     def test_result_typeddict_structure(self):
         result = rebind_stack_frames([], {}, module_name="m", update_frame_code=False)

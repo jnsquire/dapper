@@ -21,6 +21,10 @@ This directory contains example code and configurations for testing the Dapper d
   - Complex data structures
   - Custom exceptions
 
+- **`sample_programs/loop_example.py`** - Very small focused script that exercises looping constructs;
+  ideal for quickly demonstrating expression and conditional breakpoints.  Use
+  it when you want a concise repro for debugger behavior in `for`/`while` loops.
+
 ### Test Scripts
 
 - **`testing/test_debug_adapter_setup.py`** - Automated test script to verify the debug adapter setup
@@ -79,20 +83,25 @@ This will test:
 
 #### Basic Debugging Features
 
-Test these features in `simple_app.py`:
+Test these features in `simple_app.py` (and use `loop_example.py` for focused
+loop debugging):
 
 1. **Breakpoints**:
-   - Set breakpoints on lines 67, 72, 89
+   - Set breakpoints on lines 67, 72, 89 in `simple_app.py`
+   - For `loop_example.py`, try conditional/expression breakpoints such as
+     `i == 3`, `total > 5` or `x == 2` on the lines marked `# BREAKPOINT`.
    - Verify breakpoints are hit during execution
 
 2. **Variable Inspection**:
    - Inspect `test_numbers`, `stats`, `fib_result`
+   - For `loop_example.py`, watch `i`, `total`, `x` as the loop progresses
    - Check nested data structures
 
 3. **Step Operations**:
    - Step into `calculate_fibonacci()`
    - Step over `process_numbers()`
    - Step out of functions
+   - In `loop_example.py`, step through loop iterations one at a time
 
 4. **Exception Handling**:
    - Set breakpoint in `demonstrate_exception_handling()`

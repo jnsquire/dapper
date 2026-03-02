@@ -245,7 +245,23 @@ def _replacement_for_value(value: object, rebind_map: RebindMap) -> object | Non
 
 
 def _flush_frame_locals(frame: types.FrameType, warnings: list[str]) -> None:
-    """Push the Python-level ``f_locals`` dict back into C fast-locals."""
+    """Push the Python-level ``f_locals`` dict back into C fast-locals.
+
+    The underlying C API (`PyFrame_LocalsToFast`) expects a *real* frame
+    object.  In unit tests we sometimes pass ``MagicMock`` instances with a
+    ``spec`` of ``types.FrameType``; on some platforms (notably CI runners)
+    calling the C API with such a proxy causes a hard crash.  Guard against
+    this by validating the instance and emitting a warning instead of
+    invoking the C function.
+    """
+    # ``isinstance`` returns ``True`` for mocks that declare a
+    # ``spec`` of :class:`types.FrameType`.  invoking the C API on a
+    # non-native object sometimes segfaults, so we require the value to
+    # be exactly a :class:`types.FrameType` instance.
+    if type(frame) is not types.FrameType:  # pragma: no cover - hard to exercise
+        warnings.append("skipped flushing locals: frame is not built-in FrameType")
+        return
+
     try:
         fn = ctypes.pythonapi.PyFrame_LocalsToFast
         fn.argtypes = [ctypes.py_object, ctypes.c_int]

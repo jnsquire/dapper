@@ -203,6 +203,8 @@ The `examples/sample_programs/` folder contains small scripts used by examples
 and manual testing:
 
 - `simple_app.py` — a minimal program with a loop and function calls
+- `loop_example.py` — small focused script that emphasises for/while loops and is handy when you
+  want to try expression breakpoints without navigating a larger file
 - `advanced_app.py` — a slightly richer flow for stepping and breakpoints
 - `set_variable_example.py` — a concentrated target for setVariable testing
 

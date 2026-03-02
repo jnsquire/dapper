@@ -112,6 +112,13 @@ The test client shows the DAP communication:
 python test_dapper_client.py --program examples/sample_programs/simple_app.py
 ```
 
+A more compact loop-focused script is also available for exercising
+conditional/expression breakpoints:
+
+```bash
+python test_dapper_client.py --program examples/sample_programs/loop_example.py
+```
+
 ### Test Advanced Program  
 
 ```bash
