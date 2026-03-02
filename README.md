@@ -6,6 +6,11 @@ A Debug Adapter Protocol implementation in Python.
 [![Tests](https://github.com/jnsquire/dapper/actions/workflows/tests.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/tests.yml)
 [![Docs check](https://github.com/jnsquire/dapper/actions/workflows/docs-check.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/docs-check.yml)
 
+[![Docs published](https://github.com/jnsquire/dapper/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/docs-deploy.yml)
+
+The full documentation is available online: https://jnsquire.github.io/dapper/
+
+
 ## Features
 
 - Implements the Debug Adapter Protocol specification

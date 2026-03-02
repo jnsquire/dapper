@@ -1,4 +1,6 @@
 site_name: Dapper
+site_url: https://jnsquire.github.io/dapper/
+repo_url: https://github.com/jnsquire/dapper
 docs_dir: doc
 theme:
   name: material
