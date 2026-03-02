@@ -16,27 +16,14 @@ function fail(msg) { process.stderr.write(`[copy-wheel ERROR] ${msg}\n`); proces
 // CPython versions to build for (must satisfy the package's requires-python >=3.9)
 const PYTHON_VERSIONS = ['3.9', '3.10', '3.11', '3.12', '3.13'];
 
-function resolveUvCommand() {
-  // prefer a locally installed binary (npm install will place it under
-  // node_modules/.bin); fall back to just `uv` which may already be on the
-  // PATH (e.g. when using the setup-uv action).
-  const local = path.join(__dirname, '..', 'node_modules', '.bin', 'uv');
-  if (fs.existsSync(local)) {
-    return local;
-  }
-  // ``npx`` will execute the package from node_modules when available, and
-  // will attempt to fetch it otherwise.  this keeps the script working even
-  // when the dependency is missing for some reason.
-  return process.platform === 'win32' ? 'npx.cmd' : 'npx';
-}
-
 function buildWheel(rootDir, pyVer, outDir) {
   return new Promise((resolve) => {
     const lines = [];
-    const uvCmd = resolveUvCommand();
-    const args = uvCmd.endsWith('npx') || uvCmd.endsWith('npx.cmd')
-      ? ['uv', 'build', '--wheel', '--python', pyVer, '--out-dir', outDir]
-      : ['build', '--wheel', '--python', pyVer, '--out-dir', outDir];
+    // invoke uv via the Python module to avoid any PATH lookup problems; the
+    // CI build now installs uv with `pip install` before running this
+    // script, so `python -m uv` should always succeed.
+    const uvCmd = process.platform === 'win32' ? 'python.exe' : 'python';
+    const args = ['-m', 'uv', 'build', '--wheel', '--python', pyVer, '--out-dir', outDir];
 
     const child = spawn(
       uvCmd,
