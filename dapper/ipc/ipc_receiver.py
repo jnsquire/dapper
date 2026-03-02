@@ -12,9 +12,14 @@ import logging
 from queue import Empty
 import traceback
 from typing import Any
+from typing import BinaryIO
 from typing import Callable
+from typing import cast
 from typing import overload
 
+from dapper.ipc.ipc_binary import HEADER_SIZE
+from dapper.ipc.ipc_binary import read_exact
+from dapper.ipc.ipc_binary import unpack_header
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import COMMAND_HANDLERS
 
@@ -157,12 +162,6 @@ def _receive_binary_commands(
     error_sender: ErrorSender | None = None,
 ) -> None:
     """Read binary DP-framed commands from ``ipc_rfile``."""
-    from typing import BinaryIO  # noqa: PLC0415
-    from typing import cast  # noqa: PLC0415
-
-    from dapper.ipc.ipc_binary import HEADER_SIZE  # noqa: PLC0415
-    from dapper.ipc.ipc_binary import read_exact  # noqa: PLC0415
-    from dapper.ipc.ipc_binary import unpack_header  # noqa: PLC0415
 
     KIND_COMMAND = 2  # noqa: N806
     # ``require_ipc`` in the caller already ensures ``ipc_rfile`` is not None,

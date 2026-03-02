@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dis
+import linecache
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
@@ -187,8 +189,6 @@ def handle_breakpoint_locations_impl(
     Returns valid breakable lines within the given source range using
     Python's code-object line number table.
     """
-    import dis
-    import linecache
 
     arguments = arguments or {}
     source = arguments.get("source", {})
@@ -213,9 +213,11 @@ def handle_breakpoint_locations_impl(
         valid_lines: set[int] = set()
         _collect_code_lines(code, valid_lines, dis)
 
-        for line_no in sorted(valid_lines):
-            if start_line <= line_no <= end_line:
-                locations.append({"line": line_no})
+        locations = [
+            {"line": line_no}
+            for line_no in sorted(valid_lines)
+            if start_line <= line_no <= end_line
+        ]
     except Exception:
         # Fallback: return every line in the range (best-effort)
         locations = [{"line": ln} for ln in range(start_line, end_line + 1)]

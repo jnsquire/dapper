@@ -13,7 +13,9 @@ import sys
 from typing import Any
 
 from dapper.ipc.connections.base import ConnectionBase
+from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import pack_frame
+from dapper.ipc.ipc_binary import unpack_header
 from dapper.utils.logging_levels import TRACE
 
 # Binary frame kind for adapter→launcher commands
@@ -180,8 +182,7 @@ class NamedPipeServerConnection(ConnectionBase):
             raise RuntimeError(msg)
 
         # Binary frame: read 8-byte header then payload
-        from dapper.ipc.ipc_binary import HEADER_SIZE  # noqa: PLC0415
-        from dapper.ipc.ipc_binary import unpack_header  # noqa: PLC0415
+        # (imports moved to module top-level)
 
         header_data = await self.reader.readexactly(HEADER_SIZE)
         if not header_data:

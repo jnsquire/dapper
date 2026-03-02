@@ -190,7 +190,7 @@ def handle_set_variable_impl(
     return error_response(f"Invalid variable reference: {variables_reference}")
 
 
-def handle_evaluate_impl(
+def handle_evaluate_impl(  # noqa: PLR0912
     session: DebugSession,
     arguments: Payload | None,
     *,
@@ -306,7 +306,7 @@ def handle_set_expression_impl(
         return {"success": False, "message": "Frame not available"}
 
     try:
-        from dapper.shared.value_conversion import _enforce_eval_policy
+        from dapper.shared.value_conversion import _enforce_eval_policy  # noqa: PLC0415
 
         _enforce_eval_policy(expression)
         _enforce_eval_policy(value_str)
@@ -315,7 +315,7 @@ def handle_set_expression_impl(
         exec(code, frame.f_globals, frame.f_locals)
 
         # Sync fast locals
-        import ctypes
+        import ctypes  # noqa: PLC0415
 
         try:
             pyframe_locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast

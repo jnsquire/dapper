@@ -444,7 +444,7 @@ class InProcessDebugger:
                 children.append(dbg.make_variable_object(k, v))
         return children
 
-    def set_variable(
+    def set_variable(  # noqa: PLR0911
         self,
         variables_reference: int,
         name: str,
@@ -542,15 +542,16 @@ class InProcessDebugger:
             if context == "repl":
                 try:
                     _exec_statement_in_frame(expression, frame)
-                    return {
-                        "result": "",
-                        "type": "statement",
-                        "variablesReference": 0,
-                    }
                 except Exception as exec_exc:
                     return {
                         "result": str(exec_exc),
                         "type": "error",
+                        "variablesReference": 0,
+                    }
+                else:
+                    return {
+                        "result": "",
+                        "type": "statement",
                         "variablesReference": 0,
                     }
             return {

@@ -15,6 +15,7 @@ import re
 import sys
 import types
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import TypeVar
 from typing import cast
 
@@ -1063,7 +1064,9 @@ class RequestHandler:
         Uses the shared breakpoint handler to compile the source file and
         report which lines in the requested range have associated bytecode.
         """
-        from dapper.shared.breakpoint_handlers import handle_breakpoint_locations_impl
+        # Import here to avoid heavy dependency during startup; ruff PLC0415
+        # and I001 warnings are benign in this case.
+        from dapper.shared.breakpoint_handlers import handle_breakpoint_locations_impl  # noqa: PLC0415,I001
 
         args = request.get("arguments", {})
         result = handle_breakpoint_locations_impl(args)

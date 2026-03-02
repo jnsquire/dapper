@@ -82,7 +82,13 @@ async def test_inprocess_variables_bridge():
             )
 
         def variables(
-            self, var_ref, *, filter_type=None, start=None, count=None, hex_format=False
+            self,
+            var_ref,
+            *,
+            filter_type=None,
+            start=None,
+            count=None,
+            hex_format=False,  # noqa: ARG002
         ):
             # record call for assertion
             FakeBridge.called = (var_ref, filter_type, start, count)

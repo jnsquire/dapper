@@ -17,6 +17,7 @@ using the binary IPC framing protocol.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 import time
@@ -437,11 +438,12 @@ class TestLauncherWaitsForConfigurationDone:
         assert breakpoints_at_run_time, "run() was never called"
         bp_snapshot = breakpoints_at_run_time[0]
         assert isinstance(bp_snapshot, dict), f"Unexpected snapshot: {bp_snapshot}"
-        assert script_path in bp_snapshot, (
-            f"Breakpoints for {script_path} not found: {bp_snapshot}"
-        )
-        assert 5 in bp_snapshot[script_path]
-        assert 15 in bp_snapshot[script_path]
+        # Windows file paths may be returned in lowercase; compare using normcase
+        normed = {os.path.normcase(k): v for k, v in bp_snapshot.items()}
+        key = os.path.normcase(script_path)
+        assert key in normed, f"Breakpoints for {script_path} not found: {bp_snapshot}"
+        assert 5 in normed[key]
+        assert 15 in normed[key]
 
 
 class TestIdNotPresentStillWorks:

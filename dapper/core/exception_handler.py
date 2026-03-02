@@ -94,9 +94,10 @@ class ExceptionHandler:
             return False
 
         # "raised" mode breaks on all exceptions (subject to condition)
-        if self.config.break_on_raised:
-            if self._matches_condition(self.config.raised_condition, frame, exc_info):
-                return True
+        if self.config.break_on_raised and self._matches_condition(
+            self.config.raised_condition, frame, exc_info
+        ):
+            return True
 
         # "uncaught" mode only breaks if exception won't be handled
         if self.config.break_on_uncaught:
