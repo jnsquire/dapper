@@ -79,7 +79,7 @@ class EvaluateWithPolicyFn(Protocol):
     ) -> object: ...
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class CommonSetterDependencies:
     """Shared fields for variable setter dependency injection."""
 
@@ -93,14 +93,14 @@ class CommonSetterDependencies:
     logger: LoggerLike
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ObjectMemberDependencies(CommonSetterDependencies):
     """Dependencies for setting object attributes/items."""
 
     assign_to_parent_member_fn: Callable[[object, str, object], str | None]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ScopeVariableDependencies(CommonSetterDependencies):
     """Dependencies for setting frame-scope variables."""
 
