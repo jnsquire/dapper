@@ -4,7 +4,7 @@ Dapper's adapter uses a single asyncio event loop with a small set of thread-saf
 
 ## Event Loop Architecture
 
-`PyDebugger` (in `dapper/server.py`) owns the asyncio event loop for the lifetime of a debugging session. The following components run *outside* the loop on dedicated threads:
+`PyDebugger` (defined in `dapper/adapter/debugger/py_debugger.py` and exported via `dapper/adapter/server.py`) owns the asyncio event loop for the lifetime of a debugging session. The following components run *outside* the loop on dedicated threads:
 
 - **stdin reader thread** — reads raw DAP messages from the client and dispatches them onto the loop.
 - **stdout writer thread** — serialises outgoing DAP messages and writes them to stdout.
@@ -12,34 +12,41 @@ Dapper's adapter uses a single asyncio event loop with a small set of thread-saf
 
 All mutable debugger state (breakpoints, thread registry, session state) is accessed exclusively from the event loop. Cross-thread state mutations must be scheduled via `spawn_threadsafe` (see below) rather than accessed directly, which would introduce data races.
 
+```mermaid
+flowchart TB
+    subgraph loop["asyncio event loop"]
+        direction TB
+        L1["PyDebugger state, DAP handlers, IPC tasks"]
+    end
+    click loop "" ""
+    L1 -->|spawn_threadsafe / call_soon_threadsafe|Reader
+    L1 -->|spawn_threadsafe / call_soon_threadsafe|Process
+    subgraph Reader[stdin reader thread(s)]
+    end
+    subgraph Process[process wait threads]
+    end
 ```
-┌─────────────────────────────────────────────┐
-│            asyncio event loop               │
-│  PyDebugger state, DAP handlers, IPC tasks  │
-└────────────────┬────────────────────────────┘
-                 │ spawn_threadsafe / call_soon_threadsafe
-     ┌───────────┴───────────┐
-     │                       │
- stdin reader            process wait
-   thread(s)               threads
-```
 
-## spawn and spawn_threadsafe
+## spawn_threadsafe and scheduling from other threads
 
-These are the canonical helper methods documented on `PyDebugger`. Also see [Development — Documentation](../development/docs.md) for additional context.
+The only built-in helper still provided by `PyDebugger` and
+`DebugAdapterServer` is `spawn_threadsafe`.  If you're already running on
+one of these loops, you can simply use `loop.create_task(...)` or
+`asyncio.create_task(...)` directly; the helper exists to safely schedule
+work from arbitrary threads.
 
-### `spawn(factory)`
+- **`spawn_threadsafe(factory)`**
 
-- Call **only** when you know you are already running on the debugger's loop (`debugger.loop`).
-- `factory` is a zero-argument callable returning a coroutine object.
-- Returns the created `asyncio.Task` (tracked internally in `_bg_tasks`) or `None` if creation fails.
-- Using this from a different thread is a bug — use `spawn_threadsafe` instead.
-
-### `spawn_threadsafe(factory)`
-
-- Safe to call from any thread, including threads with no running event loop.
-- Schedules the factory for execution on the debugger loop **without** creating the coroutine object off-loop (avoids attaching the coroutine to the wrong loop).
-- **Test-friendly behaviour**: if the debugger loop is not yet running but another loop is active (e.g. pytest's event loop), the factory executes immediately on that active loop. This ensures that mocks observing `send_event` see results synchronously in tests without requiring the debugger loop to be fully started.
+  * Safe to call from any thread, including threads with no running event
+    loop.  The argument is a zero-argument callable that returns a
+    coroutine.  The factory is executed on the adapter loop, and if it
+    returns an awaitable the helper wraps it in a task and tracks it in
+    `_bg_tasks` so shutdown can await it.
+  * **Test-friendly behaviour**: if the debugger loop is not yet running
+    but another loop is active (e.g. pytest's event loop), the factory
+    executes immediately on that active loop.  This ensures that mocks
+    observing `send_event` see results synchronously in tests without
+    requiring the debugger loop to be fully started.
 
 **Minimal usage example:**
 

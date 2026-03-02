@@ -16,24 +16,27 @@ the sole IPC management interface used throughout the codebase.
 
 The refactored architecture follows the Factory pattern with clear separation of concerns:
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   IPCManager    │───▶│  TransportFactory │───▶│ ConnectionBase  │
-│                 │    │                  │    │                 │
-│ - High-level    │    │ - Creates         │    │ - Base class    │
-│   IPC ops       │    │   transport-      │    │ - Common        │
-│ - Thread mgmt   │    │   specific        │    │   interface     │
-│ - Cleanup       │    │   connections     │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                    ┌──────────────────────┐
-                    │   TransportConfig    │
-                    │                      │
-                    │ - Transport settings │
-                    │ - Platform params    │
-                    │ - Binary mode        │
-                    └──────────────────────┘
+```mermaid
+flowchart LR
+    subgraph IPCManager[IPCManager]
+        direction TB
+        A1["High‑level IPC ops<br>Thread mgmt<br>Cleanup"]
+    end
+    subgraph TransportFactory[TransportFactory]
+        direction TB
+        B1["Creates transport‑specific<br>connections"]
+    end
+    subgraph ConnectionBase[ConnectionBase]
+        direction TB
+        C1["Base class<br>Common interface"]
+    end
+    subgraph TransportConfig[TransportConfig]
+        direction TB
+        D1["Transport settings<br>Platform params<br>Binary mode"]
+    end
+
+    IPCManager --> TransportFactory --> ConnectionBase
+    TransportFactory --> TransportConfig
 ```
 
 ## Key Components
@@ -75,26 +78,28 @@ def create_listener(config: TransportConfig) -> list[str]
 def connect(config: TransportConfig) -> None  
     # Connects to existing endpoint
 
-def start_reader(message_handler: Callable, accept: bool) -> None
-    # Starts message reader thread
+def start_reader(message_handler: Callable, accept: bool = True) -> None
+    # Starts message reader thread; ``accept`` controls whether a
+    # listener should accept a connection before reading.
 
-def send_message(message: dict[str, Any]) -> None
-    # Sends message through connection
+async def send_message(message: dict[str, Any]) -> None
+    # Async — writes a message through the connection; must be awaited.
 ```
 
 ### 3. TransportConfig
-**Purpose**: Configuration dataclass for transport settings.
+**Purpose**: Configuration dataclass for transport settings.  The
+current implementation lives in `dapper/ipc/transport_factory.py` and is
+used by both `IPCManager` and the launcher.
 
 **Fields**:
 ```python
 @dataclass
 class TransportConfig:
-    transport: str = "auto"
-    host: str = "127.0.0.1" 
-    port: int | None = None
-    path: str | None = None
-    pipe_name: str | None = None
-    use_binary: bool = True
+    transport: str = "auto"      # "auto", "pipe", "unix", "tcp"
+    host: str | None = None       # TCP hostname for tcp transport
+    port: int | None = None       # TCP port for tcp transport
+    path: str | None = None       # Filesystem path for unix socket
+    pipe_name: str | None = None  # Named pipe identifier on Windows
 ```
 
 ### 4. ConnectionBase
@@ -108,44 +113,6 @@ class ConnectionBase(ABC):
     async def read_message() -> dict[str, Any] | None
     async def write_message(message: dict[str, Any]) -> None
 ```
-
-## Migration Status
-
-### Phase 1: Foundation — Complete
-- Created `TransportFactory`, `ConnectionBase`, `IPCManager`
-- Implemented backward compatibility adapter
-
-### Phase 2: Production Migration — Complete
-- Updated `server.py` to use `IPCManager`
-- Updated `lifecycle.py` to use `TransportConfig`
-- All production code migrated to new interfaces
-
-### Phase 3: Cleanup — Complete
-- Removed legacy `IPCContext` class (`ipc_context.py`)
-- Removed `IPCContext`-only test files
-- Updated documentation to reference `IPCManager`
-
-## Benefits Achieved
-
-### 1. **Separation of Concerns**
-- Transport creation logic isolated in Factory
-- Connection management isolated in Manager
-- Platform-specific code properly separated
-
-### 2. **Improved Testability**
-- Each component can be tested independently
-- Mock objects easier to create
-- Platform-specific logic can be tested separately
-
-### 3. **Better Extensibility**
-- New transport types easy to add
-- Connection behavior easy to customize
-- Configuration handling centralized
-
-### 4. **Cleaner Code**
-- Smaller, focused classes
-- Clear responsibilities
-- Reduced complexity in individual methods
 
 ### Using with DapperConfig Integration
 

@@ -7,9 +7,9 @@ This document describes the architecture of the Dapper debugger with a focus on 
 
 The debugger is split into two main runtime roles:
 
-- Debug adapter (controller): an asyncio-based debugger implementing high-level control and protocol handling (`dapper/debugger.py`, class `PyDebugger`). This component exposes async APIs (launch, breakpoints, evaluate, shutdown) and communicates with the client via `server.send_event(...)`.
+- Debug adapter (controller): an asyncio-based debugger implementing high-level control and protocol handling (see `PyDebugger` in `dapper/adapter/debugger/py_debugger.py`, re-exported via `dapper/adapter/server.py`). This component exposes async APIs (launch, breakpoints, evaluate, shutdown) and communicates with the client via `server.send_event(...)`.
 
-- Debuggee (target): the debugged Python program, driven by a bdb-based engine implemented in `dapper/debug_launcher.py` (`DebuggerBDB`).
+- Debuggee (target): the debugged Python program, driven by a bdb-based engine implemented in `dapper/launcher/debug_launcher.py` (`DebuggerBDB`).
 
 There are now two transport/execution modes:
 
@@ -86,27 +86,29 @@ Encapsulation benefits:
 
 ## Key helpers and patterns
 
-### Task scheduling helpers: `spawn` and `spawn_threadsafe`
+### Task scheduling helper: `spawn_threadsafe`
 
-`spawn(factory)`
-* Use when you are already running on the debugger's own event loop (`self.loop`).
-* `factory` MUST be a zero-argument callable returning a coroutine object. The coroutine is created and immediately scheduled with `loop.create_task(...)`.
-* Returns the created `asyncio.Task` (or `None` on failure) and tracks it in an internal `_bg_tasks` set for lifecycle/shutdown management.
+Work is typically scheduled on the adapter event loop via direct
+`loop.create_task(...)` when already executing on that loop.  A single
+public helper remains to make it safe to schedule work from other threads.
 
 `spawn_threadsafe(factory)`
-* Use from any other thread (I/O reader threads, subprocess wait thread, tests) or when you are not sure you are on the debugger loop.
-* Accepts the same zero-argument coroutine factory. The factory is invoked only on a loop that is already running, preventing creation of "orphan" coroutine objects on the wrong thread.
-* Behavior:
-	- If the debugger loop is running: schedules a small `_submit` via `loop.call_soon_threadsafe`, then invokes the factory on the debugger loop.
-	- If the debugger loop is NOT running but there is a currently running (pytest-managed) loop: executes immediately on that current loop (useful for tests that assert synchronous side-effects like `send_event` calls).
-	- If the loop is closed or scheduling fails, the failure is logged at debug level and otherwise ignored.
+* Use from any thread, including I/O reader threads, subprocess wait
+  threads, or tests.  If you're certain you are already on the debugger
+  loop you may simply call `loop.create_task` instead.
+* The argument must be a zero-argument callable returning a coroutine
+  object.  The factory is invoked on the adapter loop; if it returns an
+  awaitable the helper wraps it in a task and tracks it in an internal
+  `_bg_tasks` set for orderly shutdown.
+* **Test-friendly behaviour:** if the debugger loop is not yet running
+  but another loop is active (e.g. pytest's event loop), the factory
+  executes immediately on that active loop.  This lets helpers such as
+  `send_event` appear synchronous in unit tests.
 
 Design goals:
 * Never create coroutine objects off their target loop thread.
 * Preserve deterministic visibility for tests relying on immediate event dispatch.
 * Centralize task tracking and error handling.
-
-Internal helper `_schedule_factory(factory, loop)` backs both public helpers, ensuring a single code path for task creation and tracking.
 
 ### Cross-loop shutdown helpers
 
