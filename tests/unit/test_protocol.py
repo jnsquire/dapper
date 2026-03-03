@@ -15,24 +15,25 @@ from dapper.protocol.messages import GenericEvent
 from dapper.protocol.messages import GenericRequest
 from dapper.protocol.messages import GenericResponse
 from dapper.protocol.messages import ProtocolMessage
+from dapper.protocol.protocol import CONFIG_DONE_SPEC
+from dapper.protocol.protocol import CONTINUE_SPEC
+from dapper.protocol.protocol import EVALUATE_SPEC
+from dapper.protocol.protocol import INITIALIZE_SPEC
+from dapper.protocol.protocol import LAUNCH_SPEC
+from dapper.protocol.protocol import SCOPES_SPEC
+from dapper.protocol.protocol import SET_BREAKPOINTS_SPEC
+from dapper.protocol.protocol import STACK_TRACE_SPEC
+from dapper.protocol.protocol import THREADS_SPEC
+from dapper.protocol.protocol import VARIABLES_SPEC
 from dapper.protocol.protocol import ProtocolError
 from dapper.protocol.protocol import ProtocolFactory
 from dapper.protocol.protocol import ProtocolHandler
-from dapper.protocol.protocol import make_request_from_dict
-from dapper.protocol.requests import ConfigurationDoneRequest
-from dapper.protocol.requests import ContinueRequest
-from dapper.protocol.requests import EvaluateRequest
 
 # concrete DAP typed dictionaries used in this test suite
-from dapper.protocol.requests import InitializeRequest
 from dapper.protocol.requests import LaunchRequest
+from dapper.protocol.requests import LaunchRequestArguments
 from dapper.protocol.requests import LaunchResponse
-from dapper.protocol.requests import ScopesRequest
-from dapper.protocol.requests import SetBreakpointsRequest
 from dapper.protocol.requests import SetBreakpointsResponse
-from dapper.protocol.requests import StackTraceRequest
-from dapper.protocol.requests import ThreadsRequest
-from dapper.protocol.requests import VariablesRequest
 
 # Use the protocol message types from dapper.protocol.messages
 RequestMessage = GenericRequest
@@ -65,13 +66,16 @@ def handler() -> ProtocolHandler:
 
 def test_request_message(handler: ProtocolHandler) -> None:
     """Test the Request message class"""
-    args: dict[str, Any] = {"program": "test.py", "stopOnEntry": True}
-    req = handler.create_request("launch", args, return_type=LaunchRequest)
+    args: LaunchRequestArguments = {"program": "test.py", "stopOnEntry": True}
+    # exercise the new descriptor parameter as well
+    req = handler.create_request(LAUNCH_SPEC, args)  # type: ignore[call-arg]
 
     # Test attributes
     assert req["seq"] == 1
     assert req["command"] == "launch"
     assert req["arguments"] == args
+    # access to optional TypedDict key
+    assert req["arguments"]["program"] == "test.py"  # type: ignore[index]
 
     # Test conversion to dict
     req_dict = cast("dict[str, Any]", req)
@@ -84,7 +88,7 @@ def test_request_message(handler: ProtocolHandler) -> None:
 def test_response_message(handler: ProtocolHandler) -> None:
     """Test the Response message class"""
     body: dict[str, Any] = {"breakpoints": [{"verified": True, "line": 10}]}
-    request = handler.create_request("setBreakpoints", return_type=SetBreakpointsRequest)
+    request = handler.create_request(SET_BREAKPOINTS_SPEC)
     resp: SetBreakpointsResponse = handler.create_response(
         request,
         True,
@@ -155,7 +159,7 @@ def test_json_serialization(handler: ProtocolHandler) -> None:
         "launch", {"program": "test.py"}, return_type=LaunchRequest
     )
     response_msg = handler.create_response(
-        handler.create_request("launch", return_type=LaunchRequest),
+        handler.create_request(LAUNCH_SPEC),
         True,
         return_type=LaunchResponse,
     )
@@ -272,11 +276,11 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
     with ``{error: "ProtocolError", details: {command: …}}``; exercise
     the same pattern here to keep coverage.
     """
-    request = handler.create_request("launch", {"program": "test.py"}, return_type=LaunchRequest)
+    request_msg = handler.create_request(LAUNCH_SPEC, {"program": "test.py"})
 
     # normal failure with explicit message
     error_resp = handler.create_response(
-        request=request,
+        request=request_msg,
         success=False,
         body=None,
         error_message="Failed to launch",
@@ -293,7 +297,7 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
 
     # missing message case
     error_resp_no_msg = handler.create_response(
-        request=request,
+        request=request_msg,
         success=False,
         body=None,
         error_message=None,
@@ -305,7 +309,7 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
     # create_response to ensure callers can easily build the same envelope.
     canonical_body = {"error": "ProtocolError", "details": {"command": "launch"}}
     canonical_error = handler.create_response(
-        request,
+        request_msg,
         False,
         canonical_body,
         "Failed to launch",
@@ -332,7 +336,7 @@ def test_create_initialize_request(handler):
         "supportsRunInTerminalRequest": True,
     }
 
-    request = handler.create_request("initialize", args, return_type=InitializeRequest)
+    request = handler.create_request(INITIALIZE_SPEC, args)
 
     assert request["command"] == "initialize"
     assert request["arguments"] == args
@@ -348,7 +352,7 @@ def test_create_launch_request(handler):
         "console": "integratedTerminal",
     }
 
-    request = handler.create_request("launch", args, return_type=LaunchRequest)
+    request = handler.create_request(LAUNCH_SPEC, args)
 
     assert request["command"] == "launch"
     assert request["arguments"] == args
@@ -357,7 +361,7 @@ def test_create_launch_request(handler):
 
 def test_create_launch_request_no_args(handler):
     """Test creating launch request with no arguments"""
-    request = handler.create_request("launch", return_type=LaunchRequest)
+    request = handler.create_request(LAUNCH_SPEC)
 
     assert request["command"] == "launch"
     assert "arguments" not in request or request["arguments"] is None
@@ -366,7 +370,7 @@ def test_create_launch_request_no_args(handler):
 
 def test_create_configuration_done_request(handler):
     """Test creating configurationDone requests"""
-    request = handler.create_request("configurationDone", return_type=ConfigurationDoneRequest)
+    request = handler.create_request(CONFIG_DONE_SPEC)
 
     assert request["command"] == "configurationDone"
     assert request["type"] == "request"
@@ -379,7 +383,7 @@ def test_create_set_breakpoints_request(handler):
         "breakpoints": [{"line": 10, "condition": "x > 5"}, {"line": 20}],
     }
 
-    request = handler.create_request("setBreakpoints", args, return_type=SetBreakpointsRequest)
+    request = handler.create_request(SET_BREAKPOINTS_SPEC, args)
 
     assert request["command"] == "setBreakpoints"
     assert request["arguments"] == args
@@ -390,7 +394,7 @@ def test_create_continue_request(handler):
     """Test creating continue requests"""
     args = {"threadId": 1}
 
-    request = handler.create_request("continue", args, return_type=ContinueRequest)
+    request = handler.create_request(CONTINUE_SPEC, args)
 
     assert request["command"] == "continue"
     assert request["arguments"] == args
@@ -399,7 +403,7 @@ def test_create_continue_request(handler):
 
 def test_create_threads_request(handler):
     """Test creating threads requests"""
-    request = handler.create_request("threads", return_type=ThreadsRequest)
+    request = handler.create_request(THREADS_SPEC)
 
     assert request["command"] == "threads"
     assert request["type"] == "request"
@@ -409,7 +413,7 @@ def test_create_stack_trace_request(handler):
     """Test creating stackTrace requests"""
     args = {"threadId": 1, "startFrame": 0, "levels": 20}
 
-    request = handler.create_request("stackTrace", args, return_type=StackTraceRequest)
+    request = handler.create_request(STACK_TRACE_SPEC, args)
 
     assert request["command"] == "stackTrace"
     assert request["arguments"] == args
@@ -420,7 +424,7 @@ def test_create_scopes_request(handler):
     """Test creating scopes requests"""
     args = {"frameId": 1}
 
-    request = handler.create_request("scopes", args, return_type=ScopesRequest)
+    request = handler.create_request(SCOPES_SPEC, args)
 
     assert request["command"] == "scopes"
     assert request["arguments"] == args
@@ -431,7 +435,7 @@ def test_create_variables_request(handler):
     """Test creating variables requests"""
     args = {"variablesReference": 1001}
 
-    request = handler.create_request("variables", args, return_type=VariablesRequest)
+    request = handler.create_request(VARIABLES_SPEC, args)
 
     assert request["command"] == "variables"
     assert request["arguments"] == args
@@ -442,7 +446,7 @@ def test_create_evaluate_request(handler):
     """Test creating evaluate requests"""
     args = {"expression": "x + 1", "frameId": 1, "context": "watch"}
 
-    request = handler.create_request("evaluate", args, return_type=EvaluateRequest)
+    request = handler.create_request(EVALUATE_SPEC, args)
 
     assert request["command"] == "evaluate"
     assert request["arguments"] == args
@@ -453,7 +457,7 @@ def test_create_evaluate_request_no_frame(handler):
     """Test creating evaluate request without frame context"""
     args = {"expression": "len(sys.path)", "context": "repl"}
 
-    request = handler.create_request("evaluate", args, return_type=EvaluateRequest)
+    request = handler.create_request(EVALUATE_SPEC, args)
 
     assert request["command"] == "evaluate"
     assert request["arguments"] == args
@@ -569,10 +573,10 @@ def test_create_breakpoint_event(handler):
 
 def test_sequence_counter_increment(handler):
     """Test that sequence counter increments properly"""
-    req1 = handler.create_request("launch", return_type=LaunchRequest)
+    req1 = handler.create_request(LAUNCH_SPEC)
     assert req1["seq"] == 1
 
-    req2 = handler.create_request("continue", return_type=ContinueRequest)
+    req2 = handler.create_request(CONTINUE_SPEC)
     assert req2["seq"] == 2
 
     resp = handler.create_response(req1, True, return_type=LaunchResponse)
@@ -593,7 +597,7 @@ def test_protocol_factory_sequence_is_thread_safe() -> None:
         for _ in range(100):
             # specify concrete type for better typing even when return_type
             # wasn't required previously
-            request = factory.create_request("launch", return_type=LaunchRequest)
+            request = factory.create_request(LAUNCH_SPEC)
             local.append(request["seq"])
         with collect_lock:
             collected.extend(local)
@@ -609,11 +613,9 @@ def test_protocol_factory_sequence_is_thread_safe() -> None:
 
 
 def test_request_maker_helpers(handler: ProtocolHandler) -> None:
-    """Ensure the generic request-maker factory behaves at runtime."""
+    """Sanity-check that ``create_request`` builds the right envelope."""
 
-    # dict-based variant only - the keyword-arg helper was removed because
-    # it wasn't used anywhere in the codebase.
-    create_launch = make_request_from_dict(handler, "launch", return_type=LaunchRequest)  # type: ignore[arg-type]
-    req = create_launch({"program": "foo"})
+    # using the spec directly instead of a helper callable
+    req = handler.create_request(LAUNCH_SPEC, {"program": "foo"})  # type: ignore[call-arg]
     assert req["command"] == "launch"
-    assert req["arguments"]["program"] == "foo"
+    assert req["arguments"]["program"] == "foo"  # type: ignore[index]

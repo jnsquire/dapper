@@ -13,6 +13,7 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import Literal
 from typing import Protocol
 from typing import TypeVar
 from typing import cast
@@ -24,6 +25,9 @@ try:
 except ImportError:  # pragma: no cover - very old interpreter
     from typing_extensions import ParamSpec  # type: ignore[assignment]
 
+from dataclasses import dataclass
+from typing import Generic
+
 from dapper.protocol.messages import ErrorResponse
 from dapper.protocol.messages import GenericEvent
 
@@ -31,8 +35,11 @@ from dapper.protocol.messages import GenericEvent
 from dapper.protocol.messages import GenericRequest
 from dapper.protocol.messages import GenericResponse
 from dapper.protocol.requests import BreakpointEvent
+from dapper.protocol.requests import ConfigurationDoneArguments
 from dapper.protocol.requests import ConfigurationDoneRequest
+from dapper.protocol.requests import ContinueArguments
 from dapper.protocol.requests import ContinueRequest
+from dapper.protocol.requests import EvaluateArguments
 from dapper.protocol.requests import EvaluateRequest
 from dapper.protocol.requests import ExitedEvent
 
@@ -41,23 +48,87 @@ from dapper.protocol.requests import InitializedEvent
 
 # specific request/response TypedDicts used by convenience helpers and tests
 from dapper.protocol.requests import InitializeRequest
+from dapper.protocol.requests import InitializeRequestArguments
 from dapper.protocol.requests import LaunchRequest
+from dapper.protocol.requests import LaunchRequestArguments
+from dapper.protocol.requests import NextArguments
 from dapper.protocol.requests import NextRequest
 from dapper.protocol.requests import OutputEvent
+from dapper.protocol.requests import ScopesArguments
 from dapper.protocol.requests import ScopesRequest
+from dapper.protocol.requests import SetBreakpointsArguments
 from dapper.protocol.requests import SetBreakpointsRequest
+from dapper.protocol.requests import StackTraceArguments
 from dapper.protocol.requests import StackTraceRequest
+from dapper.protocol.requests import StepInArguments
 from dapper.protocol.requests import StepInRequest
+from dapper.protocol.requests import StepOutArguments
 from dapper.protocol.requests import StepOutRequest
 from dapper.protocol.requests import StoppedEvent
 from dapper.protocol.requests import TerminatedEvent
 from dapper.protocol.requests import ThreadEvent
 from dapper.protocol.requests import ThreadsRequest
+from dapper.protocol.requests import VariablesArguments
 from dapper.protocol.requests import VariablesRequest
+
+# Request descriptor constants mapping commands to their argument and return types.
+# ArgsType represents the arguments object type for a request (used for type checking).
+# RequestDescT represents the complete request envelope type.
+ArgsType = TypeVar("ArgsType")
+RequestDescT = TypeVar("RequestDescT")
+
+
+@dataclass(frozen=True)
+class RequestSpec(Generic[ArgsType, RequestDescT]):
+    command: str
+    args_type: type[ArgsType]
+    return_type: type[RequestDescT]
+
+
+INITIALIZE_SPEC: RequestSpec[InitializeRequestArguments, InitializeRequest] = RequestSpec(
+    "initialize", InitializeRequestArguments, InitializeRequest
+)
+LAUNCH_SPEC: RequestSpec[LaunchRequestArguments, LaunchRequest] = RequestSpec(
+    "launch", LaunchRequestArguments, LaunchRequest
+)
+CONFIG_DONE_SPEC: RequestSpec[ConfigurationDoneArguments, ConfigurationDoneRequest] = RequestSpec(
+    "configurationDone", ConfigurationDoneArguments, ConfigurationDoneRequest
+)
+SET_BREAKPOINTS_SPEC: RequestSpec[SetBreakpointsArguments, SetBreakpointsRequest] = RequestSpec(
+    "setBreakpoints", SetBreakpointsArguments, SetBreakpointsRequest
+)
+CONTINUE_SPEC: RequestSpec[ContinueArguments, ContinueRequest] = RequestSpec(
+    "continue", ContinueArguments, ContinueRequest
+)
+NEXT_SPEC: RequestSpec[NextArguments, NextRequest] = RequestSpec(
+    "next", NextArguments, NextRequest
+)
+STEP_IN_SPEC: RequestSpec[StepInArguments, StepInRequest] = RequestSpec(
+    "stepIn", StepInArguments, StepInRequest
+)
+STEP_OUT_SPEC: RequestSpec[StepOutArguments, StepOutRequest] = RequestSpec(
+    "stepOut", StepOutArguments, StepOutRequest
+)
+THREADS_SPEC: RequestSpec[dict[str, Any], ThreadsRequest] = RequestSpec(
+    "threads", dict[str, Any], ThreadsRequest
+)
+STACK_TRACE_SPEC: RequestSpec[StackTraceArguments, StackTraceRequest] = RequestSpec(
+    "stackTrace", StackTraceArguments, StackTraceRequest
+)
+SCOPES_SPEC: RequestSpec[ScopesArguments, ScopesRequest] = RequestSpec(
+    "scopes", ScopesArguments, ScopesRequest
+)
+VARIABLES_SPEC: RequestSpec[VariablesArguments, VariablesRequest] = RequestSpec(
+    "variables", VariablesArguments, VariablesRequest
+)
+EVALUATE_SPEC: RequestSpec[EvaluateArguments, EvaluateRequest] = RequestSpec(
+    "evaluate", EvaluateArguments, EvaluateRequest
+)
 
 if TYPE_CHECKING:
     # ProtocolMessage is only needed for typing, not used at runtime
     from dapper.protocol.messages import ProtocolMessage
+    from dapper.protocol.structures import Source
 
 # Type variables for generic message types
 T = TypeVar("T", bound="ProtocolMessage")
@@ -85,7 +156,9 @@ P = ParamSpec("P")
 
 # two stylistic variants; the second uses ParamSpec so callers can invoke
 # the returned callable with keyword arguments instead of bending a dict.
-RequestMaker = Callable[[ArgsT], ReqT]
+# ``RequestMaker`` is parameterized by ``ArgsType`` so that a spec's
+# argument type flows through directly.
+RequestMaker = Callable[[ArgsType], ReqT]
 RequestMaker2 = Callable[P, ReqT]
 
 
@@ -135,13 +208,44 @@ class ProtocolFactory:
     # used as the default for backwards compatibility, but there is no
     # separate overload because the return-type type variable is unbounded
     # and therefore accepts any ``TypedDict``.
+    #
+    # Overloads let the type checker know that when a ``RequestSpec`` is
+    # passed the return type is the spec's ``return_type`` and the ``arguments``
+    # parameter is typed according to the spec's ``args_type``.
+    @overload
     def create_request(
         self,
-        command: str,
+        command_or_spec: RequestSpec[ArgsType, RequestT],
+        arguments: ArgsType | None = None,
+    ) -> RequestT: ...
+
+    @overload
+    def create_request(
+        self,
+        command_or_spec: str,
         arguments: dict[str, Any] | None = None,
         *,
-        return_type: type[RequestT] = GenericRequest,  # noqa: ARG002
+        return_type: type[RequestT],
+    ) -> RequestT: ...
+
+    # New callers may pass a ``RequestSpec`` constant (see top-level
+    # descriptors) instead of a raw command string and explicit return_type.
+    # The specification also records the expected arguments type, allowing
+    # the overload above to enforce that callers only supply an appropriate
+    # dictionary.
+    def create_request(  # type: ignore[override]
+        self,
+        command_or_spec: str | RequestSpec[Any, RequestT],
+        arguments: dict[str, Any] | None = None,
+        *,
+        return_type: type[RequestT] = GenericRequest,
     ) -> RequestT:
+        # support the new ``RequestSpec`` form for additional safety
+        if isinstance(command_or_spec, RequestSpec):
+            command = command_or_spec.command
+            return_type = command_or_spec.return_type  # type: ignore[assignment]  # noqa: F841
+        else:
+            command = command_or_spec
         request_dict: dict[str, Any] = dict(seq=self._next_seq(), type="request")
         request_dict["command"] = command
         if arguments is not None:
@@ -294,16 +398,16 @@ class ProtocolFactory:
     # ---- Specialized request creators -------------------------------------
 
     def create_initialize_request(self, client_id: str, adapter_id: str) -> InitializeRequest:
-        args = {
-            "clientID": client_id,
-            "adapterID": adapter_id,
-            "linesStartAt1": True,
-            "columnsStartAt1": True,
-            "supportsVariableType": True,
-            "supportsVariablePaging": True,
-            "supportsRunInTerminalRequest": False,
-        }
-        return self.create_request("initialize", args, return_type=InitializeRequest)
+        args = InitializeRequestArguments(
+            clientID=client_id,
+            adapterID=adapter_id,
+            linesStartAt1=True,
+            columnsStartAt1=True,
+            supportsVariableType=True,
+            supportsVariablePaging=True,
+            supportsRunInTerminalRequest=False,
+        )
+        return self.create_request(INITIALIZE_SPEC, args)
 
     def create_launch_request(
         self,
@@ -311,27 +415,32 @@ class ProtocolFactory:
         args: list | None = None,
         no_debug: bool = False,
     ) -> LaunchRequest:
-        launch_args = {"program": program, "noDebug": no_debug}
+        launch_args = LaunchRequestArguments(program=program, noDebug=no_debug)
         if args is not None:
             launch_args["args"] = args
-        return self.create_request("launch", launch_args, return_type=LaunchRequest)
+        return self.create_request(LAUNCH_SPEC, launch_args)
 
     def create_configuration_done_request(self) -> ConfigurationDoneRequest:
-        return self.create_request("configurationDone", return_type=ConfigurationDoneRequest)
+        # explicit ``None`` matches the overload's optional arguments
+        return self.create_request(CONFIG_DONE_SPEC, None)
 
     def create_set_breakpoints_request(
         self,
-        source: dict[str, Any],
+        source: Source,
         breakpoints: list,
     ) -> SetBreakpointsRequest:
-        args = {"source": source, "breakpoints": breakpoints}
-        return self.create_request("setBreakpoints", args, return_type=SetBreakpointsRequest)
+        args = SetBreakpointsArguments(source=source, breakpoints=breakpoints)
+        return self.create_request(SET_BREAKPOINTS_SPEC, args)
 
     def create_continue_request(self, thread_id: int) -> ContinueRequest:
-        args = {"threadId": thread_id}
-        return self.create_request("continue", args, return_type=ContinueRequest)
+        args = ContinueArguments(threadId=thread_id)
+        return self.create_request(CONTINUE_SPEC, args)
 
-    def create_next_request(self, thread_id: int, granularity: str = "line") -> NextRequest:
+    def create_next_request(
+        self,
+        thread_id: int,
+        granularity: Literal["line", "statement", "instruction"] = "line",
+    ) -> NextRequest:
         """Create a DAP ``next`` (step-over) request.
 
         Args:
@@ -340,16 +449,16 @@ class ProtocolFactory:
                 ``"instruction"`` (default ``"line"``).
 
         """
-        args: dict[str, Any] = {"threadId": thread_id}
+        args = NextArguments(threadId=thread_id)
         if granularity != "line":
             args["granularity"] = granularity
-        return self.create_request("next", args, return_type=NextRequest)
+        return self.create_request(NEXT_SPEC, args)
 
     def create_step_in_request(
         self,
         thread_id: int,
         target_id: int | None = None,
-        granularity: str = "line",
+        granularity: Literal["line", "statement", "instruction"] = "line",
     ) -> StepInRequest:
         """Create a DAP ``stepIn`` request.
 
@@ -359,14 +468,18 @@ class ProtocolFactory:
             granularity: DAP stepGranularity (default ``"line"``).
 
         """
-        args: dict[str, Any] = {"threadId": thread_id}
+        args = StepInArguments(threadId=thread_id)
         if target_id is not None:
             args["targetId"] = target_id
         if granularity != "line":
             args["granularity"] = granularity
-        return self.create_request("stepIn", args, return_type=StepInRequest)
+        return self.create_request(STEP_IN_SPEC, args)
 
-    def create_step_out_request(self, thread_id: int, granularity: str = "line") -> StepOutRequest:
+    def create_step_out_request(
+        self,
+        thread_id: int,
+        granularity: Literal["line", "statement", "instruction"] = "line",
+    ) -> StepOutRequest:
         """Create a DAP ``stepOut`` request.
 
         Args:
@@ -374,13 +487,13 @@ class ProtocolFactory:
             granularity: DAP stepGranularity (default ``"line"``).
 
         """
-        args: dict[str, Any] = {"threadId": thread_id}
+        args = StepOutArguments(threadId=thread_id)
         if granularity != "line":
             args["granularity"] = granularity
-        return self.create_request("stepOut", args, return_type=StepOutRequest)
+        return self.create_request(STEP_OUT_SPEC, args)
 
     def create_threads_request(self) -> ThreadsRequest:
-        return self.create_request("threads", return_type=ThreadsRequest)
+        return self.create_request(THREADS_SPEC)
 
     def create_stack_trace_request(
         self,
@@ -388,27 +501,27 @@ class ProtocolFactory:
         start_frame: int = 0,
         levels: int = 20,
     ) -> StackTraceRequest:
-        args = {"threadId": thread_id, "startFrame": start_frame, "levels": levels}
-        return self.create_request("stackTrace", args, return_type=StackTraceRequest)
+        args = StackTraceArguments(threadId=thread_id, startFrame=start_frame, levels=levels)
+        return self.create_request(STACK_TRACE_SPEC, args)
 
     def create_scopes_request(self, frame_id: int) -> ScopesRequest:
-        args = {"frameId": frame_id}
-        return self.create_request("scopes", args, return_type=ScopesRequest)
+        args = ScopesArguments(frameId=frame_id)
+        return self.create_request(SCOPES_SPEC, args)
 
     def create_variables_request(self, variables_reference: int) -> VariablesRequest:
-        args = {"variablesReference": variables_reference}
-        return self.create_request("variables", args, return_type=VariablesRequest)
+        args = VariablesArguments(variablesReference=variables_reference)
+        return self.create_request(VARIABLES_SPEC, args)
 
     def create_evaluate_request(
         self,
         expression: str,
         frame_id: int | None = None,
     ) -> EvaluateRequest:
-        args = {"expression": expression}
+        args = EvaluateArguments(expression=expression)
         if frame_id is not None:
             args["frameId"] = cast("Any", frame_id)
 
-        return self.create_request("evaluate", args, return_type=EvaluateRequest)
+        return self.create_request(EVALUATE_SPEC, args)
 
     # ---- Specialized event creators ---------------------------------------
 
@@ -525,25 +638,6 @@ class ProtocolFactory:
             raise ProtocolError(msg)
 
         return cast("GenericEvent", message)
-
-
-def make_request_from_dict(
-    factory: ProtocolFactory,
-    command: str,
-    *,
-    return_type: type[ReqT],
-) -> RequestMaker[ArgsT, ReqT]:
-    """Return a callable that builds a request from a dictionary argument."""
-
-    def _inner(args: ArgsT) -> ReqT:  # type: ignore[valid-type]
-        # ``args`` may be a TypedDict; ``create_request`` wants a
-        # plain ``dict[str, Any]``.  the cast is safe because at runtime
-        # a TypedDict is just a dict.
-        return factory.create_request(
-            command, cast("dict[str, Any]", args), return_type=return_type
-        )
-
-    return _inner
 
 
 # Backward-compatible alias — all callers can continue using ProtocolHandler.
