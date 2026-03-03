@@ -6,6 +6,11 @@ import sys
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from dapper.core.thread_tracker import FrameType
+
+if TYPE_CHECKING:
+    from dapper.protocol.requests import SetExpressionArguments
+
 from dapper.shared.command_handler_helpers import VAR_REF_TUPLE_SIZE
 from dapper.shared.command_handler_helpers import set_object_member_with_dependencies
 from dapper.shared.command_handler_helpers import set_scope_variable_with_dependencies
@@ -47,7 +52,7 @@ class EvaluateWithPolicyFn(Protocol):
     def __call__(
         self,
         expression: str,
-        frame: object,
+        frame: FrameType | None = None,
         *,
         allow_builtins: bool = False,
     ) -> object: ...
@@ -273,7 +278,7 @@ def handle_evaluate_impl(  # noqa: PLR0912
 
 def handle_set_expression_impl(
     session: DebugSession,
-    arguments: Payload | None,
+    arguments: SetExpressionArguments | None,
     *,
     evaluate_with_policy: EvaluateWithPolicyFn,
     logger: Logger,
@@ -283,10 +288,13 @@ def handle_set_expression_impl(
     Compiles ``<expression> = <value>`` and executes it in the target frame.
     Then re-evaluates the expression to return the new value.
     """
-    arguments = arguments or {}
-    expression = arguments.get("expression", "").strip()
-    value_str = arguments.get("value", "").strip()
-    frame_id = arguments.get("frameId")
+    # local copy ensures we work with a plain dict and satisfy the type
+    # checker; ``SetExpressionArguments`` is also a dict subtype so we can
+    # safely convert.
+    args: dict[str, object] = dict(arguments or {})  # type: ignore[arg-type]
+    expression = str(args.get("expression", "")).strip()
+    value_str = str(args.get("value", "")).strip()
+    frame_id = args.get("frameId")
 
     dbg = session.debugger
     if not dbg or not expression or not value_str:
@@ -294,16 +302,31 @@ def handle_set_expression_impl(
 
     frame = None
     try:
-        stack = dbg.stack
-        if stack and frame_id is not None and frame_id < len(stack):
-            frame, _ = stack[frame_id]
-        elif hasattr(dbg, "stepping_controller") and dbg.stepping_controller.current_frame:
+        stack = getattr(dbg, "stack", None)
+        if (
+            isinstance(frame_id, int)
+            and isinstance(stack, (list, tuple))
+            and frame_id < len(stack)
+        ):
+            # mypy can't infer element type; use a cast
+            entry = stack[frame_id]  # type: ignore[index]
+            if isinstance(entry, tuple) and len(entry) >= 1:
+                frame = entry[0]  # type: ignore[index]
+        elif hasattr(dbg, "stepping_controller") and getattr(
+            dbg.stepping_controller, "current_frame", None
+        ):
             frame = dbg.stepping_controller.current_frame
     except (AttributeError, IndexError, KeyError, NameError, TypeError):
         logger.debug("setExpression frame resolution failed", exc_info=True)
 
-    if frame is None:
+    # verify we really have a FrameType before proceeding; after this
+    # point ``frame`` is narrowed and mypy/pylance will know ``f_globals``
+    # and ``f_locals`` exist.
+    if not isinstance(frame, FrameType):
         return {"success": False, "message": "Frame not available"}
+    # extra explicit assertion helps some analyzers track the type across
+    # inner try blocks.
+    assert isinstance(frame, FrameType)
 
     try:
         from dapper.shared.value_conversion import _enforce_eval_policy  # noqa: PLC0415
@@ -312,7 +335,7 @@ def handle_set_expression_impl(
         _enforce_eval_policy(value_str)
 
         code = compile(f"{expression} = {value_str}", "<setExpression>", "exec")
-        exec(code, frame.f_globals, frame.f_locals)
+        exec(code, frame.f_globals, frame.f_locals)  # type: ignore[attr-defined]
 
         # Sync fast locals
         import ctypes  # noqa: PLC0415

@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Protocol
 from typing import cast
+
+if TYPE_CHECKING:
+    from dapper.core.thread_tracker import FrameType
 
 from dapper.core.structured_model import get_model_fields
 from dapper.core.structured_model import is_structured_model
@@ -66,7 +70,7 @@ class ConvertWithContextFn(Protocol):
     def __call__(
         self,
         value_str: str,
-        frame: object | None = None,
+        frame: FrameType | None = None,
         parent_obj: object | None = None,
     ) -> object: ...
 
@@ -80,7 +84,7 @@ class EvaluateWithPolicyFn(Protocol):
     def __call__(
         self,
         expression: str,
-        frame: Any | None,
+        frame: FrameType | None,
         *,
         allow_builtins: bool = False,
     ) -> object: ...

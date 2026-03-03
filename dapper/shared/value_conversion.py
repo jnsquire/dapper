@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import ast
+from typing import TYPE_CHECKING
 from typing import Any
+
+if TYPE_CHECKING:
+    from types import FrameType
 
 _DISALLOWED_EVAL_TOKENS = (
     "__",
@@ -32,7 +36,7 @@ def _enforce_eval_policy(expression: str) -> None:
 
 def evaluate_with_policy(
     expression: str,
-    frame: Any | None,
+    frame: FrameType | None = None,
     *,
     allow_builtins: bool = False,
 ) -> Any:
@@ -62,7 +66,7 @@ def evaluate_with_policy(
 
 def _exec_statement_in_frame(
     statement: str,
-    frame: Any,
+    frame: FrameType,
 ) -> None:
     """Execute a statement (assignment, import, etc.) in the frame context.
 
@@ -91,7 +95,7 @@ def _exec_statement_in_frame(
 
 def convert_value_with_context(
     value_str: str,
-    frame: Any | None = None,
+    frame: FrameType | None = None,
     parent_obj: Any | None = None,
 ) -> Any:
     """Convert a string to a Python value using literals, frame context, and type hints."""

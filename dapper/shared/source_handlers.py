@@ -7,9 +7,9 @@ import mimetypes
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
-from typing import Any
 
 if TYPE_CHECKING:
+    from dapper.protocol.structures import Source
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.debug_shared import DebugSession
 
@@ -20,11 +20,11 @@ def _resolve_path(raw: str) -> tuple[Path, str]:
     return resolved, str(resolved)
 
 
-def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
+def _collect_module_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from sys.modules."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[dict[str, Any]] = []
+    sources: list[Source] = []
 
     for module_name, module in sys.modules.items():
         if module is None:
@@ -46,7 +46,7 @@ def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
 
             origin = getattr(module, "__package__", module_name)
             source_obj = Source(name=module_path.name, path=module_file, origin=f"module:{origin}")
-            sources.append(dict(source_obj))
+            sources.append(source_obj)
 
         except (AttributeError, TypeError, OSError):
             continue
@@ -54,11 +54,11 @@ def _collect_module_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
     return sources
 
 
-def _collect_linecache_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
+def _collect_linecache_sources(seen_paths: set[str]) -> list[Source]:
     """Collect sources from linecache."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[dict[str, Any]] = []
+    sources: list[Source] = []
 
     for filename in linecache.cache:
         if filename not in seen_paths and filename.endswith((".py", ".pyw")):
@@ -67,7 +67,7 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
                 if abs_path not in seen_paths and file_path.exists():
                     seen_paths.add(abs_path)
                     source = Source(name=file_path.name, path=abs_path, origin="linecache")
-                    sources.append(dict(source))
+                    sources.append(source)
             except (OSError, TypeError):
                 continue
 
@@ -77,11 +77,11 @@ def _collect_linecache_sources(seen_paths: set[str]) -> list[dict[str, Any]]:
 def _collect_main_program_source(
     seen_paths: set[str],
     state: DebugSession,
-) -> list[dict[str, Any]]:
+) -> list[Source]:
     """Collect the main program source if available."""
     from dapper.protocol.structures import Source  # noqa: PLC0415
 
-    sources: list[dict[str, Any]] = []
+    sources: list[Source] = []
 
     if state.debugger:
         program_path = state.debugger.program_path
@@ -90,7 +90,7 @@ def _collect_main_program_source(
                 program_file_path, abs_path = _resolve_path(program_path)
                 if program_file_path.exists():
                     sources.append(
-                        dict(Source(name=program_file_path.name, path=abs_path, origin="main"))
+                        Source(name=program_file_path.name, path=abs_path, origin="main")
                     )
             except (OSError, TypeError):
                 pass
@@ -98,18 +98,25 @@ def _collect_main_program_source(
     return sources
 
 
-def _collect_dynamic_sources(state: DebugSession) -> list[dict[str, Any]]:
-    """Collect in-memory (dynamic) sources from the runtime source registry."""
-    sources: list[dict[str, Any]] = []
-    for entry in state.get_dynamic_sources():
-        source: dict[str, Any] = {
-            "name": entry.name,
-            "path": entry.virtual_path,
-            "sourceReference": entry.ref,
-            "origin": entry.origin,
-        }
-        sources.append(source)
-    return sources
+def _collect_dynamic_sources(state: DebugSession) -> list[Source]:
+    """Collect in-memory (dynamic) sources from the runtime source registry.
+
+    The returned dictionaries conform to the :class:`~dapper.protocol.structures.Source`
+    typed dict, so callers that perform additional static typing can treat the
+    output accordingly instead of using ``dict[str, Any]`` everywhere.
+    """
+    # local import avoids a circular dependency during module load
+    from dapper.protocol.structures import Source  # noqa: PLC0415
+
+    return [
+        Source(
+            name=entry.name,
+            path=entry.virtual_path,
+            sourceReference=entry.ref,
+            origin=entry.origin,
+        )
+        for entry in state.get_dynamic_sources()
+    ]
 
 
 def handle_loaded_sources(
@@ -118,7 +125,7 @@ def handle_loaded_sources(
     """Handle loadedSources request to return all loaded source files."""
     seen_paths = set[str]()
 
-    loaded_sources: list[Payload] = []
+    loaded_sources: list[Source] = []
     loaded_sources.extend(_collect_module_sources(seen_paths))
     loaded_sources.extend(_collect_linecache_sources(seen_paths))
     loaded_sources.extend(_collect_main_program_source(seen_paths, state))

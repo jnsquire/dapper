@@ -25,7 +25,13 @@ from typing import Literal
 from typing import TypedDict
 from typing import cast
 
+if TYPE_CHECKING:
+    from dapper.core.thread_tracker import FrameType
+
 from dapper.shared import breakpoint_handlers
+
+# FrameType is only needed for type hints; import under TYPE_CHECKING to
+# avoid runtime dependency and satisfy ruff TC001.
 from dapper.shared import command_handler_helpers
 from dapper.shared import debug_shared as _d_shared
 from dapper.shared import lifecycle_handlers
@@ -57,6 +63,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import SetBreakpointsArguments
     from dapper.protocol.requests import SetDataBreakpointsArguments
     from dapper.protocol.requests import SetExceptionBreakpointsArguments
+    from dapper.protocol.requests import SetExpressionArguments
     from dapper.protocol.requests import SetFunctionBreakpointsArguments
     from dapper.protocol.requests import SetVariableArguments
     from dapper.protocol.requests import StackTraceArguments
@@ -537,7 +544,7 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
 
         def _try_convert(
             value_str: str,
-            frame: object | None = None,
+            frame: FrameType | None = None,
             parent_obj: object | None = None,
         ) -> object:
             try:
@@ -598,12 +605,12 @@ def _cmd_evaluate(arguments: EvaluateArguments | dict[str, Any] | None) -> None:
 
 
 @command_handler("setExpression")
-def _cmd_set_expression(arguments: dict[str, Any] | None = None) -> None:
+def _cmd_set_expression(arguments: SetExpressionArguments | dict[str, Any] | None = None) -> None:
     session = _active_session()
     if session.debugger:
         result = variable_handlers.handle_set_expression_impl(
             session,
-            cast("dict[str, Any] | None", arguments),
+            cast("SetExpressionArguments | None", arguments),
             evaluate_with_policy=evaluate_with_policy,
             logger=logger,
         )
