@@ -12,10 +12,17 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Callable
 from typing import Protocol
 from typing import TypeVar
 from typing import cast
 from typing import overload
+
+# ParamSpec arrived in 3.10; for 3.9 we fall back to the backport.
+try:
+    from typing import ParamSpec
+except ImportError:  # pragma: no cover - very old interpreter
+    from typing_extensions import ParamSpec  # type: ignore[assignment]
 
 from dapper.protocol.messages import ErrorResponse
 from dapper.protocol.messages import GenericEvent
@@ -63,6 +70,24 @@ RequestT = TypeVar("RequestT")
 ResponseT = TypeVar("ResponseT")
 EventT = TypeVar("EventT")
 
+# ---------------------------------------------------------------------------
+# helpers for request-maker callables
+# ---------------------------------------------------------------------------
+# we want a type that expresses "a function taking the arguments object
+# for a specific request and returning a fully-formed request envelope".
+# `TypedDict` doesn't work as a bound in pylance/pyright, so use
+# a looser type that still represents a mapping.  The type variables are
+# not actually instantiated anywhere other than return types, so this
+# limitation doesn't weaken safety in practice.
+ReqT = TypeVar("ReqT", bound=dict[str, Any])
+ArgsT = TypeVar("ArgsT", bound=dict[str, Any])
+P = ParamSpec("P")
+
+# two stylistic variants; the second uses ParamSpec so callers can invoke
+# the returned callable with keyword arguments instead of bending a dict.
+RequestMaker = Callable[[ArgsT], ReqT]
+RequestMaker2 = Callable[P, ReqT]
+
 
 # A minimal structural view of a request-like object.  The factory only
 # indexes into it; no actual attributes are required.  By restricting the
@@ -78,6 +103,7 @@ class RequestLike(Protocol):
     # ``get`` is intentionally omitted; callers should either index or
     # handle missing keys themselves.  This avoids painful signature
     # mismatches with TypedDict's implementation.
+
 
 logger = logging.getLogger(__name__)
 
@@ -184,17 +210,19 @@ class ProtocolFactory:
         result = cast("GenericResponse", response_dict)
         return cast("ResponseT", result) if return_type else result
 
+    # legacy-style error helper for convenience.  the server core uses this
+    # instead of building the body itself.
     @overload
     def create_error_response(
         self,
-        request: RequestLike,
+        request: dict[str, Any],
         error_message: str,
     ) -> ErrorResponse: ...
 
     @overload
     def create_error_response(
         self,
-        request: RequestLike,
+        request: dict[str, Any],
         error_message: str,
         *,
         return_type: type[ResponseT],
@@ -202,14 +230,13 @@ class ProtocolFactory:
 
     def create_error_response(
         self,
-        request: RequestLike,
+        request: dict[str, Any],
         error_message: str,
         *,
         return_type: type[ResponseT] | None = None,
     ) -> ResponseT | ErrorResponse:
         # ``request`` may be any mapping; it may not support ``get`` so
         # index manually with a fallback of ``None``.
-        # same defensive lookup for ``command`` as above
         try:
             cmd = request["command"]
         except Exception:
@@ -220,12 +247,6 @@ class ProtocolFactory:
                 "command": cmd,
             },
         }
-        # forward return_type through to create_response so callers can
-        # request a more specific Response subtype if they have one.
-        # mypy complains because each method has its own TypeVar instance
-        # (`ResponseT` is bound separately in both signatures), so the
-        # types are technically incompatible even though they line up at
-        # runtime.  Ignore the error here.
         result = self.create_response(
             request,
             False,
@@ -504,6 +525,25 @@ class ProtocolFactory:
             raise ProtocolError(msg)
 
         return cast("GenericEvent", message)
+
+
+def make_request_from_dict(
+    factory: ProtocolFactory,
+    command: str,
+    *,
+    return_type: type[ReqT],
+) -> RequestMaker[ArgsT, ReqT]:
+    """Return a callable that builds a request from a dictionary argument."""
+
+    def _inner(args: ArgsT) -> ReqT:  # type: ignore[valid-type]
+        # ``args`` may be a TypedDict; ``create_request`` wants a
+        # plain ``dict[str, Any]``.  the cast is safe because at runtime
+        # a TypedDict is just a dict.
+        return factory.create_request(
+            command, cast("dict[str, Any]", args), return_type=return_type
+        )
+
+    return _inner
 
 
 # Backward-compatible alias — all callers can continue using ProtocolHandler.

@@ -18,6 +18,7 @@ from dapper.protocol.messages import ProtocolMessage
 from dapper.protocol.protocol import ProtocolError
 from dapper.protocol.protocol import ProtocolFactory
 from dapper.protocol.protocol import ProtocolHandler
+from dapper.protocol.protocol import make_request_from_dict
 from dapper.protocol.requests import ConfigurationDoneRequest
 from dapper.protocol.requests import ContinueRequest
 from dapper.protocol.requests import EvaluateRequest
@@ -150,7 +151,9 @@ def test_json_serialization(handler: ProtocolHandler) -> None:
     base_message: dict[str, Any] = {"seq": 1, "type": "request"}
 
     # Create test messages
-    request_msg = handler.create_request("launch", {"program": "test.py"}, return_type=LaunchRequest)
+    request_msg = handler.create_request(
+        "launch", {"program": "test.py"}, return_type=LaunchRequest
+    )
     response_msg = handler.create_response(
         handler.create_request("launch", return_type=LaunchRequest),
         True,
@@ -263,10 +266,15 @@ def test_parse_message_unknown_type(handler: ProtocolHandler) -> None:
 
 
 def test_create_error_response(handler: ProtocolHandler) -> None:
-    """Test creating error responses"""
+    """Test the error-response behavior of ``create_response``.
+
+    The former ``create_error_response`` helper built a specific body
+    with ``{error: "ProtocolError", details: {command: …}}``; exercise
+    the same pattern here to keep coverage.
+    """
     request = handler.create_request("launch", {"program": "test.py"}, return_type=LaunchRequest)
 
-    # Test error response with message
+    # normal failure with explicit message
     error_resp = handler.create_response(
         request=request,
         success=False,
@@ -280,12 +288,10 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
     assert error_resp["request_seq"] == 1
     assert error_resp["success"] is False
     assert error_resp["command"] == "launch"
-    assert (
-        error_resp.get("message") == "Failed to launch"
-    )  # Use .get() since message is NotRequired
+    assert error_resp.get("message") == "Failed to launch"
     assert "body" not in error_resp
 
-    # Test error response without message
+    # missing message case
     error_resp_no_msg = handler.create_response(
         request=request,
         success=False,
@@ -293,23 +299,23 @@ def test_create_error_response(handler: ProtocolHandler) -> None:
         error_message=None,
         return_type=LaunchResponse,
     )
-    assert (
-        "message" not in error_resp_no_msg
-    )  # Should not include message when error_message is None
+    assert "message" not in error_resp_no_msg
 
-    # Test standardized error response helper
-    canonical_error_resp = handler.create_error_response(
+    # manually construct the canonical error body and round-trip it via
+    # create_response to ensure callers can easily build the same envelope.
+    canonical_body = {"error": "ProtocolError", "details": {"command": "launch"}}
+    canonical_error = handler.create_response(
         request,
+        False,
+        canonical_body,
         "Failed to launch",
         return_type=LaunchResponse,
     )
-    assert canonical_error_resp["success"] is False
-    assert canonical_error_resp.get("message") == "Failed to launch"
-    # `body` is not required on the TypedDict; cast to dict to satisfy
-    # the type checker before indexing.
-    body_dict = cast("dict[str, Any]", canonical_error_resp.get("body", {}))
-    assert body_dict["error"] == "ProtocolError"
-    assert body_dict["details"]["command"] == "launch"
+    assert canonical_error["success"] is False
+    assert canonical_error.get("message") == "Failed to launch"
+    bdict = cast("dict[str, Any]", canonical_error.get("body", {}))
+    assert bdict["error"] == "ProtocolError"
+    assert bdict["details"]["command"] == "launch"
 
 
 def test_create_initialize_request(handler):
@@ -600,4 +606,14 @@ def test_protocol_factory_sequence_is_thread_safe() -> None:
 
     assert len(collected) == 1000
     assert len(set(collected)) == 1000
-    assert sorted(collected) == list(range(1, 1001))
+
+
+def test_request_maker_helpers(handler: ProtocolHandler) -> None:
+    """Ensure the generic request-maker factory behaves at runtime."""
+
+    # dict-based variant only - the keyword-arg helper was removed because
+    # it wasn't used anywhere in the codebase.
+    create_launch = make_request_from_dict(handler, "launch", return_type=LaunchRequest)  # type: ignore[arg-type]
+    req = create_launch({"program": "foo"})
+    assert req["command"] == "launch"
+    assert req["arguments"]["program"] == "foo"

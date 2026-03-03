@@ -21,6 +21,7 @@ from dapper.protocol.protocol import RequestLike
 
 if TYPE_CHECKING:
     from dapper.adapter.types import DAPRequest
+    from dapper.adapter.types import DAPResponse
     from dapper.ipc.connections.base import ConnectionBase
     # GenericRequest is needed for type annotations in TYPE_CHECKING block only
 
@@ -136,9 +137,14 @@ class DebugAdapterServer:
                 break
             except Exception as e:
                 logger.exception("Error processing message")
-                # Send error response if this was a request
+                # Send error response if this was a request.
                 if message is not None and ("type" in message and message["type"] == "request"):
-                    await self.send_error_response(cast("RequestLike", message), str(e))
+                    resp = self.protocol_handler.create_error_response(
+                        message,
+                        str(e),
+                        return_type=GenericResponse,
+                    )
+                    await self.send_message(cast("dict[str, Any]", resp))
 
         logger.info("Message loop ended")
 
@@ -169,12 +175,19 @@ class DebugAdapterServer:
         logger.info("Handling request: %s (seq: %s)", command, request.get("seq", "?"))
 
         try:
-            response = await self.request_handler.handle_request(cast("DAPRequest", request))
+            response: DAPResponse | None = await self.request_handler.handle_request(
+                cast("DAPRequest", request)
+            )
             if response:
                 await self.send_message(cast("dict[str, Any]", response))
         except Exception as e:
             logger.exception("Error handling request %s", command)
-            await self.send_error_response(cast("RequestLike", request), str(e))
+            resp = self.protocol_handler.create_error_response(
+                request,
+                str(e),
+                return_type=GenericResponse,
+            )
+            await self.send_message(cast("dict[str, Any]", resp))
 
     async def send_message(self, message: dict[str, Any]) -> None:
         """Send a DAP message to the client"""
@@ -200,15 +213,6 @@ class DebugAdapterServer:
             request,
             True,
             body,
-            return_type=GenericResponse,
-        )
-        await self.send_message(cast("dict[str, Any]", response))
-
-    async def send_error_response(self, request: RequestLike, error_message: str) -> None:
-        """Send an error response to a request"""
-        response: GenericResponse = self.protocol_handler.create_error_response(
-            request,
-            error_message,
             return_type=GenericResponse,
         )
         await self.send_message(cast("dict[str, Any]", response))

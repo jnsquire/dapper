@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import cast
 from unittest.mock import patch
 
 import pytest
 
 from dapper.adapter.server import DebugAdapterServer
+from dapper.protocol.messages import GenericResponse
 from tests.mocks import MockConnection
 
 if TYPE_CHECKING:
@@ -377,7 +379,9 @@ async def test_sequence_numbers():
     # Send multiple messages to check sequence numbering
     await server.send_event("initialized")
     await server.send_event("stopped", {"reason": "entry"})
-    await server.send_response(cast("RequestLike", {"seq": 5, "command": "test"}), {"result": "ok"})
+    await server.send_response(
+        cast("RequestLike", {"seq": 5, "command": "test"}), {"result": "ok"}
+    )
 
     # Verify sequence numbers
     assert len(mock_connection.written_messages) == 3
@@ -512,7 +516,7 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
         ),
     )
 
-    req = cast("RequestLike",{"seq": 99, "type": "request", "command": "doIt"})
+    req = {"seq": 99, "type": "request", "command": "doIt"}
     await server.send_response(req, {"ok": True})
     # one message written
     assert conn.written_messages
@@ -521,7 +525,8 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
     assert resp["success"] is True
 
     # error response
-    await server.send_error_response(req, "bad")
+    err = server.protocol_handler.create_error_response(req, "bad", return_type=GenericResponse)
+    await server.send_message(cast("dict[str, Any]", err))
     resp2 = conn.written_messages[-1]
     assert resp2["success"] is False
     assert resp2.get("message") == "bad"

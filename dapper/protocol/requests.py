@@ -13,7 +13,6 @@ from typing import TypedDict
 # Bring in RequestLike so our request types can implement the protocol
 
 
-
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
 
