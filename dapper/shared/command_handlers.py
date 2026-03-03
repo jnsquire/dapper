@@ -39,13 +39,12 @@ from dapper.shared.value_conversion import evaluate_with_policy
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoArguments
-
-    # Data breakpoints are defined separately
-    from dapper.protocol.data_breakpoints import SetDataBreakpointsArguments
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
     from dapper.protocol.debugger_protocol import DebuggerLike
     from dapper.protocol.requests import ContinueArguments
+
+    # Data breakpoints are defined alongside other breakpoints
+    from dapper.protocol.requests import DataBreakpointInfoArguments
     from dapper.protocol.requests import EvaluateArguments
     from dapper.protocol.requests import GotoArguments
     from dapper.protocol.requests import GotoTarget
@@ -56,6 +55,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import PauseArguments
     from dapper.protocol.requests import ScopesArguments
     from dapper.protocol.requests import SetBreakpointsArguments
+    from dapper.protocol.requests import SetDataBreakpointsArguments
     from dapper.protocol.requests import SetExceptionBreakpointsArguments
     from dapper.protocol.requests import SetFunctionBreakpointsArguments
     from dapper.protocol.requests import SetVariableArguments
@@ -79,7 +79,6 @@ _RESUME_COMMANDS: frozenset[str] = frozenset(
     }
 )
 
-VAR_REF_TUPLE_SIZE = 2
 SIMPLE_FN_ARGCOUNT = 2
 _CONVERSION_ERROR_MESSAGE = "Conversion failed"
 # Maximum string length for enriched repr values in dataBreakpointInfo
@@ -444,13 +443,11 @@ def _cmd_threads(arguments: dict[str, Any] | None = None) -> None:
 
 
 @command_handler("scopes")
-def _cmd_scopes(arguments: ScopesArguments | dict[str, Any] | None) -> None:
+def _cmd_scopes(arguments: ScopesArguments | None) -> None:
     session = _active_session()
     if session.debugger:
         result = stack_handlers.handle_scopes_impl(
-            session,
-            cast("dict[str, Any] | None", arguments),
-            var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
+            session, cast("dict[str, Any] | None", arguments)
         )
         if result:
             session.safe_send_response(**result)
@@ -501,7 +498,6 @@ def _cmd_variables(arguments: VariablesArguments | dict[str, Any] | None) -> Non
             frame_info,
             make_variable_fn=_make_variable_fn,
             extract_variables_from_mapping_fn=_extract_from_mapping,
-            var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
         )
 
     result = variable_handlers.handle_variables_impl(
@@ -575,7 +571,6 @@ def _cmd_set_variable(arguments: SetVariableArguments | dict[str, Any] | None) -
                 make_variable_fn=_make_variable_fn,
                 logger=logger,
             ),
-            var_ref_tuple_size=VAR_REF_TUPLE_SIZE,
         )
         if result:
             session.safe_send("setVariable", **result)

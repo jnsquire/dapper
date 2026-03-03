@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     from dapper.adapter.types import BreakpointResponse
     from dapper.adapter.types import SourceDict
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
+    from dapper.protocol.requests import DataBreakpointInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.structures import Breakpoint
     from dapper.protocol.structures import SourceBreakpoint

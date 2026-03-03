@@ -49,9 +49,6 @@ if TYPE_CHECKING:
 # Maximum length of strings to be sent over the wire
 MAX_STRING_LENGTH = 1000
 
-# Size of variable reference tuples (name, value)
-VAR_REF_TUPLE_SIZE = 2
-
 # Threshold for considering a string 'raw' (long/multiline)
 STRING_RAW_THRESHOLD = 80
 

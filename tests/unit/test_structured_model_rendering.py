@@ -319,7 +319,6 @@ class TestResolveVariablesStructuredModels:
             frame_info,
             make_variable_fn=_simple_make_var,
             extract_variables_from_mapping_fn=lambda *_a, **_kw: [],
-            var_ref_tuple_size=2,
         )
 
         names = {v["name"] for v in out}
@@ -338,7 +337,6 @@ class TestResolveVariablesStructuredModels:
             frame_info,
             make_variable_fn=_simple_make_var,
             extract_variables_from_mapping_fn=lambda *_a, **_kw: [],
-            var_ref_tuple_size=2,
         )
 
         assert [v["name"] for v in out] == ["a", "b", "c"]
@@ -356,7 +354,6 @@ class TestResolveVariablesStructuredModels:
             frame_info,
             make_variable_fn=_simple_make_var,
             extract_variables_from_mapping_fn=lambda *_a, **_kw: [],
-            var_ref_tuple_size=2,
         )
 
         assert [v["name"] for v in out] == ["0", "1"]

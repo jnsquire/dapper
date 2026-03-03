@@ -14,12 +14,14 @@ if TYPE_CHECKING:
     from dapper.shared.command_handler_helpers import Payload
     from dapper.shared.debug_shared import DebugSession
 
+# ruff: noqa: PLR0912
+
 
 class GetThreadIdentFn(Protocol):
     def __call__(self) -> int: ...
 
 
-def handle_stack_trace_impl(  # noqa: PLR0912
+def handle_stack_trace_impl(
     session: DebugSession,
     arguments: Payload | None,
     *,
@@ -131,8 +133,6 @@ def handle_threads_impl(
 def handle_scopes_impl(
     session: DebugSession,
     arguments: Payload | None,
-    *,
-    var_ref_tuple_size: int,  # noqa: ARG001
 ) -> Payload:
     """Handle scopes command implementation."""
     arguments = arguments or {}

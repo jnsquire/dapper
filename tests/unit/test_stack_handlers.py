@@ -235,14 +235,11 @@ class TestHandleThreadsImpl:
 
 
 class TestHandleScopesImpl:
-    VAR_REF_TUPLE_SIZE = 3
-
     def test_no_dbg_returns_empty_scopes(self) -> None:
         session = _make_session()
         result = handle_scopes_impl(
             session,
             {"frameId": 0},
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
         assert result["body"]["scopes"] == []
         session.transport.send.assert_called_once_with("scopes", scopes=[])
@@ -259,7 +256,6 @@ class TestHandleScopesImpl:
         result = handle_scopes_impl(
             session,
             {"frameId": 2},
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
 
         scopes = result["body"]["scopes"]
@@ -283,7 +279,6 @@ class TestHandleScopesImpl:
         result = handle_scopes_impl(
             session,
             {"frameId": 0},
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
 
         scopes = result["body"]["scopes"]
@@ -297,7 +292,6 @@ class TestHandleScopesImpl:
         result = handle_scopes_impl(
             session,
             {},  # no frameId
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
 
         assert result["body"]["scopes"] == []
@@ -310,7 +304,6 @@ class TestHandleScopesImpl:
         result = handle_scopes_impl(
             session,
             {"frameId": 99},
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
 
         assert result["body"]["scopes"] == []
@@ -320,6 +313,5 @@ class TestHandleScopesImpl:
         result = handle_scopes_impl(
             session,
             None,
-            var_ref_tuple_size=self.VAR_REF_TUPLE_SIZE,
         )
         assert result["body"]["scopes"] == []

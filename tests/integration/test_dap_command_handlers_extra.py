@@ -75,11 +75,7 @@ def _invoke_set_variable_via_domain(session, arguments):
     )
 
     result = variable_handlers.handle_set_variable_impl(
-        session,
-        arguments,
-        object_member_deps=_obj_deps,
-        scope_variable_deps=_scope_deps,
-        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+        session, arguments, object_member_deps=_obj_deps, scope_variable_deps=_scope_deps
     )
     if result:
         session.safe_send("setVariable", **result)

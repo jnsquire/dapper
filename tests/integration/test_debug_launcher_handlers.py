@@ -93,7 +93,6 @@ def test_handle_scopes_and_variables(use_debug_session):
     res = stack_handlers.handle_scopes_impl(
         s,
         {"frameId": 1},
-        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
     assert res["success"] is True
     scopes = res["body"]["scopes"]
@@ -117,7 +116,6 @@ def test_handle_scopes_and_variables(use_debug_session):
                         make_variable_fn=command_handler_helpers.make_variable,
                     )
                 ),
-                var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
             )
         ),
     )

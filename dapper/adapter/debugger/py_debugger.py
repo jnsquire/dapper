@@ -56,9 +56,9 @@ if TYPE_CHECKING:
     from dapper.core.inprocess_debugger import InProcessDebugger
     from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.capabilities import ExceptionOptions
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
     from dapper.protocol.debugger_protocol import Variable
     from dapper.protocol.requests import ContinueResponseBody
+    from dapper.protocol.requests import DataBreakpointInfoResponseBody
     from dapper.protocol.requests import EvaluateResponseBody
     from dapper.protocol.requests import ExceptionInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint

@@ -95,7 +95,6 @@ class TestSetVariable(unittest.TestCase):
             arguments,
             object_member_deps=self._obj_deps,
             scope_variable_deps=self._scope_deps,
-            var_ref_tuple_size=command_handlers.VAR_REF_TUPLE_SIZE,
         )
 
     def test_convert_string_to_value(self):

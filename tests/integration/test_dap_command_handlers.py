@@ -79,7 +79,6 @@ def _resolve_variables_for_reference_for_tests(dbg: Any, frame_info: Any) -> lis
         frame_info,
         make_variable_fn=_make_variable_for_tests,
         extract_variables_from_mapping_fn=_extract_from_mapping,
-        var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
     )
 
 
@@ -108,11 +107,7 @@ def _invoke_set_variable_via_domain(session: Any, arguments: dict[str, Any]) -> 
     )
 
     result = variable_handlers.handle_set_variable_impl(
-        session,
-        arguments,
-        object_member_deps=_obj_deps,
-        scope_variable_deps=_scope_deps,
-        var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
+        session, arguments, object_member_deps=_obj_deps, scope_variable_deps=_scope_deps
     )
     if result:
         session.safe_send("setVariable", **result)
@@ -394,7 +389,6 @@ def test_variables_and_set_variable(monkeypatch):
                     make_variable_fn=fake_make_variable,
                 )
             ),
-            var_ref_tuple_size=dch.VAR_REF_TUPLE_SIZE,
         )
 
     calls = []

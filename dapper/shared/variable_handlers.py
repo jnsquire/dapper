@@ -6,6 +6,7 @@ import sys
 from typing import TYPE_CHECKING
 from typing import Protocol
 
+from dapper.shared.command_handler_helpers import VAR_REF_TUPLE_SIZE
 from dapper.shared.command_handler_helpers import set_object_member_with_dependencies
 from dapper.shared.command_handler_helpers import set_scope_variable_with_dependencies
 from dapper.shared.value_conversion import _exec_statement_in_frame
@@ -137,7 +138,6 @@ def handle_set_variable_impl(
     *,
     object_member_deps: ObjectMemberDependencies,
     scope_variable_deps: ScopeVariableDependencies,
-    var_ref_tuple_size: int,
 ) -> Payload:
     """Handle setVariable command implementation."""
     error_response = object_member_deps.error_response_fn
@@ -159,7 +159,7 @@ def handle_set_variable_impl(
     frame_info = dbg.var_manager.var_refs[variables_reference]
 
     try:
-        if isinstance(frame_info, tuple) and len(frame_info) == var_ref_tuple_size:
+        if isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
             first, second = frame_info
 
             if first == "object":

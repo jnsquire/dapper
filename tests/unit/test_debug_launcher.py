@@ -377,7 +377,6 @@ class TestVariableHandling:
                             make_variable_fn=command_handler_helpers.make_variable,
                         )
                     ),
-                    var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
                 )
             ),
         )

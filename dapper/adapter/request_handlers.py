@@ -23,13 +23,12 @@ from dapper.adapter.types import DAPResponse
 from dapper.config import DapperConfig
 from dapper.errors import ConfigurationError
 from dapper.errors import create_dap_response
-from dapper.protocol.data_breakpoints import DataBreakpointInfoResponse
-from dapper.protocol.data_breakpoints import SetDataBreakpointsResponse
 from dapper.protocol.requests import AttachResponse
 from dapper.protocol.requests import BreakpointLocationsResponse
 from dapper.protocol.requests import CompletionsResponse
 from dapper.protocol.requests import ConfigurationDoneResponse
 from dapper.protocol.requests import ContinueResponse
+from dapper.protocol.requests import DataBreakpointInfoResponse
 from dapper.protocol.requests import DisconnectResponse
 from dapper.protocol.requests import EvaluateResponse
 from dapper.protocol.requests import ExceptionInfoResponse
@@ -45,6 +44,7 @@ from dapper.protocol.requests import PauseResponse
 from dapper.protocol.requests import RestartResponse
 from dapper.protocol.requests import ScopesResponse
 from dapper.protocol.requests import SetBreakpointsResponse
+from dapper.protocol.requests import SetDataBreakpointsResponse
 from dapper.protocol.requests import SetExceptionBreakpointsResponse
 from dapper.protocol.requests import SetExpressionResponse
 from dapper.protocol.requests import SetFunctionBreakpointsResponse
@@ -65,15 +65,14 @@ if TYPE_CHECKING:
     from dapper.adapter.server_core import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.protocol.capabilities import ExceptionFilterOptions
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoRequest
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
-    from dapper.protocol.data_breakpoints import SetDataBreakpointsRequest
     from dapper.protocol.requests import AttachRequest
     from dapper.protocol.requests import CompletionItem
     from dapper.protocol.requests import CompletionsRequest
     from dapper.protocol.requests import CompletionsResponseBody
     from dapper.protocol.requests import ConfigurationDoneRequest
     from dapper.protocol.requests import ContinueRequest
+    from dapper.protocol.requests import DataBreakpointInfoRequest
+    from dapper.protocol.requests import DataBreakpointInfoResponseBody
     from dapper.protocol.requests import DisconnectRequest
     from dapper.protocol.requests import EvaluateRequest
     from dapper.protocol.requests import ExceptionInfoRequest
@@ -96,6 +95,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import RestartRequest
     from dapper.protocol.requests import ScopesRequest
     from dapper.protocol.requests import SetBreakpointsRequest
+    from dapper.protocol.requests import SetDataBreakpointsRequest
     from dapper.protocol.requests import SetExceptionBreakpointsRequest
     from dapper.protocol.requests import SetExpressionRequest
     from dapper.protocol.requests import SetFunctionBreakpointsRequest

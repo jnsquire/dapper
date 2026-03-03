@@ -16,6 +16,13 @@ from dapper.shared.debug_shared import make_variable_object as _make_variable_ob
 
 Payload = dict[str, Any]
 
+# number of elements in the tuple stored in ``dbg.var_manager.var_refs``
+# when a variablesReference has been allocated.  ``command_handlers``
+# previously defined this value; we centralise it here so that both the
+# handler helpers and the variable handling code can reference a single
+# source of truth without circular imports.
+VAR_REF_TUPLE_SIZE = 2
+
 # Number of positional params for the simple (name, value) make_variable_object signature
 _SIMPLE_MAKE_VAR_ARGCOUNT = 2
 
@@ -212,14 +219,13 @@ def resolve_variables_for_reference(  # noqa: PLR0912
         [DebuggerLike | None, dict[str, object], object],
         list[Payload],
     ],
-    var_ref_tuple_size: int,
 ) -> list[Payload]:
     """Return variables for a var_refs entry."""
     vars_out: list[Payload] = []
 
     if isinstance(frame_info, list):
         vars_out.extend([v for v in frame_info if isinstance(v, dict)])
-    elif isinstance(frame_info, tuple) and len(frame_info) == var_ref_tuple_size:
+    elif isinstance(frame_info, tuple) and len(frame_info) == VAR_REF_TUPLE_SIZE:
         kind, payload = frame_info
 
         if kind == "object":

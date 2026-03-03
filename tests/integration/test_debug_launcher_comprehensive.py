@@ -137,17 +137,12 @@ def _resolve_variables_for_reference(dbg: Any, frame_info: Any) -> list[dict[str
         frame_info,
         make_variable_fn=_make_variable,
         extract_variables_from_mapping_fn=_extract_from_mapping,
-        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
     )
 
 
 def _handle_set_variable(session: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     return variable_handlers.handle_set_variable_impl(
-        session,
-        arguments,
-        object_member_deps=_obj_deps,
-        scope_variable_deps=_scope_deps,
-        var_ref_tuple_size=handlers.VAR_REF_TUPLE_SIZE,
+        session, arguments, object_member_deps=_obj_deps, scope_variable_deps=_scope_deps
     )
 
 

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from dapper.adapter.debugger.py_debugger import PyDebugger
     from dapper.protocol.capabilities import ExceptionFilterOptions
     from dapper.protocol.capabilities import ExceptionOptions
-    from dapper.protocol.data_breakpoints import DataBreakpointInfoResponseBody
+    from dapper.protocol.requests import DataBreakpointInfoResponseBody
     from dapper.protocol.requests import FunctionBreakpoint
     from dapper.protocol.structures import Breakpoint
 
