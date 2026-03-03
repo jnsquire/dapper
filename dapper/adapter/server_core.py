@@ -14,12 +14,15 @@ from dapper.adapter.debugger.py_debugger import _acquire_event_loop
 from dapper.adapter.log_forwarder import TelemetryForwarder
 from dapper.adapter.log_forwarder import install_log_forwarder
 from dapper.adapter.request_handlers import RequestHandler
+from dapper.protocol.messages import GenericEvent
+from dapper.protocol.messages import GenericResponse
 from dapper.protocol.protocol import ProtocolFactory
+from dapper.protocol.protocol import RequestLike
 
 if TYPE_CHECKING:
     from dapper.adapter.types import DAPRequest
     from dapper.ipc.connections.base import ConnectionBase
-    from dapper.protocol.messages import GenericRequest
+    # GenericRequest is needed for type annotations in TYPE_CHECKING block only
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +138,7 @@ class DebugAdapterServer:
                 logger.exception("Error processing message")
                 # Send error response if this was a request
                 if message is not None and ("type" in message and message["type"] == "request"):
-                    await self.send_error_response(message, str(e))
+                    await self.send_error_response(cast("RequestLike", message), str(e))
 
         logger.info("Message loop ended")
 
@@ -171,7 +174,7 @@ class DebugAdapterServer:
                 await self.send_message(cast("dict[str, Any]", response))
         except Exception as e:
             logger.exception("Error handling request %s", command)
-            await self.send_error_response(request, str(e))
+            await self.send_error_response(cast("RequestLike", request), str(e))
 
     async def send_message(self, message: dict[str, Any]) -> None:
         """Send a DAP message to the client"""
@@ -189,26 +192,32 @@ class DebugAdapterServer:
 
     async def send_response(
         self,
-        request: dict[str, Any],
+        request: RequestLike,
         body: dict[str, Any] | None = None,
     ) -> None:
         """Send a success response to a request"""
-        response = self.protocol_handler.create_response(
-            cast("GenericRequest", request),
+        response: GenericResponse = self.protocol_handler.create_response(
+            request,
             True,
             body,
+            return_type=GenericResponse,
         )
         await self.send_message(cast("dict[str, Any]", response))
 
-    async def send_error_response(self, request: dict[str, Any], error_message: str) -> None:
+    async def send_error_response(self, request: RequestLike, error_message: str) -> None:
         """Send an error response to a request"""
-        response = self.protocol_handler.create_error_response(
-            cast("GenericRequest", request),
+        response: GenericResponse = self.protocol_handler.create_error_response(
+            request,
             error_message,
+            return_type=GenericResponse,
         )
         await self.send_message(cast("dict[str, Any]", response))
 
     async def send_event(self, event_name: str, body: dict[str, Any] | None = None) -> None:
         """Send an event to the client"""
-        event = self.protocol_handler.create_event(event_name, body)
+        event: GenericEvent = self.protocol_handler.create_event(
+            event_name,
+            body,
+            return_type=GenericEvent,
+        )
         await self.send_message(cast("dict[str, Any]", event))

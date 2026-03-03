@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
+from typing import cast
 from unittest.mock import patch
 
 import pytest
 
 from dapper.adapter.server import DebugAdapterServer
 from tests.mocks import MockConnection
+
+if TYPE_CHECKING:
+    from dapper.protocol.protocol import RequestLike
 
 
 # Simple async call recorder usable in place of AsyncMock
@@ -372,7 +377,7 @@ async def test_sequence_numbers():
     # Send multiple messages to check sequence numbering
     await server.send_event("initialized")
     await server.send_event("stopped", {"reason": "entry"})
-    await server.send_response({"seq": 5, "command": "test"}, {"result": "ok"})
+    await server.send_response(cast("RequestLike", {"seq": 5, "command": "test"}), {"result": "ok"})
 
     # Verify sequence numbers
     assert len(mock_connection.written_messages) == 3
@@ -474,7 +479,9 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
     server = DebugAdapterServer(conn, asyncio.get_event_loop())
 
     # Patch protocol_handler.create_response to return a predictable dict
-    def fake_create_response(request, success, body=None, message=None):
+    # the real method now accepts a ``return_type`` kwarg; our fake
+    # should tolerate any extras so the patch doesn't blow up.
+    def fake_create_response(request, success, body=None, message=None, **kwargs):
         return {
             "type": "response",
             "command": request.get("command"),
@@ -483,7 +490,7 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
             "message": message,
         }
 
-    def fake_create_error_response(request, error_message):
+    def fake_create_error_response(request, error_message, **kwargs):
         return {
             "type": "response",
             "command": request.get("command"),
@@ -505,7 +512,7 @@ async def test_send_response_and_error_response_with_protocol(monkeypatch):
         ),
     )
 
-    req = {"seq": 99, "type": "request", "command": "doIt"}
+    req = cast("RequestLike",{"seq": 99, "type": "request", "command": "doIt"})
     await server.send_response(req, {"ok": True})
     # one message written
     assert conn.written_messages

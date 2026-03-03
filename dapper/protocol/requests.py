@@ -10,6 +10,10 @@ from typing import Any
 from typing import Literal
 from typing import TypedDict
 
+# Bring in RequestLike so our request types can implement the protocol
+
+
+
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
 
@@ -1061,6 +1065,62 @@ class HotReloadResponse(TypedDict):
     command: Literal["dapper/hotReload"]
     message: NotRequired[str]
     body: NotRequired[HotReloadResponseBody]
+
+
+# Common event types used by the Python protocol factory helpers
+class InitializedEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["initialized"]
+
+
+class StoppedEventBody(TypedDict, total=False):
+    reason: str
+    threadId: int
+    allThreadsStopped: bool
+    text: str
+
+
+class StoppedEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["stopped"]
+    body: StoppedEventBody
+
+
+class ExitedEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["exited"]
+    body: dict[str, Any]
+
+
+class TerminatedEvent(TypedDict, total=False):
+    seq: int
+    type: Literal["event"]
+    event: Literal["terminated"]
+    body: dict[str, Any]
+
+
+class ThreadEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["thread"]
+    body: dict[str, Any]
+
+
+class OutputEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["output"]
+    body: dict[str, Any]
+
+
+class BreakpointEvent(TypedDict):
+    seq: int
+    type: Literal["event"]
+    event: Literal["breakpoint"]
+    body: dict[str, Any]
 
 
 class HotReloadResultEventBody(TypedDict, total=False):
