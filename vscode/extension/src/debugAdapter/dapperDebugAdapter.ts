@@ -807,9 +807,25 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         this.server = server;
 
         // Build environment — terminal env must be Record<string, string>
-        const logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
-        const debugLogLevel = vscode.workspace
-          .getConfiguration('dapper.debugger')
+        const debuggerConfig = vscode.workspace.getConfiguration('dapper.debugger');
+        const configuredLogFile = debuggerConfig.get<string>('logFile', '').trim();
+        let logFile: string;
+        if (configuredLogFile) {
+          // Resolve ${workspaceFolder} if present
+          const wsFolder = session.workspaceFolder?.uri.fsPath
+            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+            ?? '';
+          logFile = configuredLogFile.replace(/\$\{workspaceFolder\}/g, wsFolder);
+          // Also expand %ENV_VAR% style variables (Windows env-var syntax in cross-platform configs)
+          logFile = logFile.replace(/%([^%]+)%/g, (_match: string, name: string) => process.env[name] ?? `%${name}%`);
+          // Normalize backslash path separators to forward slashes on non-Windows
+          if (process.platform !== 'win32') {
+            logFile = logFile.replace(/\\/g, '/');
+          }
+        } else {
+          logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
+        }
+        const debugLogLevel = debuggerConfig
           .get<string>('logLevel', 'DEBUG')
           .toUpperCase();
         const rawEnv = { ...process.env, ...(config.env || {}),

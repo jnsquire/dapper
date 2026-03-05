@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import types
+from types import FrameType
 from types import SimpleNamespace
 from typing import Any
 from typing import cast
@@ -121,7 +122,7 @@ def test_convert_value_with_context_literal_and_bool_and_none():
 
 
 def test_convert_value_with_context_eval_with_frame():
-    frame = SimpleNamespace(f_globals={"x": 5}, f_locals={})
+    frame = cast("FrameType", SimpleNamespace(f_globals={"x": 5}, f_locals={}))
     assert convert_value_with_context("x + 1", frame) == 6
 
 
@@ -290,7 +291,9 @@ def test_handle_set_breakpoints_with_real_debugger_bdb(monkeypatch):
         assert cleared_lines == [7]
         assert dbg.get_break(source_path, 10)
         assert dbg.get_break(source_path, 20)
-        assert any(kind == "breakpoints" for kind, _ in calls)
+        # No spurious 'breakpoints' side-channel event should be emitted;
+        # the response is returned as a dict and sent via the normal response path.
+        assert not any(kind == "breakpoints" for kind, _ in calls)
     finally:
         Path(source_path).unlink(missing_ok=True)
 

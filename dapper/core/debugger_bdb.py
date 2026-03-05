@@ -481,18 +481,47 @@ class DebuggerBDB(bdb.Bdb):
                 if ln is not None
             ]
 
+        check_get_break = bool(self.get_break(filename, line))
+        check_custom_raw = (
+            filename in self.bp_manager.custom and line in self.bp_manager.custom[filename]
+        )
+        check_custom_canon = (
+            canonical_filename in self.bp_manager.custom
+            and line in self.bp_manager.custom[canonical_filename]
+        )
         if not (
-            self.get_break(filename, line)
-            or has_line_in_break_table
-            or (filename in self.bp_manager.custom and line in self.bp_manager.custom[filename])
-            or (
-                canonical_filename in self.bp_manager.custom
-                and line in self.bp_manager.custom[canonical_filename]
-            )
+            check_get_break or has_line_in_break_table or check_custom_raw or check_custom_canon
         ):
+            logger.debug(
+                "_handle_regular_breakpoint: no match at %s:%s → returning False",
+                filename,
+                line,
+            )
             return False
 
+        matched_via = [
+            name
+            for name, val in [
+                ("get_break", check_get_break),
+                ("break_table", has_line_in_break_table),
+                ("custom_raw", check_custom_raw),
+                ("custom_canon", check_custom_canon),
+            ]
+            if val
+        ]
+        logger.debug(
+            "_handle_regular_breakpoint: match at %s:%s via %s",
+            filename,
+            line,
+            matched_via,
+        )
+
         meta = self.bp_manager.line_meta.get((filename, int(line)))
+        if meta is None and canonical_filename != filename:
+            # Fall back to canonical path in case the VS Code-provided path
+            # used when recording the breakpoint differs from the raw frame
+            # filename (e.g. one is a symlink and the other is the real path).
+            meta = self.bp_manager.line_meta.get((canonical_filename, int(line)))
 
         # Create an output emitter that sends to the debug client
         def emit_output(category: str, output: str) -> None:
@@ -523,6 +552,13 @@ class DebuggerBDB(bdb.Bdb):
         description: str | None = None,
     ) -> None:
         """Emit a stopped event with proper bookkeeping."""
+        logger.debug(
+            "_emit_stopped_event: reason=%r file=%s line=%s thread_id=%s",
+            reason,
+            frame.f_code.co_filename,
+            frame.f_lineno,
+            thread_id,
+        )
         self.stepping_controller.current_frame = frame
         self.thread_tracker.stopped_thread_ids.add(thread_id)
         stack_frames: list[StackFrame] = self._get_stack_frames(frame)
@@ -623,6 +659,13 @@ class DebuggerBDB(bdb.Bdb):
         # If the stepping controller has no explicit reason to stop
         # (neither stop_on_entry nor user-initiated stepping), this is a
         # spurious stop from BDB's initial step mode.  Resume silently.
+        logger.debug(
+            "user_line: spurious-stop guard: stop_on_entry=%s stepping=%s at %s:%s",
+            self.stepping_controller.stop_on_entry,
+            self.stepping_controller.stepping,
+            filename,
+            line,
+        )
         if not self.stepping_controller.stop_on_entry and not self.stepping_controller.stepping:
             self.set_continue()
             return
@@ -676,9 +719,34 @@ class DebuggerBDB(bdb.Bdb):
         exc_info: tuple[type[BaseException], BaseException, types.TracebackType | None],
     ) -> None:
         """Handle exception breakpoints using the exception handler."""
-        if not self.exception_handler.should_break(frame, exc_info=exc_info):
+        # Just My Code: skip exceptions raised inside library/frozen frames.
+        # These are often intentional control-flow exceptions (e.g. KeyError
+        # inside importlib) that will be caught before ever reaching user code.
+        if self.just_my_code and not is_user_frame(frame):
             return
 
+        exc_type, exc_value, _tb = exc_info
+        logger.debug(
+            "user_exception: %s at %s:%s — checking should_break",
+            exc_type.__name__ if exc_type else "?",
+            frame.f_code.co_filename,
+            frame.f_lineno,
+        )
+        if not self.exception_handler.should_break(frame, exc_info=exc_info):
+            logger.debug(
+                "user_exception: should_break=False, ignoring %s at %s:%s",
+                exc_type.__name__ if exc_type else "?",
+                frame.f_code.co_filename,
+                frame.f_lineno,
+            )
+            return
+        logger.debug(
+            "user_exception: should_break=True for %s(%s) at %s:%s — stopping",
+            exc_type.__name__ if exc_type else "?",
+            exc_value,
+            frame.f_code.co_filename,
+            frame.f_lineno,
+        )
         thread_id = threading.get_ident()
 
         # Build and store exception info for the adapter

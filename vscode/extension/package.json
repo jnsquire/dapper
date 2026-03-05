@@ -69,6 +69,11 @@
           "default": "",
           "description": "Override the expected dapper package version. By default the extension's version is used."
         },
+        "dapper.debugger.logFile": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a persistent log file for the Python debugger process. When set, all log output (including DEBUG lines with full message contents) is written here instead of a temporary file that is discarded after the session. Supports the ${workspaceFolder} variable."
+        },
         "dapper.debugger.logLevel": {
           "type": "string",
           "enum": [
@@ -435,7 +440,8 @@
   },
   "scripts": {
     "vscode:prepublish": "node ./scripts/prepublish.cjs",
-    "prepare-python": "python -m pip install --upgrade uv && node scripts/copy-wheel.cjs",
+    "prepare-python": "node scripts/copy-wheel.cjs",
+    "prepare-python:download": "node scripts/copy-wheel.cjs --download-missing",
     "build": "npm run prepare-python && npm run compile && npm run bundle:extension",
     "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",

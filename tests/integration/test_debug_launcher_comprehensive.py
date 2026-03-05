@@ -10,7 +10,12 @@ import io
 import json
 import queue
 import threading
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
+
+if TYPE_CHECKING:
+    from types import FrameType
 from unittest.mock import MagicMock
 from unittest.mock import PropertyMock
 
@@ -229,7 +234,7 @@ def test_handle_set_breakpoints_success(tmp_path):
 
 
 def test_handle_set_breakpoints_failure(monkeypatch):
-    """Test breakpoint setting when debugger returns False."""
+    """Test breakpoint setting when set_break returns a bdb error string."""
     s, dbg = _session_with_debugger(DebuggerBDB())
 
     # Create a mock function that will replace set_break
@@ -241,8 +246,8 @@ def test_handle_set_breakpoints_failure(monkeypatch):
         cond: Any | None = None,
         funcname: str | None = None,
     ) -> Any | None:
-        # This mock always returns False to simulate a failed breakpoint set
-        return False
+        # bdb.set_break returns an error *string* (not False) on failure.
+        return f"Line {filename}:{lineno} does not exist"
 
     # Use monkeypatch to replace the method with proper binding
     monkeypatch.setattr(dbg, "set_break", mock_set_break.__get__(dbg, DebuggerBDB))
@@ -1074,7 +1079,7 @@ def test_convert_value_with_context():
     assert convert_value_with_context("[1, 2, 3]") == [1, 2, 3]
 
     # Test with frame context
-    frame = MockFrame(_locals={"x": 10}, _globals={"PI": 3.14159})
+    frame = cast("FrameType", MockFrame(_locals={"x": 10}, _globals={"PI": 3.14159}))
 
     result = convert_value_with_context("x * 2", frame)
     assert result == 20

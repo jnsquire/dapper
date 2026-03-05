@@ -152,7 +152,7 @@ def handle_debug_command(
         cmd = command.get("command")
         cmd_id = command.get("id")  # request id to echo back in the response
         arguments = command.get("arguments", {})
-        logger.debug("handle_debug_command: cmd=%s id=%s", cmd, cmd_id)
+        logger.debug("[id=%s] handle_debug_command: cmd=%s", cmd_id, cmd)
         # Ensure the command name is a string before looking up the handler
         if not isinstance(cmd, str):
             active_session.safe_send(
@@ -171,9 +171,9 @@ def handle_debug_command(
             if handler_func is not None:
                 result = handler_func(arguments)
                 logger.info(
-                    "handle_debug_command: cmd=%s id=%s handler_returned=%r response_sent=%s",
-                    cmd,
+                    "[id=%s] handle_debug_command: cmd=%s handler_returned=%r response_sent=%s",
                     cmd_id,
+                    cmd,
                     result,
                     transport.response_sent,
                 )
@@ -184,16 +184,16 @@ def handle_debug_command(
                 # warning so that misbehaving handlers are easier to spot.
                 if cmd_id is not None and not transport.response_sent:
                     logger.warning(
-                        "handle_debug_command: no response sent by handler for cmd=%s id=%s",
-                        cmd,
+                        "[id=%s] handle_debug_command: no response sent by handler for cmd=%s",
                         cmd_id,
+                        cmd,
                     )
                 elif cmd_id is not None and transport.response_sent:
                     # explicit acknowledgement already emitted by handler
                     logger.info(
-                        "handle_debug_command: handler sent response for cmd=%s id=%s",
-                        cmd,
+                        "[id=%s] handle_debug_command: handler sent response for cmd=%s",
                         cmd_id,
+                        cmd,
                     )
                 # Signal resume for stepping/continue/terminate commands so the
                 # debugger thread unblocks from process_queued_commands_launcher.
@@ -249,8 +249,8 @@ def _cmd_set_breakpoints(
         if isinstance(arguments, dict)
         else "<unknown>"
     )
-    logger.debug("setBreakpoints: source=%s", source)
     session = _active_session()
+    logger.debug("[id=%s] setBreakpoints: source=%s", session.request_id, source)
     if session.debugger:
         result = breakpoint_handlers.handle_set_breakpoints_impl(
             session,
@@ -668,25 +668,25 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
 
 @command_handler("configurationDone")
 def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
-    logger.info("configurationDone received")
+    session = _active_session()
+    logger.info("[id=%s] configurationDone received", session.request_id)
     lifecycle_handlers.handle_configuration_done_impl()
     # Acknowledge the request so the TS adapter's sendRequestToPython resolves.
     # We must send the response *and flush* before setting the event that
     # unblocks main(), because main() will immediately start the program
     # which can emit events (stopped, thread, etc.).  If the adapter hasn't
     # received the configurationDone response yet, the ordering is violated.
-    session = _active_session()
     session.safe_send_response(success=True)
     _flush_transport(session)
     # Unblock the launcher main thread which is waiting before starting the program
     session.configuration_done_event.set()
-    logger.debug("configurationDone: configuration_done_event set")
+    logger.debug("[id=%s] configurationDone: configuration_done_event set", session.request_id)
 
 
 @command_handler("terminate")
 def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-    logger.info("terminate received")
     state = _active_session()
+    logger.info("[id=%s] terminate received", state.request_id)
     result = lifecycle_handlers.handle_terminate_impl(
         state=state,
     )
@@ -701,28 +701,31 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
 
 @command_handler("initialize")
 def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
-    logger.info("initialize received")
-    result = lifecycle_handlers.handle_initialize_impl()
     session = _active_session()
+    logger.info("[id=%s] initialize received", session.request_id)
+    result = lifecycle_handlers.handle_initialize_impl()
     logger.info(
-        "initialize: handle_initialize_impl returned result=%r  request_id=%s  response_sent_before=%s",
-        type(result).__name__,
+        "[id=%s] initialize: handle_initialize_impl returned result=%r response_sent_before=%s",
         session.request_id,
+        type(result).__name__,
         session.transport.response_sent,
     )
     if result:
         ok = session.safe_send_response(**result)
         logger.info(
-            "initialize: safe_send_response returned %s  response_sent_after=%s",
+            "[id=%s] initialize: safe_send_response returned %s response_sent_after=%s",
+            session.request_id,
             ok,
             session.transport.response_sent,
         )
     else:
-        logger.info("initialize: result is falsy — skipping safe_send_response")
+        logger.info(
+            "[id=%s] initialize: result is falsy — skipping safe_send_response", session.request_id
+        )
     # After responding to initialize, emit the 'initialized' event so the client
     # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
     session.safe_send("initialized")
-    logger.info("initialize: sent initialized event")
+    logger.info("[id=%s] initialize: sent initialized event", session.request_id)
 
 
 @command_handler("launch")
@@ -735,16 +738,16 @@ def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
     the request so that VS Code continues with the normal DAP sequence
     (``setBreakpoints`` → ``configurationDone``).
     """
-    logger.info("launch received")
     session = _active_session()
     logger.info(
-        "launch: request_id=%s  response_sent_before=%s",
+        "[id=%s] launch received response_sent_before=%s",
         session.request_id,
         session.transport.response_sent,
     )
     ok = session.safe_send_response(success=True)
     logger.info(
-        "launch: safe_send_response returned %s  response_sent_after=%s",
+        "[id=%s] launch: safe_send_response returned %s response_sent_after=%s",
+        session.request_id,
         ok,
         session.transport.response_sent,
     )
@@ -757,8 +760,8 @@ def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     Marks the session as terminated and unblocks the debugger thread so the
     launcher can exit cleanly.
     """
-    logger.info("disconnect received")
     session = _active_session()
+    logger.info("[id=%s] disconnect received", session.request_id)
     session.terminate_session()
     session.safe_send_response(success=True)
 

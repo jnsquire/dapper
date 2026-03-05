@@ -95,7 +95,6 @@ def handle_set_breakpoints_impl(
         )
         verified_bps.append({"verified": verified, "line": line})
 
-    session.safe_send("breakpoints", source=source, breakpoints=verified_bps)
     return {"success": True, "body": {"breakpoints": verified_bps}}
 
 
@@ -110,7 +109,11 @@ def _try_set_break(
         res = dbg.set_break(path, line, cond=condition)
     except Exception:
         return False
-    return res is not False
+    # bdb.set_break returns a Breakpoint object on success or an error
+    # *string* on failure (e.g. 'Line /path:N does not exist').  Any
+    # string result means the breakpoint was NOT registered, so we must
+    # return False here — `res is not False` would be True for strings.
+    return not isinstance(res, str)
 
 
 def handle_set_function_breakpoints_impl(

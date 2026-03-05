@@ -78,8 +78,10 @@ class TestHandleSetBreakpointsImpl:
         assert bps[0]["verified"] is True
         assert bps[0]["line"] == 10
 
-    def test_breakpoint_not_verified_when_set_break_returns_false(self) -> None:
-        dbg = _make_dbg(set_break_result=False)
+    def test_breakpoint_not_verified_when_set_break_returns_error_string(self) -> None:
+        # bdb.set_break returns an error *string* (not False) for invalid lines;
+        # _try_set_break must treat any string result as failure.
+        dbg = _make_dbg(set_break_result="Line /app/main.py:10 does not exist")
         session = _make_session(dbg)
         result = handle_set_breakpoints_impl(
             session,
@@ -91,6 +93,21 @@ class TestHandleSetBreakpointsImpl:
         assert result is not None
         bps = result["body"]["breakpoints"]
         assert bps[0]["verified"] is False
+
+    def test_breakpoint_verified_when_set_break_returns_none(self) -> None:
+        # bdb returns None (old behaviour) or a Breakpoint object — both are success.
+        dbg = _make_dbg(set_break_result=None)
+        session = _make_session(dbg)
+        result = handle_set_breakpoints_impl(
+            session,
+            {
+                "source": {"path": "/app/main.py"},
+                "breakpoints": [{"line": 10}],
+            },
+        )
+        assert result is not None
+        bps = result["body"]["breakpoints"]
+        assert bps[0]["verified"] is True
 
     def test_breakpoint_not_verified_when_set_break_raises(self) -> None:
         dbg = _make_dbg()
@@ -144,7 +161,10 @@ class TestHandleSetBreakpointsImpl:
         )
         dbg.set_break.assert_called_once_with("/app/main.py", 10, cond="x > 5")
 
-    def test_safe_send_called_with_breakpoints(self) -> None:
+    def test_no_spurious_breakpoints_event_emitted(self) -> None:
+        # handle_set_breakpoints_impl must NOT emit a 'breakpoints' side-channel
+        # event; it should only return the result dict.  The TS adapter sends
+        # the response via the normal response path.
         dbg = _make_dbg()
         session = _make_session(dbg)
         handle_set_breakpoints_impl(
@@ -155,9 +175,9 @@ class TestHandleSetBreakpointsImpl:
             },
         )
         send_mock = cast("MagicMock", session.transport.send)
-        send_mock.assert_called_once()
-        call_args = send_mock.call_args
-        assert call_args[0][0] == "breakpoints"
+        # transport.send must not have been called at all from inside
+        # the handle_set_breakpoints_impl function
+        send_mock.assert_not_called()
 
     def test_empty_breakpoints_list(self) -> None:
         dbg = _make_dbg()

@@ -312,15 +312,10 @@ class TestBreakpointHandling:
         dbg.set_break.assert_any_call(path, line1, cond=None)
         dbg.set_break.assert_any_call(path, line2, cond="x > 5")
 
-        # Verify debug message was sent
-        mock_send.assert_called_once()
-        call_args = mock_send.call_args
-        assert call_args[0][0] == "breakpoints"
-        assert call_args[1]["source"]["path"] == path
-        assert len(call_args[1]["breakpoints"]) == 2
-        _, kwargs = mock_send.call_args
-        assert "breakpoints" in kwargs
-        assert len(kwargs["breakpoints"]) == 2
+        # No spurious 'breakpoints' side-channel event should be emitted;
+        # handle_set_breakpoints_impl returns the result dict and the caller
+        # sends it via the normal response path.
+        mock_send.assert_not_called()
 
 
 class TestVariableHandling:

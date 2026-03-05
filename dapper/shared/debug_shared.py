@@ -191,16 +191,14 @@ class SessionTransport:
                 # use Path.open() to satisfy ruff PTH123
                 with Path(log_path).open("a", encoding="utf-8") as lf:
                     lf.write(
-                        f"transport.send: type={message_type} id={message.get('id')} "
-                        f"current_request_id={self.current_request_id} keys={list(message.keys())}\n"
+                        f"[id={self.current_request_id}] transport.send: type={message_type} keys={list(message.keys())}\n"
                     )
             except Exception:
                 pass
         send_logger.debug(
-            "transport.send: type=%s id=%s current_request_id=%s keys=%s",
-            message_type,
-            message.get("id"),
+            "[id=%s] transport.send: type=%s keys=%s",
             self.current_request_id,
+            message_type,
             list(message.keys()),
         )
 

@@ -121,7 +121,8 @@ def test_set_breakpoints_and_state(monkeypatch):
         assert cleared_lines == [5]
         assert dbg.get_break(source_path, 10)
         assert dbg.get_break(source_path, 20)
-        assert any(m[0] == "breakpoints" for m in messages)
+        # No spurious 'breakpoints' side-channel event should be emitted.
+        assert not any(m[0] == "breakpoints" for m in messages)
     finally:
         Path(source_path).unlink(missing_ok=True)
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+from types import FrameType
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 
 from dapper.core.breakpoint_resolver import ResolveAction
@@ -11,9 +13,13 @@ from dapper.core.debugger_bdb import DebuggerBDB
 from tests.mocks import make_real_frame
 
 
-def _make_frame(name: str = "target_fn", filename: str = "test_file.py", lineno: int = 12):
+def _make_frame(
+    name: str = "target_fn", filename: str = "test_file.py", lineno: int = 12
+) -> FrameType:
     code = SimpleNamespace(co_name=name, co_filename=filename)
-    return SimpleNamespace(f_code=code, f_lineno=lineno, f_locals={}, f_back=None)
+    return cast(
+        "FrameType", SimpleNamespace(f_code=code, f_lineno=lineno, f_locals={}, f_back=None)
+    )
 
 
 def test_user_call_returns_early_without_function_breakpoints():
@@ -69,7 +75,7 @@ def test_user_call_stop_action_emits_function_breakpoint(monkeypatch):
     monkeypatch.setattr(dbg.breakpoint_resolver, "resolve", resolve_stop)
 
     frame = _make_frame()
-    dbg.botframe = frame
+    dbg.botframe = frame  # type: ignore[assignment]
     dbg.user_call(frame, None)
 
     stopped_events = [payload for event, payload in messages if event == "stopped"]
@@ -206,7 +212,7 @@ def test_user_line_default_stop_path_emits_event_and_continues(monkeypatch):
     assert stopped_events
     assert stopped_events[-1]["reason"] == "step"
     assert processed == [True]
-    dbg.thread_tracker.clear_frames.assert_called_once()
+    cast("MagicMock", dbg.thread_tracker.clear_frames).assert_called_once()
 
 
 def test_user_exception_returns_early_when_exception_break_disabled():
@@ -262,7 +268,7 @@ def test_user_call_matches_second_function_name(monkeypatch):
 def test_check_data_watch_helpers_return_early_for_non_mapping_locals():
     dbg = DebuggerBDB()
     frame = _make_frame()
-    frame.f_locals = object()
+    frame.f_locals = object()  # type: ignore[misc]
 
     assert dbg._check_data_watch_changes(frame) == []
     assert dbg._update_watch_snapshots(frame) is None
@@ -469,7 +475,7 @@ def test_handle_regular_breakpoint_with_real_break_table_continue(monkeypatch):
 
     try:
         dbg.breaks = {file_path: [1]}  # type: ignore[attr-defined]
-        dbg.breakpoint_resolver.resolve = lambda *_args, **_kwargs: SimpleNamespace(
+        dbg.breakpoint_resolver.resolve = lambda *_args, **_kwargs: SimpleNamespace(  # type: ignore[assignment]
             action=ResolveAction.CONTINUE,
         )
         set_continue = MagicMock()
@@ -498,9 +504,13 @@ def test_user_exception_full_flow_with_real_exc_info(monkeypatch):
 
     frame = make_real_frame({"x": 1}, filename="/tmp/test_user_exception.py", lineno=5)
 
+    exc_info: tuple  # type: ignore[assignment]  # assigned in except below
+
     def _raise_value_error() -> None:
         raise ValueError("boom")
 
+    _sentinel = ValueError("boom")
+    exc_info = (ValueError, _sentinel, None)
     try:
         _raise_value_error()
     except ValueError as error:
@@ -514,6 +524,79 @@ def test_user_exception_full_flow_with_real_exc_info(monkeypatch):
     assert processed == [True]
     # set_continue is no longer called; blocking process_commands handles
     # resumption via _resume_event.
+
+
+def test_handle_regular_breakpoint_line_meta_canonical_fallback(monkeypatch):
+    """line_meta should be resolved via canonical path when the raw filename differs.
+
+    Reproduces the case where VS Code provides a symlink path but the frame's
+    co_filename is the real (canonical) path, or vice versa.
+    """
+    messages: list[tuple[str, dict]] = []
+    resolved_metas: list = []
+    dbg = DebuggerBDB(
+        send_message=lambda event, **kw: messages.append((event, kw)),
+        process_commands=lambda: None,
+    )
+
+    raw_filename = "/symlink/src/app.py"
+    canonical_filename = "/real/src/app.py"
+    line = 10
+
+    # Make canonic() return the canonical path for our raw filename
+    monkeypatch.setattr(dbg, "canonic", lambda f: canonical_filename if f == raw_filename else f)
+    # Simulate a matching breakpoint entry
+    monkeypatch.setattr(dbg, "get_break", lambda _f, _l: True)
+
+    # Store line_meta ONLY under the canonical key
+    expected_meta = {"condition": None, "hitCondition": None, "logMessage": None}
+    dbg.bp_manager.line_meta[(canonical_filename, line)] = expected_meta
+
+    # Capture the meta that the resolver receives
+    def capture_resolve(meta, _frame, **_kw):
+        resolved_metas.append(meta)
+        return SimpleNamespace(action=ResolveAction.STOP)
+
+    monkeypatch.setattr(dbg.breakpoint_resolver, "resolve", capture_resolve)
+
+    result = dbg._handle_regular_breakpoint(raw_filename, line, _make_frame())
+
+    assert result is True
+    assert resolved_metas, "resolver must have been called"
+    assert resolved_metas[0] is expected_meta, (
+        "resolver must receive the meta found via canonical path fallback"
+    )
+
+
+def test_handle_regular_breakpoint_line_meta_raw_path_used_first(monkeypatch):
+    """Raw path meta takes priority over canonical when both are present."""
+    resolved_metas: list = []
+    dbg = DebuggerBDB(
+        send_message=lambda *a, **kw: None,
+        process_commands=lambda: None,
+    )
+
+    raw_filename = "/symlink/src/app.py"
+    canonical_filename = "/real/src/app.py"
+    line = 5
+
+    monkeypatch.setattr(dbg, "canonic", lambda f: canonical_filename if f == raw_filename else f)
+    monkeypatch.setattr(dbg, "get_break", lambda _f, _l: True)
+
+    raw_meta = {"condition": "x > 0", "hitCondition": None, "logMessage": None}
+    canonical_meta = {"condition": "y > 0", "hitCondition": None, "logMessage": None}
+    dbg.bp_manager.line_meta[(raw_filename, line)] = raw_meta
+    dbg.bp_manager.line_meta[(canonical_filename, line)] = canonical_meta
+
+    def capture_resolve(meta, _frame, **_kw):
+        resolved_metas.append(meta)
+        return SimpleNamespace(action=ResolveAction.STOP)
+
+    monkeypatch.setattr(dbg.breakpoint_resolver, "resolve", capture_resolve)
+
+    dbg._handle_regular_breakpoint(raw_filename, line, _make_frame())
+
+    assert resolved_metas[0] is raw_meta, "raw path meta must take priority over canonical"
 
 
 def test_clear_breaks_for_file_success_path_clears_lines_and_meta(monkeypatch):
