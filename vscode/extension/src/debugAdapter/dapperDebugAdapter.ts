@@ -10,7 +10,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import * as Net from 'net';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
-import { dirname, join as pathJoin } from 'path';
+import { delimiter as pathDelimiter, dirname, join as pathJoin } from 'path';
 import { EnvironmentManager, InstallMode } from '../environment/EnvironmentManager.js';
 import { logger } from '../utils/logger.js';
 
@@ -824,6 +824,18 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         }
 
         const outChannel = this.envManager.getOutputChannel();
+
+        // If dapper was extracted to an isolated lib directory (instead of being
+        // installed into the workspace venv), prepend it to PYTHONPATH so that
+        // `-m dapper.launcher` resolves without mutating the user's environment.
+        if (envInfo.dapperLibPath) {
+          const existing = terminalEnv['PYTHONPATH'] || '';
+          terminalEnv['PYTHONPATH'] = existing
+            ? `${envInfo.dapperLibPath}${pathDelimiter}${existing}`
+            : envInfo.dapperLibPath;
+          outChannel.info(`PYTHONPATH injection: ${envInfo.dapperLibPath}`);
+        }
+
         outChannel.info(`Session log file: ${logFile}`);
         const sessionName = session.name || (config.name as string | undefined) || 'Debug';
         const cwd = (config.cwd as string | undefined) || session.workspaceFolder?.uri.fsPath || process.cwd();

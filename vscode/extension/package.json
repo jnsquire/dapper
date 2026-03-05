@@ -52,7 +52,7 @@
             "workspace"
           ],
           "default": "auto",
-          "description": "Strategy for installing the dapper Python package. 'auto' tries bundled wheel then falls back to PyPI; 'workspace' skips venv and uses the workspace interpreter."
+          "description": "Strategy for making the dapper Python package available. 'auto' uses the workspace venv's interpreter and injects dapper via PYTHONPATH (never modifies the workspace venv); falls back to a managed venv with PyPI if no bundled wheels are available. 'wheel'/'pypi' install into a managed venv. 'workspace' skips venv and uses the workspace interpreter as-is."
         },
         "dapper.python.baseInterpreter": {
           "type": "string",

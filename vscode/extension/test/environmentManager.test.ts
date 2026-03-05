@@ -78,7 +78,7 @@ describe('EnvironmentManager helpers', () => {
       vi.restoreAllMocks();
     });
 
-    it('reinstalls when version mismatches', async () => {
+    it('uses PYTHONPATH injection when version mismatches (no venv mutation)', async () => {
       // create a fake python executable file inside the workspace venv
       const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
@@ -86,25 +86,93 @@ describe('EnvironmentManager helpers', () => {
       // pretend dapper importable with wrong version
       (envMgr as any).checkDapperImportable = async (_: string) => true;
       (envMgr as any).getDapperVersion = async (_: string) => '0.0.1';
+      // stub ensureDapperLib to return a fake path instead of extracting
+      (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
 
       const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
-      expect(res).toEqual({ pythonPath: candidate, needsInstall: true });
-      expect(runCalls.length).toBe(1);
-      expect(runCalls[0].args).toContain('--force-reinstall');
+      expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
+      // No pip install into the workspace venv should have occurred
+      expect(runCalls.length).toBe(0);
     });
 
-    it('forces reinstall when forceReinstall flag provided', async () => {
+    it('uses PYTHONPATH injection when forceReinstall flag provided (no venv mutation)', async () => {
       // choose the second venvDir entry so we exercise a different path
       const candidate = path.join(tmpRoot!, 'venv', binDir, pyExe);
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
       fs.writeFileSync(candidate, '');
       (envMgr as any).checkDapperImportable = async () => true;
       (envMgr as any).getDapperVersion = async () => '1.2.3';
+      (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
 
       const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, true);
-      expect(res).toEqual({ pythonPath: candidate, needsInstall: true });
+      expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
+      // forceReinstall should NOT result in pip install into workspace venv
+      expect(runCalls.length).toBe(0);
+    });
+
+    it('returns as-is when dapper already installed with matching version', async () => {
+      const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
+      fs.mkdirSync(path.dirname(candidate), { recursive: true });
+      fs.writeFileSync(candidate, '');
+      (envMgr as any).checkDapperImportable = async () => true;
+      (envMgr as any).getDapperVersion = async () => '1.2.3';
+
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
+      expect(res).toEqual({ pythonPath: candidate, needsInstall: false });
+      expect(runCalls.length).toBe(0);
+    });
+
+    it('uses PYTHONPATH injection when dapper not installed', async () => {
+      const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
+      fs.mkdirSync(path.dirname(candidate), { recursive: true });
+      fs.writeFileSync(candidate, '');
+      (envMgr as any).checkDapperImportable = async () => false;
+      (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
+
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
+      expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
+      expect(runCalls.length).toBe(0);
+    });
+  });
+
+  describe('installToTargetDir', () => {
+    let tmpDir: string | undefined;
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'dapper-target-'));
+    });
+    afterEach(() => {
+      if (tmpDir) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+      }
+    });
+
+    it('uses Python zipfile to extract (no pip)', async () => {
+      // Create a fake wheel file so the method can find it
+      const wheelDir = path.join(tmpDir!, 'wheels');
+      fs.mkdirSync(wheelDir, { recursive: true });
+      fs.writeFileSync(path.join(wheelDir, 'dapper-0.8.0-py3-none-any.whl'), '');
+
+      const targetDir = path.join(tmpDir!, 'lib');
+      await (envMgr as any).installToTargetDir('/python', wheelDir, '0.8.0', targetDir);
       expect(runCalls.length).toBe(1);
-      expect(runCalls[0].args).toContain('--force-reinstall');
+      const { cmd, args } = runCalls[0];
+      // Should invoke Python directly, not pip or uv
+      expect(cmd).toBe('/python');
+      expect(args[0]).toBe('-c');
+      expect(args[1]).toContain('zipfile');
+      expect(args[2]).toBe(path.join(wheelDir, 'dapper-0.8.0-py3-none-any.whl'));
+      expect(args[3]).toBe(targetDir);
+    });
+
+    it('throws when no matching wheel is found', async () => {
+      const wheelDir = path.join(tmpDir!, 'empty-wheels');
+      fs.mkdirSync(wheelDir, { recursive: true });
+      const targetDir = path.join(tmpDir!, 'lib');
+
+      await expect((envMgr as any).installToTargetDir('/python', wheelDir, '0.8.0', targetDir))
+        .rejects.toThrow('No wheel files matching');
+      // No process should have been spawned
+      expect(runCalls.length).toBe(0);
     });
   });
 });

@@ -19,6 +19,10 @@ export interface PythonEnvInfo {
   venvPath?: string;         // present unless workspace mode
   dapperVersionInstalled?: string;
   needsInstall: boolean;     // true if install performed this activation
+  /** When set, this directory must be prepended to PYTHONPATH so that
+   *  `import dapper` resolves without dapper being installed into the
+   *  interpreter's own site-packages. */
+  dapperLibPath?: string;
 }
 
 /**
@@ -85,7 +89,7 @@ export class EnvironmentManager {
 
     // In auto mode, prefer the workspace's own .venv so the target program runs with its
     // full project environment (e.g. requests, numpy, etc. are available).
-    // We install dapper into the workspace venv from bundled wheels if it's not already there.
+    // Dapper is made available via PYTHONPATH injection — the workspace venv is never modified.
     if (mode === 'auto') {
       const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
       const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
@@ -237,8 +241,12 @@ export class EnvironmentManager {
 
   /**
    * Try to use the workspace's own .venv as the adapter interpreter.
-   * If dapper is not yet installed there but we have bundled wheels, install it.
-   * Returns a PythonEnvInfo if successful, undefined if the workspace has no .venv.
+   *
+   * **Important**: this method never installs dapper into the workspace venv.
+   * If the correct version is already present (e.g. the user installed it) we
+   * use it directly; otherwise we extract the bundled wheel to an
+   * extension-managed directory and return a `dapperLibPath` that the caller
+   * must inject via PYTHONPATH.
    */
   private async tryWorkspaceVenv(
     version: string,
@@ -266,57 +274,156 @@ export class EnvironmentManager {
 
         this.output.info(`auto mode: found workspace venv at ${candidate}`);
 
-        // If dapper can be imported, check whether the version matches or a reinstall was forced.
-        if (await this.checkDapperImportable(candidate)) {
+        // If the workspace venv already has the right version of dapper and
+        // we are not forcing a reinstall, use it directly — no mutation needed.
+        if (!forceReinstall && await this.checkDapperImportable(candidate)) {
           const installedVersion = await this.getDapperVersion(candidate);
-          if (!forceReinstall && installedVersion === version) {
+          if (installedVersion === version) {
             this.output.info(`auto mode: dapper already installed in workspace venv (version ${installedVersion}), using it.`);
             return { pythonPath: candidate, needsInstall: false };
           }
-          // Either version mismatch or forceReinstall requested; attempt a forced install
-          if (wheelDir) {
-            this.output.info(
-              `auto mode: workspace venv has dapper ${installedVersion}, ` +
-              `reinstalling ${version}${forceReinstall ? ' (forced)' : ''}...`
-            );
-            try {
-              await this.installWheel(candidate, wheelDir, version, true);
-              if (await this.checkDapperImportable(candidate)) {
-                this.output.info(`auto mode: dapper installed into workspace venv successfully.`);
-                return { pythonPath: candidate, needsInstall: true };
-              }
-              this.output.warn(`auto mode: wheel installed but dapper still not importable from ${candidate}; falling back.`);
-            } catch (err) {
-              this.output.warn(`auto mode: could not install dapper into workspace venv (${err}); falling back.`);
-            }
-          } else {
-            this.output.info(`auto mode: workspace venv has dapper but no bundled wheels available; falling back to managed venv.`);
-          }
-          // Treat this candidate as "used" even if the install failed; don't keep scanning
-          return undefined;
+          this.output.info(
+            `auto mode: workspace venv has dapper ${installedVersion} but need ${version}; ` +
+            'will use PYTHONPATH injection instead of modifying the venv.'
+          );
         }
 
-        // Not installed — try to install from bundled wheels
+        // Either dapper is missing from the venv, the version is wrong, or a
+        // force-reinstall was requested.  Instead of touching the workspace
+        // venv, extract dapper to an extension-managed directory.
         if (wheelDir) {
-          this.output.info(`auto mode: installing dapper into workspace venv at ${candidate}...`);
-          try {
-            await this.installWheel(candidate, wheelDir, version);
-            if (await this.checkDapperImportable(candidate)) {
-              this.output.info(`auto mode: dapper installed into workspace venv successfully.`);
-              return { pythonPath: candidate, needsInstall: true };
-            }
-            this.output.warn(`auto mode: wheel installed but dapper still not importable from ${candidate}; falling back.`);
-          } catch (err) {
-            this.output.warn(`auto mode: could not install dapper into workspace venv (${err}); falling back.`);
+          const libPath = await this.ensureDapperLib(candidate, version, wheelDir, forceReinstall);
+          if (libPath) {
+            this.output.info(`auto mode: dapper ${version} available via PYTHONPATH at ${libPath}`);
+            return { pythonPath: candidate, needsInstall: false, dapperLibPath: libPath };
           }
+          this.output.warn('auto mode: failed to extract dapper for PYTHONPATH injection; falling back.');
         } else {
-          this.output.info(`auto mode: workspace venv found but no bundled wheels to install dapper; falling back to managed venv.`);
+          this.output.info('auto mode: workspace venv found but no bundled wheels for PYTHONPATH injection; falling back to managed venv.');
         }
         // First venv found is the one to try — don't silently skip to the next
         return undefined;
       }
     }
     return undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // PYTHONPATH-based dapper injection (avoids installing into workspace venvs)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Ensure the dapper package is available in an isolated, extension-managed
+   * directory suitable for PYTHONPATH injection.  Uses `pip install --target`
+   * (or `uv pip install --target`) to extract the correct platform-specific
+   * wheel without modifying any venv.
+   *
+   * Returns the target directory path, or `undefined` on failure.
+   */
+  private async ensureDapperLib(
+    pythonPath: string,
+    version: string,
+    wheelDir: string,
+    forceReinstall: boolean,
+  ): Promise<string | undefined> {
+    const libBase = path.join(this.context.globalStorageUri.fsPath, 'dapper-lib');
+    const targetDir = path.join(libBase, version);
+    const manifestPath = path.join(libBase, 'dapper-lib.json');
+
+    // Read existing manifest
+    let manifest: { version: string; wheelHash?: string } | undefined;
+    try {
+      if (fs.existsSync(manifestPath)) {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      }
+    } catch { /* ignore corrupt manifest */ }
+
+    const currentWheelHash = await this.computeWheelHash(wheelDir);
+
+    const extractNeeded = forceReinstall
+      || !manifest
+      || manifest.version !== version
+      || (currentWheelHash && manifest.wheelHash !== currentWheelHash)
+      || !fs.existsSync(path.join(targetDir, 'dapper', '__init__.py'));
+
+    if (!extractNeeded) {
+      this.output.info(`dapper lib already extracted at ${targetDir}; reusing.`);
+      return targetDir;
+    }
+
+    this.output.info(`Extracting dapper ${version} to ${targetDir} for PYTHONPATH injection...`);
+
+    // Clean up any previous extraction so we start fresh
+    if (fs.existsSync(targetDir)) {
+      await fs.promises.rm(targetDir, { recursive: true, force: true });
+    }
+
+    try {
+      await this.installToTargetDir(pythonPath, wheelDir, version, targetDir);
+
+      // Verify the extraction produced a usable package tree
+      if (!fs.existsSync(path.join(targetDir, 'dapper', '__init__.py'))) {
+        this.output.error('Extraction succeeded but dapper/__init__.py not found in target dir');
+        return undefined;
+      }
+
+      // Persist manifest so subsequent launches skip re-extraction
+      const newManifest = { version, wheelHash: currentWheelHash };
+      fs.mkdirSync(libBase, { recursive: true });
+      fs.writeFileSync(manifestPath, JSON.stringify(newManifest, null, 2), 'utf8');
+
+      this.output.info(`dapper ${version} extracted successfully to ${targetDir}`);
+      return targetDir;
+    } catch (err) {
+      this.output.error(`Failed to extract dapper to target dir: ${err}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Extract the dapper wheel into an isolated target directory using only
+   * Python's stdlib `zipfile` module.  This avoids any dependency on pip,
+   * uv, or any other package manager.
+   *
+   * A `.whl` file is a standard zip archive whose top-level entries are the
+   * package directory (e.g. `dapper/`) and a `*.dist-info/` metadata
+   * directory.  Extracting the zip into `targetDir` produces exactly the
+   * layout needed for PYTHONPATH-based imports.
+   */
+  private async installToTargetDir(
+    pythonPath: string,
+    wheelDir: string,
+    version: string,
+    targetDir: string,
+  ): Promise<void> {
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    // Locate the wheel file — there may be several platform-specific wheels;
+    // prefer the most specific one but fall back to a universal wheel.
+    const allWheels = fs.readdirSync(wheelDir)
+      .filter(f => f.startsWith(`dapper-${version}`) && f.endsWith('.whl'))
+      .sort();
+    if (allWheels.length === 0) {
+      throw new Error(`No wheel files matching dapper-${version}*.whl found in ${wheelDir}`);
+    }
+    const wheelFile = path.join(wheelDir, allWheels[0]);
+    this.output.info(`Extracting wheel ${allWheels[0]} → ${targetDir}`);
+
+    // Use Python's zipfile stdlib module to extract — available everywhere.
+    const extractScript = [
+      'import sys, zipfile, os',
+      `whl = sys.argv[1]`,
+      `dst = sys.argv[2]`,
+      'os.makedirs(dst, exist_ok=True)',
+      'with zipfile.ZipFile(whl) as zf:',
+      '    zf.extractall(dst)',
+    ].join('\n');
+
+    await this.runProcess(
+      pythonPath,
+      ['-c', extractScript, wheelFile, targetDir],
+      { label: `extract wheel dapper ${version}` },
+    );
   }
 
   private getVenvPythonPath(venvPath: string): string {
