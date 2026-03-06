@@ -583,3 +583,115 @@ async def test_dapper_hot_reload_success(handler, mock_server):
         "/tmp/unit_mod.py",
         {"invalidatePycache": False},
     )
+
+
+# ---------------------------------------------------------------------------
+# Command Routing Tests — verify handle_request() dispatches slash-notation
+# commands (e.g. "dapper/agentSnapshot") through the normalized path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_request_routes_slash_commands(handler, mock_server):
+    """handle_request must route 'dapper/agentSnapshot' to _handle_dapper_agent_snapshot."""
+    # Set up session_facade with a stopped thread (used by _gather_thread_state).
+    stopped_thread = types.SimpleNamespace(is_stopped=True, stop_reason="breakpoint")
+    mock_server.debugger._session_facade = types.SimpleNamespace(
+        iter_threads=lambda: [(1, stopped_thread)],
+    )
+    mock_server.debugger.get_stack_trace.return_value = {
+        "stackFrames": [
+            {
+                "id": 100,
+                "name": "test_fn",
+                "line": 10,
+                "column": 0,
+                "source": {"path": "/home/user/app.py", "name": "app.py"},
+            }
+        ],
+        "totalFrames": 1,
+    }
+    mock_server.debugger.get_scopes.return_value = []
+
+    request = {
+        "seq": 99,
+        "type": "request",
+        "command": "dapper/agentSnapshot",
+        "arguments": {},
+    }
+
+    result = await handler.handle_request(request)
+
+    assert result is not None
+    assert result["success"] is True
+    assert result["command"] == "dapper/agentSnapshot"
+    body = result["body"]
+    assert len(body["callStack"]) == 1
+    assert body["callStack"][0]["name"] == "test_fn"
+    assert body["stoppedThreads"] == [1]
+
+
+@pytest.mark.asyncio
+async def test_handle_request_routes_agent_eval(handler, mock_server):
+    """handle_request must route 'dapper/agentEval' to _handle_dapper_agent_eval."""
+    # Set up session_facade with a stopped thread (used by _resolve_frame_id_by_index).
+    stopped_thread = types.SimpleNamespace(is_stopped=True, stop_reason="breakpoint")
+    mock_server.debugger._session_facade = types.SimpleNamespace(
+        iter_threads=lambda: [(1, stopped_thread)],
+    )
+    mock_server.debugger.get_stack_trace.return_value = {
+        "stackFrames": [{"id": 100, "name": "f", "line": 1, "column": 0}],
+        "totalFrames": 1,
+    }
+    mock_server.debugger.evaluate.return_value = {
+        "result": "42",
+        "type": "int",
+        "variablesReference": 0,
+    }
+
+    request = {
+        "seq": 100,
+        "type": "request",
+        "command": "dapper/agentEval",
+        "arguments": {"expression": "1+1"},
+    }
+
+    result = await handler.handle_request(request)
+
+    assert result is not None
+    assert result["success"] is True
+    assert result["command"] == "dapper/agentEval"
+    assert result["body"]["results"][0]["result"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_handle_request_routes_hot_reload(handler, mock_server):
+    """handle_request must route 'dapper/hotReload' through the normalized path."""
+    mock_server.debugger._session_facade = types.SimpleNamespace(iter_threads=list)
+    mock_server.debugger.stopped_event = types.SimpleNamespace(is_set=lambda: True)
+    mock_server.debugger.hot_reload = AsyncCallRecorder(
+        return_value={
+            "reloadedModule": "mod",
+            "reloadedPath": "/tmp/mod.py",
+            "reboundFrames": 0,
+            "updatedFrameCodes": 0,
+            "patchedInstances": 0,
+            "warnings": [],
+        },
+    )
+
+    request = {
+        "seq": 101,
+        "type": "request",
+        "command": "dapper/hotReload",
+        "arguments": {
+            "source": {"path": "/tmp/mod.py"},
+            "options": {},
+        },
+    }
+
+    result = await handler.handle_request(request)
+
+    assert result is not None
+    assert result["success"] is True
+    assert result["command"] == "dapper/hotReload"

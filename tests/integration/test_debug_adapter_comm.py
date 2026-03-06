@@ -18,32 +18,26 @@ class DummyLock:
 
 
 def test_dap_mapping_provider_handle_variants():
-    # callable returning success dict
+    # callable handler — handle() returns None; handler is responsible for
+    # sending its own response via session.safe_send_response().
+    called = []
+
     def ok_handler(_args):
-        return {"success": True, "body": {}}
+        called.append("ok")
 
     mapping = {"ok": ok_handler}
     p = ipc_receiver.DapMappingProvider(mapping)
     assert p.supported_commands() == {"ok"}
     assert p.can_handle("ok")
-    res = p.handle("ok", {})
-    assert isinstance(res, dict)
-    assert res.get("success") is True
+    result = p.handle("ok", {})
+    assert result is None
+    assert called == ["ok"]
 
-    # callable returning None (no response)
-    def noreply_handler(_args):
-        return None
-
-    mapping = {"noreply": noreply_handler}
-    p = ipc_receiver.DapMappingProvider(mapping)
-    assert p.handle("noreply", {}) is None
-
-    # non-callable mapping entry
+    # non-callable mapping entry — returns None on direct call shape.
     mapping = {"bad": 123}
     p = ipc_receiver.DapMappingProvider(mapping)
-    out = p.handle("bad", {})
-    assert isinstance(out, dict)
-    assert out.get("success") is False
+    result = p.handle("bad", {})
+    assert result is None
 
 
 def test_receive_debug_commands_ipc():
@@ -140,12 +134,10 @@ def test_dap_mapping_provider_supported_commands_errors_and_missing():
     p = ipc_receiver.DapMappingProvider(BadMapping())
     assert p.supported_commands() == set()
 
-    # missing key (mapping.get returns None) should be treated as unknown
+    # missing key (can_handle returns False, handle is not called)
     mapping = {}
     p2 = ipc_receiver.DapMappingProvider(mapping)
-    out = p2.handle("not-there", {})
-    assert isinstance(out, dict)
-    assert out.get("success") is False
+    assert not p2.can_handle("not-there")
 
 
 def test_dap_mapping_provider_handle_raises():

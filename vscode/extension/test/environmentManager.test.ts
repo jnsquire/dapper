@@ -150,17 +150,17 @@ describe('EnvironmentManager helpers', () => {
       // Create a fake wheel file so the method can find it
       const wheelDir = path.join(tmpDir!, 'wheels');
       fs.mkdirSync(wheelDir, { recursive: true });
-      fs.writeFileSync(path.join(wheelDir, 'dapper-0.8.0-py3-none-any.whl'), '');
+      fs.writeFileSync(path.join(wheelDir, 'dapper-0.9.0-py3-none-any.whl'), '');
 
       const targetDir = path.join(tmpDir!, 'lib');
-      await (envMgr as any).installToTargetDir('/python', wheelDir, '0.8.0', targetDir);
+      await (envMgr as any).installToTargetDir('/python', wheelDir, '0.9.0', targetDir);
       expect(runCalls.length).toBe(1);
       const { cmd, args } = runCalls[0];
       // Should invoke Python directly, not pip or uv
       expect(cmd).toBe('/python');
       expect(args[0]).toBe('-c');
       expect(args[1]).toContain('zipfile');
-      expect(args[2]).toBe(path.join(wheelDir, 'dapper-0.8.0-py3-none-any.whl'));
+      expect(args[2]).toBe(path.join(wheelDir, 'dapper-0.9.0-py3-none-any.whl'));
       expect(args[3]).toBe(targetDir);
     });
 
@@ -169,7 +169,7 @@ describe('EnvironmentManager helpers', () => {
       fs.mkdirSync(wheelDir, { recursive: true });
       const targetDir = path.join(tmpDir!, 'lib');
 
-      await expect((envMgr as any).installToTargetDir('/python', wheelDir, '0.8.0', targetDir))
+      await expect((envMgr as any).installToTargetDir('/python', wheelDir, '0.9.0', targetDir))
         .rejects.toThrow('No wheel files matching');
       // No process should have been spawned
       expect(runCalls.length).toBe(0);

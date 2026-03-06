@@ -15,7 +15,6 @@ from typing import Any
 from typing import BinaryIO
 from typing import Callable
 from typing import cast
-from typing import overload
 
 from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import read_exact
@@ -59,11 +58,10 @@ def _send_error(
 
 
 class DapMappingProvider:
-    """Provider that wraps the legacy COMMAND_HANDLERS mapping.
+    """Provider that wraps the COMMAND_HANDLERS mapping.
 
-    Each handler is a callable taking (arguments) and optionally returning
-    a response dict with a "success" field. If no dict is returned, the
-    handler is assumed to have already sent messages.
+    Each handler is a callable taking (arguments) and is responsible for
+    sending its own response via ``session.safe_send_response()``.
     """
 
     def __init__(self, mapping):
@@ -78,26 +76,23 @@ class DapMappingProvider:
     def can_handle(self, command: str) -> bool:
         return command in self._mapping
 
-    @overload
-    def handle(self, session: str, command: dict[str, Any]) -> dict[str, Any] | None: ...
-
-    @overload
-    def handle(
-        self,
-        session: debug_shared.DebugSession,
-        command: str,
-        arguments: dict[str, Any],
-        full_command: dict[str, Any],
-    ) -> dict[str, Any] | None: ...
-
     def handle(
         self,
         session: str | debug_shared.DebugSession,
         command: str | dict[str, Any],
         arguments: dict[str, Any] | None = None,
         full_command: dict[str, Any] | None = None,
-    ) -> dict[str, Any] | None:
-        """Handle calls from both direct and provider-based dispatch paths."""
+    ) -> None:
+        """Dispatch to the registered handler.
+
+        Supports two calling shapes:
+          - ``handle(command_name, arguments_dict)``  — direct / test use
+          - ``handle(session, command, arguments, full_command)``  — via CommandDispatcher
+
+        Handlers are responsible for sending their own response via
+        ``session.safe_send_response()``.  If the command is not callable in the
+        mapping an error response is sent immediately.
+        """
         del full_command
 
         resolved_command: str
@@ -116,14 +111,18 @@ class DapMappingProvider:
             resolved_command = command
             payload = arguments
 
-        # The underlying mapping handlers only accept `arguments` so delegate
-        # and translate their return shape to the protocol expected by
-        # register_command_provider.
         func = self._mapping.get(resolved_command)
         if not callable(func):
-            return {"success": False, "message": f"Unknown command: {resolved_command}"}
-        result = func(payload)
-        return result if isinstance(result, dict) and ("success" in result) else None
+            # Non-callable entry in the mapping — send an error response
+            # immediately so the caller is not left waiting.
+            if isinstance(session, debug_shared.DebugSession):
+                session.safe_send_response(
+                    success=False,
+                    message=f"Unknown command: {resolved_command}",
+                )
+            return
+
+        func(payload)
 
 
 def _ensure_mapping_provider(session: debug_shared.DebugSession) -> None:

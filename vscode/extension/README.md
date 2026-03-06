@@ -104,6 +104,43 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 - `Dapper: Add Saved Debug Configuration to launch.json` - Save and insert a configuration.
 - `Dapper: Start Debugging with Saved Config` - Start debugging using a saved configuration.
 
+## For Agents
+
+The tool schema in `package.json` covers inputs. These notes cover the behavior agents usually need:
+
+- Omit `sessionId` to use the active Dapper session. Tools do not fall back to non-Dapper sessions.
+- Start with `dapper_state` in `snapshot` mode when paused. It returns stop reason, location, call stack,
+  locals, globals, and thread state.
+- `dapper_state` in `snapshot` mode can fall back to a cached placeholder snapshot. In that case `callStack`,
+  `locals`, and `globals` may be empty, and `_adapterError` may be present.
+- Use `dapper_execution` with `report: true` for next/stepIn/stepOut/continue when you want the action,
+  the next stop, and the resulting diff in one call.
+- `dapper_execution` returning `stopped: false` means the session did not stop again before the
+  timeout or terminated.
+- `dapper_execution` without `report: true` returns acknowledgement states like `running`, `pausing`,
+  and `terminating`; it does not wait for all later events.
+- `dapper_evaluate` and `dapper_variable` execute code in the debuggee and can have side
+  effects.
+- `dapper_evaluate` accepts `expression` or `expressions`, but always runs as a batch in the chosen
+  `frameIndex`.
+- `dapper_variable` is best for structured values; it expands dicts, lists, tuples, and
+  public object attributes to the requested depth.
+- `dapper_breakpoints` uses `list`, `add`, `remove`, and `clear`.
+- `dapper_breakpoints` with `action: add` updates VS Code and also sends a direct `setBreakpoints`
+  request so the adapter sees new breakpoints immediately.
+- `dapper_breakpoints` with `action: list` always reports the VS Code breakpoint list and, with an
+  active Dapper session, merges adapter verification state into `verified`.
+- `dapper_session_info` can list tracked sessions, but only the active one has a live
+  `DebugSession`; other tracked sessions may show `state: unknown` with minimal config.
+
+Recommended agent workflow while paused:
+
+1. Call `dapper_session_info` if you need to identify the session.
+2. Call `dapper_state` with `mode: snapshot` to understand the current stop.
+3. Use `dapper_variable` for structured objects and `dapper_evaluate` for focused scalar expressions.
+4. Use `dapper_execution` with `report: true` to advance execution while preserving checkpoint context.
+5. Use `dapper_breakpoints` with `action: list` and `action: add/remove/clear` when checking whether a breakpoint is present but not verified.
+
 ## Settings
 
 The extension exposes the following settings under `dapper`:

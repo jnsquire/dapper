@@ -23,6 +23,9 @@ from dapper.adapter.types import DAPResponse
 from dapper.config import DapperConfig
 from dapper.errors import ConfigurationError
 from dapper.errors import create_dap_response
+from dapper.protocol.requests import AgentEvalResponse
+from dapper.protocol.requests import AgentInspectResponse
+from dapper.protocol.requests import AgentSnapshotResponse
 from dapper.protocol.requests import AttachResponse
 from dapper.protocol.requests import BreakpointLocationsResponse
 from dapper.protocol.requests import CompletionsResponse
@@ -65,6 +68,9 @@ if TYPE_CHECKING:
     from dapper.adapter.server_core import DebugAdapterServer
     from dapper.adapter.types import DAPRequest
     from dapper.protocol.capabilities import ExceptionFilterOptions
+    from dapper.protocol.requests import AgentEvalRequest
+    from dapper.protocol.requests import AgentInspectRequest
+    from dapper.protocol.requests import AgentSnapshotRequest
     from dapper.protocol.requests import AttachRequest
     from dapper.protocol.requests import CompletionItem
     from dapper.protocol.requests import CompletionsRequest
@@ -108,6 +114,7 @@ if TYPE_CHECKING:
     from dapper.protocol.requests import TerminateRequest
     from dapper.protocol.requests import ThreadsRequest
     from dapper.protocol.requests import VariablesRequest
+    from dapper.protocol.structures import StackFrame
 
 # Re-export for type checking - these are used in method signatures/bodies
 __all__ = ["RequestHandler"]
@@ -128,11 +135,14 @@ class RequestHandler:
     async def handle_request(self, request: DAPRequest) -> DAPResponse | None:
         """Handle a DAP request and return a response."""
         command = request["command"]
-        handler_method = getattr(self, f"_handle_{command}", None)
+        # Normalize command name: replace '/' (used in custom commands like
+        # "dapper/agentSnapshot") with '_' so it matches handler method names.
+        normalized = command.replace("/", "_")
+        handler_method = getattr(self, f"_handle_{normalized}", None)
         if handler_method is None:
             # DAP command names are camelCase (e.g. "configurationDone"); convert
             # to snake_case so they match the handler method naming convention.
-            snake = re.sub(r"(?<!^)([A-Z])", r"_\1", command).lower()
+            snake = re.sub(r"(?<!^)([A-Z])", r"_\1", normalized).lower()
             handler_method = getattr(self, f"_handle_{snake}", self._handle_unknown)
         return await handler_method(request)
 
@@ -538,6 +548,353 @@ class RequestHandler:
         if not isinstance(raw_arguments, dict):
             return None
         return raw_arguments
+
+    # ------------------------------------------------------------------
+    # Agent-oriented custom requests
+    # ------------------------------------------------------------------
+
+    _MAX_AGENT_EXPRESSIONS = 50
+
+    async def _handle_dapper_agent_snapshot(
+        self,
+        request: AgentSnapshotRequest,
+    ) -> AgentSnapshotResponse:
+        """Handle 'dapper/agentSnapshot': return compact debug state for LLM agents.
+
+        Assembles threads, stack frames, and top-frame variables into a single
+        response so agents avoid multiple DAP round-trips.
+        """
+        args = request.get("arguments") or {}
+        target_thread_id: int | None = args.get("threadId")
+        depth = min(args.get("depth", 5), 100)
+        max_vars = min(args.get("maxVariables", 50), 200)
+        just_my_code = args.get("justMyCode", True)
+
+        stopped_ids, running_ids, stop_reasons = self._gather_thread_state()
+
+        if not stopped_ids:
+            return self._make_response(
+                request,
+                "dapper/agentSnapshot",
+                AgentSnapshotResponse,
+                success=False,
+                message="No stopped threads",
+            )
+
+        tid = target_thread_id if target_thread_id in stopped_ids else stopped_ids[0]
+        stop_reason = stop_reasons.get(tid, "unknown")
+
+        raw_frames = await self._fetch_agent_frames(tid, depth, just_my_code)
+        call_stack, top_locals, top_globals = await self._build_agent_call_stack(
+            raw_frames,
+            depth,
+            max_vars,
+        )
+
+        location = (
+            f"{call_stack[0]['file']}:{call_stack[0]['line']} in {call_stack[0]['name']}"
+            if call_stack
+            else "<unknown>"
+        )
+
+        return self._make_response(
+            request,
+            "dapper/agentSnapshot",
+            AgentSnapshotResponse,
+            body={
+                "checkpoint": 0,
+                "stopReason": stop_reason,
+                "location": location,
+                "callStack": call_stack,
+                "locals": top_locals,
+                "globals": top_globals,
+                "stoppedThreads": stopped_ids,
+                "runningThreads": running_ids,
+            },
+        )
+
+    def _gather_thread_state(
+        self,
+    ) -> tuple[list[int], list[int], dict[int, str]]:
+        """Return (stopped_ids, running_ids, stop_reasons) from session state.
+
+        Uses session_facade.iter_threads() with the thread.is_stopped flag —
+        the same proven approach used by other handlers (e.g. hot-reload).
+        """
+        debugger = self.server.debugger
+        session_facade = getattr(debugger, "_session_facade", None)
+        if session_facade is None or not callable(getattr(session_facade, "iter_threads", None)):
+            return [], [], {}
+
+        stopped: list[int] = []
+        running: list[int] = []
+        stop_reasons: dict[int, str] = {}
+
+        for tid, thread in session_facade.iter_threads():
+            if getattr(thread, "is_stopped", False):
+                stopped.append(tid)
+                stop_reasons[tid] = getattr(thread, "stop_reason", "breakpoint") or "breakpoint"
+            else:
+                running.append(tid)
+
+        return stopped, running, stop_reasons
+
+    async def _fetch_agent_frames(
+        self,
+        tid: int,
+        depth: int,
+        just_my_code: bool,
+    ) -> list[StackFrame]:
+        """Fetch stack frames for a thread, optionally filtering library frames."""
+        try:
+            stack_result = await self.server.debugger.get_stack_trace(tid, 0, depth)
+            raw = stack_result.get("stackFrames", [])
+        except Exception:
+            raw = []
+        if just_my_code:
+            raw = [f for f in raw if not self._is_library_frame(f)]
+        return raw
+
+    async def _build_agent_call_stack(
+        self,
+        raw_frames: list[StackFrame],
+        depth: int,
+        max_vars: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, str]]:
+        """Build the compact call-stack list and top-frame variable dicts."""
+        call_stack: list[dict[str, Any]] = []
+        top_locals: dict[str, str] = {}
+        top_globals: dict[str, str] = {}
+
+        for i, frame in enumerate(raw_frames[:depth]):
+            source = frame.get("source") or {}
+            entry: dict[str, Any] = {
+                "name": frame["name"],
+                "file": source.get("path", source.get("name", "<unknown>")),
+                "line": frame["line"],
+            }
+            if i == 0:
+                locs, globs = await self._collect_frame_variables(frame, max_vars)
+                top_locals, top_globals = locs, globs
+                if locs:
+                    entry["locals"] = locs
+            call_stack.append(entry)
+
+        return call_stack, top_locals, top_globals
+
+    async def _collect_frame_variables(
+        self,
+        frame: StackFrame,
+        max_vars: int,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """Collect local and global variable dictionaries for a stack frame."""
+        locs: dict[str, str] = {}
+        globs: dict[str, str] = {}
+        frame_id = frame["id"]
+        try:
+            scopes = await self.server.debugger.get_scopes(frame_id)
+            for scope in scopes:
+                scope_name = scope.get("name", "")
+                var_ref = scope.get("variablesReference", 0)
+                if not var_ref:
+                    continue
+                variables = await self.server.debugger.get_variables(var_ref, "", 0, max_vars)
+                var_dict = {v.get("name", "?"): v.get("value", "?") for v in variables[:max_vars]}
+                if "Local" in scope_name:
+                    locs = var_dict
+                elif "Global" in scope_name:
+                    globs = var_dict
+        except Exception:
+            pass
+        return locs, globs
+
+    async def _handle_dapper_agent_eval(
+        self,
+        request: AgentEvalRequest,
+    ) -> AgentEvalResponse:
+        """Handle 'dapper/agentEval': batch-evaluate expressions for agents.
+
+        Evaluates each expression using the existing evaluate infrastructure
+        and returns compact results.
+        """
+        args = request["arguments"]
+        expressions: list[str] = args.get("expressions", [])
+        single = args.get("expression")
+        if single and not expressions:
+            expressions = [single]
+        frame_index = args.get("frameIndex", 0)
+
+        if not expressions:
+            return self._make_response(
+                request,
+                "dapper/agentEval",
+                AgentEvalResponse,
+                success=False,
+                message="No expressions provided",
+            )
+
+        if len(expressions) > self._MAX_AGENT_EXPRESSIONS:
+            return self._make_response(
+                request,
+                "dapper/agentEval",
+                AgentEvalResponse,
+                success=False,
+                message=f"Too many expressions (max {self._MAX_AGENT_EXPRESSIONS})",
+            )
+
+        frame_id = await self._resolve_frame_id_by_index(frame_index)
+        results = await self._evaluate_expressions(expressions, frame_id)
+
+        return self._make_response(
+            request,
+            "dapper/agentEval",
+            AgentEvalResponse,
+            body={"results": results},
+        )
+
+    async def _evaluate_expressions(
+        self,
+        expressions: list[str],
+        frame_id: int | None,
+    ) -> list[dict[str, Any]]:
+        """Evaluate a batch of expressions, collecting results or errors."""
+        return [await self._evaluate_single(expr, frame_id) for expr in expressions]
+
+    async def _evaluate_single(
+        self,
+        expr: str,
+        frame_id: int | None,
+    ) -> dict[str, Any]:
+        """Evaluate a single expression, returning result or error dict."""
+        try:
+            eval_result = await self.server.debugger.evaluate(expr, frame_id, "repl")
+            return {
+                "expression": expr,
+                "result": eval_result.get("result", ""),
+                "type": eval_result.get("type", ""),
+            }
+        except Exception as e:
+            return {"expression": expr, "error": str(e)}
+
+    async def _handle_dapper_agent_inspect(
+        self,
+        request: AgentInspectRequest,
+    ) -> AgentInspectResponse:
+        """Handle 'dapper/agentInspect': deep-inspect a variable for agents.
+
+        Evaluates the expression, then recursively expands children up to the
+        requested depth and item limit.
+        """
+        args = request["arguments"]
+        expression = args.get("expression", "")
+        max_depth = min(args.get("depth", 2), 5)
+        max_items = min(args.get("maxItems", 20), 100)
+        frame_index = args.get("frameIndex", 0)
+
+        if not expression:
+            return self._make_response(
+                request,
+                "dapper/agentInspect",
+                AgentInspectResponse,
+                success=False,
+                message="No expression provided",
+            )
+
+        frame_id = await self._resolve_frame_id_by_index(frame_index)
+
+        try:
+            eval_result = await self.server.debugger.evaluate(expression, frame_id, "repl")
+        except Exception as e:
+            return self._make_response(
+                request,
+                "dapper/agentInspect",
+                AgentInspectResponse,
+                success=False,
+                message=f"Evaluation failed: {e!s}",
+            )
+
+        root: dict[str, Any] = {
+            "name": expression,
+            "type": eval_result.get("type", ""),
+            "value": eval_result.get("result", ""),
+        }
+
+        var_ref = eval_result.get("variablesReference", 0)
+        if var_ref and max_depth > 0:
+            children = await self._expand_variable_tree(var_ref, max_depth - 1, max_items)
+            if children:
+                root["children"] = children
+
+        return self._make_response(
+            request,
+            "dapper/agentInspect",
+            AgentInspectResponse,
+            body={"root": root},
+        )
+
+    async def _expand_variable_tree(
+        self,
+        var_ref: int,
+        remaining_depth: int,
+        max_items: int,
+    ) -> list[dict[str, Any]]:
+        """Recursively expand a variable reference into a tree of nodes."""
+        try:
+            variables = await self.server.debugger.get_variables(var_ref, "", 0, max_items)
+        except Exception:
+            return []
+
+        nodes: list[dict[str, Any]] = []
+        for var in variables[:max_items]:
+            node: dict[str, Any] = {
+                "name": var.get("name", "?"),
+                "type": var.get("type", ""),
+                "value": var.get("value", ""),
+            }
+            child_ref = var.get("variablesReference", 0)
+            if child_ref and remaining_depth > 0:
+                children = await self._expand_variable_tree(
+                    child_ref, remaining_depth - 1, max_items
+                )
+                if children:
+                    node["children"] = children
+            nodes.append(node)
+        return nodes
+
+    async def _resolve_frame_id_by_index(self, frame_index: int) -> int | None:
+        """Resolve a stack frame ID from a zero-based frame index.
+
+        Finds the first stopped thread and returns the frame ID at the
+        given index in its stack trace.
+        """
+        stopped_ids, _, _ = self._gather_thread_state()
+        if not stopped_ids:
+            return None
+        tid = stopped_ids[0]
+        try:
+            stack_result = await self.server.debugger.get_stack_trace(tid, 0, frame_index + 1)
+            frames = stack_result.get("stackFrames", [])
+            if frames and frame_index < len(frames):
+                return frames[frame_index]["id"]
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _is_library_frame(frame: StackFrame) -> bool:
+        """Heuristic: return True if the frame appears to be from a library."""
+        source = frame.get("source") or {}
+        path = source.get("path", "")
+        if not path:
+            return True
+        # Standard library / site-packages heuristic
+        lower = path.lower()
+        return (
+            "site-packages" in lower
+            or "/lib/python" in lower
+            or "\\lib\\python" in lower
+            or path.startswith("<")
+        )
 
     async def _handle_restart(self, request: RestartRequest) -> RestartResponse:
         """Handle restart request.

@@ -476,3 +476,179 @@ class HotReloadResponse(TypedDict):
     command: Literal["dapper/hotReload"]
     message: NotRequired[str]
     body: NotRequired[HotReloadResponseBody]
+
+
+# ---------------------------------------------------------------------------
+# Agent Snapshot (custom extension: dapper/agentSnapshot)
+# ---------------------------------------------------------------------------
+
+
+class AgentSnapshotArguments(TypedDict, total=False):
+    """Arguments for the 'dapper/agentSnapshot' request."""
+
+    threadId: int
+    # Thread to snapshot. Defaults to the first stopped thread.
+
+    depth: int
+    # Maximum number of stack frames to include. Default: 5.
+
+    maxVariables: int
+    # Maximum number of variables per scope. Default: 50.
+
+    justMyCode: bool
+    # Filter stack frames to user code only. Default: True.
+
+
+class AgentSnapshotRequest(TypedDict):
+    """Request a compact debug state snapshot optimised for LLM consumption."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["dapper/agentSnapshot"]
+    arguments: NotRequired[AgentSnapshotArguments]
+
+
+class AgentStackFrameSummary(TypedDict, total=False):
+    """Compact representation of a single stack frame."""
+
+    name: str
+    file: str
+    line: int
+    locals: dict[str, str]
+    # Variable name → repr value string, truncated for context efficiency.
+
+
+class AgentSnapshotResponseBody(TypedDict, total=False):
+    """Body of a successful 'dapper/agentSnapshot' response."""
+
+    checkpoint: int
+    stopReason: str
+    location: str
+    callStack: list[AgentStackFrameSummary]
+    locals: dict[str, str]
+    globals: dict[str, str]
+    stoppedThreads: list[int]
+    runningThreads: list[int]
+
+
+class AgentSnapshotResponse(TypedDict):
+    """Response to the 'dapper/agentSnapshot' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["dapper/agentSnapshot"]
+    message: NotRequired[str]
+    body: NotRequired[AgentSnapshotResponseBody]
+
+
+# ---------------------------------------------------------------------------
+# Agent Evaluate (custom extension: dapper/agentEval)
+# ---------------------------------------------------------------------------
+
+
+class AgentEvalArguments(TypedDict, total=False):
+    """Arguments for the 'dapper/agentEval' request."""
+
+    expression: str
+    # A single expression to evaluate.
+
+    expressions: list[str]
+    # One or more expressions to evaluate.
+
+    frameIndex: int
+    # Stack frame index (0 = topmost). Default: 0.
+
+
+class AgentEvalRequest(TypedDict):
+    """Batch-evaluate expressions, returning compact results."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["dapper/agentEval"]
+    arguments: AgentEvalArguments
+
+
+class AgentEvalResult(TypedDict, total=False):
+    """Result of evaluating a single expression."""
+
+    expression: str
+    result: str
+    type: str
+    error: str
+
+
+class AgentEvalResponseBody(TypedDict):
+    """Body of a successful 'dapper/agentEval' response."""
+
+    results: list[AgentEvalResult]
+
+
+class AgentEvalResponse(TypedDict):
+    """Response to the 'dapper/agentEval' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["dapper/agentEval"]
+    message: NotRequired[str]
+    body: NotRequired[AgentEvalResponseBody]
+
+
+# ---------------------------------------------------------------------------
+# Agent Inspect (custom extension: dapper/agentInspect)
+# ---------------------------------------------------------------------------
+
+
+class AgentInspectArguments(TypedDict):
+    """Arguments for the 'dapper/agentInspect' request."""
+
+    expression: str
+    # Expression to evaluate and deeply inspect.
+
+    depth: NotRequired[int]
+    # Max recursion depth for child expansion. Default: 2.
+
+    maxItems: NotRequired[int]
+    # Max items per collection/dict. Default: 20.
+
+    frameIndex: NotRequired[int]
+    # Stack frame index (0 = topmost). Default: 0.
+
+
+class AgentInspectRequest(TypedDict):
+    """Deep-inspect a variable or expression result."""
+
+    seq: int
+    type: Literal["request"]
+    command: Literal["dapper/agentInspect"]
+    arguments: AgentInspectArguments
+
+
+class AgentInspectNode(TypedDict, total=False):
+    """Recursive tree node for variable inspection."""
+
+    name: str
+    type: str
+    value: str
+    children: list[AgentInspectNode]
+
+
+class AgentInspectResponseBody(TypedDict, total=False):
+    """Body of a successful 'dapper/agentInspect' response."""
+
+    root: AgentInspectNode
+
+
+class AgentInspectResponse(TypedDict):
+    """Response to the 'dapper/agentInspect' request."""
+
+    seq: int
+    type: Literal["response"]
+    request_seq: int
+    success: bool
+    command: Literal["dapper/agentInspect"]
+    message: NotRequired[str]
+    body: NotRequired[AgentInspectResponseBody]

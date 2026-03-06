@@ -2,7 +2,7 @@
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
   "description": "Python debugging support with style",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
@@ -16,7 +16,13 @@
   ],
   "activationEvents": [
     "onDebug",
-    "onCommand:dapper.showLogs"
+    "onCommand:dapper.showLogs",
+    "onLanguageModelTool:dapper_state",
+    "onLanguageModelTool:dapper_execution",
+    "onLanguageModelTool:dapper_evaluate",
+    "onLanguageModelTool:dapper_breakpoints",
+    "onLanguageModelTool:dapper_variable",
+    "onLanguageModelTool:dapper_session_info"
   ],
   "type": "module",
   "readme": "README.md",
@@ -24,6 +30,195 @@
   "icon": "images/icon.png",
   "main": "./out/extension.js",
   "contributes": {
+    "languageModelTools": [
+      {
+        "name": "dapper_state",
+        "displayName": "Dapper: Debug State",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperState",
+        "userDescription": "Get either a snapshot of the current Python debug state or a diff since a checkpoint.",
+        "modelDescription": "Read Python debugger state in one of two modes: `snapshot` for the current stop reason, call stack, locals, globals, and thread state; or `diff` for changes since a checkpoint. Use this as the main read-only state tool for paused Python code.",
+        "inputSchema": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["snapshot", "diff"],
+              "description": "Read mode. Use `snapshot` for current state or `diff` for changes since a checkpoint."
+            },
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to use the active session."
+            },
+            "threadId": {
+              "type": "number",
+              "description": "Thread to inspect or refresh before reading state. Omit to use the first stopped thread."
+            },
+            "depth": {
+              "type": "number",
+              "description": "Max stack frames to include when `mode` is `snapshot` (default: 5)."
+            },
+            "sinceCheckpoint": {
+              "type": "number",
+              "description": "Checkpoint number to diff from when `mode` is `diff`."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_execution",
+        "displayName": "Dapper: Execute Debug Action",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperExecution",
+        "userDescription": "Control Python debug execution, optionally waiting for the next stop and returning a report.",
+        "modelDescription": "Run a Python debug action such as next, stepIn, stepOut, continue, pause, restart, or terminate. Set `report` to true for next/stepIn/stepOut/continue to wait for the next stop and return a snapshot plus diff.",
+        "inputSchema": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to use the active session."
+            },
+            "action": {
+              "type": "string",
+              "enum": ["next", "stepIn", "stepOut", "continue", "pause", "restart", "terminate"],
+              "description": "The debug action to perform."
+            },
+            "threadId": {
+              "type": "number",
+              "description": "Thread to target for thread-scoped actions. Omit to use the first stopped thread when applicable."
+            },
+            "report": {
+              "type": "boolean",
+              "description": "If true for next/stepIn/stepOut/continue, wait for the next stop and return a snapshot plus diff."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_evaluate",
+        "displayName": "Dapper: Evaluate Expressions",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperEval",
+        "userDescription": "Evaluate Python expressions in the current Python debug frame.",
+        "modelDescription": "Evaluate one or more Python expressions in the context of the current Python debug frame. Returns the result, type, and any errors. WARNING: expressions execute in the Python debuggee process. You may pass a single expression as a string via 'expression', or multiple via 'expressions' array.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to use the active session."
+            },
+            "expression": {
+              "type": "string",
+              "description": "A single Python expression to evaluate."
+            },
+            "expressions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Multiple Python expressions to evaluate."
+            },
+            "frameIndex": {
+              "type": "number",
+              "description": "Stack frame index (0 = topmost, default: 0)."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_breakpoints",
+        "displayName": "Dapper: Breakpoints",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperBreakpoints",
+        "userDescription": "List or manage breakpoints for Python debugging, including adapter verification when available.",
+        "modelDescription": "List Python debug breakpoints or add, remove, or clear them. `action=list` returns the current VS Code breakpoint set and merges adapter verification into `verified` when a Dapper Python debug session is active.",
+        "inputSchema": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to use the active Dapper session when available."
+            },
+            "action": {
+              "type": "string",
+              "enum": ["list", "add", "remove", "clear"],
+              "description": "Use `list` to inspect breakpoints or `add`/`remove`/`clear` to modify them."
+            },
+            "file": {
+              "type": "string",
+              "description": "Absolute or workspace-relative file path. Required for add/remove/clear, optional as a filter for list."
+            },
+            "lines": {
+              "type": "array",
+              "items": { "type": "number" },
+              "description": "Line numbers for add/remove actions."
+            },
+            "condition": {
+              "type": "string",
+              "description": "Conditional expression for add."
+            },
+            "logMessage": {
+              "type": "string",
+              "description": "Log message template for add. Use {expr} for interpolation."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_variable",
+        "displayName": "Dapper: Variable",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperVariable",
+        "userDescription": "Inspect a Python variable or expression result, expanding children recursively.",
+        "modelDescription": "Inspect a Python variable or expression result from the active debug session, expanding children recursively up to a specified depth.",
+        "inputSchema": {
+          "type": "object",
+          "required": ["expression"],
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to use the active session."
+            },
+            "expression": {
+              "type": "string",
+              "description": "Python expression to evaluate and inspect."
+            },
+            "depth": {
+              "type": "number",
+              "description": "Max recursion depth for child expansion (default: 2, max: 5)."
+            },
+            "maxItems": {
+              "type": "number",
+              "description": "Max items per collection (default: 20)."
+            },
+            "frameIndex": {
+              "type": "number",
+              "description": "Stack frame index (0 = topmost)."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_session_info",
+        "displayName": "Dapper: Session Info",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperSessionInfo",
+        "userDescription": "Get metadata about active Dapper Python debug sessions.",
+        "modelDescription": "Get metadata about the active Dapper Python debug session(s): program being debugged, session state, breakpoint summary, and available capabilities.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Omit to list all active Dapper sessions."
+            }
+          }
+        }
+      }
+    ],
     "configuration": {
       "title": "Dapper Debugger",
       "properties": {

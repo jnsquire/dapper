@@ -21,8 +21,6 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
-from typing import Literal
-from typing import TypedDict
 from typing import cast
 
 if TYPE_CHECKING:
@@ -807,52 +805,301 @@ def _cmd_modules(arguments: dict[str, Any] | None = None) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# TypedDicts for the hotReload command handler response
-# ---------------------------------------------------------------------------
-
-
-class _HotReloadHandlerSuccess(TypedDict):
-    """Response shape returned by the hotReload handler on success."""
-
-    success: Literal[True]
-    body: dict[str, Any]
-
-
-class _HotReloadHandlerError(TypedDict):
-    """Response shape returned by the hotReload handler on failure."""
-
-    success: Literal[False]
-    message: str
-
-
 @command_handler("hotReload")
-def _cmd_hot_reload(
-    arguments: dict[str, Any] | None,
-) -> _HotReloadHandlerSuccess | _HotReloadHandlerError:
+def _cmd_hot_reload(arguments: dict[str, Any] | None) -> None:
     """Handle the 'hotReload' command in the debuggee process.
 
     Performs a live reload of the Python source file identified by
-    ``arguments["path"]``, rebinds live stack frames to the new code objects,
-    and returns a response dict that ``DapMappingProvider`` will forward back
-    to the adapter via the IPC channel.
-
-    The return value must have a ``"success"`` key so that
-    :class:`~dapper.shared.debug_shared.CommandDispatcher` recognises it as a
-    structured response and echoes the command ``id`` back to the adapter.
+    ``arguments["path"]`` and rebinds live stack frames to the new code objects.
     """
     # Deferred import: reload_helpers is a shared module that must not be
     # loaded at command_handlers import time to avoid slowing down startup.
     from dapper.shared import reload_helpers  # noqa: PLC0415
 
+    session = _active_session()
     args: dict[str, Any] = arguments or {}
     path: str = args.get("path", "")
     options: HotReloadOptions | None = cast("HotReloadOptions | None", args.get("options"))
 
     try:
         result = reload_helpers.perform_reload(path, options)
-        # Convert PerformReloadResult (TypedDict) to a plain dict so the
-        # protocol layer can safely merge it into the IPC response envelope.
-        return _HotReloadHandlerSuccess(success=True, body=dict(result))
+        session.safe_send_response(success=True, body=dict(result))
     except Exception as exc:
-        return _HotReloadHandlerError(success=False, message=str(exc))
+        session.safe_send_response(success=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Agent snapshot / eval / inspect command handlers
+# ---------------------------------------------------------------------------
+
+_SKIP_GLOBALS: frozenset[str] = frozenset(
+    {
+        "__builtins__",
+        "__doc__",
+        "__loader__",
+        "__name__",
+        "__package__",
+        "__spec__",
+        "__cached__",
+        "__file__",
+    }
+)
+
+_MAX_VAR_REPR = 200
+_MAX_AGENT_EXPRESSIONS = 20
+
+
+def _safe_truncated_repr(value: Any, limit: int = _MAX_VAR_REPR) -> str:
+    """Return a bounded repr for arbitrary values without raising."""
+    try:
+        return repr(value)[:limit]
+    except Exception:
+        return "<error>"
+
+
+def _extract_vars(mapping: dict[str, Any], max_count: int) -> dict[str, str]:
+    """Convert a name→value mapping to a name→repr(value) dict, bounded in size."""
+    result: dict[str, str] = {}
+    for k, v in list(mapping.items())[:max_count]:
+        result[k] = _safe_truncated_repr(v)
+    return result
+
+
+def _is_library_frame_dict(frame_dict: dict[str, Any]) -> bool:
+    """Return True if the frame dict looks like a library/stdlib frame."""
+    source = frame_dict.get("source") or {}
+    path = source.get("path", "")
+    if not path:
+        return True
+    lower = path.lower()
+    return (
+        "site-packages" in lower
+        or "/lib/python" in lower
+        or "\\lib\\python" in lower
+        or path.startswith("<")
+    )
+
+
+def _get_frame_by_index(dbg: Any, frame_index: int) -> Any:
+    """Return the actual Python frame at *frame_index* from the first stopped thread."""
+    tracker = dbg.thread_tracker
+    stopped_ids = sorted(tracker.stopped_thread_ids)
+    if not stopped_ids:
+        return None
+    tid = stopped_ids[0]
+    frames = list(tracker.frames_by_thread.get(tid, []))
+    if frame_index < len(frames):
+        frame_id = frames[frame_index].get("id")
+        return tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+    return None
+
+
+def _evaluate_agent_expression(expr: str, frame: Any) -> dict[str, Any]:
+    """Evaluate one agent expression and normalize success/error payloads."""
+    try:
+        value = evaluate_with_policy(expr, frame) if frame is not None else eval(expr)
+        return {
+            "expression": expr,
+            "result": _safe_truncated_repr(value, 500),
+            "type": type(value).__name__,
+        }
+    except Exception as exc:
+        return {"expression": expr, "error": str(exc)}
+
+
+@command_handler("dapper/agentSnapshot")
+def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
+    """Return a compact debug snapshot for LLM agents (threads, callstack, locals)."""
+    args = arguments or {}
+    target_tid: int | None = args.get("threadId")
+    depth = min(int(args.get("depth", 5)), 100)
+    max_vars = min(int(args.get("maxVariables", 50)), 200)
+    just_my_code = args.get("justMyCode", True)
+
+    session = _active_session()
+    logger.debug("[id=%s] dapper/agentSnapshot: entered, target_tid=%s depth=%s", session.request_id, target_tid, depth)
+    dbg = session.debugger
+    if dbg is None:
+        logger.warning("[id=%s] dapper/agentSnapshot: no active debugger", session.request_id)
+        session.safe_send_response(success=False, message="No active debugger")
+        return
+
+    tracker = dbg.thread_tracker
+    stopped_ids: list[int] = sorted(tracker.stopped_thread_ids)
+    running_ids: list[int] = [tid for tid in tracker.threads if tid not in tracker.stopped_thread_ids]
+    logger.debug("[id=%s] dapper/agentSnapshot: stopped_ids=%s running_ids=%s", session.request_id, stopped_ids, running_ids)
+
+    if not stopped_ids:
+        logger.warning("[id=%s] dapper/agentSnapshot: no stopped threads", session.request_id)
+        session.safe_send_response(success=False, message="No stopped threads")
+        return
+
+    tid = target_tid if target_tid in stopped_ids else stopped_ids[0]
+
+    raw_frames: list[dict[str, Any]] = list(tracker.frames_by_thread.get(tid, []))
+    logger.debug("[id=%s] dapper/agentSnapshot: tid=%s raw_frames=%d", session.request_id, tid, len(raw_frames))
+    if just_my_code:
+        raw_frames = [f for f in raw_frames if not _is_library_frame_dict(f)]
+    raw_frames = raw_frames[:depth]
+
+    call_stack: list[dict[str, Any]] = []
+    top_locals: dict[str, str] = {}
+    top_globals: dict[str, str] = {}
+
+    for i, frame_dict in enumerate(raw_frames):
+        source = frame_dict.get("source") or {}
+        entry: dict[str, Any] = {
+            "name": frame_dict.get("name", "<unknown>"),
+            "file": source.get("path") or source.get("name") or "<unknown>",
+            "line": frame_dict.get("line", 0),
+        }
+        if i == 0:
+            frame_id = frame_dict.get("id")
+            actual_frame = (
+                tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
+            )
+            logger.debug("[id=%s] dapper/agentSnapshot: top frame_id=%s actual_frame=%s", session.request_id, frame_id, actual_frame is not None)
+            if actual_frame is not None:
+                top_locals = _extract_vars(actual_frame.f_locals, max_vars)
+                top_globals = _extract_vars(
+                    {
+                        k: v
+                        for k, v in actual_frame.f_globals.items()
+                        if not k.startswith("_") and k not in _SKIP_GLOBALS
+                    },
+                    max_vars,
+                )
+                if top_locals:
+                    entry["locals"] = top_locals
+        call_stack.append(entry)
+
+    location = (
+        f"{call_stack[0]['file']}:{call_stack[0]['line']} in {call_stack[0]['name']}"
+        if call_stack
+        else "<unknown>"
+    )
+
+    stop_reason = "breakpoint"
+    exc_handler = getattr(dbg, "exception_handler", None)
+    if exc_handler is not None:
+        exc_info = getattr(exc_handler, "exception_info_by_thread", {})
+        if tid in exc_info:
+            stop_reason = "exception"
+
+    logger.debug("[id=%s] dapper/agentSnapshot: sending response, callStack=%d locals=%d stop_reason=%s", session.request_id, len(call_stack), len(top_locals), stop_reason)
+    session.safe_send_response(
+        success=True,
+        body={
+            "checkpoint": 0,
+            "stopReason": stop_reason,
+            "location": location,
+            "callStack": call_stack,
+            "locals": top_locals,
+            "globals": top_globals,
+            "stoppedThreads": stopped_ids,
+            "runningThreads": running_ids,
+        },
+    )
+
+
+@command_handler("dapper/agentEval")
+def _cmd_agent_eval(arguments: dict[str, Any] | None) -> None:
+    """Batch-evaluate expressions for LLM agents."""
+    session = _active_session()
+    args = arguments or {}
+    expressions: list[str] = list(args.get("expressions", []))
+    single: str | None = args.get("expression")
+    if single and not expressions:
+        expressions = [single]
+    frame_index = int(args.get("frameIndex", 0))
+
+    logger.debug("[id=%s] dapper/agentEval: entered, expressions=%d frame_index=%s", session.request_id, len(expressions), frame_index)
+
+    if not expressions:
+        session.safe_send_response(success=False, message="No expressions provided")
+        return
+    if len(expressions) > _MAX_AGENT_EXPRESSIONS:
+        session.safe_send_response(success=False, message=f"Too many expressions (max {_MAX_AGENT_EXPRESSIONS})")
+        return
+
+    dbg = session.debugger
+    if dbg is None:
+        logger.warning("[id=%s] dapper/agentEval: no active debugger", session.request_id)
+        session.safe_send_response(success=False, message="No active debugger")
+        return
+
+    frame = _get_frame_by_index(dbg, frame_index)
+    logger.debug("[id=%s] dapper/agentEval: frame=%s", session.request_id, frame)
+
+    results = [_evaluate_agent_expression(expr, frame) for expr in expressions]
+
+    logger.debug("[id=%s] dapper/agentEval: sending response, %d results", session.request_id, len(results))
+    session.safe_send_response(success=True, body={"results": results})
+
+
+@command_handler("dapper/agentInspect")
+def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
+    """Deep-inspect a variable/expression for LLM agents."""
+    session = _active_session()
+    args = arguments or {}
+    expression: str = args.get("expression", "")
+    max_depth = min(int(args.get("depth", 2)), 5)
+    max_items = min(int(args.get("maxItems", 20)), 100)
+    frame_index = int(args.get("frameIndex", 0))
+
+    logger.debug("[id=%s] dapper/agentInspect: entered, expression=%r frame_index=%s", session.request_id, expression, frame_index)
+
+    if not expression:
+        session.safe_send_response(success=False, message="No expression provided")
+        return
+
+    dbg = session.debugger
+    if dbg is None:
+        logger.warning("[id=%s] dapper/agentInspect: no active debugger", session.request_id)
+        session.safe_send_response(success=False, message="No active debugger")
+        return
+
+    frame = _get_frame_by_index(dbg, frame_index)
+
+    try:
+        value = evaluate_with_policy(expression, frame) if frame is not None else eval(expression)
+    except Exception as exc:
+        logger.warning("[id=%s] dapper/agentInspect: evaluation failed: %s", session.request_id, exc)
+        session.safe_send_response(success=False, message=f"Evaluation failed: {exc!s}")
+        return
+
+    def _expand(val: Any, remaining: int) -> dict[str, Any]:
+        node: dict[str, Any] = {
+            "type": type(val).__name__,
+            "value": repr(val)[:500],
+        }
+        if remaining > 0:
+            children: list[dict[str, Any]] = []
+            try:
+                if isinstance(val, dict):
+                    for k, v in list(val.items())[:max_items]:
+                        child = _expand(v, remaining - 1)
+                        child["name"] = repr(k)
+                        children.append(child)
+                elif isinstance(val, (list, tuple)):
+                    for idx, item in enumerate(val[:max_items]):
+                        child = _expand(item, remaining - 1)
+                        child["name"] = str(idx)
+                        children.append(child)
+                elif hasattr(val, "__dict__"):
+                    for k, v in list(val.__dict__.items())[:max_items]:
+                        if not k.startswith("_"):
+                            child = _expand(v, remaining - 1)
+                            child["name"] = k
+                            children.append(child)
+            except Exception:
+                pass
+            if children:
+                node["children"] = children
+        return node
+
+    root = _expand(value, max_depth)
+    root["name"] = expression
+
+    logger.debug("[id=%s] dapper/agentInspect: sending response for %r", session.request_id, expression)
+    session.safe_send_response(success=True, body={"root": root})

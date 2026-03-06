@@ -31,14 +31,15 @@ def isolated_registry(use_debug_session):
 
 
 @pytest.fixture
-def capture_messages(monkeypatch):
-    """Capture send_debug_message calls as (event_type, kwargs) tuples."""
+def capture_messages(monkeypatch, use_debug_session):
+    """Capture send_debug_message calls AND session.transport.send calls."""
     messages = []
 
     def fake_send(event_type: str, **kwargs):
         messages.append((event_type, kwargs))
 
     monkeypatch.setattr(ds, "send_debug_message", fake_send)
+    use_debug_session.transport.send = fake_send  # type: ignore[assignment]
     return messages
 
 
@@ -54,7 +55,8 @@ class AlwaysProvider:
     def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
         if self._exc is not None:
             raise self._exc
-        return self._result
+        if self._result is not None:
+            session.safe_send_response(**self._result)
 
 
 class SupportedProvider:
@@ -65,7 +67,7 @@ class SupportedProvider:
         return set(self._commands)
 
     def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
-        return {"success": True, "body": {"handled": command}}
+        session.safe_send_response(success=True, body={"handled": command})
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -96,7 +98,7 @@ def test_provider_success_response_sent_with_id(capture_messages, use_debug_sess
 
 
 @pytest.mark.usefixtures("isolated_registry")
-def test_provider_return_none_no_synthesized_response(capture_messages, use_debug_session):
+def test_provider_return_none_no_response(capture_messages, use_debug_session):
     prov = AlwaysProvider(result=None)
     use_debug_session.register_command_provider(prov, priority=0)
     use_debug_session.dispatch_debug_command({"id": 5, "command": "nop", "arguments": {}})
@@ -144,7 +146,7 @@ def test_fallback_to_next_provider_when_first_cannot_handle(capture_messages, us
             return False
 
         def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
-            return {"success": True, "body": {"who": "cant"}}
+            session.safe_send_response(success=True, body={"who": "cant"})
 
     second = AlwaysProvider(result={"success": True, "body": {"who": "second"}})
     use_debug_session.register_command_provider(CantHandle(), priority=10)
@@ -195,7 +197,7 @@ def test_can_handle_overrides_supported_commands(capture_messages, use_debug_ses
             return False
 
         def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
-            return {"success": True}
+            session.safe_send_response(success=True)
 
     fallback = AlwaysProvider(result={"success": True, "body": {"who": "fallback"}})
     use_debug_session.register_command_provider(Both(), priority=10)
@@ -204,22 +206,6 @@ def test_can_handle_overrides_supported_commands(capture_messages, use_debug_ses
     assert capture_messages == [
         ("response", {"id": 2, "success": True, "body": {"who": "fallback"}}),
     ]
-
-
-@pytest.mark.usefixtures("isolated_registry")
-def test_response_without_success_key_is_ignored(capture_messages, use_debug_session):
-    prov = AlwaysProvider(result={"message": "hi"})
-    use_debug_session.register_command_provider(prov, priority=0)
-    use_debug_session.dispatch_debug_command({"id": 3, "command": "ping", "arguments": {}})
-    assert capture_messages == []
-
-
-@pytest.mark.usefixtures("isolated_registry")
-def test_success_without_id_emits_no_response(capture_messages, use_debug_session):
-    prov = AlwaysProvider(result={"success": True})
-    use_debug_session.register_command_provider(prov, priority=0)
-    use_debug_session.dispatch_debug_command({"command": "ping", "arguments": {}})
-    assert capture_messages == []
 
 
 @pytest.mark.usefixtures("isolated_registry")
@@ -234,7 +220,7 @@ def test_mutation_during_dispatch_uses_snapshot(capture_messages, use_debug_sess
             return True
 
         def handle(self, session, command: str, arguments, full_command):  # noqa: ARG002
-            return {"success": True}
+            session.safe_send_response(success=True)
 
     m = Mutating(None)
     m._ref = m

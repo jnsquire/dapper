@@ -449,6 +449,7 @@ class CommandDispatcher:
         name = str(command.get("command", "")) if isinstance(command, dict) else ""
         raw_arguments = command.get("arguments", {}) if isinstance(command, dict) else {}
         arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
+        cmd_id = command.get("id") if isinstance(command, dict) else None
 
         with self._providers_lock:
             providers = [p for _, p in list(self._providers)]
@@ -456,26 +457,14 @@ class CommandDispatcher:
             if not provider.can_handle(name):
                 continue
 
-            try:
-                result = provider.handle(session, name, arguments, command)
-            except Exception as exc:  # pragma: no cover - defensive
-                self._send_error_for_exception(command, name, exc)
-                return
-            self._send_response_for_result(command, result)
+            with session.transport.request_scope(cmd_id):
+                try:
+                    provider.handle(session, name, arguments, command)
+                except Exception as exc:  # pragma: no cover - defensive
+                    self._send_error_for_exception(command, name, exc)
             return
 
         self._send_unknown_command(command, name)
-
-    @staticmethod
-    def _send_response_for_result(command: dict[str, Any], result: dict[str, Any] | None) -> None:
-        if not (isinstance(result, dict) and ("success" in result)):
-            return
-        cmd_id = command.get("id") if isinstance(command, dict) else None
-        if cmd_id is None:
-            return
-        response = {"id": cmd_id}
-        response.update(result)
-        send_debug_message("response", **response)
 
     @staticmethod
     def _send_error_for_exception(command: dict[str, Any], name: str, exc: Exception) -> None:

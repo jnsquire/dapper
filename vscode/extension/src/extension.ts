@@ -4,6 +4,8 @@ import { DapperConfigurationProvider, DapperDynamicConfigurationProvider } from 
 import { DapperWebview } from './webview/DapperWebview.js';
 import { logger, registerLoggerCommands } from './utils/logger.js';
 import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js';
+import { JournalRegistry, DapperTrackerFactory } from './agent/stateJournal.js';
+import { registerAgentTools } from './agent/tools/index.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
@@ -374,6 +376,15 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   // Debug Adapters
   const debugDisposables = Array.from(registerDebugAdapters(context));
   allDisposables.push(...debugDisposables);
+
+  // Agent tools: state journal, tracker factory, and LM tools
+  const journalRegistry = new JournalRegistry();
+  allDisposables.push(journalRegistry);
+  allDisposables.push(
+    vscode.debug.registerDebugAdapterTrackerFactory('dapper', new DapperTrackerFactory(journalRegistry)),
+  );
+  const agentToolDisposables = registerAgentTools(journalRegistry);
+  allDisposables.push(...agentToolDisposables);
 
   // Webview serializers / handlers
   const webviewDisposables = Array.from(registerWebview(context));
