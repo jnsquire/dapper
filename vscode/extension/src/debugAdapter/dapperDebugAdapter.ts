@@ -23,6 +23,7 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
   module?: string;
   moduleSearchPaths?: string[];
   venvPath?: string;
+  pythonPath?: string;
   subprocessAutoAttach?: boolean;
   args?: string[];
   stopOnEntry?: boolean;
@@ -739,7 +740,11 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           || !!(config.forceReinstall as boolean | undefined);
 
         // Prepare environment (create venv & install dapper if needed)
-        const envInfo = await this.envManager.prepareEnvironment(this.extensionVersion, installMode, forceReinstall, session.workspaceFolder);
+        const envInfo = await this.envManager.prepareEnvironment(this.extensionVersion, installMode, forceReinstall, {
+          workspaceFolder: session.workspaceFolder,
+          preferredPythonPath: typeof config.pythonPath === 'string' ? config.pythonPath : undefined,
+          preferredVenvPath: typeof config.venvPath === 'string' ? config.venvPath : undefined,
+        });
         const pythonPath = envInfo.pythonPath;
 
         // Build arguments: use dapper.launcher as the entry point

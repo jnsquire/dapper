@@ -6,12 +6,13 @@ import { logger, registerLoggerCommands } from './utils/logger.js';
 import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js';
 import { JournalRegistry, DapperTrackerFactory } from './agent/stateJournal.js';
 import { registerAgentTools } from './agent/tools/index.js';
+import { LaunchService } from './debugAdapter/launchService.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
 }
 
-function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
+function* registerCommands(context: vscode.ExtensionContext, launchService: LaunchService): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
   const stoppedSessions = new Set<string>();
   const pendingReloads = new Set<string>();
@@ -120,31 +121,16 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
 
   // Start Debugging Command
   yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) {
-      vscode.window.showErrorMessage('No active editor');
-      return;
-    }
-
-    const document = activeEditor.document;
-    if (document.languageId !== 'python') {
-      vscode.window.showErrorMessage('Active document is not a Python file');
-      return;
-    }
-
     try {
-      await vscode.debug.startDebugging(undefined, {
-        type: 'dapper',
-        name: 'Dapper Debug',
-        request: 'launch',
-        program: '${file}',
-        cwd: '${workspaceFolder}',
-        pythonPath: vscode.workspace.getConfiguration('python').get('defaultInterpreterPath', 'python'),
-        console: 'integratedTerminal',
-        stopOnEntry: true
+      await launchService.launch({
+        sessionName: 'Dapper Debug',
+        target: { currentFile: true },
+        stopOnEntry: true,
+        waitForStop: false,
       });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to start debugging: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Failed to start debugging: ${message}`);
     }
   });
 
@@ -223,7 +209,16 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
         vscode.window.showInformationMessage('No saved configuration found. Use Dapper: Open Launch Configuration Wizard to create one.');
         return;
       }
-      await vscode.debug.startDebugging(undefined, saved as any);
+      const savedConfig = saved as vscode.DebugConfiguration;
+      if (typeof savedConfig.name !== 'string' || savedConfig.name.length === 0) {
+        await vscode.debug.startDebugging(undefined, savedConfig);
+        return;
+      }
+      await launchService.launch({
+        sessionName: String(savedConfig.name || 'Dapper: Saved Launch'),
+        target: { configName: String(savedConfig.name || '') },
+        waitForStop: false,
+      });
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to start debug session from saved config: ${error}`);
     }
@@ -249,24 +244,16 @@ function* registerCommands(context: vscode.ExtensionContext): Iterable<vscode.Di
 
   // Debug Current File Command (editor/title/run button)
   yield vscode.commands.registerCommand('dapper.debugCurrentFile', async () => {
-    const editor = vscode.window.activeTextEditor;
-    const uri = editor?.document.uri;
-    if (!uri || uri.scheme !== 'file') {
-      vscode.window.showErrorMessage('No active Python file — click inside the editor for the file you want to debug.');
-      return;
-    }
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    logger.log(`dapper.debugCurrentFile: file=${uri.fsPath} workspaceFolder=${workspaceFolder?.uri.fsPath ?? '(none)'}`);
     try {
-      const config = {
-        type: 'dapper',
-        request: 'launch',
-        name: 'Debug Current File',
-        program: uri.fsPath,
-        cwd: workspaceFolder?.uri.fsPath ?? '${workspaceFolder}',
-      };
-      logger.debug('dapper.debugCurrentFile: launch config', config);
-      await vscode.debug.startDebugging(workspaceFolder, config);
+      const result = await launchService.launch({
+        sessionName: 'Debug Current File',
+        target: { currentFile: true },
+        waitForStop: false,
+      });
+      logger.debug('dapper.debugCurrentFile: launch result', {
+        sessionId: result.session.id,
+        target: result.resolvedTarget,
+      });
       logger.log('dapper.debugCurrentFile: startDebugging returned successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -365,12 +352,15 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   // Collect all disposables that would normally be pushed to context.subscriptions
   const allDisposables: vscode.Disposable[] = [];
 
+  const journalRegistry = new JournalRegistry();
+  const launchService = new LaunchService(journalRegistry);
+
   // Logger commands (returns a Disposable)
   const loggerCommandDisposable = registerLoggerCommands(context);
   allDisposables.push(loggerCommandDisposable);
 
   // Commands
-  const commandDisposables = Array.from(registerCommands(context));
+  const commandDisposables = Array.from(registerCommands(context, launchService));
   allDisposables.push(...commandDisposables);
 
   // Debug Adapters
@@ -378,12 +368,11 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   allDisposables.push(...debugDisposables);
 
   // Agent tools: state journal, tracker factory, and LM tools
-  const journalRegistry = new JournalRegistry();
   allDisposables.push(journalRegistry);
   allDisposables.push(
     vscode.debug.registerDebugAdapterTrackerFactory('dapper', new DapperTrackerFactory(journalRegistry)),
   );
-  const agentToolDisposables = registerAgentTools(journalRegistry);
+  const agentToolDisposables = registerAgentTools(journalRegistry, launchService);
   allDisposables.push(...agentToolDisposables);
 
   // Webview serializers / handlers

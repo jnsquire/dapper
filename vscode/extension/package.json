@@ -17,6 +17,7 @@
   "activationEvents": [
     "onDebug",
     "onCommand:dapper.showLogs",
+    "onLanguageModelTool:dapper_launch",
     "onLanguageModelTool:dapper_state",
     "onLanguageModelTool:dapper_execution",
     "onLanguageModelTool:dapper_evaluate",
@@ -31,6 +32,88 @@
   "main": "./out/extension.js",
   "contributes": {
     "languageModelTools": [
+      {
+        "name": "dapper_launch",
+        "displayName": "Dapper: Launch Python Debug Session",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperLaunch",
+        "userDescription": "Launch Python code under a new Dapper debug session.",
+        "modelDescription": "Start a new Dapper Python debug session for a file, module, or named Dapper launch configuration. This tool prefers the project interpreter when possible, including explicit pythonPath or venvPath hints, and can wait for the first stop before returning.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionName": {
+              "type": "string",
+              "description": "Optional display name for the new Python debug session."
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "currentFile": {
+                  "type": "boolean",
+                  "description": "Launch the active Python file. Use this when a Python editor is already active."
+                },
+                "file": {
+                  "type": "string",
+                  "description": "Absolute or workspace-relative path to a Python file to debug."
+                },
+                "module": {
+                  "type": "string",
+                  "description": "Python module name to run, like `python -m package.module`."
+                },
+                "configName": {
+                  "type": "string",
+                  "description": "Name of an existing Dapper launch configuration from launch.json or saved Dapper settings."
+                }
+              },
+              "description": "Choose exactly one launch target: currentFile, file, module, or configName. Omit to use the active Python file."
+            },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Command-line arguments passed to the Python program or module."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Working directory for the Python debug session."
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Extra environment variables for the Python debuggee."
+            },
+            "moduleSearchPaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Additional Python import search paths prepended for module resolution."
+            },
+            "venvPath": {
+              "type": "string",
+              "description": "Path to a virtual environment whose Python interpreter should launch the debuggee when possible."
+            },
+            "pythonPath": {
+              "type": "string",
+              "description": "Absolute path to the Python interpreter that should launch the debuggee when possible."
+            },
+            "stopOnEntry": {
+              "type": "boolean",
+              "description": "Whether the Python debuggee should stop immediately on entry (default: true)."
+            },
+            "justMyCode": {
+              "type": "boolean",
+              "description": "Whether to focus Python debugging on user code (default: true)."
+            },
+            "subprocessAutoAttach": {
+              "type": "boolean",
+              "description": "Automatically attach to supported Python child processes started by the debuggee."
+            },
+            "waitForStop": {
+              "type": "boolean",
+              "description": "If true, wait for the new Python debug session to stop before returning and include an initial snapshot when available."
+            }
+          }
+        }
+      },
       {
         "name": "dapper_state",
         "displayName": "Dapper: Debug State",
@@ -645,6 +728,7 @@
     "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
     "compile": "npm run clean && tsc -p ./",
     "test": "vitest run",
+    "test:launch-harness": "vitest run test/launchTool.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -654,25 +738,25 @@
     "@vscode/debugadapter": "^1.54.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.25",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@types/vscode": "^1.99.0",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
-    "@vscode-elements/elements": "^2.3.1",
+    "@types/node": "^20.19.37",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vscode-elements/elements": "^2.5.1",
     "@vscode/debugprotocol": "^1.68.0",
-    "@vscode/vsce": "^3.7.0",
-    "esbuild": "^0.25.12",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.3",
     "esbuild-plugin-copy": "^2.1.1",
-    "esbuild-sass-plugin": "^3.3.1",
+    "esbuild-sass-plugin": "^3.6.0",
     "eslint": "^8.57.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.0",
-    "vitest": "^4.0.10",
-    "webpack": "^5.89.0",
+    "vitest": "^4.0.18",
+    "webpack": "^5.105.4",
     "webpack-cli": "^5.1.4"
   }
 }

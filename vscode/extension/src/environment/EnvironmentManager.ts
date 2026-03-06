@@ -25,6 +25,12 @@ export interface PythonEnvInfo {
   dapperLibPath?: string;
 }
 
+export interface PrepareEnvironmentOptions {
+  workspaceFolder?: vscode.WorkspaceFolder;
+  preferredPythonPath?: string;
+  preferredVenvPath?: string;
+}
+
 /**
  * Manages the Python runtime environment for the Dapper extension.
  * Responsible for creating a per-extension venv, installing the bundled or PyPI
@@ -40,7 +46,13 @@ export class EnvironmentManager {
   }
 
   /** Main entrypoint to ensure environment is ready. */
-  prepareEnvironment(desiredVersion: string, mode: InstallMode, forceReinstall = false, workspaceFolder?: vscode.WorkspaceFolder): Promise<PythonEnvInfo> {
+  prepareEnvironment(
+    desiredVersion: string,
+    mode: InstallMode,
+    forceReinstall = false,
+    options?: vscode.WorkspaceFolder | PrepareEnvironmentOptions,
+  ): Promise<PythonEnvInfo> {
+    const prepareOptions = this.normalizePrepareOptions(options);
     if (this.preparePromise) {
       return this.preparePromise; // de-duplicate concurrent calls
     }
@@ -50,12 +62,12 @@ export class EnvironmentManager {
         const interval = setInterval(() => {
           if (!this.lock.active && !this.preparePromise) {
             clearInterval(interval);
-            this.prepareEnvironment(desiredVersion, mode, forceReinstall, workspaceFolder).then(resolve, reject);
+            this.prepareEnvironment(desiredVersion, mode, forceReinstall, prepareOptions).then(resolve, reject);
           }
         }, 50);
       });
     }
-    this.preparePromise = this._prepare(desiredVersion, mode, forceReinstall, workspaceFolder)
+    this.preparePromise = this._prepare(desiredVersion, mode, forceReinstall, prepareOptions)
       .catch(err => {
         this.output.error(`prepareEnvironment failed: ${err instanceof Error ? err.message : String(err)}`);
         // Rethrow to let caller handle
@@ -67,31 +79,55 @@ export class EnvironmentManager {
     return this.preparePromise;
   }
 
-  private async _prepare(desiredVersion: string, mode: InstallMode, forceReinstall: boolean, workspaceFolder?: vscode.WorkspaceFolder): Promise<PythonEnvInfo> {
+  private async _prepare(
+    desiredVersion: string,
+    mode: InstallMode,
+    forceReinstall: boolean,
+    options: PrepareEnvironmentOptions,
+  ): Promise<PythonEnvInfo> {
     this.lock.active = true;
     const config = vscode.workspace.getConfiguration('dapper.python');
     const baseInterpreterSetting = config.get<string>('baseInterpreter');
     const expectedVersionSetting = config.get<string>('expectedVersion');
     const effectiveDesiredVersion = expectedVersionSetting || desiredVersion;
+    const workspaceFolder = options.workspaceFolder;
 
     this.output.info(
       `_prepare: mode=${mode} desiredVersion=${effectiveDesiredVersion} ` +
       `forceReinstall=${forceReinstall} workspaceFolder=${workspaceFolder?.uri.fsPath ?? '(none)'} ` +
-      `baseInterpreter=${baseInterpreterSetting || '(default)'} platform=${process.platform}`
+      `baseInterpreter=${baseInterpreterSetting || '(default)'} platform=${process.platform} ` +
+      `preferredPython=${options.preferredPythonPath || '(none)'} preferredVenv=${options.preferredVenvPath || '(none)'}`
     );
 
     if (mode === 'workspace') {
-      const pythonPath = this.resolveWorkspacePython(baseInterpreterSetting);
+      const pythonPath = this.resolveWorkspacePython(
+        baseInterpreterSetting,
+        options.preferredPythonPath,
+        options.preferredVenvPath,
+      );
       this.output.info(`Using workspace interpreter: ${pythonPath}`);
       this.lock.active = false;
-      return { pythonPath, needsInstall: false };
+      return { pythonPath, needsInstall: false, venvPath: options.preferredVenvPath };
+    }
+
+    const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
+
+    const preferred = await this.tryPreferredInterpreter(
+      effectiveDesiredVersion,
+      wheelDir,
+      options.preferredPythonPath,
+      options.preferredVenvPath,
+      forceReinstall,
+    );
+    if (preferred) {
+      this.lock.active = false;
+      return preferred;
     }
 
     // In auto mode, prefer the workspace's own .venv so the target program runs with its
     // full project environment (e.g. requests, numpy, etc. are available).
     // Dapper is made available via PYTHONPATH injection — the workspace venv is never modified.
     if (mode === 'auto') {
-      const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
       const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
       if (wsResult) {
         this.lock.active = false;
@@ -134,7 +170,6 @@ export class EnvironmentManager {
     await this.upgradePip(pythonPath);
 
     const manifest = this.readManifest(venvPath);
-    const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
     this.output.info(
       `Manifest: ${manifest ? `installed=${manifest.dapperVersionInstalled} source=${manifest.installSource}` : 'none'}` +
       ` | bundled wheels dir: ${wheelDir ?? 'none'}`
@@ -308,6 +343,53 @@ export class EnvironmentManager {
     return undefined;
   }
 
+  private async tryPreferredInterpreter(
+    version: string,
+    wheelDir: string | undefined,
+    preferredPythonPath: string | undefined,
+    preferredVenvPath: string | undefined,
+    forceReinstall: boolean,
+  ): Promise<PythonEnvInfo | undefined> {
+    const candidate = preferredPythonPath
+      ?? (preferredVenvPath ? this.getVenvPythonPath(preferredVenvPath) : undefined);
+    if (!candidate) {
+      return undefined;
+    }
+    if (!fs.existsSync(candidate)) {
+      this.output.warn(`Preferred interpreter does not exist: ${candidate}`);
+      return undefined;
+    }
+
+    this.output.info(`Using preferred interpreter candidate: ${candidate}`);
+    const importable = await this.checkDapperImportable(candidate);
+    if (!forceReinstall && importable) {
+      const installedVersion = await this.getDapperVersion(candidate);
+      if (installedVersion === version || !wheelDir) {
+        this.output.info(`Preferred interpreter already provides dapper${installedVersion ? ` ${installedVersion}` : ''}.`);
+        return { pythonPath: candidate, venvPath: preferredVenvPath, needsInstall: false };
+      }
+    }
+
+    if (wheelDir) {
+      const libPath = await this.ensureDapperLib(candidate, version, wheelDir, forceReinstall);
+      if (libPath) {
+        return {
+          pythonPath: candidate,
+          venvPath: preferredVenvPath,
+          needsInstall: false,
+          dapperLibPath: libPath,
+        };
+      }
+    }
+
+    if (importable) {
+      this.output.warn('Preferred interpreter has dapper available but the version may differ from the extension bundle. Reusing it anyway.');
+      return { pythonPath: candidate, venvPath: preferredVenvPath, needsInstall: false };
+    }
+
+    return undefined;
+  }
+
   // ---------------------------------------------------------------------------
   // PYTHONPATH-based dapper injection (avoids installing into workspace venvs)
   // ---------------------------------------------------------------------------
@@ -445,11 +527,30 @@ export class EnvironmentManager {
     return 'python';
   }
 
-  private resolveWorkspacePython(setting?: string): string {
+  private resolveWorkspacePython(setting?: string, preferredPythonPath?: string, preferredVenvPath?: string): string {
+    if (preferredPythonPath && fs.existsSync(preferredPythonPath)) {
+      return preferredPythonPath;
+    }
+    if (preferredVenvPath) {
+      const candidate = this.getVenvPythonPath(preferredVenvPath);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
     if (setting && fs.existsSync(setting)) {
       return setting;
     }
     return process.platform !== 'win32' ? 'python3' : 'python'; // Defer failure if not found
+  }
+
+  private normalizePrepareOptions(options?: vscode.WorkspaceFolder | PrepareEnvironmentOptions): PrepareEnvironmentOptions {
+    if (!options) {
+      return {};
+    }
+    if ('uri' in options) {
+      return { workspaceFolder: options };
+    }
+    return options;
   }
 
   private async createVenv(baseInterpreter: string, venvPath: string): Promise<void> {

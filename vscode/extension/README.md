@@ -108,6 +108,15 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 
 The tool schema in `package.json` covers inputs. These notes cover the behavior agents usually need:
 
+- Use `dapper_launch` to start debugging Python code when there is no active Dapper session yet.
+- `dapper_launch` accepts a file, module, current editor, or named Dapper launch config. Omit `target`
+  to use the active Python file.
+- `dapper_launch` prefers an explicit `pythonPath` or `venvPath`, then falls back to the project's
+  configured or discovered Python environment.
+- `dapper_launch` may inject Dapper via `PYTHONPATH` instead of installing it into the workspace
+  environment.
+- Set `waitForStop: true` on `dapper_launch` when you want the initial pause before calling
+  `dapper_state`, `dapper_variable`, or `dapper_evaluate`.
 - Omit `sessionId` to use the active Dapper session. Tools do not fall back to non-Dapper sessions.
 - Start with `dapper_state` in `snapshot` mode when paused. It returns stop reason, location, call stack,
   locals, globals, and thread state.
@@ -129,9 +138,14 @@ The tool schema in `package.json` covers inputs. These notes cover the behavior 
 - `dapper_breakpoints` with `action: add` updates VS Code and also sends a direct `setBreakpoints`
   request so the adapter sees new breakpoints immediately.
 - `dapper_breakpoints` with `action: list` always reports the VS Code breakpoint list and, with an
-  active Dapper session, merges adapter verification state into `verified`.
+  active Dapper session, merges adapter verification state into `verified` when it is definitive.
+- `dapper_breakpoints` may return `verificationState: pending` when the adapter has not yet bound a
+  breakpoint to executable code. This is different from a definitive rejection.
 - `dapper_session_info` can list tracked sessions, but only the active one has a live
   `DebugSession`; other tracked sessions may show `state: unknown` with minimal config.
+- Test fixtures in this repo keep launch examples as `.vscode/launch.template.json` instead of a
+  real `.vscode/launch.json` so VS Code does not schema-validate nested fixture files as active
+  workspace launch configurations.
 
 Recommended agent workflow while paused:
 

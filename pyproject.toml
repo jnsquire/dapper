@@ -25,15 +25,15 @@ classifiers = [
 # extras used by developers; `uv run build-dev -- --install` expects this
 # group to exist so that pip does not warn about a missing 'dev' extra.
 dev = [
-    "pyright>=1.1.405",
-    "ruff>=0.9.0",
+    "pyright>=1.1.408",
+    "ruff>=0.15.5",
     "pytest>=8.3.5",
-    "pytest-cov>=4.0.0",
-    "coverage>=7.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.3.0",
+    "coverage>=7.10.7",
+    "pytest-asyncio>=1.2.0",
     "pytest-xdist>=3.0.0",
     "mkdocs",
-    "mkdocs-material>=9.7.2",
+    "mkdocs-material>=9.7.4",
     "Cython>=3.0",
 ]
 
@@ -190,17 +190,17 @@ max-args = 10
 
 [dependency-groups]
 dev = [
-    "pyright>=1.1.405",
-    "ruff>=0.9.0",
+    "pyright>=1.1.408",
+    "ruff>=0.15.5",
     "pytest>=8.3.5",
-    "pytest-cov>=4.0.0",
-    "coverage>=7.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=6.3.0",
+    "coverage>=7.10.7",
+    "pytest-asyncio>=1.2.0",
     "pytest-xdist>=3.0.0",
     "mkdocs",
     "mkdocs-material",
     "cython>=3.0",
-    "mkdocs-material>=9.7.2",
+    "mkdocs-material>=9.7.4",
 ]
 
 [tool.vulture]

@@ -917,7 +917,12 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
     just_my_code = args.get("justMyCode", True)
 
     session = _active_session()
-    logger.debug("[id=%s] dapper/agentSnapshot: entered, target_tid=%s depth=%s", session.request_id, target_tid, depth)
+    logger.debug(
+        "[id=%s] dapper/agentSnapshot: entered, target_tid=%s depth=%s",
+        session.request_id,
+        target_tid,
+        depth,
+    )
     dbg = session.debugger
     if dbg is None:
         logger.warning("[id=%s] dapper/agentSnapshot: no active debugger", session.request_id)
@@ -926,8 +931,15 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
 
     tracker = dbg.thread_tracker
     stopped_ids: list[int] = sorted(tracker.stopped_thread_ids)
-    running_ids: list[int] = [tid for tid in tracker.threads if tid not in tracker.stopped_thread_ids]
-    logger.debug("[id=%s] dapper/agentSnapshot: stopped_ids=%s running_ids=%s", session.request_id, stopped_ids, running_ids)
+    running_ids: list[int] = [
+        tid for tid in tracker.threads if tid not in tracker.stopped_thread_ids
+    ]
+    logger.debug(
+        "[id=%s] dapper/agentSnapshot: stopped_ids=%s running_ids=%s",
+        session.request_id,
+        stopped_ids,
+        running_ids,
+    )
 
     if not stopped_ids:
         logger.warning("[id=%s] dapper/agentSnapshot: no stopped threads", session.request_id)
@@ -937,7 +949,12 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
     tid = target_tid if target_tid in stopped_ids else stopped_ids[0]
 
     raw_frames: list[dict[str, Any]] = list(tracker.frames_by_thread.get(tid, []))
-    logger.debug("[id=%s] dapper/agentSnapshot: tid=%s raw_frames=%d", session.request_id, tid, len(raw_frames))
+    logger.debug(
+        "[id=%s] dapper/agentSnapshot: tid=%s raw_frames=%d",
+        session.request_id,
+        tid,
+        len(raw_frames),
+    )
     if just_my_code:
         raw_frames = [f for f in raw_frames if not _is_library_frame_dict(f)]
     raw_frames = raw_frames[:depth]
@@ -958,7 +975,12 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
             actual_frame = (
                 tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
             )
-            logger.debug("[id=%s] dapper/agentSnapshot: top frame_id=%s actual_frame=%s", session.request_id, frame_id, actual_frame is not None)
+            logger.debug(
+                "[id=%s] dapper/agentSnapshot: top frame_id=%s actual_frame=%s",
+                session.request_id,
+                frame_id,
+                actual_frame is not None,
+            )
             if actual_frame is not None:
                 top_locals = _extract_vars(actual_frame.f_locals, max_vars)
                 top_globals = _extract_vars(
@@ -986,7 +1008,13 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
         if tid in exc_info:
             stop_reason = "exception"
 
-    logger.debug("[id=%s] dapper/agentSnapshot: sending response, callStack=%d locals=%d stop_reason=%s", session.request_id, len(call_stack), len(top_locals), stop_reason)
+    logger.debug(
+        "[id=%s] dapper/agentSnapshot: sending response, callStack=%d locals=%d stop_reason=%s",
+        session.request_id,
+        len(call_stack),
+        len(top_locals),
+        stop_reason,
+    )
     session.safe_send_response(
         success=True,
         body={
@@ -1013,13 +1041,20 @@ def _cmd_agent_eval(arguments: dict[str, Any] | None) -> None:
         expressions = [single]
     frame_index = int(args.get("frameIndex", 0))
 
-    logger.debug("[id=%s] dapper/agentEval: entered, expressions=%d frame_index=%s", session.request_id, len(expressions), frame_index)
+    logger.debug(
+        "[id=%s] dapper/agentEval: entered, expressions=%d frame_index=%s",
+        session.request_id,
+        len(expressions),
+        frame_index,
+    )
 
     if not expressions:
         session.safe_send_response(success=False, message="No expressions provided")
         return
     if len(expressions) > _MAX_AGENT_EXPRESSIONS:
-        session.safe_send_response(success=False, message=f"Too many expressions (max {_MAX_AGENT_EXPRESSIONS})")
+        session.safe_send_response(
+            success=False, message=f"Too many expressions (max {_MAX_AGENT_EXPRESSIONS})"
+        )
         return
 
     dbg = session.debugger
@@ -1033,7 +1068,9 @@ def _cmd_agent_eval(arguments: dict[str, Any] | None) -> None:
 
     results = [_evaluate_agent_expression(expr, frame) for expr in expressions]
 
-    logger.debug("[id=%s] dapper/agentEval: sending response, %d results", session.request_id, len(results))
+    logger.debug(
+        "[id=%s] dapper/agentEval: sending response, %d results", session.request_id, len(results)
+    )
     session.safe_send_response(success=True, body={"results": results})
 
 
@@ -1047,7 +1084,12 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
     max_items = min(int(args.get("maxItems", 20)), 100)
     frame_index = int(args.get("frameIndex", 0))
 
-    logger.debug("[id=%s] dapper/agentInspect: entered, expression=%r frame_index=%s", session.request_id, expression, frame_index)
+    logger.debug(
+        "[id=%s] dapper/agentInspect: entered, expression=%r frame_index=%s",
+        session.request_id,
+        expression,
+        frame_index,
+    )
 
     if not expression:
         session.safe_send_response(success=False, message="No expression provided")
@@ -1064,7 +1106,9 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
     try:
         value = evaluate_with_policy(expression, frame) if frame is not None else eval(expression)
     except Exception as exc:
-        logger.warning("[id=%s] dapper/agentInspect: evaluation failed: %s", session.request_id, exc)
+        logger.warning(
+            "[id=%s] dapper/agentInspect: evaluation failed: %s", session.request_id, exc
+        )
         session.safe_send_response(success=False, message=f"Evaluation failed: {exc!s}")
         return
 
@@ -1101,5 +1145,7 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
     root = _expand(value, max_depth)
     root["name"] = expression
 
-    logger.debug("[id=%s] dapper/agentInspect: sending response for %r", session.request_id, expression)
+    logger.debug(
+        "[id=%s] dapper/agentInspect: sending response for %r", session.request_id, expression
+    )
     session.safe_send_response(success=True, body={"root": root})

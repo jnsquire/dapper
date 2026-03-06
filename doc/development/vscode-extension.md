@@ -76,7 +76,10 @@ the runtime behavior that is easy to miss.
 - On `add`, the extension updates the VS Code breakpoint registry and also sends a direct
   `setBreakpoints` request to the adapter so verification and registration happen immediately.
 - On `list`, it always reports the VS Code breakpoint list. If a Dapper session is active, it also
-  re-queries adapter verification state and merges a `verified` field into the result.
+  re-queries adapter verification state and merges a `verified` field into the result when the
+  adapter state is definitive.
+- If the adapter reports `verified: false` without a rejection message, the tool now reports
+  `verificationState: pending` instead of a hard `verified: false`.
 - If no active Dapper session is available, breakpoint data still returns, but `verified` may be
   missing.
 
@@ -85,6 +88,13 @@ the runtime behavior that is easy to miss.
 - `dapper_session_info` can enumerate tracked journals, but only the active VS Code session has a
   live `DebugSession` object.
 - Non-active sessions may therefore appear with `state: unknown` and a minimal configuration object.
+
+### Fixture Launch Configs
+
+- Keep nested fixture launch examples as `.vscode/launch.template.json` files rather than active
+  `.vscode/launch.json` files.
+- This avoids noisy schema diagnostics in the repo workspace for custom Dapper-only fields such as
+  `moduleSearchPaths` or for the unregistered debug type outside the extension host.
 
 ## See Also
 

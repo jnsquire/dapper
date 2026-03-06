@@ -63,6 +63,12 @@ export interface StateDiff {
   entries: JournalEntry[];
 }
 
+export interface BreakpointVerificationRecord {
+  verified?: boolean;
+  verificationState: 'verified' | 'pending' | 'rejected';
+  verificationMessage?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ring buffer
 // ---------------------------------------------------------------------------
@@ -116,6 +122,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
   private _entries = new RingBuffer<JournalEntry>(MAX_ENTRIES);
   private _outputBuffer: string[] = [];
   private _lastSnapshot: DebugSnapshot | undefined;
+  private _breakpointVerification = new Map<string, BreakpointVerificationRecord>();
   private _session: vscode.DebugSession;
   private _disposed = false;
 
@@ -147,6 +154,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
         this._recordEntry('thread', `Thread ${body['threadId'] ?? '?'} ${body['reason'] ?? 'event'}`);
         break;
       case 'breakpoint':
+        this._updateBreakpointFromEvent(body);
         this._recordEntry('breakpoint', `Breakpoint ${body['reason'] ?? 'changed'}`);
         break;
       case 'output': {
@@ -182,6 +190,36 @@ export class StateJournal implements vscode.DebugAdapterTracker {
 
   get sessionId(): string {
     return this._session.id;
+  }
+
+  getBreakpointVerification(file: string, line: number): BreakpointVerificationRecord | undefined {
+    return this._breakpointVerification.get(this._breakpointKey(file, line));
+  }
+
+  updateBreakpointVerification(
+    file: string,
+    line: number,
+    record: BreakpointVerificationRecord,
+  ): void {
+    this._breakpointVerification.set(this._breakpointKey(file, line), record);
+  }
+
+  clearBreakpointVerifications(file?: string): void {
+    if (!file) {
+      this._breakpointVerification.clear();
+      return;
+    }
+
+    const prefix = `${normalizeBreakpointPath(file)}:`;
+    for (const key of this._breakpointVerification.keys()) {
+      if (key.startsWith(prefix)) {
+        this._breakpointVerification.delete(key);
+      }
+    }
+  }
+
+  deleteBreakpointVerification(file: string, line: number): void {
+    this._breakpointVerification.delete(this._breakpointKey(file, line));
   }
 
   /**
@@ -321,6 +359,67 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     this._entries.push(entry);
     return entry;
   }
+
+  private _updateBreakpointFromEvent(body: Record<string, unknown>): void {
+    const breakpoint = (body['breakpoint'] as Record<string, unknown> | undefined) ?? {};
+    const source = (breakpoint['source'] as Record<string, unknown> | undefined) ?? {};
+    const file = typeof source['path'] === 'string' ? source['path'] : undefined;
+    const line = typeof breakpoint['line'] === 'number' ? breakpoint['line'] : undefined;
+    if (!file || line === undefined) {
+      return;
+    }
+
+    const verified = breakpoint['verified'];
+    const message = typeof breakpoint['message'] === 'string'
+      ? breakpoint['message']
+      : undefined;
+    const record = toBreakpointVerificationRecord(verified, message);
+    if (record) {
+      this.updateBreakpointVerification(file, line, record);
+    }
+  }
+
+  private _breakpointKey(file: string, line: number): string {
+    return `${normalizeBreakpointPath(file)}:${line}`;
+  }
+}
+
+function normalizeBreakpointPath(file: string): string {
+  return process.platform === 'win32' ? file.toLowerCase() : file;
+}
+
+function createBreakpointVerificationRecord(
+  verificationState: BreakpointVerificationRecord['verificationState'],
+  verified?: boolean,
+  verificationMessage?: string,
+): BreakpointVerificationRecord {
+  return {
+    verificationState,
+    ...(verified !== undefined ? { verified } : {}),
+    ...(verificationMessage !== undefined
+      ? { verificationMessage }
+      : {}),
+  };
+}
+
+export function toBreakpointVerificationRecord(
+  verified: unknown,
+  message?: string,
+): BreakpointVerificationRecord | undefined {
+  if (verified === true) {
+    return createBreakpointVerificationRecord('verified', true, message);
+  }
+  if (verified === false) {
+    return createBreakpointVerificationRecord(
+      message ? 'rejected' : 'pending',
+      message ? false : undefined,
+      message,
+    );
+  }
+  if (message) {
+    return createBreakpointVerificationRecord('rejected', false, message);
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
