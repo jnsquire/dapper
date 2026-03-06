@@ -383,13 +383,10 @@ class InProcessBackend(BaseBackend):
             return self._bridge.evaluate(
                 expression, frame_id, context, format_options=format_options
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("in-process evaluate failed")
-            return {
-                "result": f"<evaluation of '{expression}' not available>",
-                "type": "string",
-                "variablesReference": 0,
-            }
+            msg = f"Evaluate failed for {expression!r}: {exc}"
+            raise RuntimeError(msg) from exc
 
     async def completions(
         self,

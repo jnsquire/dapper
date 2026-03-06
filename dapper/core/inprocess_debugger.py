@@ -521,11 +521,8 @@ class InProcessDebugger:
         use_hex = isinstance(format_options, dict) and bool(format_options.get("hex"))
         frame = self._resolve_frame(frame_id)
         if not frame:
-            return {
-                "result": f"<evaluation of '{expression}' not available>",
-                "type": "string",
-                "variablesReference": 0,
-            }
+            msg = f"No frame available for evaluation: {expression!r}"
+            raise ValueError(msg)
         try:
             result = evaluate_with_policy(expression, frame, allow_builtins=True)
             var_ref = self.debugger.var_manager.allocate_ref(result)

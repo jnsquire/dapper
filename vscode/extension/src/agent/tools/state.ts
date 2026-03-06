@@ -43,7 +43,7 @@ export class StateTool implements vscode.LanguageModelTool<StateToolInput> {
     depth?: number,
   ): Promise<vscode.LanguageModelToolResult> {
     const { journal, session } = resolved;
-    const snapshot = await journal.getSnapshot(threadId);
+    const snapshot = normalizeRequestedThread(await journal.getSnapshot(threadId), threadId);
     if (!snapshot) {
       const errDetail = journal.lastError ? ` Adapter error: ${journal.lastError}` : '';
       return errorResult(`Could not retrieve debug snapshot. Is the debuggee stopped?${errDetail}`);
@@ -54,6 +54,9 @@ export class StateTool implements vscode.LanguageModelTool<StateToolInput> {
         const args: Record<string, unknown> = { depth: depth ?? 5 };
         if (threadId !== undefined) args['threadId'] = threadId;
         const result = await session.customRequest('dapper/agentSnapshot', args);
+        if (threadId !== undefined && typeof result?.threadId !== 'number') {
+          result.threadId = threadId;
+        }
         if (result && Array.isArray(result.callStack) && result.callStack.length > 0) {
           return jsonResult(result);
         }
@@ -77,4 +80,18 @@ export class StateTool implements vscode.LanguageModelTool<StateToolInput> {
     await journal.getSnapshot(threadId);
     return jsonResult(journal.getDiffSince(sinceCheckpoint ?? 0));
   }
+}
+
+function normalizeRequestedThread<T extends { threadId: number } | undefined>(
+  snapshot: T,
+  requestedThreadId?: number,
+): T {
+  if (!snapshot || requestedThreadId === undefined || snapshot.threadId === requestedThreadId) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    threadId: requestedThreadId,
+  } as T;
 }

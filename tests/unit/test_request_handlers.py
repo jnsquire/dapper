@@ -665,6 +665,38 @@ async def test_handle_request_routes_agent_eval(handler, mock_server):
 
 
 @pytest.mark.asyncio
+async def test_handle_dapper_agent_inspect_allows_readonly_dunder_name(handler, mock_server):
+    stopped_thread = types.SimpleNamespace(is_stopped=True, stop_reason="breakpoint")
+    mock_server.debugger._session_facade = types.SimpleNamespace(
+        iter_threads=lambda: [(1, stopped_thread)],
+    )
+    mock_server.debugger.get_stack_trace.return_value = {
+        "stackFrames": [{"id": 100, "name": "f", "line": 1, "column": 0}],
+        "totalFrames": 1,
+    }
+    mock_server.debugger.evaluate.return_value = {
+        "result": "'__main__'",
+        "type": "str",
+        "variablesReference": 0,
+    }
+
+    request = {
+        "seq": 101,
+        "type": "request",
+        "command": "dapper/agentInspect",
+        "arguments": {"expression": "__name__"},
+    }
+
+    result = await handler._handle_dapper_agent_inspect(request)
+
+    assert result["success"] is True
+    assert result["command"] == "dapper/agentInspect"
+    assert result["body"]["root"]["name"] == "__name__"
+    assert result["body"]["root"]["value"] == "'__main__'"
+    mock_server.debugger.evaluate.assert_called_once_with("__name__", 100, "repl")
+
+
+@pytest.mark.asyncio
 async def test_handle_request_routes_hot_reload(handler, mock_server):
     """handle_request must route 'dapper/hotReload' through the normalized path."""
     mock_server.debugger._session_facade = types.SimpleNamespace(iter_threads=list)

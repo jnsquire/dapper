@@ -9,6 +9,7 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 
 import asyncio
 from pathlib import Path
+from typing import TypeAlias
 from typing import TypedDict
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -30,8 +31,8 @@ class Source(TypedDict):
 
 
 # Type aliases for protocol types
-SourceBreakpoint = ProtocolSourceBreakpoint
-FunctionBreakpoint = ProtocolFunctionBreakpoint
+SourceBreakpoint: TypeAlias = ProtocolSourceBreakpoint
+FunctionBreakpoint: TypeAlias = ProtocolFunctionBreakpoint
 
 
 class BreakpointResponse(TypedDict, total=False):
@@ -706,18 +707,14 @@ async def test_get_variables(debugger):
 
 @pytest.mark.asyncio
 async def test_evaluate_expression(debugger):
-    """Test evaluating an expression"""
+    """Test evaluating an expression raises when no backend is active."""
     # Mock the frame and thread
     thread = PyDebuggerThread(1, "MainThread")
     thread.frames = [{"id": 1, "name": "main", "line": 10}]
     debugger._session_facade.threads = {1: thread}
 
-    result = await debugger.evaluate_expression("x + 1", frame_id=1, context="watch")
-
-    # Should return a result dict
-    assert isinstance(result, dict)
-    assert "result" in result
-    assert "type" in result
+    with pytest.raises(RuntimeError, match="No active backend available for evaluation"):
+        await debugger.evaluate_expression("x + 1", frame_id=1, context="watch")
 
 
 # ---------------------------------------------------------------------------

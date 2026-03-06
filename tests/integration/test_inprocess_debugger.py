@@ -4,6 +4,8 @@ import threading
 from typing import Any
 from typing import cast
 
+import pytest
+
 from dapper.core.inprocess_debugger import InProcessDebugger
 from tests.dummy_debugger import DummyDebugger
 
@@ -97,8 +99,8 @@ def test_variables_and_stack_trace_and_evaluate_and_set_variable():
     assert st.get("stackFrames") == ["frame2"]
 
     # evaluate with missing frame
-    missing = ip.evaluate("1+1", frame_id=999)
-    assert "not available" in missing.get("result", "")
+    with pytest.raises(ValueError, match="No frame available for evaluation"):
+        ip.evaluate("1+1", frame_id=999)
 
     # evaluate with existing frame - use frame that has a global x
     frame2 = FakeFrame(locals_={}, globals_={"g": 7})

@@ -33,12 +33,8 @@ async def test_evaluate_with_response():
 
 
 @pytest.mark.asyncio
-async def test_evaluate_without_response():
-    """evaluate() should fall back gracefully when debuggee doesn't respond.
-
-    Note: The fallback logic is now in ExternalProcessBackend, not in PyDebugger.
-    This test verifies that the external backend's fallback is used.
-    """
+async def test_evaluate_without_response_raises():
+    """evaluate() should surface backend errors when the debuggee doesn't respond."""
     server = Mock()
     server.send_event = AsyncMock()
 
@@ -47,24 +43,13 @@ async def test_evaluate_without_response():
     dbg.process = Mock()
     dbg.is_terminated = False
 
-    # Create a mock backend that returns the fallback response (simulating
-    # what ExternalProcessBackend does when the debuggee doesn't respond)
     expr = "x + 1"
-    fallback_response = {
-        "result": f"<evaluation of '{expr}' not available>",
-        "type": "string",
-        "variablesReference": 0,
-    }
     mock_backend = MagicMock(spec=ExternalProcessBackend)
-    mock_backend.evaluate = AsyncMock(return_value=fallback_response)
+    mock_backend.evaluate = AsyncMock(side_effect=RuntimeError("no response from debuggee"))
     dbg._external_backend = mock_backend
 
-    res = await dbg.evaluate(expr, frame_id=1, context="watch")
-
-    assert isinstance(res, dict)
-    assert "result" in res
-    assert "not available" in res["result"]
-    assert expr in res["result"]
+    with pytest.raises(RuntimeError, match="no response from debuggee"):
+        await dbg.evaluate(expr, frame_id=1, context="watch")
 
 
 @pytest.mark.asyncio

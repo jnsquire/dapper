@@ -404,12 +404,10 @@ class ExternalProcessBackend(BaseBackend):
             },
         }
         response = await self._send_command(cmd, expect_response=True)
-        default: dict[str, Any] = {
-            "result": f"<evaluation of '{args['expression']}' not available>",
-            "type": "string",
-            "variablesReference": 0,
-        }
-        return cast("EvaluateResponseBody", self._extract_body(response, default))
+        if response is None:
+            msg = f"Evaluate failed: no response from debuggee for {args['expression']!r}"
+            raise RuntimeError(msg)
+        return cast("EvaluateResponseBody", self._extract_body(response, {}))
 
     async def _dispatch_completions(self, args: dict[str, Any]) -> CompletionsResponseBody:
         cmd = {

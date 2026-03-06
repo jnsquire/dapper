@@ -309,13 +309,12 @@ class TestEvaluate:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_returns_placeholder_on_bridge_error(self) -> None:
+    async def test_raises_on_bridge_error(self) -> None:
         bridge = _make_bridge()
         bridge.evaluate.side_effect = RuntimeError("fail")
         backend = _backend(bridge)
-        result = await backend.evaluate("foo")
-        assert "foo" in result.get("result", "")
-        assert result.get("variablesReference") == 0
+        with pytest.raises(RuntimeError, match="Evaluate failed for 'foo': fail"):
+            await backend.evaluate("foo")
 
 
 class TestCompletions:

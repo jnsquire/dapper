@@ -473,6 +473,9 @@ class TestDispatchEvaluate:
     @pytest.mark.asyncio
     async def test_sends_evaluate_command(self) -> None:
         backend = _make_backend_new()
+        backend._send_command = AsyncMock(  # type: ignore[method-assign]
+            return_value={"body": {"result": "2", "type": "int", "variablesReference": 0}}
+        )
         await backend._dispatch_evaluate({"expression": "1+1", "frame_id": 2, "context": "repl"})
         cmd = backend._send_command.call_args[0][0]  # type: ignore[union-attr]
         assert cmd["command"] == "evaluate"
@@ -482,17 +485,19 @@ class TestDispatchEvaluate:
     @pytest.mark.asyncio
     async def test_default_context_is_hover(self) -> None:
         backend = _make_backend_new()
+        backend._send_command = AsyncMock(  # type: ignore[method-assign]
+            return_value={"body": {"result": "1", "type": "int", "variablesReference": 0}}
+        )
         await backend._dispatch_evaluate({"expression": "x"})
         cmd = backend._send_command.call_args[0][0]  # type: ignore[union-attr]
         assert cmd["arguments"]["context"] == "hover"
 
     @pytest.mark.asyncio
-    async def test_returns_placeholder_on_no_response(self) -> None:
+    async def test_raises_on_no_response(self) -> None:
         backend = _make_backend_new()
         backend._send_command = AsyncMock(return_value=None)  # type: ignore[method-assign]
-        result = await backend._dispatch_evaluate({"expression": "foo"})
-        assert "foo" in result.get("result", "")
-        assert result.get("variablesReference") == 0
+        with pytest.raises(RuntimeError, match="no response from debuggee"):
+            await backend._dispatch_evaluate({"expression": "foo"})
 
     @pytest.mark.asyncio
     async def test_returns_body_from_response(self) -> None:

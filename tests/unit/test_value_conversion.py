@@ -25,6 +25,22 @@ def test_evaluate_with_policy_blocks_hostile_expression():
         evaluate_with_policy("__import__('os').system('id')", frame)
 
 
+def test_evaluate_with_policy_allows_readonly_dunder_name():
+    frame = SimpleNamespace(f_globals={"__name__": "fixture"}, f_locals={})
+    assert evaluate_with_policy("__name__", frame) == "fixture"
+
+
+def test_evaluate_with_policy_allows_readonly_dunder_file():
+    frame = SimpleNamespace(f_globals={"__file__": "/tmp/example.py"}, f_locals={})
+    assert evaluate_with_policy("__file__", frame) == "/tmp/example.py"
+
+
+def test_evaluate_with_policy_blocks_dunder_attribute_access():
+    frame = SimpleNamespace(f_globals={"x": object()}, f_locals={})
+    with pytest.raises(ValueError, match="blocked by policy"):
+        evaluate_with_policy("x.__class__", frame)
+
+
 def test_evaluate_with_policy_rejects_missing_frame():
     with pytest.raises(ValueError, match="frame context is required"):
         evaluate_with_policy("1 + 1", None)

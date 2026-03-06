@@ -292,8 +292,5 @@ class _PyDebuggerStateManager:
                 context,
                 format_options=format_options,
             )
-        return {
-            "result": f"<evaluation of '{expression}' not available>",
-            "type": "string",
-            "variablesReference": 0,
-        }
+        msg = f"No active backend available for evaluation: {expression!r}"
+        raise RuntimeError(msg)

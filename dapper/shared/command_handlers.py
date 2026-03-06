@@ -1020,6 +1020,7 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
         body={
             "checkpoint": 0,
             "stopReason": stop_reason,
+            "threadId": tid,
             "location": location,
             "callStack": call_stack,
             "locals": top_locals,

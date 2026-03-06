@@ -9,8 +9,19 @@ from typing import Any
 if TYPE_CHECKING:
     from types import FrameType
 
+_SAFE_READONLY_DUNDER_NAMES = frozenset(
+    {
+        "__name__",
+        "__file__",
+        "__package__",
+        "__doc__",
+        "__spec__",
+        "__loader__",
+        "__cached__",
+    }
+)
+
 _DISALLOWED_EVAL_TOKENS = (
-    "__",
     "import ",
     "import(",
     "open(",
@@ -27,8 +38,20 @@ _DISALLOWED_EVAL_TOKENS = (
 )
 
 
+def _is_allowed_readonly_dunder_expression(expression: str) -> bool:
+    try:
+        parsed = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return False
+
+    return isinstance(parsed.body, ast.Name) and parsed.body.id in _SAFE_READONLY_DUNDER_NAMES
+
+
 def _enforce_eval_policy(expression: str) -> None:
     lowered = expression.lower()
+    if "__" in lowered and not _is_allowed_readonly_dunder_expression(expression):
+        msg = "expression blocked by policy"
+        raise ValueError(msg)
     if any(token in lowered for token in _DISALLOWED_EVAL_TOKENS):
         msg = "expression blocked by policy"
         raise ValueError(msg)

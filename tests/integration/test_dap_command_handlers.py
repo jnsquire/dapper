@@ -339,6 +339,57 @@ def test_continue_next_step_out(monkeypatch):
     assert getattr(dbg, "_return", None) is not None
 
 
+def test_agent_snapshot_returns_selected_thread_id(monkeypatch):
+    session, dbg = _active_session_with_debugger(DummyDebugger())
+    primary_tid = 11
+    selected_tid = 22
+    frame_id = 200
+
+    dbg.threads = {primary_tid: object(), selected_tid: object()}
+    dbg.stopped_thread_ids = {primary_tid, selected_tid}
+    dbg.frames_by_thread = {
+        primary_tid: [
+            {
+                "id": 100,
+                "name": "first_thread",
+                "line": 5,
+                "source": {"path": "/tmp/first.py"},
+            }
+        ],
+        selected_tid: [
+            {
+                "id": frame_id,
+                "name": "selected_thread",
+                "line": 17,
+                "source": {"path": "/tmp/selected.py"},
+            }
+        ],
+    }
+    dbg.frame_id_to_frame = {
+        frame_id: SimpleNamespace(
+            f_locals={"value": 42},
+            f_globals={"visible": "yes", "__name__": "fixture"},
+        )
+    }
+
+    responses: list[dict[str, Any]] = []
+
+    def fake_safe_send_response(**payload: Any) -> bool:
+        responses.append(payload)
+        return True
+
+    monkeypatch.setattr(session, "safe_send_response", fake_safe_send_response)
+
+    dch._cmd_agent_snapshot({"threadId": selected_tid})
+
+    assert responses
+    body = responses[0]["body"]
+    assert body["threadId"] == selected_tid
+    assert body["stoppedThreads"] == [primary_tid, selected_tid]
+    assert body["location"] == "/tmp/selected.py:17 in selected_thread"
+    assert body["locals"] == {"value": "42"}
+
+
 def test_handle_pause_emits_stopped_and_marks_thread(monkeypatch):
     session, dbg = _active_session_with_debugger(DummyDebugger())
     tid = 12345

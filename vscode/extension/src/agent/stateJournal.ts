@@ -234,11 +234,14 @@ export class StateJournal implements vscode.DebugAdapterTracker {
       }
       const result = await this._session.customRequest('dapper/agentSnapshot', args);
       if (result) {
+        const selectedThreadId = typeof result.threadId === 'number'
+          ? result.threadId
+          : threadId ?? result.stoppedThreads?.[0] ?? 0;
         const snap: DebugSnapshot = {
           checkpoint: this._checkpoint,
           timestamp: Date.now(),
           stopReason: result.stopReason ?? 'unknown',
-          threadId: result.stoppedThreads?.[0] ?? 0,
+          threadId: selectedThreadId,
           location: result.location ?? '<unknown>',
           callStack: result.callStack ?? [],
           locals: result.locals ?? {},
