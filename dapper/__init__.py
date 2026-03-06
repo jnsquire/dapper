@@ -1,4 +1,4 @@
-"""Dapper AI - Python Debug Adapter Protocol Implementation.
+"""Dapper - Python Debug Adapter Protocol Implementation.
 
 Entry points
 ------------

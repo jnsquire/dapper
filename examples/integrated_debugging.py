@@ -1,7 +1,7 @@
 """
-Example: Using Dapper AI Debugger from Within a Process
+Example: Using Dapper Debugger from Within a Process
 
-This example demonstrates how to integrate the Dapper AI debugger directly
+This example demonstrates how to integrate the Dapper debugger directly
 into a Python program, allowing you to add debugging capabilities without
 needing to launch the program through an external debug adapter.
 
@@ -289,7 +289,7 @@ async def main():
     """
     Main example demonstrating integrated debugging
     """
-    logger.info("Dapper AI Integrated Debugger Example")
+    logger.info("Dapper Integrated Debugger Example")
     logger.info("=" * 50)
 
     # Create integrated debugger

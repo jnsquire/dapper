@@ -1,4 +1,4 @@
-# Dapper AI - GitHub Copilot Instructions
+# Dapper - GitHub Copilot Instructions
 
 > **CRITICAL INSTRUCTION**: This project uses `uv` for all dependency management and task execution. Always use `uv run` to execute python scripts, tests, or tools. Do not use `pip` or `python` directly unless specifically instructing the user on how to install `uv` itself.
 

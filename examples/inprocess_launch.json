@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Dapper AI (In-Process)",
+      "name": "Python: Dapper (In-Process)",
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/examples/test_example.py",

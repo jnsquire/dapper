@@ -1,10 +1,10 @@
-# Dapper AI Debugger Examples
+# Dapper Debugger Examples
 
-This directory contains examples showing how to use the Dapper AI debugger in different scenarios.
+This directory contains examples showing how to use the Dapper debugger in different scenarios.
 
 ## Integrated Debugging Example
 
-The `integrated_debugging.py` example demonstrates how to integrate the Dapper AI debugger directly into a Python program, rather than using it as an external debug adapter.
+The `integrated_debugging.py` example demonstrates how to integrate the Dapper debugger directly into a Python program, rather than using it as an external debug adapter.
 
 ### Features Demonstrated
 

@@ -1,5 +1,5 @@
 <!-- Examples README copied into docs for site linking -->
-# Dapper AI Debugger Examples
+# Dapper Debugger Examples
 
 This section contains examples showing how to use Dapper in different scenarios. For runnable code and scripts, check the repository's `examples/` directory.
 
