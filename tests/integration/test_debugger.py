@@ -9,7 +9,6 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 
 import asyncio
 from pathlib import Path
-from typing import TypeAlias
 from typing import TypedDict
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -28,13 +27,6 @@ class Source(TypedDict):
 
     path: str
     name: str | None
-
-
-# Type aliases for protocol types
-SourceBreakpoint: TypeAlias = ProtocolSourceBreakpoint
-FunctionBreakpoint: TypeAlias = ProtocolFunctionBreakpoint
-
-
 class BreakpointResponse(TypedDict, total=False):
     """Mock BreakpointResponse type for testing."""
 
@@ -486,19 +478,19 @@ async def test_set_breakpoints(debugger: PyDebugger) -> None:
     source = {"path": "/path/to/test.py"}
 
     # Create breakpoints using local test types with proper typing
-    breakpoint1: SourceBreakpoint = {
+    breakpoint1: ProtocolSourceBreakpoint = {
         "line": DEFAULT_BREAKPOINT_LINE,
         "condition": f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE}",
         "column": 1,  # 1-based column number
         "hitCondition": "",
     }
-    breakpoint2: SourceBreakpoint = {
+    breakpoint2: ProtocolSourceBreakpoint = {
         "line": TEST_ALT_LINE_1,
         "condition": "",
         "column": 1,
         "hitCondition": "",
     }
-    breakpoints: list[SourceBreakpoint] = [breakpoint1, breakpoint2]
+    breakpoints: list[ProtocolSourceBreakpoint] = [breakpoint1, breakpoint2]
 
     # Call set_breakpoints directly - no need to patch _create_breakpoint
     result = await debugger.set_breakpoints(source, breakpoints)
@@ -558,8 +550,8 @@ async def test_set_breakpoints_with_valid_path(debugger):
 async def test_set_function_breakpoints(debugger):
     """Test setting function breakpoints"""
     breakpoints = [
-        FunctionBreakpoint(name="main"),
-        FunctionBreakpoint(
+        ProtocolFunctionBreakpoint(name="main"),
+        ProtocolFunctionBreakpoint(
             name="helper",
             condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}",
         ),
