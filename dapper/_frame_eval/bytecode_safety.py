@@ -66,6 +66,27 @@ DEFAULT_SAFETY_CONFIG: BytecodeSafetyConfig = {
 }
 
 
+def _has_plausible_opcode_stream(code_bytes: bytes) -> tuple[bool, str | None]:
+    """Return whether *code_bytes* looks safe enough to hand to ``dis``.
+
+    Python bytecode uses a fixed-width wordcode layout on all Python versions
+    supported by this project, so opcode bytes appear at even offsets.
+    Rejecting obviously invalid opcode values up front avoids calling into
+    ``dis.get_instructions()`` with malformed bytecode that can crash some
+    interpreter versions.
+    """
+    if len(code_bytes) % 2 != 0:
+        return False, f"bytecode length {len(code_bytes)} is not wordcode-aligned"
+
+    valid_opcodes = dis.opmap.values()
+    for offset in range(0, len(code_bytes), 2):
+        opcode = code_bytes[offset]
+        if opcode not in valid_opcodes:
+            return False, f"invalid opcode 0x{opcode:02x} at byte offset {offset}"
+
+    return True, None
+
+
 def validate_code_object(
     original: CodeType,
     modified: CodeType,
@@ -95,7 +116,11 @@ def validate_code_object(
 
     if cfg.get("validate_decodable", True):
         try:
-            list(dis.get_instructions(modified))
+            plausible, reason = _has_plausible_opcode_stream(modified.co_code)
+            if not plausible:
+                errors.append(f"instruction stream not decodable: {reason}")
+            else:
+                list(dis.get_instructions(modified))
         except Exception as exc:
             errors.append(f"instruction stream not decodable: {exc}")
 

@@ -38,6 +38,7 @@ from dapper._frame_eval.cache_manager import set_breakpoints
 MODIFY_BYTECODE_AVAILABLE = (
     importlib.util.find_spec("dapper._frame_eval.modify_bytecode") is not None
 )
+from dapper._frame_eval.bytecode_safety import _has_plausible_opcode_stream
 from dapper._frame_eval.bytecode_safety import safe_replace_code
 from dapper._frame_eval.bytecode_safety import validate_code_object
 from dapper._frame_eval.cache_manager import set_func_code_info
@@ -621,6 +622,18 @@ class TestBytecodeSafetyLayer:
     def test_decodable_check_catches_garbage_bytecode(self):
         """A code object with undecodable bytecode is flagged by the safety layer."""
         code = self._make_simple_code()
+
+        if sys.version_info >= (3, 14):
+            # CPython 3.14 can segfault when a deliberately corrupted code
+            # object is introspected, even for simple attribute access.
+            # Exercise the raw opcode-screening guard directly instead.
+            garbage = code.co_code[:-1]
+            plausible, reason = _has_plausible_opcode_stream(garbage)
+            assert not plausible
+            assert reason is not None
+            assert "wordcode-aligned" in reason
+            return
+
         # Clobber the bytecode with non-decodable bytes (all 0xFF, not a valid opcode).
         try:
             bad_code = code.replace(co_code=b"\xff" * len(code.co_code))

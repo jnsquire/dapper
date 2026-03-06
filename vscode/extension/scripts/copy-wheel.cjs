@@ -17,7 +17,7 @@ function warn(msg) { process.stderr.write(`[copy-wheel WARN] ${msg}\n`); }
 function fail(msg) { process.stderr.write(`[copy-wheel ERROR] ${msg}\n`); process.exit(1); }
 
 // CPython versions to build for (must satisfy the package's requires-python >=3.9)
-const PYTHON_VERSIONS = ['3.9', '3.10', '3.11', '3.12', '3.13'];
+const PYTHON_VERSIONS = ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14'];
 
 const DOWNLOAD_MISSING = process.argv.includes('--download-missing');
 

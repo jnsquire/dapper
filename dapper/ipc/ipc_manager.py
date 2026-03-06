@@ -7,6 +7,7 @@ that delegates transport-specific logic to the factory pattern.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import threading
 from typing import TYPE_CHECKING
@@ -150,7 +151,7 @@ class IPCManager:
             # Handle both sync and async close methods
             close_method = getattr(self._connection, "close", None)
             if close_method:
-                if asyncio.iscoroutinefunction(close_method):
+                if inspect.iscoroutinefunction(close_method):
                     try:
                         loop = asyncio.get_running_loop()
                     except RuntimeError:
@@ -190,7 +191,7 @@ class IPCManager:
             # Handle both sync and async close methods
             close_method = getattr(self._connection, "close", None)
             if close_method:
-                if asyncio.iscoroutinefunction(close_method):
+                if inspect.iscoroutinefunction(close_method):
                     await close_method()
                 else:
                     close_method()

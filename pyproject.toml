@@ -19,6 +19,7 @@ dependencies = [
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
 [project.optional-dependencies]

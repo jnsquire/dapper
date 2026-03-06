@@ -6,7 +6,7 @@ This guide explains how to build and test Dapper's Cython frame evaluation exten
 ## Prerequisites
 
 ### Required Dependencies
-- **Python 3.9-3.10** (frame evaluation currently targets these versions)
+- **Python 3.9+** (validated in CI through Python 3.14)
 - **Cython >= 3.0**
 - **C compiler** (GCC/Clang on Linux/macOS, MSVC on Windows)
 - **uv** for project commands and environment management

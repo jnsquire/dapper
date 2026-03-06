@@ -9,6 +9,7 @@ Converted from unittest.IsolatedAsyncioTestCase to pytest async functions.
 
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import TypedDict
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -18,7 +19,9 @@ import pytest
 
 # Import official protocol types for consistency
 from dapper.protocol.requests import FunctionBreakpoint as ProtocolFunctionBreakpoint
-from dapper.protocol.structures import SourceBreakpoint as ProtocolSourceBreakpoint
+
+if TYPE_CHECKING:
+    from dapper.protocol.structures import SourceBreakpoint as ProtocolSourceBreakpoint
 
 
 # Type definitions for test mocks
@@ -27,6 +30,8 @@ class Source(TypedDict):
 
     path: str
     name: str | None
+
+
 class BreakpointResponse(TypedDict, total=False):
     """Mock BreakpointResponse type for testing."""
 
