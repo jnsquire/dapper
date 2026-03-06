@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
   },
-  "publisher": "dapper",
+  "publisher": "joelsquire",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -724,6 +724,8 @@
     "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",
     "package:fresh": "node ./scripts/package.cjs --fresh",
+    "publish:marketplace": "node ./scripts/publish.cjs",
+    "publish:marketplace:pre": "node ./scripts/publish.cjs --pre-release",
     "watch": "node esbuild.config.js --watch",
     "clean": "node -e \"require('fs').rmSync('./out', { recursive: true, force: true });\"",
     "compile": "npm run clean && tsc -p ./",

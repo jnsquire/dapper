@@ -33,6 +33,37 @@ npm run package
 # The resulting VSIX will be written to vscode/extension/dist/<package>.vsix
 ```
 
+### Publish To Marketplace
+
+1. Create a Visual Studio Marketplace Personal Access Token with `Marketplace (Manage)` scope and `All accessible organizations`.
+2. Log in once with `vsce`:
+
+```powershell
+cd vscode/extension
+npm run publisher:login
+```
+
+3. Publish a normal release:
+
+```powershell
+cd vscode/extension
+$env:VSCE_PAT = "<your-pat>"
+npm run publish:marketplace
+```
+
+4. Publish a pre-release instead:
+
+```powershell
+cd vscode/extension
+$env:VSCE_PAT = "<your-pat>"
+npm run publish:marketplace:pre
+```
+
+Notes:
+
+- `publish:marketplace` reuses the existing package flow, produces a VSIX in `dist/`, and then publishes that exact package with `vsce`.
+- Do not commit your PAT. Prefer setting `VSCE_PAT` in your shell or CI environment.
+
 ## Quick Start
 
 1. Open **Dapper: Open Launch Configuration Wizard** to create and save a configuration.
