@@ -44,9 +44,6 @@ Open the Python file you want to debug in VS Code. Click in the left gutter next
 
 Press `F5` or open the **Run and Debug** panel (`Ctrl+Shift+D`) and click **Start Debugging**. VS Code will connect to the Dapper adapter and run your program. Execution will pause at your breakpoint.
 
-!!! note "TODO"
-    Screenshots of the VS Code debugging UI will be added here to illustrate each step.
-
 ## 6. Inspect Variables
 
 When execution is paused at a breakpoint:
@@ -59,4 +56,5 @@ When execution is paused at a breakpoint:
 ## Next Steps
 
 - [Using VS Code](using-vscode.md) — full walkthrough of Dapper's VS Code integration
-- [Guides](../guides/async-debugging.md) — advanced debugging scenarios
+- [Troubleshooting](../guides/troubleshooting.md) — common connection, breakpoint, and configuration issues
+- [Async Debugging](../guides/async-debugging.md) — advanced debugging scenarios

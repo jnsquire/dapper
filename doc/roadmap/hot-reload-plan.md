@@ -4,6 +4,11 @@
 > apply the change without restarting.  Use `importlib.reload` + targeted
 > frame-locals rebinding for functions already on the call stack.
 
+> **Status update (2026-03-06):** The original Phase 1, most of Phase 2, and
+> most user-visible Phase 3 items are now implemented. This document remains
+> useful as design history, but the remaining work is narrower than the phase
+> breakdown below originally implied.
+
 ---
 
 ## Overview
@@ -70,6 +75,10 @@ call executes the updated code.  Breakpoints survive the reload.
 
 ### Phase 2 — Frame-locals rebinding
 
+Status: implemented for the in-process runtime service, including live-frame
+local rebinding, structural compatibility checks for `frame.f_code`, and
+variable/cache invalidation after reload.
+
 Update function references on live stack frames so that resuming execution
 (continue / step) uses the new code immediately — even for functions
 currently mid-execution.
@@ -79,7 +88,7 @@ currently mid-execution.
 | 2.1 | Build old→new function map | `PyDebugger.hot_reload` | Before reload, snapshot `{name: func for name, func in module.__dict__.items() if callable(func)}`. After reload, build `old_code_id → new_func` mapping by qualified name. |
 | 2.2 | Walk call stack, rebind locals | new helper `_rebind_stack_functions(thread, mapping)` | For each frame on the stopped thread(s): scan `frame.f_locals` for values whose `__code__` id is in `mapping`; replace with new function object. Use `ctypes` frame-locals write-back on 3.9–3.12; use `frame.f_locals` proxy on 3.13+. |
 | 2.3 | Update `frame.f_code` (3.12+) | same helper | On CPython ≥3.12, if the new code object is structurally compatible (same `co_varnames` length, same `co_freevars`), assign `frame.f_code = new_code`. Fall back to skip with a warning otherwise. |
-| 2.4 | Patch class instances | optional, behind config flag | For each frame local that is an instance whose `__class__.__module__` == reloaded module: `obj.__class__ = new_module.ClassName`. Risky — guard with try/except. |
+| 2.4 | Patch class instances | optional, behind config flag | Still not enabled in the runtime implementation. |
 | 2.5 | Refresh `VariableManager` references | `core/variable_manager.py` | Invalidate cached var-refs for frames whose locals were rebound, so the next `variables` request reflects new values. |
 | 2.6 | Tests for frame rebinding | `tests/unit/test_hot_reload.py` | Synthetic frames with mock functions; verify locals are updated. |
 
@@ -90,16 +99,20 @@ current frame (where structurally possible).
 
 ### Phase 3 — UX polish and safety
 
+Status: safety guards, warning surfaces, telemetry, VS Code command, keybinding,
+auto-on-save, and user-facing documentation are implemented. The remaining
+unimplemented work is primarily optional runtime behavior parity.
+
 | Step | What | Where | Notes |
 |------|------|-------|-------|
 | 3.1 | Structural compatibility check | `PyDebugger.hot_reload` | Before attempting `frame.f_code` assignment, compare `co_varnames`, `co_freevars`, `co_cellvars`, `co_argcount`. Report incompatibilities in the response `warnings` list. |
 | 3.2 | Guard: C extension modules | module resolver | Reject reload if `module.__file__` ends in `.so` / `.pyd`. Return error in response. |
-| 3.3 | Guard: module-level side effects | config flag `hotReload.reExecuteModuleBody` (default `true`) | Document that `importlib.reload` re-runs top-level code. Optionally offer a "functions only" mode that patches `__dict__` entries without re-executing the module body (advanced — deferred). |
+| 3.3 | Guard: module-level side effects | config flag `hotReload.reExecuteModuleBody` (default `true`) | Documentation is in place. The opt-out / "functions only" mode remains deferred. |
 | 3.4 | VS Code extension command | `vscode/extension/` | Add a `dapper.hotReload` command and keybinding that triggers the custom DAP request on the current file. |
 | 3.5 | Guard: only while stopped | `RequestHandler` | Return `ErrorResponse` if lifecycle state is not `STOPPED`. |
 | 3.6 | Closure handling | frame rebinding helper | Detect functions with `__closure__`; skip rebinding with a warning rather than silently breaking captured variables. |
 | 3.7 | Telemetry event | `_frame_eval/telemetry.py` | Record reload events: module name, duration, success/failure, rebinding count. |
-| 3.8 | Documentation | `doc/reference/hot-reload.md` | User-facing docs: usage, limitations, known edge cases. |
+| 3.8 | Documentation | `doc/guides/hot-reload.md` | User-facing docs for usage, limitations, and edge cases are published. |
 
 ---
 
@@ -123,8 +136,7 @@ current frame (where structurally possible).
 |------|---------|
 | `dapper/adapter/hot_reload.py` | `HotReloadService` class — encapsulates module resolution, reload execution, cache invalidation, breakpoint refresh, frame rebinding |
 | `tests/unit/test_hot_reload.py` | Unit tests for `HotReloadService` |
-| `tests/integration/test_hot_reload.py` | End-to-end reload integration test *(planned; not yet implemented)* |
-| `doc/reference/hot-reload.md` | User-facing documentation *(planned; not yet implemented)* |
+| `tests/integration/test_hot_reload.py` | End-to-end reload integration test *(still not implemented)* |
 
 ### Modified files
 | Path | Change |
@@ -140,6 +152,7 @@ current frame (where structurally possible).
 | `dapper/_frame_eval/modify_bytecode.py` | `evict_file(path)` cleanup helper *(planned; not yet implemented)* |
 | `dapper/_frame_eval/runtime.py` | `invalidate_file(path)` convenience API *(planned; not yet implemented)* |
 | `dapper/core/debugger_bdb.py` | `reapply_breakpoints_for_file(path)` helper *(planned; not yet implemented; reapply currently done via `PyDebugger.set_breakpoints`)* |
+| `vscode/extension/src/extension.ts` | Extension command, keybinding wiring, and auto-on-save trigger for `dapper.hotReload` |
 
 ---
 
@@ -147,37 +160,42 @@ current frame (where structurally possible).
 
 | Phase | Scope | Estimate |
 |-------|-------|----------|
-| Phase 1 | MVP reload + cache invalidation + breakpoint re-sync | 3–4 days |
-| Phase 2 | Frame-locals rebinding + `f_code` mutation | 2–3 days |
-| Phase 3 | Guards, UX polish, VS Code command, docs | 2–3 days |
-| **Total** | | **7–10 days** |
+| Completed implementation | Core reload flow, rebinding, guards, extension command, docs | Done |
+| Remaining work | Optional runtime behavior parity, integration coverage, extra cache cleanup helpers | Small |
 
 ---
 
 ## Acceptance Criteria
 
 ### Phase 1
-- [x] `dapper/hotReload` request accepted while debugger is stopped (in-process)
-- [x] Module is reloaded; next function call executes updated code (in-process)
-- [x] Breakpoints survive the reload (line numbers that still exist, in-process)
+- [x] `dapper/hotReload` request accepted while debugger is stopped
+- [x] Module is reloaded; next function call executes updated code
+- [x] Breakpoints survive the reload (line numbers that still exist)
 - [x] `loadedSource` event emitted with `reason: "changed"`
 - [x] Error response returned for non-Python / non-loaded modules
 - [x] Frame-eval caches are invalidated for the reloaded file
 
-Status note: Phase 1 is complete for the in-process backend. External-process
-hot reload transport/execution remains outstanding and is tracked in Phase 3 scope.
+Status note: The core reload request/response flow is implemented for the
+in-process runtime and through the adapter-mediated external-process backend path.
 
 ### Phase 2
-- [ ] Function locals referencing reloaded functions are updated in-place
-- [ ] On 3.12+, `frame.f_code` is updated when structurally compatible
-- [ ] Variables panel reflects new values after reload
-- [ ] Incompatible code changes produce a diagnostic warning (not a crash)
+- [x] Function locals referencing reloaded functions are updated in-place
+- [x] On 3.12+, `frame.f_code` is updated when structurally compatible
+- [x] Variables panel reflects new values after reload
+- [x] Incompatible code changes produce a diagnostic warning (not a crash)
 
 ### Phase 3
-- [ ] Closures are detected and skipped with warning
-- [ ] C extensions are rejected with a clear error message
-- [ ] VS Code keybinding triggers reload on current file
-- [ ] Documentation covers usage, limitations, and supported Python versions
+- [x] Closures are detected and skipped with warning
+- [x] C extensions are rejected with a clear error message
+- [x] VS Code keybinding triggers reload on current file
+- [x] Documentation covers usage, limitations, and supported Python versions
+
+### Remaining work
+- [ ] Honor `rebindFrameLocals` as a true runtime switch rather than a protocol-only option
+- [ ] Implement `patchClassInstances` or remove it from the supported option surface
+- [ ] Add an end-to-end integration test covering the hot-reload flow on disk
+- [ ] Decide whether extra cache cleanup helpers (`evict_file`, `invalidate_file`) are still needed or should be dropped from the plan
+- [ ] Consider an opt-out for module-body re-execution if the extra complexity is justified
 
 ---
 

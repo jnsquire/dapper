@@ -2,7 +2,7 @@
 
 This page documents Dapper's hot reload support during a paused debug session.
 
-Current status: hot reload is implemented for in-process Dapper debug sessions. External-process support is planned.
+Current status: hot reload is implemented for in-process Dapper debug sessions and has an adapter-mediated external-process backend path. Remaining gaps are mostly around option/runtime parity and additional integration coverage.
 
 ## What it does
 
@@ -14,7 +14,7 @@ When the debugger is stopped, Dapper can reload a Python module from disk withou
 - emits `loadedSource` (`reason: "changed"`)
 - emits `dapper/hotReloadResult` with counters and warnings
 
-In in-process sessions, Dapper also attempts to rebind matching function references in live frame locals so resumed execution can pick up updated code more quickly.
+In in-process sessions, Dapper also attempts to rebind matching function references in live frame locals so resumed execution can pick up updated code more quickly. The adapter also exposes a backend path for external-process sessions.
 
 ## How to use it in VS Code
 
@@ -72,13 +72,13 @@ Successful responses can include:
 
 - `invalidatePycache` (default: `true`)
 - `updateFrameCode` (default: `true`; only effective on compatible runtimes/frames)
-- `rebindFrameLocals` (protocol-defined; currently not runtime-configurable and may be ignored)
+- `rebindFrameLocals` (protocol-defined; currently not exposed as a distinct runtime behavior switch)
 - `patchClassInstances` (protocol-defined, experimental; currently not enabled in runtime behavior)
 
 ## Safety checks and limitations
 
 - Hot reload requires a stopped debugger.
-- Current runtime support is in-process sessions; external-process support is not available yet.
+- External-process hot reload depends on the adapter/backend round-trip path and is less battle-tested than the in-process path.
 - Non-Python files are rejected.
 - C-extension modules (`.so`, `.pyd`, etc.) are rejected.
 - Functions using closures are skipped for rebinding and reported via warnings.

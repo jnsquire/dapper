@@ -5,7 +5,7 @@
 | **DEP**       | 001                                      |
 | **Title**     | Custom DAP Protocol Extensions for Hot Code Reloading |
 | **Author**    | Joel Squire                              |
-| **Status**    | Draft                                    |
+| **Status**    | Implemented with follow-up work          |
 | **Created**   | 2026-02-21                               |
 | **Requires**  | Python ≥ 3.9, DAP 1.65+                 |
 
@@ -31,6 +31,33 @@ Three protocol extensions are introduced:
 The existing standard DAP `loadedSource` event (already supported by
 Dapper) is reused, with `reason: "changed"`, so that conforming editors
 refresh gutter decorations and breakpoint markers without modification.
+
+As of 2026-03-06, this DEP is no longer just a proposal. The capability,
+request, custom event, VS Code command, keybinding, auto-on-save flow, and
+core runtime behavior are implemented. Remaining work is limited to option /
+runtime parity and additional end-to-end hardening.
+
+## Implementation Status
+
+Implemented:
+
+- `supportsHotReload` is advertised by the adapter.
+- `dapper/hotReload` request routing and validation are implemented.
+- `dapper/hotReloadResult` is emitted and forwarded through the extension.
+- In-process hot reload is implemented, including frame-local rebinding,
+  structural `frame.f_code` updates where supported, cache invalidation,
+  breakpoint reapplication, closure warnings, and C-extension rejection.
+- The VS Code extension exposes `Dapper: Hot Reload Current File` and auto-on-save.
+- An adapter-mediated external-process backend path exists.
+
+Still open or intentionally deferred:
+
+- `rebindFrameLocals` is part of the protocol surface, but is not exposed as a
+  distinct runtime switch with behavior materially different from the default path.
+- `patchClassInstances` remains protocol-defined and experimental, but is not
+  enabled in the runtime implementation.
+- End-to-end integration coverage is still lighter than the in-process unit coverage.
+- An opt-out for module-body re-execution remains a possible future enhancement.
 
 ---
 
@@ -107,10 +134,9 @@ class HotReloadOptions(TypedDict, total=False):
     """Per-request behaviour overrides for hot reload."""
 
     rebindFrameLocals: bool
-    # Default: True.
-    # When True the adapter walks every stopped frame and replaces
-    # references to old function objects with the reloaded versions.
-    # Set to False to apply the reload for future calls only.
+  # Protocol default: True.
+  # The runtime currently accepts this field but does not expose a
+  # separately-tuned code path beyond the default rebinding behavior.
 
     updateFrameCode: bool
     # Default: True (on CPython ≥ 3.12); ignored on older runtimes.
@@ -120,9 +146,9 @@ class HotReloadOptions(TypedDict, total=False):
 
     patchClassInstances: bool
     # Default: False.
-    # When True the adapter also patches __class__ on live instances
-    # whose class was defined in the reloaded module.  Experimental;
-    # may cause TypeError on __slots__ classes.
+    # Reserved for experimental instance patching. This field is part of
+    # the protocol shape, but the runtime implementation currently leaves
+    # it disabled.
 
     invalidatePycache: bool
     # Default: True.
@@ -390,7 +416,7 @@ sequenceDiagram
 | `frame.f_code` skipped: different `co_varnames` | `"frame.f_code update skipped for <func>(): co_varnames changed from <n> to <m>"` |
 | `frame.f_code` skipped: CPython < 3.12 | `"frame.f_code update not available on Python <version>"` |
 | Closure detected, rebinding skipped | `"Closure function <func>() skipped: captured cell variables cannot be safely rebound"` |
-| `__slots__` class, patching skipped | `"Class <cls> uses __slots__; instance patching skipped"` |
+| `__slots__` class, patching skipped | `"Class <cls> uses __slots__; instance patching skipped"` *(reserved for future instance patching support)* |
 | Module body raised during reload | `"Module body raised <exc> during re-execution (reload still applied)"` |
 | `.pyc` deletion failed | `"Failed to delete stale .pyc: <path> (<error>)"` |
 
@@ -402,7 +428,7 @@ sequenceDiagram
 
 | Version | `importlib.reload` | `frame.f_code` assign | `frame.f_locals` proxy | Net capability |
 |---------|-------------------|-----------------------|------------------------|---------------|
-| 3.9–3.11 | Yes | Read-only | No (`ctypes` write-back) | Reload + future-call rebinding only |
+| 3.9–3.11 | Yes | Read-only | No (`ctypes` write-back) | Reload + frame-local rebinding where supported; no direct `frame.f_code` mutation |
 | 3.12 | Yes | **Writable** | No (`ctypes` write-back) | Full: reload + current-frame code swap |
 | 3.13+ | Yes | Writable | **Yes** (PEP 667) | Full: reload + native locals proxy |
 
@@ -477,6 +503,9 @@ It can be implemented in the VS Code extension by watching
 `workspace.onDidSaveTextDocument` and sending the `dapper/hotReload`
 request — no protocol changes needed beyond what this DEP defines.
 
+Status: implemented in the Dapper VS Code extension via
+`dapper.hotReload.autoOnSave`.
+
 ### E. Batch reload (multiple modules in one request)
 
 Deferred to a future DEP.  Single-module reload covers the common case
@@ -488,17 +517,21 @@ sent multiple times for multi-file edits.
 
 ## Open Questions
 
-1. **Should `rebindFrameLocals` default to `True` or `False`?**
-   Currently proposed as `True` (maximise usefulness).  Counter-argument:
-   `False` is safer and more predictable for a first release; upgrade to
-   `True` after field testing.
+1. **Should `rebindFrameLocals` remain a distinct runtime option?**
+  The protocol field exists, but the current implementation does not expose
+  it as a meaningfully separate runtime path. The remaining decision is
+  whether to implement that distinction fully or simplify the surface.
 
 2. **Should the adapter support reloading packages (`__init__.py`)?**
    `importlib.reload` supports this, but the semantics are different
    (sub-modules are *not* reloaded).  This DEP does not prohibit it,
    but the implementation plan may choose to warn or restrict.
 
-3. **Should the response include a diff of changed functions?**
+3. **Should `patchClassInstances` be implemented or removed from the protocol surface?**
+  The field is currently reserved but not active in runtime behavior. Keeping
+  it without implementation risks overstating the supported option set.
+
+4. **Should the response include a diff of changed functions?**
    Useful for UX but expensive to compute.  Deferred — could be added as
    optional fields in a later revision of `HotReloadResponseBody`.
 
@@ -514,4 +547,4 @@ sent multiple times for multi-file edits.
 
 ---
 
-*DEP-001 Draft — 2026-02-21*
+*DEP-001 updated to reflect implementation status — 2026-03-06*

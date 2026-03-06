@@ -106,7 +106,7 @@ print(f"Trace calls saved: {stats['integration_stats']['trace_calls_saved']}")
 print(f"Breakpoints optimized: {stats['integration_stats']['breakpoints_optimized']}")
 ```
 
-### Telemetry & selective tracing 🔍
+### Telemetry and Selective Tracing
 
 Dapper now exposes structured telemetry for the frame-eval subsystem and richer selective-tracing diagnostics so you can observe fallback/events and tune runtime behavior.
 

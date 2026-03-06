@@ -57,7 +57,7 @@ Extract helper functions for module source collection to eliminate
    ```bash
    uv run pytest               # run all tests
    uv run ruff check .         # lint code
-   uv run format               # format code and ensure no changes remain
+   uv run ruff format          # format code and ensure no changes remain
    ```
 
 5. **Commit with descriptive message:**
@@ -78,7 +78,7 @@ Extract helper functions for module source collection to eliminate
 
 - [ ] All tests pass: `uv run pytest`
 - [ ] Code passes linting: `uv run ruff check .`
-- [ ] Code is formatted: `uv run format` (no diffs)
+- [ ] Code is formatted: `uv run ruff format`
 - [ ] Changes are properly documented
 - [ ] Commit messages are clear and descriptive
 - [ ] Each commit represents a logical unit of work

@@ -1,6 +1,6 @@
 # Development Setup
 
-This page covers how to set up a local development environment for dapper. For contribution guidelines, see [Contributing](contributing.md).
+This page covers how to set up a local development environment for Dapper. For contribution guidelines, see [Contributing](contributing.md).
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ This page covers how to set up a local development environment for dapper. For c
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/jnsquire/dapper.git
    cd dapper
    ```
 
@@ -67,7 +67,7 @@ Run these checks before submitting changes:
 uv run ruff check .
 
 # Format (and verify no further edits are needed)
-uv run format
+uv run ruff format
 
 # Type checking
 uv run pyright dapper tests

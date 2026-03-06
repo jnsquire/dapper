@@ -43,8 +43,7 @@ Emitted when a debugged child process has exited.
 
 ## Custom Requests
 
-!!! note "TODO"
-    Custom requests (client-to-adapter messages outside the DAP standard) will be documented here as they are stabilised. Subscribe to the relevant GitHub issues for updates.
+Dapper currently documents only the custom requests and events that are considered stable enough for external consumers. Additional request types may be added here as they are finalized.
 
 ## Capability Flags
 
@@ -54,8 +53,7 @@ Dapper advertises non-standard capabilities in the `initialize` response body al
 |------|------|-------------|
 | `supportsChildProcessDebugging` | bool | `true` when the adapter can automatically attach to child processes spawned by the debugged program. Clients should show the `autoAttachChildProcesses` option in their UI when this is `true`. |
 
-!!! note "TODO"
-    Additional custom capability flags (e.g. for frame evaluation, hot reload, and watchpoints) will be documented here.
+Capability flags that are experimental, internal, or still evolving are intentionally omitted from this page until their external contract is stable.
 
 ## See Also
 

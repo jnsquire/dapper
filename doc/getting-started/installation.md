@@ -13,20 +13,16 @@ This page covers installing Dapper for end users. If you are setting up a develo
 pip install dapper
 ```
 
-!!! note "TODO"
-    Dapper is not yet published to PyPI. This command will work once a release is made. In the meantime, install from source (see below).
+If you are working from the repository before a packaged release is available, install from source instead.
 
 ## Install from Source
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/jnsquire/dapper.git
 cd dapper
 
-# Install in editable mode with pip
-pip install -e .
-
-# Or use uv for faster dependency resolution
+# Install the project and development dependencies
 uv sync
 ```
 

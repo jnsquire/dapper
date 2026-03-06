@@ -1,12 +1,12 @@
 <!-- Manual testing guide migrated into Getting Started -->
 
-# Testing Dapper Debug Adapter - Manual Process
+# Manual Testing the Dapper Debug Adapter
 
-This guide shows how to manually test your Dapper debug adapter by connecting to it as an external debug adapter (the way VS Code would).
+This guide shows how to validate Dapper manually by connecting to it as an external debug adapter, in the same way a DAP client such as VS Code would.
 
-## 🚀 Quick Start
+## Quick Start
 
-### Method 1: Two Terminal Process
+### Method 1: Two-Terminal Workflow
 
 **Terminal 1** (Start debug adapter):
 ```bash
@@ -35,7 +35,7 @@ python test_dapper_client.py --program examples/sample_programs/simple_app.py
    - Select "Test Dapper Debug Adapter" configuration
    - This will run a DAP client that connects to your adapter
 
-## 📋 Step-by-Step Process
+## Step-by-Step Process
 
 ### Step 1: Launch Debug Adapter
 
@@ -61,9 +61,9 @@ python test_dapper_client.py --test-only --program examples/sample_programs/simp
 
 Expected output:
 ```
-🔍 Testing connection to debug adapter at localhost:4711...
-✅ Debug adapter is running and accepting connections
-✅ Connection test successful!
+Testing connection to debug adapter at localhost:4711...
+Debug adapter is running and accepting connections
+Connection test successful
 ```
 
 ### Step 3: Run Debug Session
@@ -74,14 +74,14 @@ Connect to your adapter and debug a program:
 python test_dapper_client.py --program examples/sample_programs/simple_app.py
 ```
 
-This will:
+This workflow will:
 1. Connect to your debug adapter on port 4711
 2. Send DAP `initialize` request
 3. Send DAP `launch` request for the target program
 4. Set breakpoints at lines 70 and 85
 5. Send `configurationDone` and `continue` requests
 
-## 🔍 What to Watch For
+## What to Watch For
 
 ### Debug Adapter Logs
 
@@ -98,13 +98,13 @@ In the terminal running the debug adapter, you should see:
 
 The test client shows the DAP communication:
 ```
-📤 Sending: initialize
+Sending: initialize
    {"seq": 1, "type": "request", "command": "initialize", "arguments": {...}}
-📥 Received: response
+Received: response
    {"seq": 1, "type": "response", "success": true, ...}
 ```
 
-## 🧪 Testing Different Scenarios
+## Testing Different Scenarios
 
 ### Test Simple Program
 
@@ -119,7 +119,7 @@ conditional/expression breakpoints:
 python test_dapper_client.py --program examples/sample_programs/loop_example.py
 ```
 
-### Test Advanced Program  
+### Test Advanced Program
 
 ```bash
 python test_dapper_client.py --program examples/sample_programs/advanced_app.py
@@ -194,7 +194,7 @@ Notes:
 - The server only forwards IPC-related kwargs to the launcher when
    `useIpc` is true to preserve legacy argument ordering.
 
-## 🔧 VS Code Launch Configurations
+## VS Code Launch Configurations
 
 The `.vscode/launch.json` includes these configurations:
 
@@ -204,7 +204,7 @@ The `.vscode/launch.json` includes these configurations:
 | `Test Dapper Debug Adapter` | Run the DAP client to test your adapter |
 | `Debug Simple App (Standard Python)` | Compare with VS Code's debugger |
 
-## 📊 Comparing with Standard Debugger
+## Comparing with the Standard Debugger
 
 To verify your adapter works correctly:
 
@@ -220,12 +220,12 @@ To verify your adapter works correctly:
    - Variable values match
    - Step operations work similarly
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Connection Refused
 
 ```
-❌ Failed to connect to debug adapter: [Errno 10061] No connection could be made
+Failed to connect to debug adapter: [Errno 10061] No connection could be made
 ```
 
 **Solution**: Make sure the debug adapter is running first.
@@ -233,7 +233,7 @@ To verify your adapter works correctly:
 ### Port Already in Use
 
 ```
-❌ [Errno 10048] Only one usage of each socket address is normally permitted
+[Errno 10048] Only one usage of each socket address is normally permitted
 ```
 
 **Solution**: Kill existing processes or use a different port.
@@ -248,12 +248,12 @@ If the client hangs waiting for a response:
 ### Invalid DAP Messages
 
 ```
-❌ Error during debug session: JSON decode error
+Error during debug session: JSON decode error
 ```
 
 **Solution**: Check that your adapter sends properly formatted DAP responses.
 
-## 📝 Next Steps
+## Next Steps
 
 1. **Implement missing DAP requests** in your adapter
 2. **Add more test scenarios** to the client
@@ -261,4 +261,4 @@ If the client hangs waiting for a response:
 4. **Add breakpoint functionality** to see actual debugging in action
 5. **Test variable inspection** and stepping operations
 
-This manual testing process helps verify that your debug adapter correctly implements the Debug Adapter Protocol! 🎉
+This process provides a straightforward way to verify that the adapter is handling core Debug Adapter Protocol traffic correctly.

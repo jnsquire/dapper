@@ -1,6 +1,6 @@
-# Dapper - Debug Adapter Protocol for Python
+# Dapper: Python Debug Adapter Protocol Implementation
 
-A Debug Adapter Protocol implementation in Python.
+Dapper is a Python implementation of the Debug Adapter Protocol (DAP), with support for core debugging workflows, VS Code integration, and lower-overhead runtime instrumentation.
 
 [![CI](https://github.com/jnsquire/dapper/actions/workflows/ci.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/ci.yml)
 [![Tests](https://github.com/jnsquire/dapper/actions/workflows/tests.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/tests.yml)
@@ -8,15 +8,15 @@ A Debug Adapter Protocol implementation in Python.
 
 [![Docs published](https://github.com/jnsquire/dapper/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/jnsquire/dapper/actions/workflows/docs-deploy.yml)
 
-The full documentation is available online: https://jnsquire.github.io/dapper/
+The full documentation is available at https://jnsquire.github.io/dapper/.
 
 
-## Features
+## Highlights
 
-- Implements the Debug Adapter Protocol specification
-- Connects to Python's built-in debugging tools
-- Supports both TCP sockets and named pipes using asyncio
-- Provides core debugging functionality (breakpoints, stepping, variable inspection)
+- Implements the Debug Adapter Protocol for Python debugging clients
+- Integrates with Python runtime debugging facilities and DAP-compatible tooling
+- Supports TCP sockets and IPC transports for adapter-launcher communication
+- Provides breakpoints, stepping, stack inspection, and variable evaluation
 
 ### Debugger Features Overview
 
@@ -29,8 +29,12 @@ Dapper works directly with VS Code's built-in debugger. See **[Using Dapper with
 
 ## Installation
 
+Dapper is currently installed from source for development and evaluation:
+
 ```bash
-pip install dapper
+git clone https://github.com/jnsquire/dapper.git
+cd dapper
+uv sync
 ```
 
 For development setup, see [Development Setup](doc/development/setup.md).
@@ -43,16 +47,14 @@ For a full walkthrough, see the **[Getting Started](doc/getting-started/index.md
 - [Using Dapper with VS Code](doc/getting-started/using-vscode.md) — launch configs, attach, IPC, and VS Code-specific features
 - [Examples](examples/README.md) — practical code examples
 
-### Running the Test Suite 🔬
+### Running the Test Suite
 
-When developing locally you should execute tests via `uv` to ensure the correct environment and avoid
-Python warnings about unsupported async tests. The [development testing page](doc/development/testing.md)
-contains detailed instructions, but in VS Code you can also invoke the bundled tasks:
+When developing locally, run tests through `uv` to ensure the expected environment is used and to avoid spurious async-test warnings. The [development testing page](doc/development/testing.md) contains the full workflow, and VS Code also exposes the bundled tasks:
 
-* **`Tasks → Run Test Task → Tests: run all (uv)`** – runs the entire suite with `uv run pytest`
-* **`Tasks → Run Test Task → Tests: unit+integration (uv)`** – exercises just the unit and integration directories
+* **`Tasks → Run Test Task → Tests: run all (uv)`** - runs the full suite with `uv run pytest`
+* **`Tasks → Run Test Task → Tests: unit+integration (uv)`** - runs the unit and integration suites only
 
-These make it obvious from the editor how to get a clean test run without spurious warnings.
+These tasks provide a consistent way to run the test suite directly from the editor.
 
 
 ## License

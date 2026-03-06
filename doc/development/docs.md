@@ -14,6 +14,12 @@ We provide a small helper (`scripts/update_docs.py`) that renders Mermaid `.mmd`
 uv run --only-dev --with-editable . docs
 ```
 
+For a live local preview, run MkDocs directly after syncing development dependencies:
+
+```bash
+uv run mkdocs serve
+```
+
 If you only want to run the helper directly (without asking uv to install dev dependencies for the run), invoke the script directly. This requires that `mkdocs` and the Mermaid plugin are already available in the active environment:
 
 ```bash

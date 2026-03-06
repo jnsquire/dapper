@@ -5,26 +5,26 @@
 ## Overview
 
 1. Install **Python** & **Python Debug** extensions in VS Code.
-2. Install Dapper: `pip install dapper`.
+2. Install Dapper into the environment you want to debug.
 3. Run `python -m dapper.adapter --port 4711` in a terminal.
 4. Add a launch config with `"debugServer": 4711`.
 5. Press **F5**.
 
 ---
 
-## Step 1 – Install Dapper into your environment
+## Step 1 - Install Dapper into Your Environment
 
 Open a terminal targeting the environment used for your project (virtualenv, Poetry shell, conda env, etc.):
 
 ```bash
-uv pip install dapper
-# ...or...
-pip install dapper
+git clone https://github.com/jnsquire/dapper.git
+cd dapper
+uv sync
 ```
 
-> 🛠️ For hacking on the adapter itself: `uv pip install -e ".[dev]"` inside the cloned repo.
+If a packaged release is available for your workflow, installing it into the target environment is also acceptable. For active development, prefer a repository checkout managed with `uv`.
 
-## Step 2 – Start the adapter
+## Step 2 - Start the Adapter
 
 ```bash
 python -m dapper.adapter --port 4711
@@ -34,7 +34,7 @@ Leave this process running; VS Code will connect to it. The port number is arbit
 
 **Named pipe / Unix socket:** prefer local IPC over TCP? Use `--pipe` (Windows) or `--unix` (POSIX). See the [architecture IPC section](../architecture/ipc.md) for the full matrix.
 
-## Step 3 – Create a launch config
+## Step 3 - Create a Launch Configuration
 
 In `.vscode/launch.json`, set `"debugServer"` to tell VS Code to connect to the running adapter instead of spawning its own:
 
@@ -126,13 +126,13 @@ In `.vscode/launch.json`, set `"debugServer"` to tell VS Code to connect to the 
 }
 ```
 
-## Step 4 – Start debugging
+## Step 4 - Start Debugging
 
 1. Confirm the adapter terminal is still running.
 2. Select **Python: Run with Dapper** from the debug dropdown.
 3. Press **F5**.
 
-> ✨ Use VS Code's **Python: Select Interpreter** command to match the environment that installed Dapper. If the adapter process runs in a different interpreter, paths for breakpoints may not align.
+Use VS Code's **Python: Select Interpreter** command to match the environment that installed Dapper. If the adapter process runs in a different interpreter, breakpoint paths may not align.
 
 ---
 
@@ -168,7 +168,7 @@ In `.vscode/launch.json`, set `"debugServer"` to tell VS Code to connect to the 
 | `justMyCode` | boolean | Filter library/internal frames (default `true`). |
 | `strictExpressionWatchPolicy` | boolean | Stricter expression watchpoint checks (default `false`). |
 | `inProcess` | boolean | Use in-process backend instead of a subprocess (default `false`). |
-| `ipcTransport` | `"auto"\|"pipe"\|"unix"\|"tcp"` | Adapter↔launcher transport (default `auto`). |
+| `ipcTransport` | `"auto"\|"pipe"\|"unix"\|"tcp"` | Adapter-to-launcher transport (default `auto`). |
 | `ipcPipeName` | string | Named pipe path when using `pipe`. |
 | `subprocessAutoAttach` | boolean | Auto-attach Python child processes (default `false`). |
 
@@ -217,7 +217,7 @@ In `.vscode/launch.json`, set `"debugServer"` to tell VS Code to connect to the 
 
 Prefer `venvPath` when module dependencies are installed in that environment. Use `moduleSearchPaths` when you need extra source directories added to resolution.
 
-### Advanced: debug launcher target modes
+### Advanced: Debug Launcher Target Modes
 
 The internal launcher supports these mutually exclusive target forms (mainly used by Dapper internals):
 
@@ -239,4 +239,4 @@ For normal usage, prefer `launch.json` with `program`.
 | Program launches outside VS Code's environment | Add `"console": "integratedTerminal"` or specify `"env"` / `"envFile"`. |
 | No output in the Debug Console | Ensure `redirectOutput` is not set to `false` in your configuration. |
 
-Still stuck? The [Manual Testing guide](manual-testing.md) lists end-to-end flows for validating transports and breakpoints.
+Still stuck? The [Manual Testing guide](manual-testing.md) provides end-to-end flows for validating transports and breakpoints.

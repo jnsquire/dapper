@@ -53,7 +53,7 @@ Before submitting changes, always run the full test suite **and** ensure code is
 ```bash
 uv run pytest           # exercise all tests
 uv run ruff check .     # lint code (and `--fix` as needed)
-uv run format           # apply formatter & verify no diff
+uv run ruff format      # apply formatter & verify no diff
 ```
 
 ## See Also

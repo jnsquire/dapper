@@ -35,6 +35,7 @@ dev = [
     "pytest-xdist>=3.0.0",
     "mkdocs",
     "mkdocs-material>=9.7.4",
+    "mkdocs-mermaid2-plugin",
     "Cython>=3.0",
 ]
 
@@ -200,6 +201,7 @@ dev = [
     "pytest-xdist>=3.0.0",
     "mkdocs",
     "mkdocs-material",
+    "mkdocs-mermaid2-plugin",
     "cython>=3.0",
     "mkdocs-material>=9.7.4",
 ]

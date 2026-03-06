@@ -11,8 +11,7 @@ This page consolidates common issues across all areas of Dapper. For frame evalu
 - Confirm that `"debugServer": 4711` in your `launch.json` matches the port the adapter was started with.
 - Look for a `[Errno 98] Address already in use` error — another process may already be using the port. Try a different port or kill the existing process.
 
-!!! note "TODO"
-    Document error messages emitted to the adapter log and how to read them.
+If connection setup still fails, start the adapter with `--log-level DEBUG` and review the adapter output for bind, handshake, or launch-time errors.
 
 ## Breakpoints Not Hitting
 
@@ -21,8 +20,7 @@ This page consolidates common issues across all areas of Dapper. For frame evalu
 - If using `justMyCode: true` (the default), breakpoints inside `site-packages` or the standard library will be skipped.
 - For async code, breakpoints inside coroutines require that the event loop is running. Refer to the [Async Debugging Guide](../guides/async-debugging.md).
 
-!!! note "TODO"
-    Add step-by-step diagnosis flow for the "grey breakpoint" (unverified) state.
+If VS Code shows an unverified breakpoint, confirm that the source path, interpreter, and workspace folder all match the program being launched.
 
 ## Variable Display Issues
 
@@ -30,8 +28,7 @@ This page consolidates common issues across all areas of Dapper. For frame evalu
 - Variables inside comprehensions or generator frames may not be accessible; this is a known CPython limitation.
 - Setting a variable to a new value via the Variables panel requires the adapter to support `setVariable`. Check that `"supportsSetVariable": true` appears in the adapter capabilities.
 
-!!! note "TODO"
-    Document the variable presentation pipeline and how to extend it.
+For details on display formatting and presentation hints, see the [Variable Presentation guide](variable-presentation.md).
 
 ## Frame Evaluation Issues
 
@@ -46,8 +43,7 @@ Frame evaluation is an optional subsystem that significantly reduces tracing ove
 - Large numbers of breakpoints (>100 per file) degrade frame evaluation efficiency. Consider using conditional breakpoints or logpoints instead.
 - Memory usage grows if the breakpoint cache is not bounded. Set `max_cache_size` in `frameEvalConfig` to limit it.
 
-!!! note "TODO"
-    Add guidance on profiling the adapter itself and reporting performance regressions.
+When reporting performance regressions, include the Python version, launch configuration, and whether frame evaluation or `sys.monitoring` was enabled.
 
 ## VS Code Extension Issues
 
@@ -55,8 +51,7 @@ Frame evaluation is an optional subsystem that significantly reduces tracing ove
 - After updating the extension, reload VS Code (`Ctrl+Shift+P` → **Developer: Reload Window**).
 - For extension development issues, see [VS Code Extension Development](../getting-started/using-vscode.md).
 
-!!! note "TODO"
-    Document the extension activation sequence and common activation failures.
+If activation still fails, rebuild the extension and confirm that the selected Python environment matches the environment expected by the extension.
 
 ## Getting Help
 

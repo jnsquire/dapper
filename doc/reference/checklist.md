@@ -83,7 +83,7 @@ See also: [Frame Eval User Guide](../guides/frame-eval.md).
 ## Advanced features / code navigation
 - ✅ Loaded sources listing (what's present in runtime)
 - ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
-- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, in-process runtime reload service, frame-local rebinding, and VS Code command/auto-on-save are implemented; external-process runtime support remains. See [Hot Reload reference](../guides/hot-reload.md).
+- 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, runtime reload service, frame-local rebinding, adapter-mediated external-process path, and VS Code command/auto-on-save are implemented. Remaining work is mainly option/runtime parity (`rebindFrameLocals`, `patchClassInstances`) and broader end-to-end hardening. See [Hot Reload reference](../guides/hot-reload.md).
 - 🟡 Multi-process child auto-attach (`subprocessAutoAttach`, `dapper/childProcess`, `dapper/childProcessExited`, `dapper/childProcessCandidate`) — Phase 1 + Phase 2 launch-path handling are implemented for Python subprocess script/module/code invocations (including common `multiprocessing`/`ProcessPoolExecutor` worker launch shapes) with session correlation and recursion guardrails; process-tree UX and broader runtime matrix hardening remain.
 - ❌ Goto targets (find jump targets / navigation helpers — planned)
 - ✅ Modules listing
@@ -101,7 +101,7 @@ Dapper provides a stable, functional core debugger experience: program control, 
 
 - Source navigation & goto targets — tests and partial `source` handling exist; goto targets planned
 - Runtime watchpoints — bookkeeping and runtime triggers implemented; read-access detection, per-address watches, and cross-process robustness remain
-- Hot reload for external-process sessions — in-process path complete; external-process runtime support remains
+- Hot reload option/runtime parity — core reload flow is implemented; remaining work is optional behavior parity and broader integration coverage
 - Process-tree UX for multi-process attach — Phase 1 + 2 launch-path handling done; tree view and runtime matrix hardening remain
 - Reverse debugging / time-travel (future)
 - Performance profiling integration (future)
