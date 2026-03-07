@@ -1,6 +1,83 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
+type JsonObject = Record<string, unknown>;
+
+function stripJsonComments(content: string): string {
+  let result = '';
+  let inString = false;
+  let isEscaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const current = content[index];
+    const next = content[index + 1];
+
+    if (inLineComment) {
+      if (current === '\n') {
+        inLineComment = false;
+        result += current;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (current === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      } else if (current === '\n') {
+        result += current;
+      }
+      continue;
+    }
+
+    if (inString) {
+      result += current;
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (current === '\\') {
+        isEscaped = true;
+      } else if (current === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (current === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (current === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (current === '"') {
+      inString = true;
+    }
+
+    result += current;
+  }
+
+  return result;
+}
+
+function parseJsoncObject(content: string): JsonObject | undefined {
+  try {
+    const parsed = JSON.parse(stripJsonComments(content));
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      return undefined;
+    }
+    return parsed as JsonObject;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Inserts a debug configuration into the `.vscode/launch.json` for the given workspace folder.
  * If `launch.json` doesn't exist, it will be created. If multiple workspace folders exist, a prompt will be shown.
@@ -52,9 +129,9 @@ export async function insertLaunchConfiguration(config: any, folder?: vscode.Wor
   let json: any;
   if (existingData) {
     const content = new TextDecoder('utf-8').decode(existingData);
-    try {
-      json = JSON.parse(content);
-    } catch {
+    json = parseJsoncObject(content);
+
+    if (!json) {
       const open = 'Open launch.json';
       const choice = await vscode.window.showWarningMessage(
         'Existing .vscode/launch.json is invalid JSON. Please fix the file before using this feature.',
@@ -100,7 +177,9 @@ export async function insertLaunchConfiguration(config: any, folder?: vscode.Wor
   }
 
   try {
-    await vscode.workspace.fs.writeFile(launchUri, Buffer.from(JSON.stringify(json, null, 2), 'utf8'));
+    const serialized = JSON.stringify(json, null, 2);
+
+    await vscode.workspace.fs.writeFile(launchUri, Buffer.from(serialized, 'utf8'));
     try {
       const doc = await vscode.workspace.openTextDocument(launchUri);
       await vscode.window.showTextDocument(doc);

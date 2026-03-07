@@ -65,6 +65,40 @@ describe('insertLaunchConfiguration helper', () => {
     expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
   });
 
+  it('should insert into a JSONC launch.json with comments', async () => {
+    const tmpDir = '/tmp/dapper-test-jsonc';
+    const folder = { name: 'dapper-test-jsonc', uri: { fsPath: tmpDir } };
+    vscode.workspace.workspaceFolders = [folder];
+
+    const config = { type: 'dapper', request: 'launch', name: 'JSONC Config', program: '${file}' };
+
+    const existingLaunchJson = `{
+  // Existing launch config comment
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Existing Config",
+      "program": "\${workspaceFolder}/app.js"
+    }
+  ]
+}`;
+
+    vscode.workspace.fs.readFile.mockResolvedValueOnce(Buffer.from(existingLaunchJson));
+    vscode.workspace.fs.writeFile.mockResolvedValueOnce(undefined);
+
+    const ok = await insertLaunchConfiguration(config, folder);
+
+    expect(ok).toBe(true);
+    expect(vscode.workspace.fs.writeFile).toHaveBeenCalled();
+
+    const [, writtenContent] = vscode.workspace.fs.writeFile.mock.calls[0];
+    const parsed = JSON.parse(Buffer.from(writtenContent).toString('utf8').replace(/\/\/.*$/gm, ''));
+    expect(parsed.configurations).toHaveLength(2);
+    expect(parsed.configurations[1]).toMatchObject(config);
+  });
+
   it('should replace an existing config when user chooses Replace', async () => {
     const tmpDir = '/tmp/dapper-test3';
     const folder = { name: 'dapper-test3', uri: { fsPath: tmpDir } };
