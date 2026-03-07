@@ -655,8 +655,48 @@
         "title": "Debug Python File with Dapper",
         "category": "Dapper",
         "icon": "$(debug-alt)"
+      },
+      {
+        "command": "dapper.processTree.refresh",
+        "title": "Dapper: Refresh Process Tree",
+        "category": "Dapper",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dapper.processTree.addPid",
+        "title": "Dapper: Add Process PID to Tree",
+        "category": "Dapper",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dapper.processTree.removePid",
+        "title": "Dapper: Remove Process PID from Tree",
+        "category": "Dapper",
+        "icon": "$(close)"
+      },
+      {
+        "command": "dapper.processTree.copyPid",
+        "title": "Dapper: Copy Process PID",
+        "category": "Dapper",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "dapper.processTree.stopSession",
+        "title": "Dapper: Stop Debug Session",
+        "category": "Dapper",
+        "icon": "$(debug-stop)"
       }
     ],
+    "views": {
+      "debug": [
+        {
+          "id": "dapperProcessTree",
+          "name": "Dapper Processes",
+          "contextualTitle": "Dapper Processes",
+          "icon": "images/icon.png"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "dapper.hotReload",
@@ -700,6 +740,33 @@
           "command": "dapper.openLaunchWizard",
           "when": "view == workbench.view.debug && workspaceFolderCount > 0",
           "group": "navigation@5"
+        },
+        {
+          "command": "dapper.processTree.refresh",
+          "when": "view == dapperProcessTree",
+          "group": "navigation"
+        },
+        {
+          "command": "dapper.processTree.addPid",
+          "when": "view == dapperProcessTree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "dapper.processTree.stopSession",
+          "when": "view == dapperProcessTree && viewItem == dapperProcessSession",
+          "group": "inline"
+        },
+        {
+          "command": "dapper.processTree.copyPid",
+          "when": "view == dapperProcessTree && viewItem =~ /^dapper(ProcessSession|TrackedPid|TrackedPidAttached)$/",
+          "group": "inline"
+        },
+        {
+          "command": "dapper.processTree.removePid",
+          "when": "view == dapperProcessTree && viewItem =~ /^dapperTrackedPid(Attached)?$/",
+          "group": "inline"
         }
       ],
       "debug/toolbar": [

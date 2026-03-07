@@ -7,6 +7,7 @@ import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js'
 import { JournalRegistry, DapperTrackerFactory } from './agent/stateJournal.js';
 import { registerAgentTools } from './agent/tools/index.js';
 import { LaunchService } from './debugAdapter/launchService.js';
+import { DapperProcessTreeView } from './views/DapperProcessTreeView.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
@@ -342,6 +343,32 @@ function* registerWebview(context: vscode.ExtensionContext): Iterable<vscode.Dis
   }
 }
 
+function* registerViews(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
+  const processTreeView = new DapperProcessTreeView(context.workspaceState);
+
+  yield vscode.commands.registerCommand('dapper.processTree.refresh', () => {
+    processTreeView.refresh();
+  });
+
+  yield vscode.commands.registerCommand('dapper.processTree.addPid', async () => {
+    await processTreeView.addTrackedPid();
+  });
+
+  yield vscode.commands.registerCommand('dapper.processTree.removePid', async (element) => {
+    await processTreeView.removeTrackedPid(element);
+  });
+
+  yield vscode.commands.registerCommand('dapper.processTree.copyPid', async (element) => {
+    await processTreeView.copyPid(element);
+  });
+
+  yield vscode.commands.registerCommand('dapper.processTree.stopSession', async (element) => {
+    await processTreeView.stopSession(element);
+  });
+
+  yield processTreeView;
+}
+
 /**
  * Register all extension disposables and return a single composite Disposable.
  * This aggregates the commands, debug adapters, webview handlers and logger
@@ -378,6 +405,10 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   // Webview serializers / handlers
   const webviewDisposables = Array.from(registerWebview(context));
   allDisposables.push(...webviewDisposables);
+
+  // Tree views
+  const viewDisposables = Array.from(registerViews(context));
+  allDisposables.push(...viewDisposables);
 
   // Add a cleanup disposable (equivalent of the inline object previously pushed)
   const cleanupDisposable = new vscode.Disposable(() => {

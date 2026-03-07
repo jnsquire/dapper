@@ -1,3 +1,49 @@
+class MockEventEmitter {
+  constructor() {
+    this._listeners = [];
+    this.event = (listener) => {
+      this._listeners.push(listener);
+      return {
+        dispose: () => {
+          const index = this._listeners.indexOf(listener);
+          if (index >= 0) {
+            this._listeners.splice(index, 1);
+          }
+        }
+      };
+    };
+  }
+
+  fire(data) {
+    for (const listener of this._listeners.slice()) {
+      listener(data);
+    }
+  }
+
+  dispose() {
+    this._listeners.length = 0;
+  }
+}
+
+export class TreeItem {
+  constructor(label, collapsibleState = 0) {
+    this.label = label;
+    this.collapsibleState = collapsibleState;
+  }
+}
+
+export const TreeItemCollapsibleState = {
+  None: 0,
+  Collapsed: 1,
+  Expanded: 2,
+};
+
+export class ThemeIcon {
+  constructor(id) {
+    this.id = id;
+  }
+}
+
 export const workspace = {
   workspaceFolders: [{ name: 'temp', uri: { fsPath: '' } }],
   fs: {
@@ -27,7 +73,14 @@ export const window = {
   showWarningMessage: () => {},
   showInformationMessage: () => {},
   showQuickPick: () => {},
+  showInputBox: async () => undefined,
   showTextDocument: () => {},
+  createTerminal: () => ({
+    show: () => {},
+    dispose: () => {},
+    exitStatus: { code: 0 },
+  }),
+  onDidCloseTerminal: () => ({ dispose: () => {} }),
   activeTextEditor: undefined,
   createOutputChannel: (name) => ({
       appendLine: () => {},
@@ -38,7 +91,24 @@ export const window = {
       info: () => {},
       warn: () => {},
       error: () => {},
-  })
+  }),
+  createTreeView: (id, options) => ({
+    id,
+    options,
+    title: undefined,
+    description: undefined,
+    message: undefined,
+    badge: undefined,
+    visible: true,
+    selection: [],
+    onDidExpandElement: () => ({ dispose: () => {} }),
+    onDidCollapseElement: () => ({ dispose: () => {} }),
+    onDidChangeSelection: () => ({ dispose: () => {} }),
+    onDidChangeVisibility: () => ({ dispose: () => {} }),
+    onDidChangeCheckboxState: () => ({ dispose: () => {} }),
+    reveal: () => Promise.resolve(),
+    dispose: () => {},
+  }),
 };
 
 // createWebviewPanel should return an object that mimics VS Code WebviewPanel API
@@ -108,7 +178,14 @@ export class SourceBreakpoint extends Breakpoint {
 }
 
 export const commands = {
-  executeCommand: (...args) => Promise.resolve()
+  executeCommand: (...args) => Promise.resolve(),
+  registerCommand: (command, callback) => ({ command, callback, dispose: () => {} }),
+};
+
+export const env = {
+  clipboard: {
+    writeText: async () => {},
+  },
 };
 
 export const extensions = {
@@ -147,6 +224,7 @@ export const fireDebugEvent = (eventName, arg) => {
 
 export const debug = {
   startDebugging: async (...args) => true,
+  stopDebugging: async (...args) => {},
   activeDebugSession: null,
   activeStackItem: null,
   breakpoints: [],
@@ -175,10 +253,47 @@ export const debug = {
   },
 };
 
+export class Disposable {
+  constructor(callOnDispose = () => {}) {
+    this._callOnDispose = callOnDispose;
+  }
+
+  dispose() {
+    this._callOnDispose();
+  }
+
+  static from(...disposables) {
+    return new Disposable(() => {
+      for (const disposable of disposables) {
+        disposable?.dispose?.();
+      }
+    });
+  }
+}
+
+export class DebugAdapterServer {
+  constructor(port, host) {
+    this.port = port;
+    this.host = host;
+  }
+}
+
+export class DebugAdapterExecutable {
+  constructor(command, args = []) {
+    this.command = command;
+    this.args = args;
+  }
+}
+
 export const panelsList = panels;
+export const DebugConsoleMode = {
+  MergeWithParent: 'mergeWithParent',
+};
 
 window.createWebviewPanel = createWebviewPanel;
-export default { workspace, window, Uri, Position, Range, Location, Breakpoint, SourceBreakpoint, commands, debug, extensions, lm, LanguageModelTextPart, LanguageModelToolResult };
+export const EventEmitter = MockEventEmitter;
+
+export default { workspace, window, Uri, Position, Range, Location, Breakpoint, SourceBreakpoint, commands, debug, extensions, env, lm, LanguageModelTextPart, LanguageModelToolResult, DebugAdapterServer, DebugAdapterExecutable, DebugConsoleMode, TreeItem, TreeItemCollapsibleState, ThemeIcon, EventEmitter, Disposable };
 export const ViewColumn = { One: 1, Two: 2 };
 export const resetDebugListeners = () => {
   _debugListeners.onDidStartDebugSession.length = 0;
