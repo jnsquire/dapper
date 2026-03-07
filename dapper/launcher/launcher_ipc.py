@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import io
 import socket
+import time
 from typing import TYPE_CHECKING
 
 # Note: this module contains lightweight helpers used by tests and the
@@ -47,23 +48,44 @@ class PipeIO(io.TextIOBase):
 class SocketConnector:
     """Helper to connect sockets, allowing for easier testing via dependency injection."""
 
+    def __init__(self, *, retry_attempts: int = 60, retry_delay_s: float = 0.05) -> None:
+        self.retry_attempts = max(1, retry_attempts)
+        self.retry_delay_s = max(0.0, retry_delay_s)
+
+    def _connect_with_retry(
+        self,
+        create_socket: callable,
+        connect: callable,
+    ) -> socket.socket | None:
+        last_error: Exception | None = None
+        for attempt in range(self.retry_attempts):
+            sock = None
+            try:
+                sock = create_socket()
+                connect(sock)
+            except Exception as exc:
+                last_error = exc
+                if sock is not None:
+                    with contextlib.suppress(Exception):
+                        sock.close()
+                if attempt + 1 < self.retry_attempts and self.retry_delay_s > 0:
+                    time.sleep(self.retry_delay_s)
+                continue
+            else:
+                return sock
+
+        return None
+
     def connect_unix(self, path: str | None) -> socket.socket | None:
         if not path:
             return None
         af_unix = getattr(socket, "AF_UNIX", None)
         if not af_unix:
             return None
-        sock = None
-        try:
-            sock = socket.socket(af_unix, socket.SOCK_STREAM)
-            sock.connect(path)
-        except Exception:
-            if sock is not None:
-                with contextlib.suppress(Exception):
-                    sock.close()
-            return None
-        else:
-            return sock
+        return self._connect_with_retry(
+            lambda: socket.socket(af_unix, socket.SOCK_STREAM),
+            lambda sock: sock.connect(path),
+        )
 
     def connect_tcp(self, host: str | None, port: int | None) -> socket.socket | None:
         if port is None:
@@ -73,16 +95,10 @@ class SocketConnector:
             _port = int(port)
         except Exception:
             return None
-        sock = None
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((_host, _port))
-        except Exception:
-            if sock is not None:
-                sock.close()
-            return None
-        else:
-            return sock
+        return self._connect_with_retry(
+            lambda: socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+            lambda sock: sock.connect((_host, _port)),
+        )
 
 
 # Default instance
