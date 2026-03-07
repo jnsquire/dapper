@@ -529,6 +529,38 @@
             }
           },
           "attach": {
+            "oneOf": [
+              {
+                "required": [
+                  "processId"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "host"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "port"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "host",
+                  "port"
+                ],
+                "not": {
+                  "required": [
+                    "processId"
+                  ]
+                }
+              }
+            ],
             "properties": {
               "host": {
                 "type": "string",
@@ -608,7 +640,7 @@
           {
             "type": "dapper",
             "request": "launch",
-            "name": "Dapper: Launch Current Python File",
+            "name": "Dapper: Launch ${fileBasename}",
             "program": "${file}",
             "console": "integratedTerminal"
           },
@@ -617,6 +649,14 @@
             "request": "attach",
             "name": "Dapper: Attach by PID",
             "processId": "${command:pickProcess}",
+            "justMyCode": true
+          },
+          {
+            "type": "dapper",
+            "request": "attach",
+            "name": "Dapper: Attach to Host/Port",
+            "host": "localhost",
+            "port": 5678,
             "justMyCode": true
           }
         ],
@@ -627,7 +667,7 @@
             "body": {
               "type": "dapper",
               "request": "launch",
-              "name": "Python: Dapper Debug",
+              "name": "Dapper: Launch ${fileBasename}",
               "program": "${file}",
               "console": "integratedTerminal"
             }

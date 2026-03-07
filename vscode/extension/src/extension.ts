@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { DapperDebugAdapterDescriptorFactory } from './debugAdapter/dapperDebugAdapter.js';
 import { DapperConfigurationProvider, DapperDynamicConfigurationProvider } from './debugAdapter/configurationProvider.js';
 import { DapperWebview } from './webview/DapperWebview.js';
@@ -11,6 +12,15 @@ import { DapperProcessTreeView } from './views/DapperProcessTreeView.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
+function currentPythonFileBasename(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document.languageId !== 'python' || editor.document.isUntitled || editor.document.uri.scheme !== 'file') {
+    return undefined;
+  }
+
+  return path.basename(editor.document.uri.fsPath);
 }
 
 function* registerCommands(context: vscode.ExtensionContext, launchService: LaunchService): Iterable<vscode.Disposable> {
@@ -143,8 +153,13 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
 
   const startCurrentFileDebugging = async (stopOnEntry: boolean) => {
     try {
+      const fileBasename = currentPythonFileBasename();
+      const sessionName = stopOnEntry
+        ? `Debug ${fileBasename ?? 'Current File'} (Stop on Entry)`
+        : `Debug ${fileBasename ?? 'Current File'}`;
+
       await launchService.launch({
-        sessionName: stopOnEntry ? 'Debug Current File (Stop on Entry)' : 'Debug Current File',
+        sessionName,
         target: { currentFile: true },
         stopOnEntry,
         waitForStop: false,

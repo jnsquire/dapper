@@ -46,6 +46,18 @@ describe('validateConfig', () => {
     expect(result.errors).toContain('Program path or module name is required');
   });
 
+  it('should fail when both program and module are provided', () => {
+    const result = validateConfig(makeValidConfig({ program: 'main.py', module: 'pkg.main' }));
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Launch accepts only one target: program or module');
+  });
+
+  it('should fail launch when host/port is also provided', () => {
+    const result = validateConfig(makeValidConfig({ program: 'main.py', host: 'localhost', port: 5678 } as any));
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Launch accepts only one target: program or module');
+  });
+
   it('should fail when program and module are empty strings', () => {
     const result = validateConfig(makeValidConfig({ program: '' }));
     expect(result.valid).toBe(false);
@@ -81,6 +93,53 @@ describe('validateConfig', () => {
     const result = validateConfig(makeValidConfig({ subProcess: false }));
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('should validate attach with host and port', () => {
+    const result = validateConfig({
+      name: 'Attach Remote',
+      type: 'dapper',
+      request: 'attach',
+      host: 'localhost',
+      port: 5678,
+    } as any);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should fail attach when no attach target is provided', () => {
+    const result = validateConfig({
+      name: 'Attach Missing Target',
+      type: 'dapper',
+      request: 'attach',
+    } as any);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Attach requires either processId or host/port');
+  });
+
+  it('should fail attach when both processId and host/port are provided', () => {
+    const result = validateConfig({
+      name: 'Attach Too Many Targets',
+      type: 'dapper',
+      request: 'attach',
+      processId: '${command:pickProcess}',
+      host: 'localhost',
+      port: 5678,
+    } as any);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Attach accepts only one target: processId or host/port');
+  });
+
+  it('should fail attach when a launch target is also provided', () => {
+    const result = validateConfig({
+      name: 'Attach With Program',
+      type: 'dapper',
+      request: 'attach',
+      host: 'localhost',
+      port: 5678,
+      program: 'main.py',
+    } as any);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Attach accepts only one target: processId or host/port');
   });
 });
 
@@ -135,9 +194,9 @@ describe('sanitizeConfig', () => {
     expect(result.useIpc).toBe(false);
   });
 
-  it('should drop program when module is set', () => {
+  it('should keep both launch targets so validation can reject the config', () => {
     const result = sanitizeConfig(makeValidConfig({ program: '${file}', module: 'mypackage.main' }));
-    expect(result).not.toHaveProperty('program');
+    expect(result.program).toBe('${file}');
     expect(result.module).toBe('mypackage.main');
   });
 

@@ -6,7 +6,7 @@ function createLaunchFileConfiguration(): DebugConfiguration {
   return {
     type: 'dapper',
     request: 'launch',
-    name: 'Dapper: Launch Current Python File',
+    name: 'Dapper: Launch ${fileBasename}',
     program: '${file}',
     console: 'integratedTerminal',
   };
@@ -33,6 +33,17 @@ function createAttachByPidConfiguration(): DebugConfiguration {
   };
 }
 
+function createAttachHostPortConfiguration(): DebugConfiguration {
+  return {
+    type: 'dapper',
+    request: 'attach',
+    name: 'Dapper: Attach to Host/Port',
+    host: 'localhost',
+    port: 5678,
+    justMyCode: true,
+  };
+}
+
 function createLaunchWizardConfiguration(): DebugConfiguration {
   return {
     type: 'dapper',
@@ -44,13 +55,81 @@ function createLaunchWizardConfiguration(): DebugConfiguration {
 
 export class DapperConfigurationProvider implements vscode.DebugConfigurationProvider {
   private readonly _extensionUri: vscode.Uri;
+  private static readonly _savedSettingBlocklist = new Set([
+    'type',
+    'request',
+    'name',
+    'program',
+    'module',
+    'processId',
+    'host',
+    'port',
+    'pathMappings',
+    '__dapperUseWizard',
+  ]);
 
   constructor(extensionUri: vscode.Uri) {
     this._extensionUri = extensionUri;
   }
 
   private static hasLaunchTarget(config: DebugConfiguration): boolean {
-    return Boolean(config.program || (config as Record<string, unknown>).module);
+    return DapperConfigurationProvider._countLaunchTargets(config) === 1
+      && DapperConfigurationProvider._countAttachTargets(config) === 0;
+  }
+
+  private static hasAttachTarget(config: DebugConfiguration): boolean {
+    return DapperConfigurationProvider._countAttachTargets(config) === 1
+      && DapperConfigurationProvider._countLaunchTargets(config) === 0;
+  }
+
+  private static _countLaunchTargets(config: DebugConfiguration): number {
+    let count = 0;
+    if (typeof config.program === 'string' && config.program.trim()) {
+      count += 1;
+    }
+    const moduleName = (config as Record<string, unknown>).module;
+    if (typeof moduleName === 'string' && moduleName.trim()) {
+      count += 1;
+    }
+    return count;
+  }
+
+  private static _countAttachTargets(config: DebugConfiguration): number {
+    let count = 0;
+    const rawProcessId = (config as Record<string, unknown>).processId;
+    const hasProcessId = typeof rawProcessId === 'number'
+      || (typeof rawProcessId === 'string' && rawProcessId.trim().length > 0);
+    if (hasProcessId) {
+      count += 1;
+    }
+
+    const host = typeof (config as Record<string, unknown>).host === 'string'
+      ? String((config as Record<string, unknown>).host).trim()
+      : '';
+    const rawPort = (config as Record<string, unknown>).port;
+    const hasPort = typeof rawPort === 'number'
+      || (typeof rawPort === 'string' && rawPort.trim().length > 0);
+    if (host && hasPort) {
+      count += 1;
+    }
+
+    return count;
+  }
+
+  private static _countExplicitTargets(config: DebugConfiguration): number {
+    return DapperConfigurationProvider._countLaunchTargets(config)
+      + DapperConfigurationProvider._countAttachTargets(config);
+  }
+
+  private static mergeSavedSettings(target: DebugConfiguration, saved: DebugConfiguration): void {
+    for (const key of Object.keys(saved)) {
+      if (DapperConfigurationProvider._savedSettingBlocklist.has(key)) {
+        continue;
+      }
+      if ((target as Record<string, unknown>)[key] == null) {
+        (target as Record<string, unknown>)[key] = (saved as Record<string, unknown>)[key];
+      }
+    }
   }
 
   provideDebugConfigurations(folder: WorkspaceFolder | undefined): ProviderResult<DebugConfiguration[]> {
@@ -63,6 +142,7 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
     return [
       createLaunchFileConfiguration(),
       createAttachByPidConfiguration(),
+      createAttachHostPortConfiguration(),
     ];
   }
   resolveDebugConfiguration(
@@ -83,7 +163,12 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
     }
 
     if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
-      vscode.window.showInformationMessage('Cannot find a program or module to debug');
+      vscode.window.showInformationMessage('Provide exactly one launch target: program or module.');
+      return undefined;
+    }
+
+    if (config.request === 'attach' && !DapperConfigurationProvider.hasAttachTarget(config)) {
+      vscode.window.showInformationMessage('Provide exactly one attach target: processId or host/port.');
       return undefined;
     }
 
@@ -110,25 +195,30 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
     if (!config.type) config.type = 'dapper';
     if (!config.request) config.request = 'launch';
     if (!config.name) config.name = 'Dapper: Launch';
-    if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
+    if (config.request === 'launch' && DapperConfigurationProvider._countExplicitTargets(config) === 0) {
       // If the user didn't provide a launch target, fall back to active editor or abort
       const editor = vscode.window.activeTextEditor;
       if (editor && editor.document.languageId === 'python') config.program = '${file}';
       else {
         // Show an informative message and abort launch
-        await vscode.window.showInformationMessage('Cannot find a program or module to debug');
+        await vscode.window.showInformationMessage('Provide exactly one launch target: program or module.');
         return undefined;
       }
+    } else if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
+      await vscode.window.showInformationMessage('Provide exactly one launch target: program or module.');
+      return undefined;
+    }
+
+    if (config.request === 'attach' && !DapperConfigurationProvider.hasAttachTarget(config)) {
+      await vscode.window.showInformationMessage('Provide exactly one attach target: processId or host/port.');
+      return undefined;
     }
 
     // If needed, merge saved settings from workspace configuration
     try {
       const saved = vscode.workspace.getConfiguration('dapper').get('debug') as DebugConfiguration | undefined;
       if (saved) {
-        // Merge missing properties from saved config
-        for (const k of Object.keys(saved)) {
-          if ((config as any)[k] == null) (config as any)[k] = (saved as any)[k];
-        }
+        DapperConfigurationProvider.mergeSavedSettings(config, saved);
       }
     } catch (err) {
       // Ignore and continue with provided config
@@ -156,6 +246,7 @@ export class DapperDynamicConfigurationProvider implements vscode.DebugConfigura
       createLaunchFileConfiguration(),
       createLaunchModuleConfiguration(),
       createAttachByPidConfiguration(),
+      createAttachHostPortConfiguration(),
       createLaunchWizardConfiguration(),
     ];
   }

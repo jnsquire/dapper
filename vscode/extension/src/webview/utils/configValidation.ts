@@ -29,14 +29,36 @@ export const defaultConfig: Omit<DebugConfiguration, 'name'> = {
 export function validateConfig(config: Partial<DebugConfiguration>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
+  const hasProgram = Boolean(config.program?.trim());
+  const hasModule = Boolean(config.module?.trim());
+  const rawProcessId = config.processId;
+  const hasProcessId = typeof rawProcessId === 'number'
+    || (typeof rawProcessId === 'string' && rawProcessId.trim().length > 0);
+  const host = typeof config.host === 'string' ? config.host.trim() : '';
+  const rawPort = config.port as unknown;
+  const hasPort = typeof rawPort === 'number' && Number.isFinite(rawPort)
+    || (typeof rawPort === 'string' && rawPort.trim().length > 0);
+  const hasHostPort = Boolean(host) && hasPort;
+  const explicitTargetCount = [hasProgram, hasModule, hasProcessId, hasHostPort].filter(Boolean).length;
+
   if (!config.name?.trim()) {
     errors.push('Configuration name is required');
   }
 
-  const hasProgram = Boolean(config.program?.trim());
-  const hasModule = Boolean(config.module?.trim());
-  if (!hasProgram && !hasModule) {
-    errors.push('Program path or module name is required');
+  if (config.request === 'attach') {
+    if (!hasProcessId && !hasHostPort) {
+      errors.push('Attach requires either processId or host/port');
+    }
+    if (explicitTargetCount > 1) {
+      errors.push('Attach accepts only one target: processId or host/port');
+    }
+  } else {
+    if (!hasProgram && !hasModule) {
+      errors.push('Program path or module name is required');
+    }
+    if (explicitTargetCount > 1) {
+      errors.push('Launch accepts only one target: program or module');
+    }
   }
 
   if (config.subProcess && !config.subProcessName?.trim()) {
@@ -63,11 +85,20 @@ export function sanitizeConfig(config: DebugConfiguration): DebugConfiguration {
   // Derive useIpc from transport: pipe and unix are IPC, tcp is not
   sanitized.useIpc = sanitized.ipcTransport !== 'tcp';
 
-  // Enforce module-over-program priority: when module is set, program is ignored
-  if (sanitized.module?.trim()) {
+  if (!sanitized.program?.trim()) {
     delete sanitized.program;
-  } else if (!sanitized.program?.trim()) {
-    delete sanitized.program;
+  }
+  if (!sanitized.module?.trim()) {
+    delete sanitized.module;
+  }
+  if (typeof sanitized.host !== 'string' || !sanitized.host.trim()) {
+    delete sanitized.host;
+  }
+  if (sanitized.port === '' || sanitized.port === null || sanitized.port === undefined) {
+    delete sanitized.port;
+  }
+  if (sanitized.processId === '' || sanitized.processId === null || sanitized.processId === undefined) {
+    delete sanitized.processId;
   }
 
   // Ensure arrays are properly initialized

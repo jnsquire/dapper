@@ -8,6 +8,9 @@ export interface DebugConfiguration {
   request: 'launch' | 'attach';
   program?: string;
   module?: string;
+  processId?: number | string;
+  host?: string;
+  port?: number;
   moduleSearchPaths?: string[];
   venvPath?: string;
   args: string[];

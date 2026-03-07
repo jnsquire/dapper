@@ -206,22 +206,29 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
         </vscode-radio-group>
         <div className="field-hint">
           {config?.request === 'attach'
-            ? 'Connect to an already-running process via a debug port.'
+              ? 'Attach either by PID or by connecting to an existing debug adapter host/port.'
             : 'Start a new Python process and attach the debugger immediately.'}
         </div>
       </div>
 
       <p className="step-section-title">Target</p>
 
-      {!!(config?.program && config?.module) && (
+        {config?.request !== 'attach' && !!(config?.program && config?.module) && (
         <div className="wizard-error-banner" style={{ marginBottom: '10px' }}>
-          ⚠ Both <strong>Program</strong> and <strong>Module</strong> are set —
-          <strong>Module takes priority</strong> and Program will be ignored.
-          Clear Module if you want to run a file directly.
+            ⚠ Both <strong>Program</strong> and <strong>Module</strong> are set.
+            Choose exactly one launch target before saving or starting the session.
         </div>
       )}
 
-      <div className="field">
+        {config?.request === 'attach' && !!(config?.processId && config?.host && config?.port) && (
+          <div className="wizard-error-banner" style={{ marginBottom: '10px' }}>
+            ⚠ Both <strong>processId</strong> and <strong>host/port</strong> are set.
+            Choose exactly one attach target before saving or starting the session.
+          </div>
+        )}
+
+        {config?.request !== 'attach' && (
+        <div className="field">
         <vscode-label>Program path</vscode-label>
         <vscode-textfield
           style={{ width: '100%' }}
@@ -232,10 +239,12 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
         <div className="field-hint">
           Run a specific file. Absolute path or VS Code variable —
           e.g. <code>{'${file}'}</code> for the currently open file.
-          Ignored if <strong>Module</strong> is also set.
+          Leave <strong>Module</strong> blank when launching a file directly.
         </div>
       </div>
+      )}
 
+      {config?.request !== 'attach' && (
       <div className="field">
         <vscode-label>Module name</vscode-label>
         <vscode-textfield
@@ -246,10 +255,51 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
         />
         <div className="field-hint">
           Run as a module: equivalent to <code>python -m package.module</code>.
-          Takes priority over Program when both are set.
-          Leave blank to run the Program file directly.
+          Leave <strong>Program path</strong> blank when launching a module.
         </div>
       </div>
+      )}
+
+      {config?.request === 'attach' && (
+        <>
+          <div className="field">
+            <vscode-label>Process ID</vscode-label>
+            <vscode-textfield
+              style={{ width: '100%' }}
+              value={config?.processId == null ? '' : String(config.processId)}
+              onInput={(e: any) => updateField('processId', (e.target as HTMLInputElement).value)}
+              placeholder="${command:pickProcess}"
+            />
+            <div className="field-hint">Attach to a local process by PID. Leave host/port empty when using this mode.</div>
+          </div>
+
+          <div className="field">
+            <vscode-label>Host</vscode-label>
+            <vscode-textfield
+              style={{ width: '100%' }}
+              value={config?.host || ''}
+              onInput={(e: any) => updateField('host', (e.target as HTMLInputElement).value)}
+              placeholder="localhost"
+            />
+            <div className="field-hint">Host name of an already-running DAP endpoint. Leave Process ID empty when using host/port.</div>
+          </div>
+
+          <div className="field">
+            <vscode-label>Port</vscode-label>
+            <vscode-textfield
+              style={{ width: '120px' }}
+              type="number"
+              value={config?.port == null ? '' : String(config.port)}
+              onInput={(e: any) => {
+                const value = (e.target as HTMLInputElement).value;
+                updateField('port', value === '' ? undefined : Number(value));
+              }}
+              placeholder="5678"
+            />
+            <div className="field-hint">TCP port of the remote debug adapter. Requires Host when using host/port attach.</div>
+          </div>
+        </>
+      )}
     </>
   );
 
@@ -310,7 +360,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
         <div className="field-hint">Passed to the program as <code>sys.argv[1:]</code>.</div>
       </div>
 
-      {!!(config?.module) && (
+      {config?.request !== 'attach' && !!(config?.module) && (
         <>
           <p className="step-section-title">Module search paths</p>
           <div className="field">

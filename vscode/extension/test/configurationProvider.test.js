@@ -30,12 +30,83 @@ describe('DapperConfigurationProvider', () => {
     expect(res.console).toBe('integratedTerminal');
   });
 
+  it('should not merge a saved module into the current-file launch configuration', async () => {
+    vscode.workspace.getConfiguration.mockReturnValue({ get: () => ({ module: 'pkg.main', stopOnEntry: false }) });
+    const provider = new DapperConfigurationProvider(extensionUri);
+    const config = { type: 'dapper', request: 'launch', name: 'Dapper: Launch ${fileBasename}', program: '${file}' };
+
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
+
+    expect(res).toBeDefined();
+    expect(res.program).toBe('${file}');
+    expect(res.module).toBeUndefined();
+    expect(res.stopOnEntry).toBe(false);
+  });
+
   it('should allow launch when module is provided without program', async () => {
     const provider = new DapperConfigurationProvider(extensionUri);
     const config = { type: 'dapper', request: 'launch', name: 'Module Launch', module: 'pkg.main' };
     const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
     expect(res).toBeDefined();
     expect(res?.module).toBe('pkg.main');
+  });
+
+  it('should reject launch when both program and module are provided', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    vscode.window.showInformationMessage = vi.fn();
+
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {
+      type: 'dapper',
+      request: 'launch',
+      name: 'Invalid Launch',
+      program: '${file}',
+      module: 'pkg.main',
+    }, undefined);
+
+    expect(res).toBeUndefined();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Provide exactly one launch target: program or module.');
+  });
+
+  it('should reject launch when host/port is provided instead of a launch target', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    vscode.window.showInformationMessage = vi.fn();
+
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {
+      type: 'dapper',
+      request: 'launch',
+      name: 'Invalid Host Launch',
+      host: 'localhost',
+      port: 5678,
+    }, undefined);
+
+    expect(res).toBeUndefined();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Provide exactly one launch target: program or module.');
+  });
+
+  it('should allow attach when host and port are provided', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    const config = { type: 'dapper', request: 'attach', name: 'Host Attach', host: 'localhost', port: 5678 };
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
+    expect(res).toBeDefined();
+    expect(res?.host).toBe('localhost');
+    expect(res?.port).toBe(5678);
+  });
+
+  it('should reject attach when both processId and host/port are provided', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    vscode.window.showInformationMessage = vi.fn();
+
+    const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {
+      type: 'dapper',
+      request: 'attach',
+      name: 'Invalid Attach',
+      processId: '${command:pickProcess}',
+      host: 'localhost',
+      port: 5678,
+    }, undefined);
+
+    expect(res).toBeUndefined();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Provide exactly one attach target: processId or host/port.');
   });
 
   it('should abort launch when no target can be determined and active editor is not a python file', async () => {
@@ -84,12 +155,19 @@ describe('DapperDynamicConfigurationProvider', () => {
       expect.objectContaining({
         type: 'dapper',
         request: 'launch',
+        name: 'Dapper: Launch ${fileBasename}',
         program: '${file}',
       }),
       expect.objectContaining({
         type: 'dapper',
         request: 'attach',
         processId: '${command:pickProcess}',
+      }),
+      expect.objectContaining({
+        type: 'dapper',
+        request: 'attach',
+        host: 'localhost',
+        port: 5678,
       }),
       expect.objectContaining({
         type: 'dapper',
