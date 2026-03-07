@@ -2,20 +2,27 @@ import { describe, it, expect, vi } from 'vitest';
 
 const vscode = await import('vscode');
 vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => undefined });
-const { DapperConfigurationProvider } = await import('../src/debugAdapter/configurationProvider.ts');
+const { DapperConfigurationProvider, DapperDynamicConfigurationProvider } = await import('../src/debugAdapter/configurationProvider.ts');
+
+const extensionUri = vscode.Uri.file('/tmp/dapper-extension');
 
 describe('DapperConfigurationProvider', () => {
   it('should provide a default configuration when none saved', async () => {
-    const provider = new DapperConfigurationProvider();
+    const provider = new DapperConfigurationProvider(extensionUri);
     const configs = await provider.provideDebugConfigurations(undefined);
     expect(Array.isArray(configs)).toBe(true);
     expect(configs && configs[0]).toHaveProperty('type', 'dapper');
+    expect(configs && configs[1]).toMatchObject({
+      type: 'dapper',
+      request: 'attach',
+      processId: '${command:pickProcess}',
+    });
   });
 
   it('should merge saved settings into launched configuration', async () => {
     // Mock saved settings to include stopOnEntry=false
     vscode.workspace.getConfiguration.mockReturnValue({ get: () => ({ stopOnEntry: false, console: 'integratedTerminal' }) });
-    const provider = new DapperConfigurationProvider();
+    const provider = new DapperConfigurationProvider(extensionUri);
     const config = { type: 'dapper', request: 'launch', name: 'Test', program: '${file}' };
     const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
     expect(res).toBeDefined();
@@ -24,7 +31,7 @@ describe('DapperConfigurationProvider', () => {
   });
 
   it('should allow launch when module is provided without program', async () => {
-    const provider = new DapperConfigurationProvider();
+    const provider = new DapperConfigurationProvider(extensionUri);
     const config = { type: 'dapper', request: 'launch', name: 'Module Launch', module: 'pkg.main' };
     const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
     expect(res).toBeDefined();
@@ -32,7 +39,7 @@ describe('DapperConfigurationProvider', () => {
   });
 
   it('should abort launch when no target can be determined and active editor is not a python file', async () => {
-    const provider = new DapperConfigurationProvider();
+    const provider = new DapperConfigurationProvider(extensionUri);
     const config = { type: 'dapper', request: 'launch', name: 'No Program' };
     // Ensure no active editor
     vscode.window.activeTextEditor = undefined;
@@ -41,5 +48,54 @@ describe('DapperConfigurationProvider', () => {
     const res = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, config, undefined);
     expect(res).toBeUndefined();
     expect(vscode.window.showInformationMessage).toHaveBeenCalled();
+  });
+
+  it('should resolve the wizard placeholder configuration through the webview helper', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    const { DapperWebview } = await import('../src/webview/DapperWebview.js');
+    vi.spyOn(DapperWebview, 'showAndWaitForConfig').mockResolvedValue({
+      type: 'dapper',
+      request: 'attach',
+      name: 'Wizard Config',
+      processId: '${command:pickProcess}',
+    });
+
+    const result = await provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, {
+      type: 'dapper',
+      request: 'launch',
+      name: 'Dapper: Configure via Wizard',
+      __dapperUseWizard: true,
+    }, undefined);
+
+    expect(DapperWebview.showAndWaitForConfig).toHaveBeenCalledWith(extensionUri);
+    expect(result).toMatchObject({
+      request: 'attach',
+      processId: '${command:pickProcess}',
+    });
+  });
+});
+
+describe('DapperDynamicConfigurationProvider', () => {
+  it('should return explicit launch and attach-by-pid configurations for the debug picker', async () => {
+    const provider = new DapperDynamicConfigurationProvider();
+    const configs = await provider.provideDebugConfigurations(undefined);
+
+    expect(configs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'dapper',
+        request: 'launch',
+        program: '${file}',
+      }),
+      expect.objectContaining({
+        type: 'dapper',
+        request: 'attach',
+        processId: '${command:pickProcess}',
+      }),
+      expect.objectContaining({
+        type: 'dapper',
+        name: 'Dapper: Configure via Wizard',
+        __dapperUseWizard: true,
+      }),
+    ]));
   });
 });

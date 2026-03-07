@@ -389,6 +389,9 @@
         "label": "Dapper Python Debugger",
         "program": "./dist/debugAdapter/dapperDebugAdapter.js",
         "runtime": "node",
+        "languages": [
+          "python"
+        ],
         "configurationAttributes": {
           "launch": {
             "oneOf": [
@@ -560,6 +563,22 @@
             }
           }
         },
+        "initialConfigurations": [
+          {
+            "type": "dapper",
+            "request": "launch",
+            "name": "Dapper: Launch Current Python File",
+            "program": "${file}",
+            "console": "integratedTerminal"
+          },
+          {
+            "type": "dapper",
+            "request": "attach",
+            "name": "Dapper: Attach by PID",
+            "processId": "${command:pickProcess}",
+            "justMyCode": true
+          }
+        ],
         "configurationSnippets": [
           {
             "label": "Dapper: Launch Python File",
@@ -585,8 +604,19 @@
             }
           },
           {
-            "label": "Dapper: Attach",
-            "description": "Attach to a running Python process with Dapper",
+            "label": "Dapper: Attach by PID",
+            "description": "Attach Dapper to a running CPython 3.14 process by selecting a PID.",
+            "body": {
+              "name": "Dapper: Attach by PID",
+              "type": "dapper",
+              "request": "attach",
+              "processId": "${command:pickProcess}",
+              "justMyCode": true
+            }
+          },
+          {
+            "label": "Dapper: Attach to Host/Port",
+            "description": "Attach to a Dapper-compatible debug endpoint over host and port.",
             "body": {
               "name": "Dapper Attach",
               "type": "dapper",

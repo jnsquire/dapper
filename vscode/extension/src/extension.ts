@@ -315,12 +315,12 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
 
 function* registerDebugAdapters(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
   // Register debug configuration provider (Initial: generates launch.json snippets)
-  const provider = new DapperConfigurationProvider();
+  const provider = new DapperConfigurationProvider(context.extensionUri);
   yield vscode.debug.registerDebugConfigurationProvider('dapper', provider);
 
-  // Register dynamic debug configuration provider (Dynamic: launches the wizard from the
-  // run/debug UI when the user asks for dynamically-generated configurations)
-  const dynamicProvider = new DapperDynamicConfigurationProvider(context.extensionUri);
+  // Register dynamic debug configuration provider (Dynamic: offers generated Dapper
+  // launch/attach entries in the run/debug UI, including the wizard-backed option)
+  const dynamicProvider = new DapperDynamicConfigurationProvider();
   yield vscode.debug.registerDebugConfigurationProvider(
     'dapper',
     dynamicProvider,

@@ -76,6 +76,35 @@ To reset the managed environment, delete the venv folder from the extension's gl
 - **Task integration:** Create a VS Code task that runs `python -m dapper.adapter --port 4711`, then add a [`preLaunchTask`](https://code.visualstudio.com/docs/editor/tasks#_compound-tasks) to your debug configuration so the adapter spins up automatically.
 - **Multi-root workspaces:** Include one adapter task per workspace folder, each on its own port, and set `debugServer` accordingly.
 
+## Attach To A Live Python Process By PID
+
+Use `processId` in an attach configuration when you want Dapper to inject its bootstrap into an already-running CPython process.
+
+VS Code should now offer this explicitly in both **Run and Debug → Add Configuration...** and the **Select and Start Debugging** picker for Python workspaces, so you do not need to hand-write the JSON unless you want to customize it.
+
+Common entry points:
+
+- **Run and Debug → Add Configuration...** — adds a Dapper launch or attach template directly into `launch.json`.
+- **Run and Debug → Select and Start Debugging** — offers generated Dapper entries such as **Launch Current Python File**, **Launch Python Module**, and **Attach by PID** without editing JSON first.
+- **Dapper: Open Launch Configuration Wizard** — use this when you want the guided web UI instead of the standard VS Code picker.
+
+```jsonc
+{
+    "type": "dapper",
+    "request": "attach",
+    "name": "Dapper: Attach by PID",
+    "processId": "${command:pickProcess}",
+    "justMyCode": true
+}
+```
+
+Constraints:
+
+- The helper interpreter and the target must both be **CPython 3.14** with the same major/minor version. If either side is a pre-release build, the versions must match exactly.
+- Remote debugging must be enabled in the target. CPython disables this if the process was started with `PYTHON_DISABLE_REMOTE_DEBUG=1`, with `-X disable_remote_debug`, or from a build compiled with `--without-remote-debug`.
+- The injected script runs asynchronously on the target process's main thread at the next safe evaluation point. Long-running native code or a blocked main thread can delay the attach.
+- Most platforms require elevated privileges to inspect another process. Linux may require matching ownership plus `CAP_SYS_PTRACE` or relaxed `ptrace_scope`; macOS often requires root; Windows commonly requires Administrator rights or `SeDebugPrivilege`.
+
 ## Quick configuration UI
 
 The extension provides a configuration web UI accessible via the Command Palette:
@@ -92,6 +121,8 @@ The extension provides a configuration web UI accessible via the Command Palette
 | Breakpoints are hollow (not bound) | Confirm the managed venv installed the expected dapper version (`dapper.python.expectedVersion`). |
 | Program launches outside VS Code's environment | Add `"console": "integratedTerminal"` or specify `"env"` / `"envFile"` in your launch config. |
 | No output in the Debug Console | Ensure `redirectOutput` is not set to `false`. |
+| `processId` attach fails immediately | Check whether the helper and target are both CPython 3.14, and whether the target disabled remote debugging via `PYTHON_DISABLE_REMOTE_DEBUG=1`, `-X disable_remote_debug`, or `--without-remote-debug`. |
+| `processId` attach times out waiting for the target | The target may be stuck in native code, blocked on its main thread, or running without the privileges needed for remote attach. |
 | Need to stop everything fast | Shift+F5 stops the session; close the session to leave the managed venv intact. |
 
 For standalone adapter issues, see the [Standalone Adapter Setup](standalone-adapter.md) troubleshooting section.
