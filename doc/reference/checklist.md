@@ -14,6 +14,7 @@ Legend
 ### Program control
 - ✅ Launch (start a new Python program under debugger)
 - ✅ Attach (attach to running program)
+- 🟡 Attach by PID for live Python 3.14 processes (`processId`) — configuration schema and tracked-PID UX exist; remote bootstrap and backend attach plumbing are the next planned step
 - ✅ Restart
 - ✅ Disconnect
 - ✅ Terminate
@@ -84,7 +85,7 @@ See also: [Frame Eval User Guide](../guides/frame-eval.md).
 - ✅ Loaded sources listing (what's present in runtime)
 - ✅ Source request handling (adapter supports `source` and `moduleSource` requests)
 - 🟡 Hot code reload / reload-and-continue (`supportsHotReload`, `dapper/hotReload`, `dapper/hotReloadResult`) — protocol/types, request handler, runtime reload service, frame-local rebinding, adapter-mediated external-process path, and VS Code command/auto-on-save are implemented. Remaining work is mainly option/runtime parity (`rebindFrameLocals`, `patchClassInstances`) and broader end-to-end hardening. See [Hot Reload reference](../guides/hot-reload.md).
-- 🟡 Multi-process child auto-attach (`subprocessAutoAttach`, `dapper/childProcess`, `dapper/childProcessExited`, `dapper/childProcessCandidate`) — Phase 1 + Phase 2 launch-path handling are implemented for Python subprocess script/module/code invocations (including common `multiprocessing`/`ProcessPoolExecutor` worker launch shapes) with session correlation and recursion guardrails; process-tree UX and broader runtime matrix hardening remain.
+- 🟡 Multi-process child auto-attach (`subprocessAutoAttach`, `dapper/childProcess`, `dapper/childProcessExited`, `dapper/childProcessCandidate`) — Python-side `subprocess.Popen` rewrite, child lifecycle event emission, VS Code child-session attach plumbing, and extension tree grouping are implemented for Python script/module/code invocations, with session IDs and recursion guardrails propagated in launcher args and events. Remaining work is broader runtime hardening plus promoting direct `multiprocessing` / `ProcessPoolExecutor` launch paths beyond scaffold-level candidate detection when they do not already flow through rewritten Python subprocess launches.
 - ❌ Goto targets (find jump targets / navigation helpers — planned)
 - ✅ Modules listing
 - ❌ Module source retrieval (not fully supported in all backends)
@@ -102,10 +103,11 @@ Dapper provides a stable, functional core debugger experience: program control, 
 - Source navigation & goto targets — tests and partial `source` handling exist; goto targets planned
 - Runtime watchpoints — bookkeeping and runtime triggers implemented; read-access detection, per-address watches, and cross-process robustness remain
 - Hot reload option/runtime parity — core reload flow is implemented; remaining work is optional behavior parity and broader integration coverage
-- Process-tree UX for multi-process attach — Phase 1 + 2 launch-path handling done; tree view and runtime matrix hardening remain
+- Process-tree UX for multi-process attach — tree grouping is implemented via the extension process TreeView; broader runtime matrix hardening and polish remain
+- Attach by PID for live Python 3.14 processes — planned around `sys.remote_exec()` / PEP 768, reusing the existing IPC session flow after a remote bootstrap inside the target interpreter
 - Reverse debugging / time-travel (future)
 - Performance profiling integration (future)
 
 For a fuller list of ideas and proposed work, see the [Roadmap](../roadmap/feature-ideas.md).
 
-*Last updated: 2026-02-22*
+*Last updated: 2026-03-06*

@@ -36,9 +36,11 @@ direct connection strategy.
   `--ipc` args. It emits `dapper/childProcess` events to the extension.
 - The extension (`DapperDebugSession`) and adapter factory have plumbing to
   start the root launcher and accept its IPC connection.
-- There is not yet an end-to-end flow that accepts and creates full child
-  debug sessions in the extension — child IPC ports currently have no listener
-  and child sessions are not created automatically.
+- There is now an end-to-end flow that accepts and creates full child debug
+  sessions in the extension for rewritten Python subprocess launches.
+- The extension also exposes a process tree with tracked-PID commands, but it
+  does not yet support true attach-by-PID for an arbitrary already-running
+  Python interpreter.
 
 ## Design decision
 
@@ -142,6 +144,19 @@ Phase 6 — Tests, Docs, and UX
 - Solidify automated test loops around UUID multi-socket handshake bindings.
 - Expose configurations and visibility for overarching auto-attach parameters enabling recursive hooks.
 
+Phase 7 — Attach by PID for live Python 3.14 interpreters
+- Reuse the process tree / tracked-PID UX as the entry point for a true
+  `processId` attach flow.
+- Allocate the extension-side IPC listener before attach and invoke a local
+  CPython 3.14 helper to call `sys.remote_exec(pid, script)` against the
+  target interpreter.
+- Have the injected bootstrap initialize Dapper inside the target process and
+  reconnect over the existing IPC session path rather than inventing a second
+  debugger transport.
+- Treat attach-by-PID as a complementary flow to child auto-attach: child
+  auto-attach handles processes Dapper launches or rewrites, while PID attach
+  handles already-running compatible Python interpreters.
+
 ## Minimal first PR scope (suggested)
 
 - Target Phase 1 (connection handshake integration) and Phase 2 (handler integration)
@@ -170,3 +185,5 @@ re-DAP handshake bytes.
 1. Define and implement the pre-DAP UUID connection handshake protocol.
 2. Advance Python-side `SubprocessManager` capabilities configuring the explicit target routing payload.
 3. Migrate VS Code's IPC architecture accepting multiple buffered connections correlated dynamically into VS Code APIs invoking `startDebugging`.
+4. Add the Python 3.14 attach-by-PID bootstrap and extension-side `processId`
+  attach handshake as the next phase after the child-session tree work.

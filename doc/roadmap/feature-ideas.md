@@ -33,12 +33,11 @@ Legend
 
 ## 6. Multi-Process Debugging
 
-- [x] **Auto-attach to child processes (Phase 1 scaffold promoted)** — when the debuggee calls
+- [ ] **Auto-attach to child processes (Phase 1 scaffold promoted)** — when the debuggee calls
       `subprocess.Popen`, `multiprocessing.Process`, or
       `concurrent.futures.ProcessPoolExecutor`, inject the Dapper launcher
       before `exec` so child processes are debuggable automatically.  
-      **Current status:** Phase 1 (`subprocess.Popen` Python children) is implemented;
-      Phase 2/3 work remains.
+      **Current status:** Python `subprocess.Popen` child rewrite, lifecycle events, VS Code extension child-session attach plumbing, and process-tree / tracked-PID UX are implemented for rewritten Python subprocess launches. `multiprocessing.Process` / `ProcessPoolExecutor` still remain scaffold-level candidate detection outside the cases that already pass through rewritten Python subprocess launches, and attach-by-PID for already-running Python 3.14 interpreters remains a separate follow-on phase.
 - [ ] **Auto-attach implementation roadmap (Phase 1–3)**
   - [x] **Phase 1 (MVP): `subprocess.Popen` for Python children**
     - [x] Add launch config flag to enable/disable child auto-attach
@@ -51,31 +50,60 @@ Legend
           and IPC endpoint for extension-side attach.
     - [x] Add tests: detection, arg rewrite, patch/unpatch behavior,
           event payload, non-Python passthrough.
-      - [x] **Phase 2: `multiprocessing` + `ProcessPoolExecutor` coverage**
+  - [ ] **Phase 2: `multiprocessing` + `ProcessPoolExecutor` coverage**
     - [x] Add scaffold-level detection hooks/events for
           `multiprocessing.Process` / `ProcessPoolExecutor` to support
           iterative rollout before full launcher injection.
-            - [x] Handle `spawn` / `forkserver` launch paths where command lines are
+    - [x] Handle `spawn` / `forkserver` launch paths where command lines are
           visible and safe to rewrite.
-            - [x] Validate behavior across Linux/macOS/Windows transport defaults.
-            - [x] Add limits/guardrails (max children, recursion prevention).
-                - Validation note: behavior is covered by unit-level launch rewrite tests
-                      and platform transport defaults; expand with full OS matrix runtime
-                      tests in CI as follow-up hardening.
-  - [ ] **Phase 3: process tree + UX polish**
+    - [x] Validate behavior across Linux/macOS/Windows transport defaults.
+    - [x] Add limits/guardrails (max children, recursion prevention).
+    - [ ] Promote scaffold detection to full child-session attach for direct
+          `multiprocessing` / `ProcessPoolExecutor` launch paths that do not
+          already flow through rewritten Python `subprocess.Popen` invocations.
+    - Validation note: behavior is covered by unit-level launch rewrite tests
+          and platform transport defaults; expand with full OS matrix runtime
+          tests in CI as follow-up hardening.
+  - [x] **Phase 2.5: extension child-session attach plumbing**
+    - [x] Handle `dapper/childProcess`, `dapper/childProcessExited`, and
+          `dapper/childProcessCandidate` in the VS Code extension.
+    - [x] Replace the single-session IPC wiring with child-aware socket/session
+          correlation.
+    - [x] Start child debug sessions from correlated events instead of only
+          emitting launch-side events.
+  - [ ] **Phase 3: process tree + tracked-PID UX polish**
     - [x] Add process lifecycle events (`started` / `exited`) sufficient for
           extension-side process tree rendering.
-    - [x] Associate child sessions to parent session IDs for tree grouping.
-      - [x] Document known limitations (non-Python children, shell wrappers,
+    - [x] Consume parent/child session IDs in the extension for actual tree
+          grouping.
+    - [x] Surface tracked PIDs in the extension TreeView with process/session
+          commands so the process tree can be used as an active control surface.
+    - [x] Document known limitations (non-Python children, shell wrappers,
           custom launchers).
-      - [x] **Acceptance criteria (for promoting from idea to checklist)**
-            - [x] With auto-attach enabled, Python `subprocess.Popen(...)` children
-          emit attachable child-process events.
-            - [x] With auto-attach disabled, launch behavior is unchanged.
-            - [x] Patching is always cleaned up on session end (no global leakage).
-            - [x] Existing launch/attach flows remain regression-free.
-- [ ] **Process tree view** — expose multiple debuggees in the adapter's event
-      stream so a DAP client can show a process tree and switch contexts.
+    - [ ] Wire tracked Python processes to true attach-by-PID instead of tree-only
+          visibility and control affordances.
+    - [ ] **Acceptance criteria (for promoting from idea to checklist)**
+      - [x] With auto-attach enabled, Python `subprocess.Popen(...)` children
+            emit attachable child-process events.
+      - [x] With auto-attach disabled, launch behavior is unchanged.
+      - [x] Patching is always cleaned up on session end (no global leakage).
+      - [x] Existing launch/attach flows remain regression-free.
+      - [x] Child-process events cause real child debug sessions to be created
+            in VS Code.
+      - [x] Parent/child sessions are grouped coherently in extension UX.
+  - [ ] **Phase 4: attach by PID for live Python 3.14 interpreters**
+    - [ ] Add a Python-side live-attach bootstrap that can be injected with
+          `sys.remote_exec(pid, script)` and then connect back over Dapper's
+          existing IPC transport.
+    - [ ] Extend DAP attach config parsing so `processId` is a first-class
+          attach mode alongside direct IPC endpoint attach.
+    - [ ] Teach the VS Code debug adapter factory to allocate the IPC listener
+          first, then invoke a local CPython 3.14 helper that performs the
+          remote execution into the target process.
+    - [ ] Surface actionable diagnostics for version mismatch, disabled remote
+          debugging, missing privileges, and bootstrap timeout cases.
+    - [ ] Add focused tests for the processId attach handshake and document the
+          Python 3.14 / permission constraints.
 
 ---
 
