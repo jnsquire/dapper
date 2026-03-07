@@ -1,7 +1,7 @@
 import * as Net from 'net';
 import { logger } from '../utils/logger.js';
 
-interface TransportSession {
+export interface TransportSession {
   handleTransportMessage(message: any): void;
   handleTransportClosed(exitCode: number): void;
 }

@@ -11,6 +11,7 @@ import {
   type LaunchRequestArguments,
 } from './debugAdapterTypes.js';
 import { DapperDebugSession, PythonDebugAdapterTransport } from './dapperDebugSession.js';
+import type { DapperLaunchHistoryService } from '../views/DapperLaunchesView.js';
 
 const ATTACH_BY_PID_DIAGNOSTIC_PREFIX = 'DAPPER_ATTACH_BY_PID_DIAGNOSTIC ';
 const ATTACH_BY_PID_CONNECT_TIMEOUT_MS = 15_000;
@@ -43,6 +44,7 @@ export class MainSessionController {
   public constructor(
     private readonly _envManager: EnvironmentManager,
     private readonly _extensionVersion: string,
+    private readonly _launchHistory?: DapperLaunchHistoryService,
   ) {}
 
   public get serverPort(): number | undefined {
@@ -309,6 +311,10 @@ export class MainSessionController {
       config as LaunchRequestArguments | AttachRequestArguments,
       session,
     );
+    const launchToken = this._resolveLaunchToken(config);
+    if (launchToken) {
+      this._launchHistory?.updateLogFile(launchToken, logFile);
+    }
     const processId = this._resolveProcessId(config);
 
     this._mainTransport = new PythonDebugAdapterTransport();
@@ -407,9 +413,17 @@ export class MainSessionController {
       } else {
         outChannel.warn('Terminal closed but no active debug transport to notify');
       }
+      if (launchToken) {
+        this._launchHistory?.markTerminalExited(launchToken, code);
+      }
       outChannel.info('Resetting adapter factory state after terminal exit');
       this.reset();
     });
+  }
+
+  private _resolveLaunchToken(config: vscode.DebugConfiguration): string | undefined {
+    const candidate = config as Record<string, unknown>;
+    return typeof candidate.__dapperLaunchToken === 'string' ? candidate.__dapperLaunchToken : undefined;
   }
 
   private _buildProcessEnv(

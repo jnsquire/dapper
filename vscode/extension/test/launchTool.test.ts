@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { JournalRegistry } from '../src/agent/stateJournal.js';
 import { LaunchService } from '../src/debugAdapter/launchService.js';
 import { LaunchTool } from '../src/agent/tools/launch.js';
+import type { NoDebugLaunchHandler } from '../src/debugAdapter/noDebugLauncher.js';
 import { createLaunchHarness, type LaunchHarness } from './__harness__/launchHarness.js';
 
 const vscodeMock = await import('./__mocks__/vscode.mjs');
@@ -68,6 +69,13 @@ describe('LaunchTool extension-host harness', () => {
     const filePath = path.join(tmpRoot, 'run_only.py');
     fs.writeFileSync(filePath, 'print("hello")\n');
     harness.setActivePythonFile(filePath);
+    const noDebugLauncher: NoDebugLaunchHandler = {
+      launch: vi.fn(async (configuration) => ({
+        started: true,
+        pythonPath: String(configuration.pythonPath ?? 'owned-python'),
+      })),
+    };
+    launchService = new LaunchService(registry, undefined, noDebugLauncher);
 
     const result = await launchService.launch({
       target: { currentFile: true },
@@ -76,7 +84,34 @@ describe('LaunchTool extension-host harness', () => {
     });
 
     expect(result.configuration.noDebug).toBe(true);
-    expect(harness.lastStartDebuggingCall?.config.noDebug).toBe(true);
+    expect(noDebugLauncher.launch).toHaveBeenCalledTimes(1);
+    expect(harness.lastStartDebuggingCall).toBeUndefined();
+  });
+
+  it('does not require a debug session to exist for noDebug launches', async () => {
+    const filePath = path.join(tmpRoot, 'run_without_session.py');
+    fs.writeFileSync(filePath, 'print("hello")\n');
+    harness.setActivePythonFile(filePath);
+    const noDebugLauncher: NoDebugLaunchHandler = {
+      launch: vi.fn(async () => ({
+        started: true,
+        pythonPath: path.join(tmpRoot, '.venv', 'bin', 'python'),
+      })),
+    };
+    launchService = new LaunchService(registry, undefined, noDebugLauncher);
+
+    const result = await launchService.launch({
+      target: { currentFile: true },
+      noDebug: true,
+      stopOnEntry: false,
+    });
+
+    expect(result.started).toBe(true);
+    expect(result.session).toBeUndefined();
+    expect(result.waitedForStop).toBe(false);
+    expect(result.stopped).toBe(false);
+    expect(result.configuration.noDebug).toBe(true);
+    expect(noDebugLauncher.launch).toHaveBeenCalledTimes(1);
   });
 
   it('launches a workspace-relative file target through the tool interface', async () => {
@@ -233,8 +268,12 @@ describe('LaunchTool extension-host harness', () => {
       target: { file: filePath },
     });
 
-    expect(result.session.id).toBe(harness.session.id);
-    expect(result.session.id).not.toBe('competing-session');
+    const session = result.session;
+    if (!session) {
+      throw new Error('Expected a debug session to be created');
+    }
+    expect(session.id).toBe(harness.session.id);
+    expect(session.id).not.toBe('competing-session');
   });
 
   it('returns promptly when the debug session terminates before the first stop', async () => {

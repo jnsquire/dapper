@@ -90,7 +90,7 @@ Notes:
 
 `Dapper: Debug This` does not require an existing `launch.json` entry. It builds a temporary Dapper launch configuration for the active Python file, starts that file in an integrated terminal, and names the session from the file name.
 
-`Dapper: Run This` uses the same launch path and environment selection, but sets `noDebug: true` so the process runs without the debugger attached.
+`Dapper: Run This` uses the same target resolution and environment selection as `Debug This`, but starts the process through Dapper's own launcher in an owned terminal with `--no-debug` so it can still track logs, process metadata, and exit status consistently.
 
 The Python environment is chosen in this order:
 
@@ -173,6 +173,16 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 - `Dapper: Add Saved Debug Configuration to launch.json` - Save and insert a configuration.
 - `Dapper: Start Debugging with Saved Config` - Start debugging using a saved configuration.
 
+## Launches View
+
+The **Dapper Launches** view in the Run and Debug sidebar keeps a recent in-memory list of launches started through Dapper commands and APIs.
+
+For each launch, the view shows the launch mode, current process details when known, and the final exit status when Dapper can observe it. If Dapper created a log file for that launch, the entry also exposes an inline action to open that file.
+
+You can remove a single launch record from the item actions, or clear the entire in-memory launch history from the view title actions.
+
+The view includes both debug launches and `Run This` launches, because both now run through Dapper's launcher. That lets Dapper record the process metadata, exit status, and any log file path it created even when the debugger is not attached.
+
 ## Command API
 
 For integrations, the extension also exposes two API-oriented VS Code commands that reuse the same launch and environment-selection path as `Debug This` and `Run This`:
@@ -209,7 +219,8 @@ Rules:
 - Omit `target` to use the active Python file.
 - Provide exactly one target: `currentFile`, `file`, `module`, or `configName`.
 - `dapper.api.runLaunch` always forces `noDebug: true` and disables `stopOnEntry`.
-- Both commands return the same launch result object produced by the shared launch flow.
+- Both commands return the same launch result shape produced by the shared launch flow.
+- `dapper.api.runLaunch` returns without a `session` because it launches a Dapper-owned no-debug process rather than creating a VS Code debug session.
 
 Examples:
 

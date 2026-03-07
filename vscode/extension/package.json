@@ -806,6 +806,30 @@
         "title": "Dapper: Stop Debug Session",
         "category": "Dapper",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "dapper.launches.refresh",
+        "title": "Dapper: Refresh Launches",
+        "category": "Dapper",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dapper.launches.openLog",
+        "title": "Dapper: Open Launch Log",
+        "category": "Dapper",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "dapper.launches.delete",
+        "title": "Dapper: Delete Launch Record",
+        "category": "Dapper",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "dapper.launches.clear",
+        "title": "Dapper: Clear Launch History",
+        "category": "Dapper",
+        "icon": "$(clear-all)"
       }
     ],
     "views": {
@@ -814,6 +838,12 @@
           "id": "dapperProcessTree",
           "name": "Dapper Processes",
           "contextualTitle": "Dapper Processes",
+          "icon": "images/icon.png"
+        },
+        {
+          "id": "dapperLaunches",
+          "name": "Dapper Launches",
+          "contextualTitle": "Dapper Launches",
           "icon": "images/icon.png"
         }
       ]
@@ -891,6 +921,16 @@
           "group": "navigation"
         },
         {
+          "command": "dapper.launches.refresh",
+          "when": "view == dapperLaunches",
+          "group": "navigation"
+        },
+        {
+          "command": "dapper.launches.clear",
+          "when": "view == dapperLaunches",
+          "group": "navigation"
+        },
+        {
           "command": "dapper.processTree.addPid",
           "when": "view == dapperProcessTree",
           "group": "navigation"
@@ -910,6 +950,16 @@
         {
           "command": "dapper.processTree.removePid",
           "when": "view == dapperProcessTree && viewItem =~ /^dapperTrackedPid(Attached)?$/",
+          "group": "inline"
+        },
+        {
+          "command": "dapper.launches.openLog",
+          "when": "view == dapperLaunches && viewItem == dapperLaunchRecordWithLog",
+          "group": "inline"
+        },
+        {
+          "command": "dapper.launches.delete",
+          "when": "view == dapperLaunches && viewItem =~ /^dapperLaunchRecord/",
           "group": "inline"
         }
       ],

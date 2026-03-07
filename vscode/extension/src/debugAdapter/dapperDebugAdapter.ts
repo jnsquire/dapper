@@ -7,6 +7,7 @@ import {
 import { ChildSessionManager } from './childSessionManager.js';
 import { MainSessionController } from './mainSessionController.js';
 import { logger } from '../utils/logger.js';
+import type { DapperLaunchHistoryService } from '../views/DapperLaunchesView.js';
 
 export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory, vscode.Disposable {
   private readonly envManager: EnvironmentManager;
@@ -15,10 +16,13 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private readonly _childSessionManager: ChildSessionManager;
   private readonly _disposables: vscode.Disposable[] = [];
 
-  public constructor(private readonly context: vscode.ExtensionContext) {
+  public constructor(
+    private readonly context: vscode.ExtensionContext,
+    launchHistory?: DapperLaunchHistoryService,
+  ) {
     this.envManager = new EnvironmentManager(context, logger.getChannel());
     this.extensionVersion = context.extension.packageJSON.version || '0.0.0';
-    this._mainSessionController = new MainSessionController(this.envManager, this.extensionVersion);
+    this._mainSessionController = new MainSessionController(this.envManager, this.extensionVersion, launchHistory);
     this._childSessionManager = new ChildSessionManager(() => this.envManager.getOutputChannel());
     this._disposables.push(
       vscode.debug.onDidReceiveDebugSessionCustomEvent((event) => {

@@ -9,7 +9,9 @@ import { JournalRegistry, DapperTrackerFactory } from './agent/stateJournal.js';
 import { registerAgentTools } from './agent/tools/index.js';
 import { LaunchService } from './debugAdapter/launchService.js';
 import type { LaunchOptions } from './debugAdapter/launchService.js';
+import { DapperNoDebugLauncher } from './debugAdapter/noDebugLauncher.js';
 import { DapperProcessTreeView } from './views/DapperProcessTreeView.js';
+import { DapperLaunchesView, DapperLaunchHistoryService } from './views/DapperLaunchesView.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
@@ -379,7 +381,10 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   });
 }
 
-function* registerDebugAdapters(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
+function* registerDebugAdapters(
+  context: vscode.ExtensionContext,
+  launchHistory: DapperLaunchHistoryService,
+): Iterable<vscode.Disposable> {
   // Register debug configuration provider (Initial: generates launch.json snippets)
   const provider = new DapperConfigurationProvider(context.extensionUri);
   yield vscode.debug.registerDebugConfigurationProvider('dapper', provider);
@@ -394,7 +399,7 @@ function* registerDebugAdapters(context: vscode.ExtensionContext): Iterable<vsco
   );
 
   // Register debug adapter descriptor factory
-  const factory = new DapperDebugAdapterDescriptorFactory(context);
+  const factory = new DapperDebugAdapterDescriptorFactory(context, launchHistory);
   yield vscode.debug.registerDebugAdapterDescriptorFactory('dapper', factory);
   yield factory;
 }
@@ -409,8 +414,12 @@ function* registerWebview(context: vscode.ExtensionContext): Iterable<vscode.Dis
   }
 }
 
-function* registerViews(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
+function* registerViews(
+  context: vscode.ExtensionContext,
+  launchHistory: DapperLaunchHistoryService,
+): Iterable<vscode.Disposable> {
   const processTreeView = new DapperProcessTreeView(context.workspaceState);
+  const launchesView = new DapperLaunchesView(launchHistory);
 
   yield vscode.commands.registerCommand('dapper.processTree.refresh', () => {
     processTreeView.refresh();
@@ -432,7 +441,24 @@ function* registerViews(context: vscode.ExtensionContext): Iterable<vscode.Dispo
     await processTreeView.stopSession(element);
   });
 
+  yield vscode.commands.registerCommand('dapper.launches.refresh', () => {
+    launchesView.refresh();
+  });
+
+  yield vscode.commands.registerCommand('dapper.launches.openLog', async (element) => {
+    await launchesView.openLog(element);
+  });
+
+  yield vscode.commands.registerCommand('dapper.launches.delete', (element) => {
+    launchesView.deleteLaunch(element);
+  });
+
+  yield vscode.commands.registerCommand('dapper.launches.clear', () => {
+    launchesView.clearHistory();
+  });
+
   yield processTreeView;
+  yield launchesView;
 }
 
 /**
@@ -446,7 +472,13 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   const allDisposables: vscode.Disposable[] = [];
 
   const journalRegistry = new JournalRegistry();
-  const launchService = new LaunchService(journalRegistry);
+  const launchHistory = new DapperLaunchHistoryService();
+  const noDebugLauncher = new DapperNoDebugLauncher(
+    context,
+    context.extension.packageJSON.version || '0.0.0',
+    launchHistory,
+  );
+  const launchService = new LaunchService(journalRegistry, launchHistory, noDebugLauncher);
 
   // Logger commands (returns a Disposable)
   const loggerCommandDisposable = registerLoggerCommands(context);
@@ -457,7 +489,7 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   allDisposables.push(...commandDisposables);
 
   // Debug Adapters
-  const debugDisposables = Array.from(registerDebugAdapters(context));
+  const debugDisposables = Array.from(registerDebugAdapters(context, launchHistory));
   allDisposables.push(...debugDisposables);
 
   // Agent tools: state journal, tracker factory, and LM tools
@@ -473,7 +505,7 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   allDisposables.push(...webviewDisposables);
 
   // Tree views
-  const viewDisposables = Array.from(registerViews(context));
+  const viewDisposables = Array.from(registerViews(context, launchHistory));
   allDisposables.push(...viewDisposables);
 
   // Add a cleanup disposable (equivalent of the inline object previously pushed)

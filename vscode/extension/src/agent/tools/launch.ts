@@ -21,18 +21,22 @@ export class LaunchTool implements vscode.LanguageModelTool<LaunchToolInput> {
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       const result = await this.launchService.launch(options.input, token);
-      const existingJournal = this.registry.resolve(result.session.id);
+      const session = result.session;
+      if (!session) {
+        throw new Error('Dapper launch did not create a debug session. Use dapper.api.runLaunch for no-debug process launches.');
+      }
+      const existingJournal = this.registry.resolve(session.id);
       const journal = existingJournal
         ?? (result.waitedForStop && !result.stopped
           ? undefined
-          : await this.launchService.waitForJournal(result.session.id, token, 5_000));
+          : await this.launchService.waitForJournal(session.id, token, 5_000));
       const effectiveStopped = result.stopped
         || Boolean(result.waitedForStop && journal?.lastSnapshot?.stoppedThreads?.length);
       const snapshot = effectiveStopped && journal ? await journal.getSnapshot() : undefined;
 
       return jsonResult({
-        sessionId: result.session.id,
-        sessionName: result.session.name,
+        sessionId: session.id,
+        sessionName: session.name,
         started: result.started,
         waitedForStop: result.waitedForStop,
         stopped: effectiveStopped,

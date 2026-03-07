@@ -5,6 +5,8 @@ import type { JournalRegistry, StateJournal } from '../agent/stateJournal.js';
 import type { LaunchRequestArguments } from './debugAdapterTypes.js';
 import { PythonEnvironmentManager } from '../python/environment.js';
 import { logger } from '../utils/logger.js';
+import type { DapperLaunchHistoryService } from '../views/DapperLaunchesView.js';
+import type { NoDebugLaunchHandler } from './noDebugLauncher.js';
 
 const START_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 15_000;
@@ -33,7 +35,7 @@ export interface LaunchOptions {
 }
 
 export interface LaunchResult {
-  session: vscode.DebugSession;
+  session?: vscode.DebugSession;
   started: boolean;
   waitedForStop: boolean;
   stopped: boolean;
@@ -59,14 +61,27 @@ interface StartedSessionWaiter {
 }
 
 export class LaunchService {
-  constructor(private readonly registry: JournalRegistry) {}
+  constructor(
+    private readonly registry: JournalRegistry,
+    private readonly launchHistory?: DapperLaunchHistoryService,
+    private readonly noDebugLauncher?: NoDebugLaunchHandler,
+  ) {}
 
   async launch(options: LaunchOptions, token?: vscode.CancellationToken): Promise<LaunchResult> {
     const resolved = await this._resolveLaunchRequest(options);
     const launchToken = this._createLaunchToken();
     const config = resolved.config as LaunchConfigurationWithToken;
     config.__dapperLaunchToken = launchToken;
-    const startedSessionWaiter = this._waitForStartedSession(launchToken, resolved.config.name, token);
+    this.launchHistory?.beginLaunch({
+      launchToken,
+      sessionName: resolved.config.name,
+      targetLabel: this._targetLabel(resolved.resolvedTarget),
+      noDebug: config.noDebug === true,
+    });
+    const shouldWaitForSession = config.noDebug !== true;
+    const startedSessionWaiter = shouldWaitForSession
+      ? this._waitForStartedSession(launchToken, resolved.config.name, token)
+      : undefined;
 
     logger.debug('LaunchService.launch: starting debug session', {
       name: resolved.config.name,
@@ -77,22 +92,53 @@ export class LaunchService {
       launchToken,
     });
 
+    if (config.noDebug === true && this.noDebugLauncher) {
+      let result;
+      try {
+        result = await this.noDebugLauncher.launch(resolved.config, resolved.workspaceFolder);
+      } catch (error) {
+        this.launchHistory?.markLaunchFailed(launchToken, error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+      if (!result.started) {
+        this.launchHistory?.markLaunchFailed(launchToken, 'Dapper declined to start the run.');
+        throw new Error('Dapper did not start the run.');
+      }
+      this.launchHistory?.markLaunchStarted(launchToken);
+      return {
+        session: undefined,
+        started: true,
+        waitedForStop: false,
+        stopped: false,
+        pythonPath: result.pythonPath,
+        venvPath: result.venvPath,
+        resolvedTarget: resolved.resolvedTarget,
+        configuration: resolved.config,
+      };
+    }
+
     let started: boolean;
     try {
       started = await vscode.debug.startDebugging(resolved.workspaceFolder, resolved.config);
     } catch (error) {
-      startedSessionWaiter.cancel();
+      startedSessionWaiter?.cancel();
+      this.launchHistory?.markLaunchFailed(launchToken, error instanceof Error ? error.message : String(error));
       throw error;
     }
     if (!started) {
-      startedSessionWaiter.cancel();
+      startedSessionWaiter?.cancel();
+      this.launchHistory?.markLaunchFailed(launchToken, 'VS Code declined to start the launch.');
       throw new Error('VS Code did not start a Dapper debug session');
     }
+    this.launchHistory?.markLaunchStarted(launchToken);
 
-    const session = await startedSessionWaiter.promise;
-    const waitForStop = options.waitForStop ?? false;
+    const session = startedSessionWaiter ? await startedSessionWaiter.promise : undefined;
+    if (session) {
+      this.launchHistory?.attachSession(launchToken, session);
+    }
+    const waitForStop = shouldWaitForSession && (options.waitForStop ?? false);
     let stopped = false;
-    if (waitForStop) {
+    if (waitForStop && session) {
       stopped = await this._waitForStop(session, token);
     }
 
@@ -480,6 +526,15 @@ export class LaunchService {
 
   private _createLaunchToken(): string {
     return `dapper-launch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private _targetLabel(target: LaunchResult['resolvedTarget']): string {
+    switch (target.kind) {
+      case 'file':
+      case 'module':
+      case 'config':
+        return target.value;
+    }
   }
 
   private _delay(ms: number): Promise<void> {
