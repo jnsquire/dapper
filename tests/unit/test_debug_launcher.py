@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import sys
 import threading
 import types as _types
@@ -15,6 +16,9 @@ from unittest.mock import PropertyMock
 from unittest.mock import patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from dapper.ipc.ipc_binary import pack_frame
 
@@ -264,6 +268,58 @@ class TestDebugLauncherBasic:
 
         for capability in required_capabilities:
             assert capability in body, f"Missing capability: {capability}"
+
+    def test_setup_session_log_file_truncates_then_appends(self, tmp_path: Path) -> None:
+        """Session log setup should clear old content but keep the live handler append-safe."""
+        log_path = tmp_path / "session.log"
+        log_path.write_text("stale-data\n", encoding="utf-8")
+
+        dapper_logger = logging.getLogger("dapper")
+        launcher_logger = logging.getLogger("dapper.launcher.debug_launcher")
+        root_logger = logging.getLogger()
+        original_handlers = list(dapper_logger.handlers)
+        original_propagate = dapper_logger.propagate
+        root_handler = logging.StreamHandler(io.StringIO())
+        root_logger.addHandler(root_handler)
+
+        try:
+            returned_path = dl.setup_session_log_file("session-123", log_file=str(log_path))
+
+            assert returned_path == str(log_path)
+            assert log_path.read_text(encoding="utf-8") == ""
+            assert dapper_logger.propagate is False
+
+            new_handlers = [
+                handler for handler in dapper_logger.handlers if handler not in original_handlers
+            ]
+            assert new_handlers, "Expected setup_session_log_file to install a file handler"
+
+            file_handler = new_handlers[-1]
+            assert isinstance(file_handler, logging.FileHandler)
+            assert file_handler.mode == "a"
+
+            dapper_logger.info("first message")
+            launcher_logger.info("launcher message")
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write("manual append\n")
+            dapper_logger.info("second message")
+
+            contents = log_path.read_text(encoding="utf-8")
+            assert "stale-data" not in contents
+            assert "first message" in contents
+            assert "launcher message" in contents
+            assert "manual append" in contents
+            assert "second message" in contents
+            assert "\x00" not in contents
+            assert root_handler.stream.getvalue() == ""
+        finally:
+            for handler in dapper_logger.handlers[:]:
+                if handler not in original_handlers:
+                    dapper_logger.removeHandler(handler)
+                    handler.close()
+            dapper_logger.propagate = original_propagate
+            root_logger.removeHandler(root_handler)
+            root_handler.close()
 
 
 class TestBreakpointHandling:

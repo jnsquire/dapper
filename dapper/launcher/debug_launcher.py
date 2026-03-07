@@ -69,7 +69,12 @@ def _setup_session_log_file(
     else:
         sid = session_id or uuid.uuid4().hex
         log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{sid}.log")
-    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8", delay=False)
+    # Truncate once up front, then keep the live handler in append mode.
+    # Other diagnostic paths also open the same file in append mode, and
+    # mixing those writers with a long-lived handler opened in write mode can
+    # create sparse gaps that show up as NUL bytes in the log.
+    Path(log_path).write_text("", encoding="utf-8")
+    fh = logging.FileHandler(log_path, mode="a", encoding="utf-8", delay=False)
     fh.setLevel(effective_level)
     fh.setFormatter(
         logging.Formatter(
@@ -80,6 +85,9 @@ def _setup_session_log_file(
     dapper_logger = logging.getLogger("dapper")
     dapper_logger.setLevel(effective_level)
     dapper_logger.addHandler(fh)
+    # Keep dapper.* diagnostics in the session log file instead of letting
+    # them bubble up to the root logger's console/terminal handler.
+    dapper_logger.propagate = False
     # also remember on the active session object so other components can write
     try:
         from dapper.shared.debug_shared import get_active_session  # noqa: PLC0415 - dynamic import
