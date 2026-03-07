@@ -2,7 +2,7 @@
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
   "description": "Python debugging support with style",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
@@ -644,7 +644,7 @@
       },
       {
         "command": "dapper.startDebugging",
-        "title": "Dapper: Start Debugging",
+        "title": "Debug Python File with Dapper (Stop on Entry)",
         "category": "Dapper"
       },
       {
@@ -669,7 +669,7 @@
       },
       {
         "command": "dapper.startDebugWithSavedConfig",
-        "title": "Dapper: Start Debugging with Saved Config",
+        "title": "Debug with Saved Dapper Configuration",
         "category": "Dapper"
       },
       {
@@ -754,11 +754,11 @@
         },
         {
           "command": "dapper.addDebugConfiguration",
-          "when": "workspaceFolderCount > 0"
+          "when": "workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration"
         },
         {
           "command": "dapper.startDebugWithSavedConfig",
-          "when": "workspaceFolderCount > 0"
+          "when": "workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration"
         },
         {
           "command": "dapper.hotReload",
@@ -770,6 +770,21 @@
           "command": "dapper.debugCurrentFile",
           "when": "resourceLangId == python",
           "group": "navigation"
+        },
+        {
+          "command": "dapper.startDebugging",
+          "when": "resourceLangId == python",
+          "group": "secondary@1"
+        },
+        {
+          "command": "dapper.startDebugWithSavedConfig",
+          "when": "resourceLangId == python && workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration",
+          "group": "secondary@2"
+        },
+        {
+          "command": "dapper.openLaunchWizard",
+          "when": "resourceLangId == python && workspaceFolderCount > 0",
+          "group": "secondary@3"
         }
       ],
       "view/title": [

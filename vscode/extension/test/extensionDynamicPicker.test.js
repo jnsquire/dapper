@@ -25,7 +25,7 @@ describe('Dapper extension dynamic picker registration', () => {
     const context = {
       extensionUri: vscode.Uri.file('/tmp/dapper-extension'),
       extension: {
-        packageJSON: { version: '0.9.0' },
+        packageJSON: { version: '0.9.1' },
       },
       globalStorageUri: { fsPath: '/tmp/dapper-storage' },
       workspaceState: {

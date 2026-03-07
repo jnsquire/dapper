@@ -67,7 +67,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     vi.restoreAllMocks();
     spawnMock.mockReset();
     factory = new DapperDebugAdapterDescriptorFactory({
-      extension: { packageJSON: { version: '0.9.0' } },
+      extension: { packageJSON: { version: '0.9.1' } },
       globalStorageUri: { fsPath: '/tmp/dapper-tests' },
     } as unknown as vscode.ExtensionContext);
   });

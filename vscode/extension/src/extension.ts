@@ -20,6 +20,21 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   const autoReloadStatusThrottleMs = 1500;
   let lastAutoReloadStatusAt = 0;
 
+  const hasSavedDebugConfiguration = (): boolean => {
+    const saved = vscode.workspace.getConfiguration('dapper').get<unknown>('debug');
+    return saved !== undefined && saved !== null;
+  };
+
+  const updateSavedDebugConfigurationContext = async (): Promise<void> => {
+    await vscode.commands.executeCommand(
+      'setContext',
+      'dapper.hasSavedDebugConfiguration',
+      hasSavedDebugConfiguration(),
+    );
+  };
+
+  void updateSavedDebugConfigurationContext();
+
   const showAutoReloadStatus = (document: vscode.TextDocument): void => {
     const now = Date.now();
     if (now - lastAutoReloadStatusAt < autoReloadStatusThrottleMs) {
@@ -102,6 +117,12 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     void tryAutoHotReload(document);
   });
 
+  yield vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('dapper.debug')) {
+      void updateSavedDebugConfigurationContext();
+    }
+  });
+
   // Show Debug Panel Command
   yield vscode.commands.registerCommand('dapper.showDebugPanel', async () => {
     logger.log('Executing command: dapper.showDebugPanel');
@@ -124,14 +145,14 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
     try {
       await launchService.launch({
-        sessionName: 'Dapper Debug',
+        sessionName: 'Debug Current File (Stop on Entry)',
         target: { currentFile: true },
         stopOnEntry: true,
         waitForStop: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to start debugging: ${message}`);
+      vscode.window.showErrorMessage(`Dapper: Failed to start debugging current file with stop on entry: ${message}`);
     }
   });
 
@@ -221,7 +242,8 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
         waitForStop: false,
       });
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to start debug session from saved config: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Dapper: Failed to start debugging with saved configuration: ${message}`);
     }
   });
 
@@ -249,6 +271,7 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
       const result = await launchService.launch({
         sessionName: 'Debug Current File',
         target: { currentFile: true },
+        stopOnEntry: false,
         waitForStop: false,
       });
       logger.debug('dapper.debugCurrentFile: launch result', {

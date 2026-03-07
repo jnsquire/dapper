@@ -103,6 +103,7 @@ Dapper provides a stable, functional core debugger experience: program control, 
 - Source navigation & goto targets — tests and partial `source` handling exist; goto targets planned
 - Runtime watchpoints — bookkeeping and runtime triggers implemented; read-access detection, per-address watches, and cross-process robustness remain
 - Hot reload option/runtime parity — core reload flow is implemented; remaining work is optional behavior parity and broader integration coverage
+- Editor run-button launch options — extend the Python editor Run button beyond `dapper.debugCurrentFile` to expose higher-value launch entries that already fit the command surface, starting with stop-on-entry and saved-config flows, with the launch wizard as an optional setup entry. Keep attach-by-PID in the broader Run and Debug picker rather than the editor-scoped toolbar action.
 - Process-tree UX for multi-process attach — tree grouping is implemented via the extension process TreeView; broader runtime matrix hardening and polish remain
 - Documentation screenshot automation — add a Playwright + code-server capture flow for reproducible VS Code docs screenshots, with manual capture remaining the short-term fallback
 - Reverse debugging / time-travel (future)

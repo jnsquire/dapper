@@ -49,6 +49,20 @@ describe('LaunchTool extension-host harness', () => {
     expect(result.pythonPath).toContain('.venv');
   });
 
+  it('preserves an explicit stopOnEntry=false override for current-file launches', async () => {
+    const filePath = path.join(tmpRoot, 'no_stop.py');
+    fs.writeFileSync(filePath, 'print("hello")\n');
+    harness.setActivePythonFile(filePath);
+
+    const result = await invokeLaunchTool(launchTool, {
+      target: { currentFile: true },
+      stopOnEntry: false,
+    });
+
+    expect(result.configuration.stopOnEntry).toBe(false);
+    expect(harness.lastStartDebuggingCall?.config.stopOnEntry).toBe(false);
+  });
+
   it('launches a workspace-relative file target through the tool interface', async () => {
     const filePath = path.join(tmpRoot, 'src', 'cli.py');
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
