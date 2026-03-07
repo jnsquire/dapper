@@ -429,6 +429,28 @@ class TestExpressionEvaluation:
         # The actual evaluation is not implemented in the mock, so we can't test the exact value
         assert isinstance(kwargs["result"], str)
 
+    def test_handle_evaluate_allows_builtin_len(self) -> None:
+        """Hover/watch evaluation should allow safe builtins like len()."""
+        session = _session()
+        session.debugger = MagicMock()
+        mock_send = MagicMock()
+        session.transport.send = mock_send  # type: ignore[assignment]
+        mock_frame = make_real_frame({"items": [1, 2, 3]})
+        session.debugger.stepping_controller.current_frame = mock_frame  # type: ignore[union-attr]
+
+        variable_handlers.handle_evaluate_impl(
+            session,
+            {"expression": "len(items)", "context": "hover"},
+            evaluate_with_policy=handlers.evaluate_with_policy,
+            format_evaluation_error=variable_handlers.format_evaluation_error,
+            logger=handlers.logger,
+        )
+
+        assert mock_send.called
+        _, kwargs = mock_send.call_args
+        assert kwargs["result"] == "3"
+        assert kwargs["type"] == "int"
+
 
 def test_handle_command_bytes_error_sends_shaped_error(monkeypatch: pytest.MonkeyPatch) -> None:
     messages: list[tuple[str, str]] = []

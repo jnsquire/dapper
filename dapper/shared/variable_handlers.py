@@ -235,7 +235,7 @@ def handle_evaluate_impl(  # noqa: PLR0912
 
         if frame is not None:
             try:
-                value = evaluate_with_policy(expression, frame)
+                value = evaluate_with_policy(expression, frame, allow_builtins=True)
                 if use_hex and isinstance(value, int) and not isinstance(value, bool):
                     result = hex(value)
                 else:
@@ -349,7 +349,7 @@ def handle_set_expression_impl(
             pass
 
         # Re-evaluate to get the new value
-        result = evaluate_with_policy(expression, frame)
+        result = evaluate_with_policy(expression, frame, allow_builtins=True)
         return {
             "success": True,
             "body": {
