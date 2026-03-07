@@ -304,7 +304,9 @@ def _cleanup_attached_session() -> None:
             try:
                 stream.close()
             except Exception:
-                logger.debug("Failed to close %s during attach cleanup", stream_name, exc_info=True)
+                logger.debug(
+                    "Failed to close %s during attach cleanup", stream_name, exc_info=True
+                )
         session.debugger = None
         session.command_thread = None
         session.ipc_enabled = False
@@ -381,7 +383,9 @@ def _configure_attached_session(payload: AttachByPidPayload) -> None:
 def _bootstrap_attached_process(payload: AttachByPidPayload) -> None:
     with _ATTACH_LOCK:
         if _ATTACH_ACTIVE.is_set():
-            logger.info("Attach-by-PID bootstrap ignored because a live attach session already exists")
+            logger.info(
+                "Attach-by-PID bootstrap ignored because a live attach session already exists"
+            )
             return
         _ATTACH_ACTIVE.set()
 

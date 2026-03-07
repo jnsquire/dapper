@@ -56,7 +56,9 @@ def test_attach_by_pid_requires_remote_exec(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_classify_attach_failure_for_missing_remote_exec() -> None:
     diagnostic = mod._classify_attach_failure(
-        NotImplementedError("This Python interpreter does not support sys.remote_exec(); Python 3.14 is required"),
+        NotImplementedError(
+            "This Python interpreter does not support sys.remote_exec(); Python 3.14 is required"
+        ),
         process_id=321,
     )
 
@@ -66,7 +68,9 @@ def test_classify_attach_failure_for_missing_remote_exec() -> None:
 
 def test_classify_attach_failure_for_disabled_remote_debugging() -> None:
     diagnostic = mod._classify_attach_failure(
-        RuntimeError("remote debugging is disabled for this interpreter via PYTHON_DISABLE_REMOTE_DEBUG"),
+        RuntimeError(
+            "remote debugging is disabled for this interpreter via PYTHON_DISABLE_REMOTE_DEBUG"
+        ),
         process_id=321,
     )
 
@@ -74,7 +78,9 @@ def test_classify_attach_failure_for_disabled_remote_debugging() -> None:
     assert "PYTHON_DISABLE_REMOTE_DEBUG" in diagnostic.hint
 
 
-def test_emit_attach_failure_diagnostic_writes_structured_marker(capsys: pytest.CaptureFixture[str]) -> None:
+def test_emit_attach_failure_diagnostic_writes_structured_marker(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     diagnostic = mod.AttachByPidDiagnostic(
         code="missing_privileges",
         message="The OS denied attach-by-PID access.",
@@ -90,7 +96,9 @@ def test_emit_attach_failure_diagnostic_writes_structured_marker(capsys: pytest.
     assert '"code": "missing_privileges"' in stderr
 
 
-def test_bootstrap_from_remote_exec_starts_background_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bootstrap_from_remote_exec_starts_background_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     started: list[dict[str, object]] = []
 
     class FakeThread:
@@ -138,7 +146,9 @@ def test_cleanup_attached_session_resets_state(monkeypatch: pytest.MonkeyPatch) 
     assert session.ipc_sock is None
 
 
-def test_attach_command_acknowledges_and_emits_process_event(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_attach_command_acknowledges_and_emits_process_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     session = DebugSession()
     session.transport.send = lambda message_type, **payload: sent.append((message_type, payload))  # type: ignore[assignment]
