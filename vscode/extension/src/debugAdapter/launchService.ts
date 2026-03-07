@@ -48,12 +48,24 @@ interface ResolvedLaunchRequest {
   resolvedTarget: LaunchResult['resolvedTarget'];
 }
 
+interface LaunchConfigurationWithToken extends vscode.DebugConfiguration, LaunchRequestArguments {
+  __dapperLaunchToken?: string;
+}
+
+interface StartedSessionWaiter {
+  promise: Promise<vscode.DebugSession>;
+  cancel(): void;
+}
+
 export class LaunchService {
   constructor(private readonly registry: JournalRegistry) {}
 
   async launch(options: LaunchOptions, token?: vscode.CancellationToken): Promise<LaunchResult> {
     const resolved = await this._resolveLaunchRequest(options);
-    const sessionPromise = this._waitForStartedSession(resolved.config.name, token);
+    const launchToken = this._createLaunchToken();
+    const config = resolved.config as LaunchConfigurationWithToken;
+    config.__dapperLaunchToken = launchToken;
+    const startedSessionWaiter = this._waitForStartedSession(launchToken, resolved.config.name, token);
 
     logger.debug('LaunchService.launch: starting debug session', {
       name: resolved.config.name,
@@ -61,14 +73,22 @@ export class LaunchService {
       workspaceFolder: resolved.workspaceFolder?.uri.fsPath,
       pythonPath: resolved.config.pythonPath,
       venvPath: resolved.config.venvPath,
+      launchToken,
     });
 
-    const started = await vscode.debug.startDebugging(resolved.workspaceFolder, resolved.config);
+    let started: boolean;
+    try {
+      started = await vscode.debug.startDebugging(resolved.workspaceFolder, resolved.config);
+    } catch (error) {
+      startedSessionWaiter.cancel();
+      throw error;
+    }
     if (!started) {
+      startedSessionWaiter.cancel();
       throw new Error('VS Code did not start a Dapper debug session');
     }
 
-    const session = await sessionPromise;
+    const session = await startedSessionWaiter.promise;
     const waitForStop = options.waitForStop ?? false;
     let stopped = false;
     if (waitForStop) {
@@ -309,32 +329,74 @@ export class LaunchService {
     return 'Dapper: Launch';
   }
 
-  private async _waitForStartedSession(name: string, token?: vscode.CancellationToken): Promise<vscode.DebugSession> {
-    return new Promise<vscode.DebugSession>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        startDisposable.dispose();
-        reject(new Error(`Timed out waiting for Dapper session '${name}' to start`));
+  private _waitForStartedSession(
+    launchToken: string,
+    sessionName: string,
+    token?: vscode.CancellationToken,
+  ): StartedSessionWaiter {
+    let settled = false;
+    let startDisposable: vscode.Disposable | undefined;
+    let timeout: NodeJS.Timeout | undefined;
+
+    const clearResources = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
+      startDisposable?.dispose();
+      startDisposable = undefined;
+    };
+
+    const promise = new Promise<vscode.DebugSession>((resolve, reject) => {
+      timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearResources();
+        reject(new Error(`Timed out waiting for Dapper session '${sessionName}' to start`));
       }, START_TIMEOUT_MS);
 
-      const startDisposable = vscode.debug.onDidStartDebugSession((session) => {
+      startDisposable = vscode.debug.onDidStartDebugSession((session) => {
+        if (settled) {
+          return;
+        }
         if (token?.isCancellationRequested) {
-          clearTimeout(timeout);
-          startDisposable.dispose();
+          settled = true;
+          clearResources();
           reject(new Error('Launch cancelled'));
           return;
         }
-        if (session.type !== 'dapper' || session.name !== name) {
+
+        if (session.type !== 'dapper') {
           return;
         }
-        clearTimeout(timeout);
-        startDisposable.dispose();
+
+        const sessionToken = (session.configuration as LaunchConfigurationWithToken | undefined)?.__dapperLaunchToken;
+        if (sessionToken !== launchToken) {
+          return;
+        }
+
+        settled = true;
+        clearResources();
         resolve(session);
       });
     });
+
+    return {
+      promise,
+      cancel: () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearResources();
+      },
+    };
   }
 
   private async _waitForStop(session: vscode.DebugSession, token?: vscode.CancellationToken): Promise<boolean> {
-    let journal = await this.waitForJournal(session.id, token, START_TIMEOUT_MS);
+    let journal = this.registry.resolve(session.id);
     const baselineCheckpoint = journal?.checkpoint ?? 0;
     if (this._journalShowsStopped(journal)) {
       return true;
@@ -353,7 +415,7 @@ export class LaunchService {
           clearTimeout(pollHandle);
         }
         clearTimeout(timeout);
-        eventDisposable.dispose();
+        terminateDisposable.dispose();
         resolve(value);
       };
 
@@ -379,23 +441,13 @@ export class LaunchService {
       };
 
       const timeout = setTimeout(() => {
-        checkJournal();
         finish(false);
       }, STOP_TIMEOUT_MS);
 
-      const eventDisposable = vscode.debug.onDidReceiveDebugSessionCustomEvent((event) => {
-        if (event.session.id !== session.id) {
-          return;
-        }
-        if (event.event === 'terminated') {
+      const terminateDisposable = vscode.debug.onDidTerminateDebugSession((terminatedSession) => {
+        if (terminatedSession.id === session.id) {
           finish(false);
-          return;
         }
-        if (event.event === 'stopped') {
-          finish(true);
-          return;
-        }
-        checkJournal();
       });
 
       checkJournal();
@@ -421,6 +473,10 @@ export class LaunchService {
     return process.platform === 'win32'
       ? path.join(venvPath, 'Scripts', 'python.exe')
       : path.join(venvPath, 'bin', 'python');
+  }
+
+  private _createLaunchToken(): string {
+    return `dapper-launch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   private _delay(ms: number): Promise<void> {

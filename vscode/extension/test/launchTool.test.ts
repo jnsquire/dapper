@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { JournalRegistry } from '../src/agent/stateJournal.js';
 import { LaunchService } from '../src/debugAdapter/launchService.js';
 import { LaunchTool } from '../src/agent/tools/launch.js';
@@ -183,13 +184,63 @@ describe('LaunchTool extension-host harness', () => {
     });
 
     setTimeout(() => {
-      harness.fireStopped({ reason: 'entry' });
+      (journal as any)._onStopped({ reason: 'entry', threadId: 1 });
     }, 250);
 
     const result = await invokePromise;
     expect(result.waitedForStop).toBe(true);
     expect(result.stopped).toBe(true);
     expect(result.snapshot).toMatchObject({ stopReason: 'entry' });
+  });
+
+  it('matches the launched session by token when another session with the same name starts first', async () => {
+    const filePath = path.join(tmpRoot, 'same_name.py');
+    fs.writeFileSync(filePath, 'print("same")\n');
+
+    const originalStartDebugging = vscode.debug.startDebugging as typeof vscode.debug.startDebugging;
+    (vscode.debug.startDebugging as unknown) = vi.fn(async (debugFolder, config) => {
+      vscodeMock.fireDebugEvent('onDidStartDebugSession', {
+        id: 'competing-session',
+        type: 'dapper',
+        name: String(config.name),
+        configuration: {
+          ...config,
+          __dapperLaunchToken: 'other-launch-token',
+        },
+        workspaceFolder: debugFolder,
+        customRequest: vi.fn(async () => undefined),
+      });
+      return originalStartDebugging(debugFolder, config);
+    }) as typeof vscode.debug.startDebugging;
+
+    const result = await launchService.launch({
+      sessionName: 'Shared Launch Name',
+      target: { file: filePath },
+    });
+
+    expect(result.session.id).toBe(harness.session.id);
+    expect(result.session.id).not.toBe('competing-session');
+  });
+
+  it('returns promptly when the debug session terminates before the first stop', async () => {
+    const filePath = path.join(tmpRoot, 'terminates_early.py');
+    fs.writeFileSync(filePath, 'print("bye")\n');
+
+    const invokePromise = invokeLaunchTool(launchTool, {
+      target: { file: filePath },
+      waitForStop: true,
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.session).toBeDefined();
+    });
+
+    vscodeMock.fireDebugEvent('onDidTerminateDebugSession', harness.sessionForRegistry());
+
+    const result = await invokePromise;
+    expect(result.waitedForStop).toBe(true);
+    expect(result.stopped).toBe(false);
+    expect(result.snapshot).toBeNull();
   });
 
   it('treats a journal-recorded stop as success even if the custom stopped event is missed', async () => {
