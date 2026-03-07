@@ -449,6 +449,10 @@ function* registerViews(
     await launchesView.openLog(element);
   });
 
+  yield vscode.commands.registerCommand('dapper.launches.focusTerminal', (element) => {
+    launchesView.focusTerminal(element);
+  });
+
   yield vscode.commands.registerCommand('dapper.launches.delete', (element) => {
     launchesView.deleteLaunch(element);
   });

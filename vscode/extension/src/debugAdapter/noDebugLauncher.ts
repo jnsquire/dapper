@@ -123,6 +123,9 @@ export class DapperNoDebugLauncher implements NoDebugLaunchHandler {
         env: terminalEnv,
         isTransient: true,
       });
+      if (launchToken) {
+        this._launchHistory?.attachTerminal(launchToken, terminal);
+      }
 
       closeDisposable = vscode.window.onDidCloseTerminal((closedTerminal) => {
         if (closedTerminal !== terminal) {
@@ -134,6 +137,7 @@ export class DapperNoDebugLauncher implements NoDebugLaunchHandler {
         const exitCode = closedTerminal.exitStatus?.code ?? 0;
         logger.log(`No-debug launcher exited with code ${exitCode}`);
         if (launchToken) {
+          this._launchHistory?.detachTerminal(launchToken);
           this._launchHistory?.markTerminalExited(launchToken, exitCode);
         }
         transport.dispose();
@@ -148,6 +152,9 @@ export class DapperNoDebugLauncher implements NoDebugLaunchHandler {
       };
     } catch (error) {
       closeDisposable?.dispose();
+      if (launchToken) {
+        this._launchHistory?.detachTerminal(launchToken);
+      }
       transport.dispose();
       pythonIpcServer.close();
       terminal?.dispose();

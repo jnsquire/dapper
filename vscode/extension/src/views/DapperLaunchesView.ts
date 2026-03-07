@@ -32,6 +32,7 @@ interface LaunchTreeElement {
 export class DapperLaunchHistoryService implements vscode.Disposable {
   private readonly _records = new Map<string, LaunchRecord>();
   private readonly _launchTokenBySessionId = new Map<string, string>();
+  private readonly _terminalsByLaunchToken = new Map<string, vscode.Terminal>();
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -200,6 +201,30 @@ export class DapperLaunchHistoryService implements vscode.Disposable {
     return this._records.get(launchToken)?.logFile;
   }
 
+  public attachTerminal(launchToken: string, terminal: vscode.Terminal): void {
+    if (!this._records.has(launchToken)) {
+      return;
+    }
+    this._terminalsByLaunchToken.set(launchToken, terminal);
+    this._onDidChange.fire();
+  }
+
+  public detachTerminal(launchToken: string): void {
+    if (!this._terminalsByLaunchToken.delete(launchToken)) {
+      return;
+    }
+    this._onDidChange.fire();
+  }
+
+  public focusTerminal(launchToken: string): boolean {
+    const terminal = this._terminalsByLaunchToken.get(launchToken);
+    if (!terminal) {
+      return false;
+    }
+    terminal.show(false);
+    return true;
+  }
+
   public deleteLaunch(launchToken: string): boolean {
     const record = this._records.get(launchToken);
     if (!record) {
@@ -208,6 +233,7 @@ export class DapperLaunchHistoryService implements vscode.Disposable {
     if (record.sessionId) {
       this._launchTokenBySessionId.delete(record.sessionId);
     }
+    this._terminalsByLaunchToken.delete(launchToken);
     this._records.delete(launchToken);
     this._onDidChange.fire();
     return true;
@@ -219,6 +245,7 @@ export class DapperLaunchHistoryService implements vscode.Disposable {
     }
     this._records.clear();
     this._launchTokenBySessionId.clear();
+    this._terminalsByLaunchToken.clear();
     this._onDidChange.fire();
   }
 
@@ -230,6 +257,7 @@ export class DapperLaunchHistoryService implements vscode.Disposable {
     this._disposables.length = 0;
     this._records.clear();
     this._launchTokenBySessionId.clear();
+    this._terminalsByLaunchToken.clear();
   }
 
   private _getRecordBySessionId(sessionId: string): LaunchRecord | undefined {
@@ -270,6 +298,11 @@ class DapperLaunchesProvider implements vscode.TreeDataProvider<LaunchTreeElemen
     item.tooltip = this._tooltip(record);
     item.iconPath = new vscode.ThemeIcon(this._icon(record));
     item.contextValue = record.logFile ? 'dapperLaunchRecordWithLog' : 'dapperLaunchRecord';
+    item.command = {
+      command: 'dapper.launches.focusTerminal',
+      title: 'Focus Launch Terminal',
+      arguments: [element],
+    };
     return item;
   }
 
@@ -375,6 +408,16 @@ export class DapperLaunchesView implements vscode.Disposable {
     }
     this._provider.refresh();
     this._updateViewState();
+  }
+
+  public focusTerminal(element?: LaunchTreeElement): void {
+    if (!element) {
+      vscode.window.showInformationMessage('Select a launch record first.');
+      return;
+    }
+    if (!this._history.focusTerminal(element.launchToken)) {
+      vscode.window.showInformationMessage('No active terminal is associated with this launch.');
+    }
   }
 
   public clearHistory(): void {

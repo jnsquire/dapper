@@ -392,6 +392,9 @@ export class MainSessionController {
       isTransient: true,
     });
     this._adapterTerminal = adapterTerminal;
+    if (launchToken) {
+      this._launchHistory?.attachTerminal(launchToken, adapterTerminal);
+    }
     adapterTerminal.show(false);
 
     this._terminalCloseDisposable = vscode.window.onDidCloseTerminal((terminal) => {
@@ -414,6 +417,7 @@ export class MainSessionController {
         outChannel.warn('Terminal closed but no active debug transport to notify');
       }
       if (launchToken) {
+        this._launchHistory?.detachTerminal(launchToken);
         this._launchHistory?.markTerminalExited(launchToken, code);
       }
       outChannel.info('Resetting adapter factory state after terminal exit');
