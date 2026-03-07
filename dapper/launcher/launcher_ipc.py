@@ -11,6 +11,7 @@ import io
 import socket
 import time
 from typing import TYPE_CHECKING
+from typing import Callable
 
 # Note: this module contains lightweight helpers used by tests and the
 # launcher. It intentionally avoids heavy imports at module-level.
@@ -54,8 +55,8 @@ class SocketConnector:
 
     def _connect_with_retry(
         self,
-        create_socket: callable,
-        connect: callable,
+        create_socket: Callable[[], socket.socket],
+        connect: Callable[[socket.socket], object],
     ) -> socket.socket | None:
         for attempt in range(self.retry_attempts):
             sock = None
