@@ -8,7 +8,7 @@ export function getWebviewContent(
 ) {
   // Get URIs for resources
   const stylesUri = getUri(webview, extensionUri, ['webview', 'styles.css']);
-  const elementsUri = getUri(webview, extensionUri, ['node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js']);
+  const elementsUri = getUri(webview, extensionUri, ['out', 'compiled', 'vendor', 'bundled.js']);
 
   // Use a nonce to only allow specific scripts to be run
   const nonce = getNonce();

@@ -9,7 +9,7 @@ export class DebugView extends BaseView {
   private _watcher: DebugViewSessionWatcher | null = null;
 
   render(): string {
-    const elementsUri = this.getWebviewUri('node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js');
+    const elementsUri = this.getWebviewUri('out', 'compiled', 'vendor', 'bundled.js');
     const cspSource = this.panel.webview.cspSource;
     const nonce = String(Date.now());
 

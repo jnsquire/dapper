@@ -79,7 +79,6 @@ export class DapperWebview {
         localResourceRoots: [
           vscode.Uri.joinPath(extensionUri, 'media'),
           vscode.Uri.joinPath(extensionUri, 'out/compiled'),
-          vscode.Uri.joinPath(extensionUri, 'node_modules', '@vscode-elements', 'elements', 'dist')
         ]
       }
     );
@@ -146,9 +145,7 @@ export class DapperWebview {
     const nonce = String(Date.now());
     const configScriptUri = this.getWebviewUri('webview/views/config/ConfigView.js');
     const stylesUri = this.getWebviewUri('styles/webview/styles.css');
-    const elementsUri = this._panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js')
-    );
+    const elementsUri = this.getWebviewUri('vendor/bundled.js');
     return {
       render: () => `
         <!doctype html>
@@ -172,9 +169,21 @@ export class DapperWebview {
           async (message) => {
             switch (message.command) {
               case 'saveConfig':
-                // Handle config save
-                await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
-                vscode.window.showInformationMessage('Configuration saved');
+                try {
+                  await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
+                  vscode.window.showInformationMessage('Default Dapper configuration saved');
+                  panel.webview.postMessage({
+                    command: 'updateStatus',
+                    text: 'Saved as the default Dapper configuration in VS Code setting dapper.debug.',
+                  });
+                } catch (err) {
+                  logger.error('Failed to save configuration', err as Error);
+                  vscode.window.showErrorMessage('Failed to save configuration');
+                  panel.webview.postMessage({
+                    command: 'updateStatus',
+                    text: 'Failed to save configuration.',
+                  });
+                }
                 break;
               case 'requestConfig':
                 // Respond with the saved configuration or default.
@@ -204,7 +213,10 @@ export class DapperWebview {
                   const ok = await insertLaunchConfiguration(message.config as any);
                   if (ok) {
                     vscode.window.showInformationMessage('Configuration inserted into launch.json');
-                    panel.webview.postMessage({ command: 'updateStatus', text: 'Configuration inserted into launch.json' });
+                    panel.webview.postMessage({
+                      command: 'updateStatus',
+                      text: 'Saved as the default Dapper configuration and inserted into .vscode/launch.json.',
+                    });
                   } else {
                     panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
                   }

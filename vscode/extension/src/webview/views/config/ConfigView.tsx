@@ -567,10 +567,10 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
                     secondary
                     onClick={(e: React.MouseEvent) => {
                       e.preventDefault();
-                      if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
+                      if (vscode) vscode.postMessage({ command: 'saveConfig', config });
                     }}
                   >
-                    Save to launch.json
+                    Save as Default
                   </vscode-button>
                   <vscode-button
                     secondary
@@ -582,9 +582,12 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
                     ▶ Start Debugging
                   </vscode-button>
                   <vscode-button
-                    onClick={(e: React.MouseEvent) => { e.preventDefault(); handleSave(e); }}
+                    onClick={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
+                    }}
                   >
-                    Save Configuration
+                    Save to launch.json
                   </vscode-button>
                 </>
               )}

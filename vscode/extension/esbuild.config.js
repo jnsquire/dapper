@@ -1,4 +1,5 @@
 import esbuild from 'esbuild';
+import fs from 'fs';
 import path from 'path';
 import { sassPlugin } from 'esbuild-sass-plugin';
 import { copy } from 'esbuild-plugin-copy';
@@ -116,12 +117,22 @@ const buildWebview = async () => {
   });
 };
 
+async function copyWebviewVendorAssets() {
+  const source = path.join(__dirname, 'node_modules', '@vscode-elements', 'elements', 'dist', 'bundled.js');
+  const targetDir = path.join(__dirname, 'out', 'compiled', 'vendor');
+  const target = path.join(targetDir, 'bundled.js');
+
+  await fs.promises.mkdir(targetDir, { recursive: true });
+  await fs.promises.copyFile(source, target);
+}
+
 // Build both extension and webview
 async function buildAll() {
   try {
     await Promise.all([
       buildExtension(),
       buildWebview(),
+      copyWebviewVendorAssets(),
     ]);
     console.log('Build completed successfully');
   } catch (error) {
