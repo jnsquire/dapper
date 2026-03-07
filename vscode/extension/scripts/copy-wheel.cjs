@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
 function log(msg)  { process.stdout.write(`[copy-wheel] ${msg}\n`); }
@@ -20,6 +21,116 @@ function fail(msg) { process.stderr.write(`[copy-wheel ERROR] ${msg}\n`); proces
 const PYTHON_VERSIONS = ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14'];
 
 const DOWNLOAD_MISSING = process.argv.includes('--download-missing');
+const FORCE_REBUILD = process.argv.includes('--force');
+
+const FINGERPRINT_ROOTS = ['dapper'];
+const FINGERPRINT_FILE_EXTENSIONS = new Set(['.py', '.pyx', '.pxd', '.pxi', '.c', '.h']);
+const FINGERPRINT_FILES = ['pyproject.toml', 'setup.py', 'setup.cfg', 'MANIFEST.in', 'README.md'];
+const BUILD_MANIFEST_FILE = '.build-manifest.json';
+
+function walkFiles(dirPath, relativeTo, files = []) {
+  if (!fs.existsSync(dirPath)) {
+    return files;
+  }
+
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === '__pycache__') {
+      continue;
+    }
+
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(fullPath, relativeTo, files);
+      continue;
+    }
+
+    if (FINGERPRINT_FILE_EXTENSIONS.has(path.extname(entry.name))) {
+      files.push(path.relative(relativeTo, fullPath).split(path.sep).join('/'));
+    }
+  }
+
+  return files;
+}
+
+function computeInputFingerprint(rootDir) {
+  const hash = crypto.createHash('sha256');
+  const relativeFiles = [];
+
+  for (const file of FINGERPRINT_FILES) {
+    const fullPath = path.join(rootDir, file);
+    if (fs.existsSync(fullPath)) {
+      relativeFiles.push(file);
+    }
+  }
+
+  for (const dir of FINGERPRINT_ROOTS) {
+    walkFiles(path.join(rootDir, dir), rootDir, relativeFiles);
+  }
+
+  relativeFiles.sort();
+
+  for (const relativeFile of relativeFiles) {
+    const fullPath = path.join(rootDir, relativeFile);
+    hash.update(relativeFile);
+    hash.update('\0');
+    hash.update(fs.readFileSync(fullPath));
+    hash.update('\0');
+  }
+
+  return {
+    fingerprint: hash.digest('hex'),
+    files: relativeFiles,
+  };
+}
+
+function readBuildManifest(resourcesDir) {
+  const manifestPath = path.join(resourcesDir, BUILD_MANIFEST_FILE);
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch (error) {
+    warn(`Failed to read build manifest at ${manifestPath}: ${error}`);
+    return null;
+  }
+}
+
+function writeBuildManifest(resourcesDir, manifest) {
+  const manifestPath = path.join(resourcesDir, BUILD_MANIFEST_FILE);
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+}
+
+function existingWheelFiles(resourcesDir) {
+  if (!fs.existsSync(resourcesDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(resourcesDir)
+    .filter(f => f.endsWith('.whl'))
+    .sort();
+}
+
+function canReuseExistingWheels(resourcesDir, inputFingerprint) {
+  if (FORCE_REBUILD) {
+    return false;
+  }
+
+  const manifest = readBuildManifest(resourcesDir);
+  if (!manifest || manifest.inputFingerprint !== inputFingerprint) {
+    return false;
+  }
+
+  const currentWheels = existingWheelFiles(resourcesDir);
+  const recordedWheels = Array.isArray(manifest.wheels) ? [...manifest.wheels].sort() : [];
+  if (recordedWheels.length === 0 || currentWheels.length !== recordedWheels.length) {
+    return false;
+  }
+
+  return recordedWheels.every((wheel, index) => currentWheels[index] === wheel);
+}
 
 /** Return a Promise that resolves with { code, output } for a spawned command. */
 function run(cmd, args, options = {}) {
@@ -131,6 +242,15 @@ async function main() {
   const extensionDir = path.resolve(__dirname, '..');
   const rootDir = path.resolve(extensionDir, '..', '..');
   const resourcesDir = path.join(extensionDir, 'resources', 'python-wheels');
+  fs.mkdirSync(resourcesDir, { recursive: true });
+
+  const { fingerprint: inputFingerprint, files: fingerprintFiles } = computeInputFingerprint(rootDir);
+  if (canReuseExistingWheels(resourcesDir, inputFingerprint)) {
+    const wheels = existingWheelFiles(resourcesDir);
+    log(`Inputs unchanged; reusing existing bundled wheels from ${resourcesDir}`);
+    log(`Total wheels bundled: ${wheels.length} (${wheels.join(', ')})`);
+    return;
+  }
 
   // Clear out stale wheels so old versions don't accumulate
   if (fs.existsSync(resourcesDir)) {
@@ -141,8 +261,6 @@ async function main() {
       }
     }
   }
-  fs.mkdirSync(resourcesDir, { recursive: true });
-
   // Create a unique output dir per Python version so builds don't race on dist/
   const outDirs = Object.fromEntries(
     PYTHON_VERSIONS.map(v => [v, fs.mkdtempSync(path.join(os.tmpdir(), `dapper-out-py${v.replace('.', '')}-`))])
@@ -181,6 +299,13 @@ async function main() {
 
   const allWheels = fs.readdirSync(resourcesDir).filter(f => f.endsWith('.whl'));
   if (allWheels.length === 0) fail('No wheels were produced for any Python version.');
+  writeBuildManifest(resourcesDir, {
+    inputFingerprint,
+    fingerprintFiles,
+    wheels: allWheels.sort(),
+    pythonVersions: PYTHON_VERSIONS,
+    builtAt: new Date().toISOString(),
+  });
   log(`Done. ${copiedCount} new wheel(s) copied to ${resourcesDir}`);
   log(`Total wheels bundled: ${allWheels.length} (${allWheels.join(', ')})`);
 }
