@@ -640,12 +640,20 @@
       {
         "command": "dapper.openLaunchWizard",
         "title": "Dapper: Open Launch Configuration Wizard",
-        "category": "Dapper"
+        "category": "Dapper",
+        "icon": "$(wand)"
       },
       {
         "command": "dapper.startDebugging",
-        "title": "Debug Python File with Dapper (Stop on Entry)",
-        "category": "Dapper"
+        "title": "Dapper: Start Debugging",
+        "category": "Dapper",
+        "icon": "$(debug)"
+      },
+      {
+        "command": "dapper.startDebuggingStopOnEntry",
+        "title": "Dapper: Start Debugging (Stop on Entry)",
+        "category": "Dapper",
+        "icon": "$(debug-alt)"
       },
       {
         "command": "dapper.toggleBreakpoint",
@@ -686,12 +694,6 @@
         "command": "dapper.inspectVariable",
         "title": "Dapper: Inspect Variable",
         "category": "Dapper"
-      },
-      {
-        "command": "dapper.debugCurrentFile",
-        "title": "Debug Python File with Dapper",
-        "category": "Dapper",
-        "icon": "$(debug-alt)"
       },
       {
         "command": "dapper.processTree.refresh",
@@ -757,6 +759,14 @@
           "when": "workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration"
         },
         {
+          "command": "dapper.startDebugging",
+          "when": "resourceLangId == python"
+        },
+        {
+          "command": "dapper.startDebuggingStopOnEntry",
+          "when": "resourceLangId == python"
+        },
+        {
           "command": "dapper.startDebugWithSavedConfig",
           "when": "workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration"
         },
@@ -767,24 +777,15 @@
       ],
       "editor/title/run": [
         {
-          "command": "dapper.debugCurrentFile",
-          "when": "resourceLangId == python",
-          "group": "navigation"
-        },
-        {
           "command": "dapper.startDebugging",
+          "alt": "dapper.startDebuggingStopOnEntry",
           "when": "resourceLangId == python",
-          "group": "secondary@1"
+          "group": "1_dapper@1"
         },
         {
           "command": "dapper.startDebugWithSavedConfig",
           "when": "resourceLangId == python && workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration",
-          "group": "secondary@2"
-        },
-        {
-          "command": "dapper.openLaunchWizard",
-          "when": "resourceLangId == python && workspaceFolderCount > 0",
-          "group": "secondary@3"
+          "group": "1_dapper@2"
         }
       ],
       "view/title": [

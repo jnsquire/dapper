@@ -141,19 +141,29 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     vscode.window.showInformationMessage('Variable inspector is now active');
   });
 
-  // Start Debugging Command
-  yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
+  const startCurrentFileDebugging = async (stopOnEntry: boolean) => {
     try {
       await launchService.launch({
-        sessionName: 'Debug Current File (Stop on Entry)',
+        sessionName: stopOnEntry ? 'Debug Current File (Stop on Entry)' : 'Debug Current File',
         target: { currentFile: true },
-        stopOnEntry: true,
+        stopOnEntry,
         waitForStop: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Dapper: Failed to start debugging current file with stop on entry: ${message}`);
+      const action = stopOnEntry ? 'start debugging current file with stop on entry' : 'start debugging current file';
+      vscode.window.showErrorMessage(`Dapper: Failed to ${action}: ${message}`);
     }
+  };
+
+  // Start Debugging Command
+  yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
+    await startCurrentFileDebugging(false);
+  });
+
+  // Start Debugging With Stop On Entry Command
+  yield vscode.commands.registerCommand('dapper.startDebuggingStopOnEntry', async () => {
+    await startCurrentFileDebugging(true);
   });
 
   // Launch Configuration Wizard Command
@@ -262,30 +272,6 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Failed to inspect variable: ${errorMessage}`);
-    }
-  });
-
-  // Debug Current File Command (editor/title/run button)
-  yield vscode.commands.registerCommand('dapper.debugCurrentFile', async () => {
-    try {
-      const result = await launchService.launch({
-        sessionName: 'Debug Current File',
-        target: { currentFile: true },
-        stopOnEntry: false,
-        waitForStop: false,
-      });
-      logger.debug('dapper.debugCurrentFile: launch result', {
-        sessionId: result.session.id,
-        target: result.resolvedTarget,
-      });
-      logger.log('dapper.debugCurrentFile: startDebugging returned successfully');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('dapper.debugCurrentFile failed', error as Error);
-      vscode.window.showErrorMessage(
-        `Dapper: Failed to start debugging: ${message}. ` +
-        "See the 'Dapper Python Env' output channel for details."
-      );
     }
   });
 
