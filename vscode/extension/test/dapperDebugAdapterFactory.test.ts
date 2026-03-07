@@ -1,7 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Net from 'net';
 import * as vscode from 'vscode';
-import { once } from 'events';
+import { EventEmitter, once } from 'events';
+
+const { spawnMock } = vi.hoisted(() => ({
+  spawnMock: vi.fn(),
+}));
+
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
+  return {
+    ...actual,
+    spawn: spawnMock,
+  };
+});
+
 import { DapperDebugAdapterDescriptorFactory } from '../src/debugAdapter/dapperDebugAdapter.js';
 import { fireDebugEvent, resetDebugListeners } from './__mocks__/vscode.mjs';
 
@@ -52,6 +65,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
   beforeEach(() => {
     resetDebugListeners();
     vi.restoreAllMocks();
+    spawnMock.mockReset();
     factory = new DapperDebugAdapterDescriptorFactory({
       extension: { packageJSON: { version: '0.9.0' } },
       globalStorageUri: { fsPath: '/tmp/dapper-tests' },
@@ -179,5 +193,61 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
       expect((factory as any)._childSessions.has('child-launcher-session')).toBe(false);
       expect((factory as any)._childSessionIdsByPid.has(4242)).toBe(false);
     });
+  });
+
+  it('spawns the attach-by-pid helper for attach sessions with processId', async () => {
+    const outputChannel = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      show: vi.fn(),
+    };
+    (factory as any).envManager.prepareEnvironment = vi.fn(async () => ({
+      pythonPath: '/usr/bin/python3.14',
+      needsInstall: false,
+    }));
+    (factory as any).envManager.getOutputChannel = () => outputChannel;
+    (factory as any).envManager.showOutputChannel = vi.fn();
+
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => child.emit('close', 0));
+      return child;
+    });
+
+    const createTerminalSpy = vi.spyOn(vscode.window, 'createTerminal');
+
+    const descriptor = await factory.createDebugAdapterDescriptor({
+      id: 'attach-session',
+      type: 'dapper',
+      name: 'Attach',
+      configuration: {
+        type: 'dapper',
+        request: 'attach',
+        name: 'Attach',
+        processId: 4321,
+        justMyCode: false,
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined);
+
+    expect((descriptor as vscode.DebugAdapterServer).port).toBeGreaterThan(0);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [pythonPath, args, options] = spawnMock.mock.calls[0] as [string, string[], { cwd: string; env: Record<string, string> }];
+    expect(pythonPath).toBe('/usr/bin/python3.14');
+    expect(args).toContain('dapper.launcher.attach_by_pid');
+    expect(args).toContain('--pid');
+    expect(args).toContain('4321');
+    expect(args).toContain('--no-just-my-code');
+    expect(args).toContain('--ipc-port');
+    expect(options.cwd).toBe('/workspace');
+    expect(createTerminalSpy).not.toHaveBeenCalled();
   });
 });

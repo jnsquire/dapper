@@ -7,6 +7,7 @@ import {
     ModuleEvent, ExitedEvent, Event,
 } from '@vscode/debugadapter';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { spawn } from 'child_process';
 import * as Net from 'net';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -46,6 +47,17 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
   cwd?: string;
   env?: { [key: string]: string };
   /** Force reinstall of the dapper Python wheel before starting the session. */
+  forceReinstall?: boolean;
+}
+
+interface AttachRequestArguments extends DebugProtocol.AttachRequestArguments {
+  processId?: number | string;
+  pythonPath?: string;
+  venvPath?: string;
+  cwd?: string;
+  env?: { [key: string]: string };
+  justMyCode?: boolean;
+  strictExpressionWatchPolicy?: boolean;
   forceReinstall?: boolean;
 }
 
@@ -1057,6 +1069,181 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     for (const launcherSessionId of childIds) {
       this._disposePendingChildSession(launcherSessionId, { destroySocket: true });
     }
+
+    this._resetMainSessionState();
+  }
+
+  private _resetMainSessionState(): void {
+    if (this.server) {
+      this.server.close();
+      this.server = undefined;
+    }
+    if (this._pythonIpcServer) {
+      this._pythonIpcServer.close();
+      this._pythonIpcServer = undefined;
+    }
+    if (this._adapterTerminal) {
+      this._adapterTerminal.dispose();
+      this._adapterTerminal = undefined;
+    }
+    if (this._pythonSocket && !this._pythonSocket.destroyed) {
+      this._pythonSocket.destroy();
+    }
+    this._pythonSocket = undefined;
+    this._currentSession = undefined;
+  }
+
+  private _resolveProcessId(config: vscode.DebugConfiguration): number | undefined {
+    const raw = (config as AttachRequestArguments).processId;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+      return raw;
+    }
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return undefined;
+      }
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private _createPythonIpcServer(outChannel: vscode.LogOutputChannel): number {
+    const pythonIpcServer = Net.createServer((pythonSocket) => {
+      this._pythonIpcServer = pythonIpcServer;
+      outChannel.info('Python debug adapter connected via IPC');
+      this._pythonSocket = pythonSocket;
+      this._currentSession?.setPythonSocket(pythonSocket);
+      outChannel.info(`Python IPC: session already exists = ${!!this._currentSession}`);
+
+      pythonSocket.on('error', (err: Error) => {
+        outChannel.error(`Python IPC socket error: ${err.message}`);
+      });
+    }).listen(0);
+
+    this._pythonIpcServer = pythonIpcServer;
+    return (pythonIpcServer.address() as Net.AddressInfo).port;
+  }
+
+  private _createAdapterServer(outChannel: vscode.LogOutputChannel): void {
+    const server = Net.createServer((vscodeSocket) => {
+      outChannel.info(`VS Code connected to DAP server (pythonSocket ready = ${!!this._pythonSocket})`);
+      const sessionImpl = new DapperDebugSession(this._pythonSocket);
+      this._currentSession = sessionImpl;
+      sessionImpl.setRunAsServer(true);
+      sessionImpl.start(vscodeSocket, vscodeSocket);
+    }).listen(0);
+    this.server = server;
+  }
+
+  private _buildProcessEnv(
+    envInfo: Awaited<ReturnType<EnvironmentManager['prepareEnvironment']>>,
+    config: LaunchRequestArguments | AttachRequestArguments,
+    session: vscode.DebugSession,
+  ): { terminalEnv: Record<string, string>; logFile: string; debugLogLevel: string } {
+    const debuggerConfig = vscode.workspace.getConfiguration('dapper.debugger');
+    const configuredLogFile = (debuggerConfig.get<string>('logFile', '') || '').trim();
+    let logFile: string;
+    if (configuredLogFile) {
+      const wsFolder = session.workspaceFolder?.uri.fsPath
+        ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+        ?? '';
+      logFile = configuredLogFile.replace(/\$\{workspaceFolder\}/g, wsFolder);
+      logFile = logFile.replace(/%([^%]+)%/g, (_match: string, name: string) => process.env[name] ?? `%${name}%`);
+      if (process.platform !== 'win32') {
+        logFile = logFile.replace(/\\/g, '/');
+      }
+    } else {
+      logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
+    }
+
+    const debugLogLevel = (debuggerConfig
+      .get<string>('logLevel', 'DEBUG') || 'DEBUG')
+      .toUpperCase();
+    const rawEnv = {
+      ...process.env,
+      ...(config.env || {}),
+      DAPPER_MANAGED_VENV: envInfo.venvPath || '',
+      DAPPER_VERSION_EXPECTED: this.extensionVersion,
+      DAPPER_LOG_FILE: logFile,
+      DAPPER_LOG_LEVEL: debugLogLevel,
+    };
+    const terminalEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawEnv)) {
+      if (typeof value === 'string') {
+        terminalEnv[key] = value;
+      }
+    }
+
+    if (envInfo.dapperLibPath) {
+      const existing = terminalEnv.PYTHONPATH || '';
+      terminalEnv.PYTHONPATH = existing
+        ? `${envInfo.dapperLibPath}${pathDelimiter}${existing}`
+        : envInfo.dapperLibPath;
+    }
+
+    return { terminalEnv, logFile, debugLogLevel };
+  }
+
+  private async _spawnAttachByPidHelper(
+    pythonPath: string,
+    processId: number,
+    pythonIpcPort: number,
+    cwd: string,
+    env: Record<string, string>,
+    config: AttachRequestArguments,
+    outChannel: vscode.LogOutputChannel,
+  ): Promise<void> {
+    const args: string[] = [
+      '-m',
+      'dapper.launcher.attach_by_pid',
+      '--pid',
+      String(processId),
+      '--ipc',
+      'tcp',
+      '--ipc-port',
+      String(pythonIpcPort),
+    ];
+    if (config.justMyCode === false) {
+      args.push('--no-just-my-code');
+    }
+    if (config.strictExpressionWatchPolicy) {
+      args.push('--strict-expression-watch-policy');
+    }
+
+    outChannel.info(`Launching attach helper for PID ${processId}: ${pythonPath} ${args.join(' ')}`);
+
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(pythonPath, args, {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const outputLines: string[] = [];
+      const onData = (chunk: Buffer) => {
+        const text = chunk.toString().trimEnd();
+        if (!text) {
+          return;
+        }
+        outChannel.info(text);
+        outputLines.push(text);
+      };
+
+      child.stdout?.on('data', onData);
+      child.stderr?.on('data', onData);
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const tail = outputLines.slice(-20).join('\n');
+        reject(new Error(`Attach helper exited with code ${code}${tail ? `:\n${tail}` : ''}`));
+      });
+    });
   }
 
   private _disposePendingChildSession(
@@ -1153,9 +1340,11 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     if (!this.server) {
       try {
         const config = session.configuration;
+        const attachConfig = config as AttachRequestArguments;
         const installMode = (vscode.workspace.getConfiguration('dapper.python').get<string>('installMode') || 'auto') as InstallMode;
         const forceReinstall = !!vscode.workspace.getConfiguration('dapper.python').get<boolean>('forceReinstall')
           || !!(config.forceReinstall as boolean | undefined);
+        const outChannel = this.envManager.getOutputChannel();
 
         // Prepare environment (create venv & install dapper if needed)
         const envInfo = await this.envManager.prepareEnvironment(this.extensionVersion, installMode, forceReinstall, {
@@ -1164,173 +1353,104 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           preferredVenvPath: typeof config.venvPath === 'string' ? config.venvPath : undefined,
         });
         const pythonPath = envInfo.pythonPath;
-
-        // Build arguments: use dapper.launcher as the entry point
-        const args: string[] = ['-m', 'dapper.launcher'];
-        const program = config.program as string | undefined;
-        const moduleName = config.module as string | undefined;
-        if (program) {
-          const programPath = String(program).replace(/\\/g, '/');
-          args.push('--program', programPath);
-        } else if (moduleName) {
-          args.push('--module', String(moduleName));
-        } else {
-          vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
-        }
-
-        if (Array.isArray(config.moduleSearchPaths)) {
-          for (const p of config.moduleSearchPaths) {
-            args.push('--module-search-path', String(p));
-          }
-        }
-        if (config.args && Array.isArray(config.args)) {
-          for (const a of config.args) {
-            args.push('--arg', String(a));
-          }
-        }
-        if (config.stopOnEntry) {
-          args.push('--stop-on-entry');
-        }
-        if (config.noDebug) {
-          args.push('--no-debug');
-        }
-
-        // Create a second server for Python to connect back with IPC
-        const pythonIpcServer = Net.createServer(pythonSocket => {
-          this._pythonIpcServer = pythonIpcServer;
-          // This is the IPC connection from Python debug_launcher
-          const outChannel = this.envManager.getOutputChannel();
-        outChannel.info('Python debug adapter connected via IPC');
-          // Store the python socket so DapperDebugSession can use it
-          this._pythonSocket = pythonSocket;
-
-          // If a session already exists, provide it the socket
-          this._currentSession?.setPythonSocket(pythonSocket);
-          outChannel.info(`Python IPC: session already exists = ${!!this._currentSession}`);
-
-          pythonSocket.on('error', (err: Error) => {
-            outChannel.error(`Python IPC socket error: ${err.message}`);
-          });
-        }).listen(0);
-
-        const pythonIpcPort = (pythonIpcServer.address() as Net.AddressInfo).port;
-
-        // Pass the IPC port to Python so it can connect back
-        args.push('--ipc', 'tcp');
-        args.push('--ipc-port', pythonIpcPort.toString());
-
-        // Create server for VS Code <-> DapperDebugSession Protocol
-        const server = Net.createServer(vscodeSocket => {
-          outChannel.info(`VS Code connected to DAP server (pythonSocket ready = ${!!this._pythonSocket})`);
-          const sessionImpl = new DapperDebugSession(this._pythonSocket);
-          this._currentSession = sessionImpl;
-          sessionImpl.setRunAsServer(true);
-          sessionImpl.start(vscodeSocket, vscodeSocket);
-        }).listen(0);
-        this.server = server;
-
-        // Build environment — terminal env must be Record<string, string>
-        const debuggerConfig = vscode.workspace.getConfiguration('dapper.debugger');
-        const configuredLogFile = debuggerConfig.get<string>('logFile', '').trim();
-        let logFile: string;
-        if (configuredLogFile) {
-          // Resolve ${workspaceFolder} if present
-          const wsFolder = session.workspaceFolder?.uri.fsPath
-            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-            ?? '';
-          logFile = configuredLogFile.replace(/\$\{workspaceFolder\}/g, wsFolder);
-          // Also expand %ENV_VAR% style variables (Windows env-var syntax in cross-platform configs)
-          logFile = logFile.replace(/%([^%]+)%/g, (_match: string, name: string) => process.env[name] ?? `%${name}%`);
-          // Normalize backslash path separators to forward slashes on non-Windows
-          if (process.platform !== 'win32') {
-            logFile = logFile.replace(/\\/g, '/');
-          }
-        } else {
-          logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
-        }
-        const debugLogLevel = debuggerConfig
-          .get<string>('logLevel', 'DEBUG')
-          .toUpperCase();
-        const rawEnv = { ...process.env, ...(config.env || {}),
-          DAPPER_MANAGED_VENV: envInfo.venvPath || '',
-          DAPPER_VERSION_EXPECTED: this.extensionVersion,
-          DAPPER_LOG_FILE: logFile,
-          DAPPER_LOG_LEVEL: debugLogLevel,
-        };
-        const terminalEnv: Record<string, string> = {};
-        for (const [k, v] of Object.entries(rawEnv)) {
-          if (typeof v === 'string') terminalEnv[k] = v;
-        }
-
-        const outChannel = this.envManager.getOutputChannel();
-
-        // If dapper was extracted to an isolated lib directory (instead of being
-        // installed into the workspace venv), prepend it to PYTHONPATH so that
-        // `-m dapper.launcher` resolves without mutating the user's environment.
-        if (envInfo.dapperLibPath) {
-          const existing = terminalEnv['PYTHONPATH'] || '';
-          terminalEnv['PYTHONPATH'] = existing
-            ? `${envInfo.dapperLibPath}${pathDelimiter}${existing}`
-            : envInfo.dapperLibPath;
-          outChannel.info(`PYTHONPATH injection: ${envInfo.dapperLibPath}`);
-        }
-
-        outChannel.info(`Session log file: ${logFile}`);
-        const sessionName = session.name || (config.name as string | undefined) || 'Debug';
         const cwd = (config.cwd as string | undefined) || session.workspaceFolder?.uri.fsPath || process.cwd();
+        const { terminalEnv, logFile } = this._buildProcessEnv(
+          envInfo,
+          config as LaunchRequestArguments | AttachRequestArguments,
+          session,
+        );
+        const processId = this._resolveProcessId(config);
 
-        // Spawn adapter inside VS Code's integrated terminal so Python gets a real PTY.
-        // All DAP traffic flows over the IPC socket; the terminal is purely for program I/O.
-        const adapterTerminal = vscode.window.createTerminal({
-          name: `Dapper: ${sessionName}`,
-          shellPath: pythonPath,
-          shellArgs: args,
-          cwd,
-          env: terminalEnv,
-          isTransient: true,
-        });
-        this._adapterTerminal = adapterTerminal;
-        // Show the terminal so TUI output is visible; false = don't steal editor focus
-        adapterTerminal.show(false);
+        const pythonIpcPort = this._createPythonIpcServer(outChannel);
+        this._createAdapterServer(outChannel);
 
-        // Detect adapter exit via terminal close event
-        const closeDisposable = vscode.window.onDidCloseTerminal(t => {
-          if (t !== adapterTerminal) return;
-          closeDisposable.dispose();
-          const code = t.exitStatus?.code ?? 0;
-          outChannel.info(`Debug adapter exited with code ${code}`);
-          if (code !== 0 && code !== undefined) {
-            outChannel.error(`Debug adapter exited with non-zero code ${code}. Check the terminal output above.`);
-            this.envManager.showOutputChannel();
-            vscode.window.showErrorMessage(`Dapper debug adapter exited with code ${code}.`);
-          }
-          this._adapterTerminal = undefined;
-          // Ensure VS Code knows the debug session is done
-          if (this._currentSession) {
-            outChannel.info('Sending ExitedEvent + TerminatedEvent from terminal close handler');
-            this._currentSession.sendEvent(new ExitedEvent(code));
-            this._currentSession.sendEvent(new TerminatedEvent());
+        if (config.request === 'attach' && processId != null) {
+          await this._spawnAttachByPidHelper(
+            pythonPath,
+            processId,
+            pythonIpcPort,
+            cwd,
+            terminalEnv,
+            attachConfig,
+            outChannel,
+          );
+          outChannel.info(`Waiting for attached process ${processId} to connect back over IPC`);
+        } else {
+          // Build arguments: use dapper.launcher as the entry point
+          const args: string[] = ['-m', 'dapper.launcher'];
+          const program = config.program as string | undefined;
+          const moduleName = config.module as string | undefined;
+          if (program) {
+            const programPath = String(program).replace(/\\/g, '/');
+            args.push('--program', programPath);
+          } else if (moduleName) {
+            args.push('--module', String(moduleName));
           } else {
-            outChannel.warn('Terminal closed but no active debug session to notify');
+            vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
           }
-          // Reset all session state so the next createDebugAdapterDescriptor call
-          // starts a completely fresh Python process.  Without this, the guard
-          // `if (!this.server)` would return the stale TCP port and any subsequent
-          // launch request would hang waiting for a Python process that is gone.
-          outChannel.info('Resetting adapter factory state after terminal exit');
-          if (this.server) {
-            this.server.close();
-            this.server = undefined;
+
+          if (Array.isArray(config.moduleSearchPaths)) {
+            for (const p of config.moduleSearchPaths) {
+              args.push('--module-search-path', String(p));
+            }
           }
-          if (this._pythonIpcServer) {
-            this._pythonIpcServer.close();
-            this._pythonIpcServer = undefined;
+          if (config.args && Array.isArray(config.args)) {
+            for (const a of config.args) {
+              args.push('--arg', String(a));
+            }
           }
-          this._pythonSocket = undefined;
-          this._currentSession = undefined;
-        });
+          if (config.stopOnEntry) {
+            args.push('--stop-on-entry');
+          }
+          if (config.noDebug) {
+            args.push('--no-debug');
+          }
+
+          args.push('--ipc', 'tcp');
+          args.push('--ipc-port', pythonIpcPort.toString());
+
+          if (envInfo.dapperLibPath) {
+            outChannel.info(`PYTHONPATH injection: ${envInfo.dapperLibPath}`);
+          }
+
+          outChannel.info(`Session log file: ${logFile}`);
+          const sessionName = session.name || (config.name as string | undefined) || 'Debug';
+
+          const adapterTerminal = vscode.window.createTerminal({
+            name: `Dapper: ${sessionName}`,
+            shellPath: pythonPath,
+            shellArgs: args,
+            cwd,
+            env: terminalEnv,
+            isTransient: true,
+          });
+          this._adapterTerminal = adapterTerminal;
+          adapterTerminal.show(false);
+
+          const closeDisposable = vscode.window.onDidCloseTerminal(t => {
+            if (t !== adapterTerminal) return;
+            closeDisposable.dispose();
+            const code = t.exitStatus?.code ?? 0;
+            outChannel.info(`Debug adapter exited with code ${code}`);
+            if (code !== 0 && code !== undefined) {
+              outChannel.error(`Debug adapter exited with non-zero code ${code}. Check the terminal output above.`);
+              this.envManager.showOutputChannel();
+              vscode.window.showErrorMessage(`Dapper debug adapter exited with code ${code}.`);
+            }
+            if (this._currentSession) {
+              outChannel.info('Sending ExitedEvent + TerminatedEvent from terminal close handler');
+              this._currentSession.sendEvent(new ExitedEvent(code));
+              this._currentSession.sendEvent(new TerminatedEvent());
+            } else {
+              outChannel.warn('Terminal closed but no active debug session to notify');
+            }
+            outChannel.info('Resetting adapter factory state after terminal exit');
+            this._resetMainSessionState();
+          });
+        }
       } catch (error) {
         const outChannel = this.envManager.getOutputChannel();
+        this._resetMainSessionState();
         const message = error instanceof Error ? error.message : String(error);
         outChannel.error(`createDebugAdapterDescriptor failed: ${error instanceof Error ? error : message}`);
         this.envManager.showOutputChannel();
@@ -1344,8 +1464,13 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     }
 
     // Connect to the debug adapter server
+    const server = this.server;
+    if (!server) {
+      throw new Error('Dapper adapter server was not created');
+    }
+
     return new DebugAdapterServer(
-      (this.server.address() as Net.AddressInfo).port,
+      (server.address() as Net.AddressInfo).port,
       '127.0.0.1'
     );
   }
