@@ -109,7 +109,7 @@ Legend
 
 ## 7. Execution Event Log (Lightweight Reverse Debugging)
 
-- [ ] **Structured execution history** — record every `stopped` event with a
+- [x] **Structured execution history** — record every `stopped` event with a
       frame snapshot (locals, call stack) to an in-memory ring buffer.  Lets
       the user browse recent execution as a timeline without full rr-style
       time travel.  The telemetry infrastructure in

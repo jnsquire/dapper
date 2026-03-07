@@ -375,6 +375,13 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically send dapper/hotReload when a saved Python file belongs to the active stopped Dapper debug session."
+        },
+        "dapper.agent.executionHistorySize": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 10,
+          "maximum": 5000,
+          "description": "Maximum number of execution-history journal entries to retain per active Dapper debug session. Older entries are dropped from the in-memory ring buffer."
         }
       }
     },

@@ -114,12 +114,14 @@ class RingBuffer<T> {
 // StateJournal
 // ---------------------------------------------------------------------------
 
-const MAX_ENTRIES = 200;
+const DEFAULT_MAX_ENTRIES = 200;
+const MIN_HISTORY_ENTRIES = 10;
+const MAX_HISTORY_ENTRIES = 5000;
 const MAX_OUTPUT_LINES = 50;
 
 export class StateJournal implements vscode.DebugAdapterTracker {
   private _checkpoint = 0;
-  private _entries = new RingBuffer<JournalEntry>(MAX_ENTRIES);
+  private _entries: RingBuffer<JournalEntry>;
   private _outputBuffer: string[] = [];
   private _lastSnapshot: DebugSnapshot | undefined;
   private _breakpointVerification = new Map<string, BreakpointVerificationRecord>();
@@ -130,6 +132,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
 
   constructor(session: vscode.DebugSession) {
     this._session = session;
+    this._entries = new RingBuffer<JournalEntry>(getHistoryEntryCapacity());
   }
 
   // -- DebugAdapterTracker implementation ----------------------------------
@@ -228,27 +231,12 @@ export class StateJournal implements vscode.DebugAdapterTracker {
    */
   async getSnapshot(threadId?: number): Promise<DebugSnapshot | undefined> {
     try {
-      const args: Record<string, unknown> = {};
-      if (threadId !== undefined) {
-        args['threadId'] = threadId;
-      }
-      const result = await this._session.customRequest('dapper/agentSnapshot', args);
-      if (result) {
-        const selectedThreadId = typeof result.threadId === 'number'
-          ? result.threadId
-          : threadId ?? result.stoppedThreads?.[0] ?? 0;
-        const snap: DebugSnapshot = {
-          checkpoint: this._checkpoint,
-          timestamp: Date.now(),
-          stopReason: result.stopReason ?? 'unknown',
-          threadId: selectedThreadId,
-          location: result.location ?? '<unknown>',
-          callStack: result.callStack ?? [],
-          locals: result.locals ?? {},
-          globals: result.globals ?? {},
-          stoppedThreads: result.stoppedThreads ?? [],
-          runningThreads: result.runningThreads ?? [],
-        };
+      const snap = await this._requestSnapshot({
+        threadId,
+        checkpoint: this._checkpoint,
+        timestamp: Date.now(),
+      });
+      if (snap) {
         this._lastSnapshot = snap;
         this._lastError = undefined;
         return snap;
@@ -346,6 +334,62 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     };
     entry.snapshot = placeholder;
     this._lastSnapshot = placeholder;
+    void this._captureSnapshotForEntry(entry, threadId, reason);
+  }
+
+  private async _captureSnapshotForEntry(
+    entry: JournalEntry,
+    threadId: number,
+    stopReason: string,
+  ): Promise<void> {
+    const snapshot = await this._requestSnapshot({
+      threadId,
+      checkpoint: entry.checkpoint,
+      timestamp: entry.timestamp,
+      fallbackStopReason: stopReason,
+    });
+    if (!snapshot || this._disposed) {
+      return;
+    }
+
+    entry.snapshot = snapshot;
+    if (!this._lastSnapshot || this._lastSnapshot.checkpoint <= entry.checkpoint) {
+      this._lastSnapshot = snapshot;
+    }
+    this._lastError = undefined;
+  }
+
+  private async _requestSnapshot(options: {
+    threadId?: number;
+    checkpoint: number;
+    timestamp: number;
+    fallbackStopReason?: string;
+  }): Promise<DebugSnapshot | undefined> {
+    const args: Record<string, unknown> = {};
+    if (options.threadId !== undefined) {
+      args['threadId'] = options.threadId;
+    }
+
+    const result = await this._session.customRequest('dapper/agentSnapshot', args);
+    if (!result) {
+      return undefined;
+    }
+
+    const selectedThreadId = typeof result.threadId === 'number'
+      ? result.threadId
+      : options.threadId ?? result.stoppedThreads?.[0] ?? 0;
+    return {
+      checkpoint: options.checkpoint,
+      timestamp: options.timestamp,
+      stopReason: result.stopReason ?? options.fallbackStopReason ?? 'unknown',
+      threadId: selectedThreadId,
+      location: result.location ?? '<unknown>',
+      callStack: result.callStack ?? [],
+      locals: result.locals ?? {},
+      globals: result.globals ?? {},
+      stoppedThreads: result.stoppedThreads ?? [],
+      runningThreads: result.runningThreads ?? [],
+    };
   }
 
   private _recordEntry(
@@ -389,6 +433,22 @@ export class StateJournal implements vscode.DebugAdapterTracker {
 
 function normalizeBreakpointPath(file: string): string {
   return process.platform === 'win32' ? file.toLowerCase() : file;
+}
+
+function getHistoryEntryCapacity(): number {
+  const configured = vscode.workspace
+    .getConfiguration('dapper')
+    .get<number>('agent.executionHistorySize', DEFAULT_MAX_ENTRIES);
+  return clampHistoryEntryCapacity(configured ?? DEFAULT_MAX_ENTRIES);
+}
+
+function clampHistoryEntryCapacity(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_MAX_ENTRIES;
+  }
+
+  const rounded = Math.trunc(value);
+  return Math.min(MAX_HISTORY_ENTRIES, Math.max(MIN_HISTORY_ENTRIES, rounded));
 }
 
 function createBreakpointVerificationRecord(

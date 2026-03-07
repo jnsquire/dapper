@@ -523,6 +523,7 @@ class AgentSnapshotResponseBody(TypedDict, total=False):
 
     checkpoint: int
     stopReason: str
+    threadId: int
     location: str
     callStack: list[AgentStackFrameSummary]
     locals: dict[str, str]
