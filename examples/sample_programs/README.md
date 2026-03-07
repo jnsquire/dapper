@@ -25,6 +25,11 @@ This directory contains example code and configurations for testing the Dapper d
   ideal for quickly demonstrating expression and conditional breakpoints.  Use
   it when you want a concise repro for debugger behavior in `for`/`while` loops.
 
+- **`sample_programs/subprocess_parent.py`** + **`sample_programs/subprocess_child.py`** - Small
+   parent/child pair for manually testing `subprocessAutoAttach`. Launch the
+   parent script with child auto-attach enabled, then set breakpoints in both
+   files to confirm that Dapper creates and routes a child debug session.
+
 ### Test Scripts
 
 - **`testing/test_debug_adapter_setup.py`** - Automated test script to verify the debug adapter setup
@@ -80,6 +85,17 @@ This will test:
    - Compare behavior with your debug adapter
 
 ### 4. Testing Scenarios
+
+#### Subprocess Auto-Attach
+
+Use `subprocess_parent.py` together with `subprocess_child.py` when verifying
+child-process attach:
+
+1. Launch `subprocess_parent.py` with `subprocessAutoAttach: true`.
+2. Set one breakpoint on the marked parent lines and one on the child line
+   marked `BREAKPOINT: child entry`.
+3. Confirm the parent stops first, then the spawned child appears as a
+   separate debug session and stops in `subprocess_child.py`.
 
 #### Basic Debugging Features
 

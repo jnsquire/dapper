@@ -206,6 +206,8 @@ and manual testing:
 - `loop_example.py` — small focused script that emphasises for/while loops and is handy when you
   want to try expression breakpoints without navigating a larger file
 - `advanced_app.py` — a slightly richer flow for stepping and breakpoints
+- `subprocess_parent.py` / `subprocess_child.py` — a parent/child pair for manual
+	`subprocessAutoAttach` verification across two debug sessions
 - `set_variable_example.py` — a concentrated target for setVariable testing
 
 You can run them directly, for example:
