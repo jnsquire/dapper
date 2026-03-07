@@ -24,12 +24,32 @@ The VS Code extension source code is located in `vscode/extension`. It is a sepa
    npm run watch
    ```
 
+4. **Package and reinstall the VSIX when testing the installed extension:**
+   ```bash
+   npm run package
+   code --install-extension dist/dapper-debugger-0.9.0.vsix --force
+   ```
+
+   Notes:
+   - The package script writes the VSIX to `vscode/extension/dist/`.
+   - On WSL or remote setups, `code` may resolve to the VS Code remote CLI.
+     Use `command -v code` if you need the exact executable path.
+   - Reinstalling the VSIX updates the installed extension, but the active
+     extension host may still be running older code until the window reloads.
+   - After reinstalling, run **Developer: Reload Window** before reproducing
+     extension-host issues.
+
 ## Running the Extension
 
 1. Open the `vscode/extension` folder in VS Code.
 2. Press `F5` to launch the Extension Development Host.
 
 The Extension Development Host opens a new VS Code window with the extension loaded. You can set breakpoints in the extension TypeScript source and debug it like any other Node.js project.
+
+When you are debugging the packaged extension rather than the Extension
+Development Host, prefer the `package -> code --install-extension --force ->
+Developer: Reload Window` loop above. A rebuild alone does not update the code
+running in the existing extension host.
 
 ## For Agents
 

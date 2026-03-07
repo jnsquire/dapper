@@ -33,6 +33,21 @@ npm run package
 # The resulting VSIX will be written to vscode/extension/dist/<package>.vsix
 ```
 
+3. To test the installed extension after rebuilding, reinstall the VSIX and
+reload the VS Code window:
+
+```powershell
+code --install-extension dist/dapper-debugger-0.9.0.vsix --force
+```
+
+Notes:
+
+- Use `command -v code` if you need the full CLI path, especially in WSL or
+  remote environments where VS Code provides a remote CLI wrapper.
+- Rebuilding or repackaging alone does not replace the code already loaded in
+  the active extension host. After reinstalling the VSIX, run **Developer:
+  Reload Window** before retrying extension-host behavior.
+
 ### Publish To Marketplace
 
 1. Create a Visual Studio Marketplace Personal Access Token with `Marketplace (Manage)` scope and `All accessible organizations`.
