@@ -54,6 +54,42 @@ def test_attach_by_pid_requires_remote_exec(monkeypatch: pytest.MonkeyPatch) -> 
         mod._require_remote_exec()
 
 
+def test_classify_attach_failure_for_missing_remote_exec() -> None:
+    diagnostic = mod._classify_attach_failure(
+        NotImplementedError("This Python interpreter does not support sys.remote_exec(); Python 3.14 is required"),
+        process_id=321,
+    )
+
+    assert diagnostic.code == "python_version_mismatch"
+    assert "Python 3.14" in diagnostic.message
+
+
+def test_classify_attach_failure_for_disabled_remote_debugging() -> None:
+    diagnostic = mod._classify_attach_failure(
+        RuntimeError("remote debugging is disabled for this interpreter via PYTHON_DISABLE_REMOTE_DEBUG"),
+        process_id=321,
+    )
+
+    assert diagnostic.code == "remote_debugging_disabled"
+    assert "PYTHON_DISABLE_REMOTE_DEBUG" in diagnostic.hint
+
+
+def test_emit_attach_failure_diagnostic_writes_structured_marker(capsys: pytest.CaptureFixture[str]) -> None:
+    diagnostic = mod.AttachByPidDiagnostic(
+        code="missing_privileges",
+        message="The OS denied attach-by-PID access.",
+        detail="permission denied",
+        hint="Run with elevated privileges.",
+    )
+
+    mod._emit_attach_failure_diagnostic(diagnostic)
+
+    stderr = capsys.readouterr().err
+    assert "Attach-by-PID failed" in stderr
+    assert mod._ATTACH_DIAGNOSTIC_PREFIX in stderr
+    assert '"code": "missing_privileges"' in stderr
+
+
 def test_bootstrap_from_remote_exec_starts_background_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     started: list[dict[str, object]] = []
 

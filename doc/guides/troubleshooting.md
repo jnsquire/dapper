@@ -13,6 +13,15 @@ This page consolidates common issues across all areas of Dapper. For frame evalu
 
 If connection setup still fails, start the adapter with `--log-level DEBUG` and review the adapter output for bind, handshake, or launch-time errors.
 
+## Attach By PID Issues
+
+- `processId` attach only works for live **CPython 3.14** targets. The local helper interpreter must also be CPython 3.14, and pre-release builds must match exactly.
+- If Dapper reports that `sys.remote_exec()` is unavailable, point the extension at a CPython 3.14 interpreter with `pythonPath` or `venvPath` and verify that the target process is also CPython 3.14.
+- If Dapper reports that remote debugging is disabled, restart the target without `PYTHON_DISABLE_REMOTE_DEBUG=1`, without `-X disable_remote_debug`, and with a CPython build that was not compiled with `--without-remote-debug`.
+- If Dapper reports missing privileges, re-run VS Code or the attach helper with enough rights to inspect the target process. On Linux this may require matching ownership plus `CAP_SYS_PTRACE` or a relaxed `/proc/sys/kernel/yama/ptrace_scope`; macOS often requires `sudo`; Windows often requires Administrator rights or `SeDebugPrivilege`.
+- A bootstrap timeout means the target did not execute the injected script quickly enough. The most common causes are blocked main-thread execution, long-running native code, or an attach attempt against a process that cannot be remotely debugged.
+- `sys.remote_exec()` is asynchronous. The helper returns before the remote script runs, so deleting or moving the bootstrap script too early can break attach flows in custom tooling.
+
 ## Breakpoints Not Hitting
 
 - Ensure the file path in VS Code exactly matches the path the Python interpreter sees. Symlinks and relative paths can cause mismatches.

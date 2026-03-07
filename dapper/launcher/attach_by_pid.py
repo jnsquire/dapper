@@ -32,6 +32,28 @@ logger = logging.getLogger(__name__)
 
 _ATTACH_LOCK = threading.RLock()
 _ATTACH_ACTIVE = threading.Event()
+_ATTACH_DIAGNOSTIC_PREFIX = "DAPPER_ATTACH_BY_PID_DIAGNOSTIC "
+
+
+@dataclass(frozen=True)
+class AttachByPidDiagnostic:
+    """Structured diagnostics emitted by the local attach helper."""
+
+    code: str
+    message: str
+    detail: str | None = None
+    hint: str | None = None
+
+    def to_dict(self) -> dict[str, str]:
+        data = {
+            "code": self.code,
+            "message": self.message,
+        }
+        if self.detail:
+            data["detail"] = self.detail
+        if self.hint:
+            data["hint"] = self.hint
+        return data
 
 
 @dataclass(frozen=True)
@@ -128,6 +150,86 @@ def _require_remote_exec() -> Any:
         msg = "This Python interpreter does not support sys.remote_exec(); Python 3.14 is required"
         raise NotImplementedError(msg)
     return remote_exec
+
+
+def _classify_attach_failure(exc: Exception, *, process_id: int) -> AttachByPidDiagnostic:
+    detail = str(exc).strip() or exc.__class__.__name__
+    detail_lower = detail.lower()
+
+    if isinstance(exc, NotImplementedError) and "sys.remote_exec" in detail:
+        return AttachByPidDiagnostic(
+            code="python_version_mismatch",
+            message="Attach by PID requires a Python 3.14 helper interpreter with sys.remote_exec().",
+            detail=detail,
+            hint=(
+                "Point Dapper at a CPython 3.14 interpreter via pythonPath or venvPath, "
+                "and make sure the target process is also CPython 3.14 with the same major/minor version."
+            ),
+        )
+
+    if isinstance(exc, ProcessLookupError):
+        return AttachByPidDiagnostic(
+            code="process_not_found",
+            message=f"The target process {process_id} no longer exists or could not be found.",
+            detail=detail,
+            hint="Verify the PID and ensure the target Python process is still running before retrying.",
+        )
+
+    if isinstance(exc, PermissionError):
+        return AttachByPidDiagnostic(
+            code="missing_privileges",
+            message=f"The OS denied attach-by-PID access to process {process_id}.",
+            detail=detail,
+            hint=(
+                "Run VS Code or the attach helper with sufficient privileges for the target process. "
+                "On Linux this may require ptrace permissions or CAP_SYS_PTRACE; on macOS and Windows "
+                "it often requires elevated privileges."
+            ),
+        )
+
+    if (
+        "disable_remote_debug" in detail_lower
+        or "remote debugging" in detail_lower
+        or "remote debugger" in detail_lower
+    ) and ("disabled" in detail_lower or "without-remote-debug" in detail_lower):
+        return AttachByPidDiagnostic(
+            code="remote_debugging_disabled",
+            message="The target interpreter has CPython remote debugging disabled.",
+            detail=detail,
+            hint=(
+                "Restart the target without PYTHON_DISABLE_REMOTE_DEBUG=1, without -X disable_remote_debug, "
+                "and with a CPython build that was not compiled with --without-remote-debug."
+            ),
+        )
+
+    if "mismatch" in detail_lower and "version" in detail_lower:
+        return AttachByPidDiagnostic(
+            code="python_version_mismatch",
+            message="The helper interpreter and target interpreter are not version-compatible for sys.remote_exec().",
+            detail=detail,
+            hint=(
+                "Use the same CPython major/minor version on both sides. Pre-release interpreters must match exactly, "
+                "and free-threaded vs. GIL builds must also be compatible."
+            ),
+        )
+
+    return AttachByPidDiagnostic(
+        code="attach_failed",
+        message=f"Attach by PID failed for process {process_id}.",
+        detail=detail,
+        hint="Check the helper output and the target interpreter constraints, then retry.",
+    )
+
+
+def _emit_attach_failure_diagnostic(diagnostic: AttachByPidDiagnostic) -> None:
+    sys.stderr.write(f"Attach-by-PID failed: {diagnostic.message}\n")
+    if diagnostic.detail:
+        sys.stderr.write(f"Detail: {diagnostic.detail}\n")
+    if diagnostic.hint:
+        sys.stderr.write(f"Hint: {diagnostic.hint}\n")
+    sys.stderr.write(
+        f"{_ATTACH_DIAGNOSTIC_PREFIX}{json.dumps(diagnostic.to_dict(), sort_keys=True)}\n"
+    )
 
 
 def attach_by_pid(
@@ -334,17 +436,23 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    attach_by_pid(
-        args.pid,
-        ipc_transport=args.ipc,
-        ipc_host=args.ipc_host,
-        ipc_port=args.ipc_port,
-        ipc_path=args.ipc_path,
-        ipc_pipe_name=args.ipc_pipe,
-        session_id=args.session_id,
-        just_my_code=not args.no_just_my_code,
-        strict_expression_watch_policy=args.strict_expression_watch_policy,
-    )
+    try:
+        attach_by_pid(
+            args.pid,
+            ipc_transport=args.ipc,
+            ipc_host=args.ipc_host,
+            ipc_port=args.ipc_port,
+            ipc_path=args.ipc_path,
+            ipc_pipe_name=args.ipc_pipe,
+            session_id=args.session_id,
+            just_my_code=not args.no_just_my_code,
+            strict_expression_watch_policy=args.strict_expression_watch_policy,
+        )
+    except Exception as exc:
+        diagnostic = _classify_attach_failure(exc, process_id=args.pid)
+        logger.exception("Attach-by-PID helper failed for pid=%s", args.pid)
+        _emit_attach_failure_diagnostic(diagnostic)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

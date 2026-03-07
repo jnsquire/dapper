@@ -73,6 +73,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     factory.dispose();
     resetDebugListeners();
   });
@@ -217,7 +218,13 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     };
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
-    spawnMock.mockImplementation(() => {
+    let helperSocket: Net.Socket | undefined;
+    spawnMock.mockImplementation((_pythonPath: string, args: string[]) => {
+      const portIndex = args.indexOf('--ipc-port');
+      const port = Number(args[portIndex + 1]);
+      queueMicrotask(() => {
+        helperSocket = Net.createConnection({ host: '127.0.0.1', port });
+      });
       queueMicrotask(() => child.emit('close', 0));
       return child;
     });
@@ -249,5 +256,111 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     expect(args).toContain('--ipc-port');
     expect(options.cwd).toBe('/workspace');
     expect(createTerminalSpy).not.toHaveBeenCalled();
+
+    helperSocket?.destroy();
+  });
+
+  it('surfaces structured helper diagnostics for processId attach failures', async () => {
+    const outputChannel = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      show: vi.fn(),
+    };
+    (factory as any).envManager.prepareEnvironment = vi.fn(async () => ({
+      pythonPath: '/usr/bin/python3.14',
+      needsInstall: false,
+    }));
+    (factory as any).envManager.getOutputChannel = () => outputChannel;
+    (factory as any).envManager.showOutputChannel = vi.fn();
+
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => {
+        child.stderr.emit(
+          'data',
+          Buffer.from(
+            'DAPPER_ATTACH_BY_PID_DIAGNOSTIC {"code":"remote_debugging_disabled","message":"The target interpreter has CPython remote debugging disabled.","hint":"Restart the target without PYTHON_DISABLE_REMOTE_DEBUG=1."}\n',
+            'utf8',
+          ),
+        );
+        child.emit('close', 1);
+      });
+      return child;
+    });
+
+    const showErrorSpy = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    await expect(factory.createDebugAdapterDescriptor({
+      id: 'attach-session',
+      type: 'dapper',
+      name: 'Attach',
+      configuration: {
+        type: 'dapper',
+        request: 'attach',
+        name: 'Attach',
+        processId: 4321,
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined)).rejects.toThrow(/remote debugging disabled/i);
+
+    expect(showErrorSpy).toHaveBeenCalledWith(expect.stringMatching(/remote debugging disabled/i));
+  });
+
+  it('fails processId attach with a bootstrap timeout when the target never connects back', async () => {
+    vi.useFakeTimers();
+
+    const outputChannel = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      show: vi.fn(),
+    };
+    (factory as any).envManager.prepareEnvironment = vi.fn(async () => ({
+      pythonPath: '/usr/bin/python3.14',
+      needsInstall: false,
+    }));
+    (factory as any).envManager.getOutputChannel = () => outputChannel;
+    (factory as any).envManager.showOutputChannel = vi.fn();
+
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    spawnMock.mockImplementation(() => {
+      queueMicrotask(() => child.emit('close', 0));
+      return child;
+    });
+
+    const showErrorSpy = vi.spyOn(vscode.window, 'showErrorMessage');
+    const descriptorPromise = factory.createDebugAdapterDescriptor({
+      id: 'attach-session',
+      type: 'dapper',
+      name: 'Attach',
+      configuration: {
+        type: 'dapper',
+        request: 'attach',
+        name: 'Attach',
+        processId: 4321,
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined);
+    const descriptorExpectation = expect(descriptorPromise).rejects.toThrow(/timed out waiting for process 4321/i);
+
+    await vi.runAllTimersAsync();
+
+    await descriptorExpectation;
+    expect(showErrorSpy).toHaveBeenCalledWith(expect.stringMatching(/timed out waiting for process 4321/i));
   });
 });

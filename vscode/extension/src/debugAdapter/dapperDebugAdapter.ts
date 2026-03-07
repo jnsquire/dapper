@@ -19,6 +19,8 @@ import { logger } from '../utils/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CHILD_ATTACH_TRACE_PATH = pathJoin(os.tmpdir(), 'dapper-child-attach.log');
+const ATTACH_BY_PID_DIAGNOSTIC_PREFIX = 'DAPPER_ATTACH_BY_PID_DIAGNOSTIC ';
+const ATTACH_BY_PID_CONNECT_TIMEOUT_MS = 15_000;
 
 function traceChildAttach(message: string, data?: unknown): void {
   try {
@@ -86,6 +88,28 @@ interface PendingChildSession {
   vscodeSessionId?: string;
   launchRequested?: boolean;
   terminated?: boolean;
+}
+
+interface AttachByPidDiagnostic {
+  code: string;
+  message: string;
+  detail?: string;
+  hint?: string;
+}
+
+class DapperAttachByPidError extends Error {
+  public readonly userMessage: string;
+  public readonly diagnostic?: AttachByPidDiagnostic;
+
+  public constructor(userMessage: string, options?: { diagnostic?: AttachByPidDiagnostic; cause?: Error }) {
+    super(userMessage);
+    this.name = 'DapperAttachByPidError';
+    this.userMessage = userMessage;
+    this.diagnostic = options?.diagnostic;
+    if (options?.cause) {
+      this.cause = options.cause;
+    }
+  }
 }
 
 export class DapperDebugSession extends LoggingDebugSession {
@@ -782,6 +806,9 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private _pythonSocket?: Net.Socket; // Socket connection to Python debug_launcher
   private _currentSession?: DapperDebugSession; // Current debug session
   private _pythonIpcServer?: Net.Server;
+  private _pythonSocketReady?: Promise<Net.Socket>;
+  private _resolvePythonSocketReady?: (socket: Net.Socket) => void;
+  private _rejectPythonSocketReady?: (error: Error) => void;
   private readonly _childSessions = new Map<string, PendingChildSession>();
   private readonly _childSessionIdsByPid = new Map<number, string>();
   private readonly _disposables: vscode.Disposable[] = [];
@@ -1090,7 +1117,84 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       this._pythonSocket.destroy();
     }
     this._pythonSocket = undefined;
+    this._pythonSocketReady = undefined;
+    this._resolvePythonSocketReady = undefined;
+    this._rejectPythonSocketReady = undefined;
     this._currentSession = undefined;
+  }
+
+  private _extractAttachByPidDiagnostic(outputLines: string[]): AttachByPidDiagnostic | undefined {
+    for (const line of outputLines) {
+      const index = line.indexOf(ATTACH_BY_PID_DIAGNOSTIC_PREFIX);
+      if (index === -1) {
+        continue;
+      }
+
+      const payload = line.slice(index + ATTACH_BY_PID_DIAGNOSTIC_PREFIX.length).trim();
+      if (!payload) {
+        continue;
+      }
+
+      try {
+        return JSON.parse(payload) as AttachByPidDiagnostic;
+      } catch (error) {
+        this.envManager.getOutputChannel().warn(
+          `Failed to parse attach-by-PID diagnostic payload: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return undefined;
+  }
+
+  private _formatAttachByPidErrorMessage(
+    processId: number,
+    diagnostic: AttachByPidDiagnostic | undefined,
+    fallbackDetail?: string,
+  ): string {
+    const parts: string[] = [];
+    if (diagnostic?.message) {
+      parts.push(diagnostic.message);
+    } else {
+      parts.push(`Attach by PID failed for process ${processId}.`);
+    }
+    if (diagnostic?.detail) {
+      parts.push(`Detail: ${diagnostic.detail}`);
+    } else if (fallbackDetail) {
+      parts.push(`Detail: ${fallbackDetail}`);
+    }
+    if (diagnostic?.hint) {
+      parts.push(`Hint: ${diagnostic.hint}`);
+    }
+    return parts.join(' ');
+  }
+
+  private async _waitForPythonIpcSocket(processId: number, outChannel: vscode.LogOutputChannel): Promise<void> {
+    const socketReady = this._pythonSocketReady;
+    if (!socketReady) {
+      throw new DapperAttachByPidError(`Attach by PID failed for process ${processId} before the IPC listener was ready.`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new DapperAttachByPidError(
+          [
+            `Timed out waiting for process ${processId} to execute the injected attach bootstrap.`,
+            'The target must be a live CPython 3.14 process with remote debugging enabled.',
+            'Long-running native work or a blocked main thread can delay sys.remote_exec() reaching a safe evaluation point.',
+          ].join(' '),
+        ));
+      }, ATTACH_BY_PID_CONNECT_TIMEOUT_MS);
+
+      socketReady.then(() => {
+        clearTimeout(timer);
+        outChannel.info(`Attached process ${processId} connected back over IPC`);
+        resolve();
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
   }
 
   private _resolveProcessId(config: vscode.DebugConfiguration): number | undefined {
@@ -1112,10 +1216,16 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   }
 
   private _createPythonIpcServer(outChannel: vscode.LogOutputChannel): number {
+    this._pythonSocketReady = new Promise<Net.Socket>((resolve, reject) => {
+      this._resolvePythonSocketReady = resolve;
+      this._rejectPythonSocketReady = reject;
+    });
+
     const pythonIpcServer = Net.createServer((pythonSocket) => {
       this._pythonIpcServer = pythonIpcServer;
       outChannel.info('Python debug adapter connected via IPC');
       this._pythonSocket = pythonSocket;
+      this._resolvePythonSocketReady?.(pythonSocket);
       this._currentSession?.setPythonSocket(pythonSocket);
       outChannel.info(`Python IPC: session already exists = ${!!this._currentSession}`);
 
@@ -1123,6 +1233,10 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         outChannel.error(`Python IPC socket error: ${err.message}`);
       });
     }).listen(0);
+
+    pythonIpcServer.on('error', (err: Error) => {
+      this._rejectPythonSocketReady?.(err);
+    });
 
     this._pythonIpcServer = pythonIpcServer;
     return (pythonIpcServer.address() as Net.AddressInfo).port;
@@ -1241,7 +1355,15 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
           return;
         }
         const tail = outputLines.slice(-20).join('\n');
-        reject(new Error(`Attach helper exited with code ${code}${tail ? `:\n${tail}` : ''}`));
+        const diagnostic = this._extractAttachByPidDiagnostic(outputLines);
+        const fallbackDetail = `Attach helper exited with code ${code}${tail ? `:\n${tail}` : ''}`;
+        reject(new DapperAttachByPidError(
+          this._formatAttachByPidErrorMessage(processId, diagnostic, fallbackDetail),
+          {
+            diagnostic,
+            cause: new Error(fallbackDetail),
+          },
+        ));
       });
     });
   }
@@ -1375,6 +1497,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
             outChannel,
           );
           outChannel.info(`Waiting for attached process ${processId} to connect back over IPC`);
+          await this._waitForPythonIpcSocket(processId, outChannel);
         } else {
           // Build arguments: use dapper.launcher as the entry point
           const args: string[] = ['-m', 'dapper.launcher'];
@@ -1455,10 +1578,10 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
         outChannel.error(`createDebugAdapterDescriptor failed: ${error instanceof Error ? error : message}`);
         this.envManager.showOutputChannel();
         logger.error('Error creating debug adapter', error);
-        vscode.window.showErrorMessage(
-          `Failed to initialize Dapper Python environment: ${message}. ` +
-          'See the \'Dapper Python Env\' output channel for details.'
-        );
+        const userMessage = error instanceof DapperAttachByPidError
+          ? `${error.userMessage} See the 'Dapper Python Env' output channel for details.`
+          : `Failed to initialize Dapper Python environment: ${message}. See the 'Dapper Python Env' output channel for details.`;
+        vscode.window.showErrorMessage(userMessage);
         throw error;
       }
     }

@@ -14,7 +14,7 @@ Legend
 ### Program control
 - ✅ Launch (start a new Python program under debugger)
 - ✅ Attach (attach to running program)
-- 🟡 Attach by PID for live Python 3.14 processes (`processId`) — configuration schema and tracked-PID UX exist; remote bootstrap and backend attach plumbing are the next planned step
+- ✅ Attach by PID for live Python 3.14 processes (`processId`) — the extension allocates the IPC listener, spawns `dapper.launcher.attach_by_pid`, reuses the normal socket-backed session flow after a `sys.remote_exec()` bootstrap inside the target interpreter, and surfaces targeted diagnostics for version, remote-debugging, privilege, and bootstrap-timeout failures.
 - ✅ Restart
 - ✅ Disconnect
 - ✅ Terminate
@@ -104,7 +104,7 @@ Dapper provides a stable, functional core debugger experience: program control, 
 - Runtime watchpoints — bookkeeping and runtime triggers implemented; read-access detection, per-address watches, and cross-process robustness remain
 - Hot reload option/runtime parity — core reload flow is implemented; remaining work is optional behavior parity and broader integration coverage
 - Process-tree UX for multi-process attach — tree grouping is implemented via the extension process TreeView; broader runtime matrix hardening and polish remain
-- Attach by PID for live Python 3.14 processes — planned around `sys.remote_exec()` / PEP 768, reusing the existing IPC session flow after a remote bootstrap inside the target interpreter
+- Documentation screenshot automation — add a Playwright + code-server capture flow for reproducible VS Code docs screenshots, with manual capture remaining the short-term fallback
 - Reverse debugging / time-travel (future)
 - Performance profiling integration (future)
 

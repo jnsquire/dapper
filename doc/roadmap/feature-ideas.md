@@ -37,7 +37,7 @@ Legend
       `subprocess.Popen`, `multiprocessing.Process`, or
       `concurrent.futures.ProcessPoolExecutor`, inject the Dapper launcher
       before `exec` so child processes are debuggable automatically.  
-      **Current status:** Python `subprocess.Popen` child rewrite, lifecycle events, VS Code extension child-session attach plumbing, and process-tree / tracked-PID UX are implemented for rewritten Python subprocess launches. `multiprocessing.Process` / `ProcessPoolExecutor` still remain scaffold-level candidate detection outside the cases that already pass through rewritten Python subprocess launches, and attach-by-PID for already-running Python 3.14 interpreters remains a separate follow-on phase.
+      **Current status:** Python `subprocess.Popen` child rewrite, lifecycle events, VS Code extension child-session attach plumbing, and process-tree / tracked-PID UX are implemented for rewritten Python subprocess launches. `multiprocessing.Process` / `ProcessPoolExecutor` still remain scaffold-level candidate detection outside the cases that already pass through rewritten Python subprocess launches. Attach-by-PID for already-running Python 3.14 interpreters is now implemented as a separate complementary flow rather than a future phase.
 - [ ] **Auto-attach implementation roadmap (Phase 1–3)**
   - [x] **Phase 1 (MVP): `subprocess.Popen` for Python children**
     - [x] Add launch config flag to enable/disable child auto-attach
@@ -71,7 +71,7 @@ Legend
           correlation.
     - [x] Start child debug sessions from correlated events instead of only
           emitting launch-side events.
-  - [ ] **Phase 3: process tree + tracked-PID UX polish**
+  - [x] **Phase 3: process tree + tracked-PID UX polish**
     - [x] Add process lifecycle events (`started` / `exited`) sufficient for
           extension-side process tree rendering.
     - [x] Consume parent/child session IDs in the extension for actual tree
@@ -80,7 +80,7 @@ Legend
           commands so the process tree can be used as an active control surface.
     - [x] Document known limitations (non-Python children, shell wrappers,
           custom launchers).
-    - [ ] Wire tracked Python processes to true attach-by-PID instead of tree-only
+    - [x] Wire tracked Python processes to true attach-by-PID instead of tree-only
           visibility and control affordances.
     - [ ] **Acceptance criteria (for promoting from idea to checklist)**
       - [x] With auto-attach enabled, Python `subprocess.Popen(...)` children
@@ -91,19 +91,19 @@ Legend
       - [x] Child-process events cause real child debug sessions to be created
             in VS Code.
       - [x] Parent/child sessions are grouped coherently in extension UX.
-  - [ ] **Phase 4: attach by PID for live Python 3.14 interpreters**
-    - [ ] Add a Python-side live-attach bootstrap that can be injected with
+  - [x] **Phase 4: attach by PID for live Python 3.14 interpreters**
+    - [x] Add a Python-side live-attach bootstrap that can be injected with
           `sys.remote_exec(pid, script)` and then connect back over Dapper's
           existing IPC transport.
-    - [ ] Extend DAP attach config parsing so `processId` is a first-class
+    - [x] Extend DAP attach config parsing so `processId` is a first-class
           attach mode alongside direct IPC endpoint attach.
-    - [ ] Teach the VS Code debug adapter factory to allocate the IPC listener
+    - [x] Teach the VS Code debug adapter factory to allocate the IPC listener
           first, then invoke a local CPython 3.14 helper that performs the
           remote execution into the target process.
-    - [ ] Surface actionable diagnostics for version mismatch, disabled remote
+    - [x] Surface actionable diagnostics for version mismatch, disabled remote
           debugging, missing privileges, and bootstrap timeout cases.
-    - [ ] Add focused tests for the processId attach handshake and document the
-          Python 3.14 / permission constraints.
+    - [x] Add focused tests for the processId attach handshake.
+    - [x] Document the Python 3.14 / permission constraints.
 
 ---
 
@@ -239,4 +239,4 @@ Ideas for building automated, reproducible screenshot capture for the docs.
 
 ---
 
-*Generated: 2026-02-20; updated: 2026-02-22*
+*Generated: 2026-02-20; updated: 2026-03-06*
