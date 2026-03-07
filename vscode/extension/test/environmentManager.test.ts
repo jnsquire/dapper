@@ -133,6 +133,51 @@ describe('EnvironmentManager helpers', () => {
       expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
       expect(runCalls.length).toBe(0);
     });
+
+    it('offers to create a workspace .venv and uses it when accepted', async () => {
+      vscode.window.showInformationMessage = vi.fn().mockResolvedValue('Create .venv');
+      (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
+
+      const res = await (envMgr as any).createWorkspaceVenvOrAbort(
+        '1.2.3',
+        '/wheel',
+        { uri: { fsPath: tmpRoot! } },
+        undefined,
+        '/usr/bin/python3',
+        undefined,
+        false,
+      );
+
+      const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
+      expect(vscode.window.showInformationMessage).toHaveBeenCalled();
+      expect(runCalls).toContainEqual({
+        cmd: '/usr/bin/python3',
+        args: ['-m', 'venv', path.join(tmpRoot!, '.venv')],
+        opts: { label: 'create venv' },
+      });
+      expect(res).toEqual({
+        pythonPath: candidate,
+        venvPath: path.join(tmpRoot!, '.venv'),
+        needsInstall: false,
+        dapperLibPath: '/tmp/dapper-lib/1.2.3',
+      });
+    });
+
+    it('aborts when the user refuses to create a workspace .venv', async () => {
+      vscode.window.showInformationMessage = vi.fn().mockResolvedValue(undefined);
+
+      await expect((envMgr as any).createWorkspaceVenvOrAbort(
+        '1.2.3',
+        '/wheel',
+        { uri: { fsPath: tmpRoot! } },
+        undefined,
+        '/usr/bin/python3',
+        undefined,
+        false,
+      )).rejects.toThrow('Launch cancelled because Dapper requires a workspace virtual environment for this debug session.');
+
+      expect(runCalls.length).toBe(0);
+    });
   });
 
   describe('installToTargetDir', () => {

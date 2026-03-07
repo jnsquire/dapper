@@ -86,191 +86,224 @@ export class EnvironmentManager {
     options: PrepareEnvironmentOptions,
   ): Promise<PythonEnvInfo> {
     this.lock.active = true;
-    const config = vscode.workspace.getConfiguration('dapper.python');
-    const baseInterpreterSetting = config.get<string>('baseInterpreter');
-    const expectedVersionSetting = config.get<string>('expectedVersion');
-    const effectiveDesiredVersion = expectedVersionSetting || desiredVersion;
-    const workspaceFolder = options.workspaceFolder;
+    try {
+      const config = vscode.workspace.getConfiguration('dapper.python');
+      const baseInterpreterSetting = config.get<string>('baseInterpreter');
+      const expectedVersionSetting = config.get<string>('expectedVersion');
+      const effectiveDesiredVersion = expectedVersionSetting || desiredVersion;
+      const workspaceFolder = options.workspaceFolder;
 
-    this.output.info(
-      `_prepare: mode=${mode} desiredVersion=${effectiveDesiredVersion} ` +
-      `forceReinstall=${forceReinstall} workspaceFolder=${workspaceFolder?.uri.fsPath ?? '(none)'} ` +
-      `baseInterpreter=${baseInterpreterSetting || '(default)'} platform=${process.platform} ` +
-      `preferredPython=${options.preferredPythonPath || '(none)'} preferredVenv=${options.preferredVenvPath || '(none)'}`
-    );
+      this.output.info(
+        `_prepare: mode=${mode} desiredVersion=${effectiveDesiredVersion} ` +
+        `forceReinstall=${forceReinstall} workspaceFolder=${workspaceFolder?.uri.fsPath ?? '(none)'} ` +
+        `baseInterpreter=${baseInterpreterSetting || '(default)'} platform=${process.platform} ` +
+        `preferredPython=${options.preferredPythonPath || '(none)'} preferredVenv=${options.preferredVenvPath || '(none)'}`
+      );
 
-    if (mode === 'workspace') {
-      const pythonPath = this.resolveWorkspacePython(
-        baseInterpreterSetting,
+      if (mode === 'workspace') {
+        const pythonPath = this.resolveWorkspacePython(
+          baseInterpreterSetting,
+          options.preferredPythonPath,
+          options.preferredVenvPath,
+        );
+        this.output.info(`Using workspace interpreter: ${pythonPath}`);
+        return { pythonPath, needsInstall: false, venvPath: options.preferredVenvPath };
+      }
+
+      const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
+
+      const preferred = await this.tryPreferredInterpreter(
+        effectiveDesiredVersion,
+        wheelDir,
         options.preferredPythonPath,
         options.preferredVenvPath,
+        forceReinstall,
       );
-      this.output.info(`Using workspace interpreter: ${pythonPath}`);
-      this.lock.active = false;
-      return { pythonPath, needsInstall: false, venvPath: options.preferredVenvPath };
-    }
-
-    const wheelDir = this.findBundledWheelDir(effectiveDesiredVersion);
-
-    const preferred = await this.tryPreferredInterpreter(
-      effectiveDesiredVersion,
-      wheelDir,
-      options.preferredPythonPath,
-      options.preferredVenvPath,
-      forceReinstall,
-    );
-    if (preferred) {
-      this.lock.active = false;
-      return preferred;
-    }
-
-    // In auto mode, prefer the workspace's own .venv so the target program runs with its
-    // full project environment (e.g. requests, numpy, etc. are available).
-    // Dapper is made available via PYTHONPATH injection — the workspace venv is never modified.
-    if (mode === 'auto') {
-      const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
-      if (wsResult) {
-        this.lock.active = false;
-        return wsResult;
+      if (preferred) {
+        return preferred;
       }
-      if (!wheelDir) {
-        // No bundled wheels and no usable workspace venv — last hope: any interpreter that already
-        // has dapper before we try to build a managed venv and hit PyPI.
-        this.output.info('auto mode: no bundled wheels found. Probing all interpreters...');
-        const earlyFallback = await this.findInterpreterWithDapper(baseInterpreterSetting, workspaceFolder);
-        if (earlyFallback) {
-          this.output.info(`auto mode: found dapper at ${earlyFallback}, using it.`);
-          this.lock.active = false;
-          return { pythonPath: earlyFallback, needsInstall: false };
+
+      if (mode === 'auto') {
+        const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
+        if (wsResult) {
+          return wsResult;
         }
-        this.output.info('auto mode: no usable interpreter found; will attempt managed venv + PyPI.');
+
+        return this.createWorkspaceVenvOrAbort(
+          effectiveDesiredVersion,
+          wheelDir,
+          workspaceFolder,
+          baseInterpreterSetting,
+          options.preferredPythonPath,
+          options.preferredVenvPath,
+          forceReinstall,
+        );
       }
-    }
 
-    const venvPath = path.join(this.context.globalStorageUri.fsPath, 'python-env');
-    const pythonPath = this.getVenvPythonPath(venvPath);
-    this.output.info(`Managed venv path: ${venvPath}`);
+      const venvPath = path.join(this.context.globalStorageUri.fsPath, 'python-env');
+      const pythonPath = this.getVenvPythonPath(venvPath);
+      this.output.info(`Managed venv path: ${venvPath}`);
 
-    const venvExists = fs.existsSync(pythonPath);
-    this.output.info(`Venv python exists: ${venvExists} (${pythonPath})`);
-    if (venvExists) {
-      const r = spawnSync(pythonPath, ['--version'], { encoding: 'utf8' });
-      const version = (r.stdout || r.stderr || '').trim();
-      this.output.info(`Venv Python version: ${version}`);
-    }
-    if (!venvExists) {
-      const base = this.resolveBaseInterpreter(baseInterpreterSetting);
-      this.output.info(`Creating venv at ${venvPath} with base interpreter ${base}`);
-      await this.createVenv(base, venvPath);
-      this.output.info('Venv created.');
-    }
-
-    // Ensure pip present & upgraded (best effort)
-    await this.ensurePip(pythonPath);
-    await this.upgradePip(pythonPath);
-
-    const manifest = this.readManifest(venvPath);
-    this.output.info(
-      `Manifest: ${manifest ? `installed=${manifest.dapperVersionInstalled} source=${manifest.installSource}` : 'none'}` +
-      ` | bundled wheels dir: ${wheelDir ?? 'none'}`
-    );
-    
-    let currentWheelHash: string | undefined;
-    if (wheelDir) {
-      currentWheelHash = await this.computeWheelHash(wheelDir);
-      this.output.info(`Current wheel hash: ${currentWheelHash}`);
-    }
-    const reinstallNeeded = this.shouldReinstall(
-      manifest,
-      effectiveDesiredVersion,
-      forceReinstall,
-      currentWheelHash,
-    );
-    this.output.info(`Reinstall needed: ${reinstallNeeded}`);
-
-    let performedInstall = false;
-    if (reinstallNeeded) {
-      if (mode === 'auto' || mode === 'wheel') {
-        if (wheelDir) {
-          this.output.info(`Installing dapper from bundled wheels in: ${wheelDir}`);
-          await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion, true);
-          if (!await this.checkDapperImportable(pythonPath)) {
-            throw new Error(
-              `Wheel installed (pip exit 0) but 'import dapper' still fails. ` +
-              `The wheel in ${wheelDir} may be incompatible with ${pythonPath}.`
-            );
-          }
-          performedInstall = true;
-        } else if (mode === 'wheel') {
-          throw new Error(`Wheel mode requested but bundled wheels for version ${effectiveDesiredVersion} not found.`);
-        }
+      const venvExists = fs.existsSync(pythonPath);
+      this.output.info(`Venv python exists: ${venvExists} (${pythonPath})`);
+      if (venvExists) {
+        const r = spawnSync(pythonPath, ['--version'], { encoding: 'utf8' });
+        const version = (r.stdout || r.stderr || '').trim();
+        this.output.info(`Venv Python version: ${version}`);
       }
-      if (!performedInstall && (mode === 'auto' || mode === 'pypi')) {
-        this.output.info(`Installing dapper from PyPI: dapper==${effectiveDesiredVersion}`);
-        try {
-          await this.installFromPyPI(pythonPath, effectiveDesiredVersion, true);
-          performedInstall = true;
-        } catch (err) {
-          if (mode === 'pypi') {
-            throw new Error(`PyPI install failed for dapper==${effectiveDesiredVersion}: ${err}`);
-          }
-          // Fallback: try wheel dir if it appeared after the early probe
+      if (!venvExists) {
+        const base = this.resolveBaseInterpreter(baseInterpreterSetting);
+        this.output.info(`Creating venv at ${venvPath} with base interpreter ${base}`);
+        await this.createVenv(base, venvPath);
+        this.output.info('Venv created.');
+      }
+
+      await this.ensurePip(pythonPath);
+      await this.upgradePip(pythonPath);
+
+      const manifest = this.readManifest(venvPath);
+      this.output.info(
+        `Manifest: ${manifest ? `installed=${manifest.dapperVersionInstalled} source=${manifest.installSource}` : 'none'}` +
+        ` | bundled wheels dir: ${wheelDir ?? 'none'}`
+      );
+
+      let currentWheelHash: string | undefined;
+      if (wheelDir) {
+        currentWheelHash = await this.computeWheelHash(wheelDir);
+        this.output.info(`Current wheel hash: ${currentWheelHash}`);
+      }
+      const reinstallNeeded = this.shouldReinstall(
+        manifest,
+        effectiveDesiredVersion,
+        forceReinstall,
+        currentWheelHash,
+      );
+      this.output.info(`Reinstall needed: ${reinstallNeeded}`);
+
+      let performedInstall = false;
+      if (reinstallNeeded) {
+        if (mode === 'wheel') {
           if (wheelDir) {
-            this.output.warn('PyPI install failed, falling back to bundled wheels.');
-            await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion);
+            this.output.info(`Installing dapper from bundled wheels in: ${wheelDir}`);
+            await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion, true);
+            if (!await this.checkDapperImportable(pythonPath)) {
+              throw new Error(
+                `Wheel installed (pip exit 0) but 'import dapper' still fails. ` +
+                `The wheel in ${wheelDir} may be incompatible with ${pythonPath}.`
+              );
+            }
             performedInstall = true;
           } else {
-            // Last resort: probe again (state may have changed)
-            const lastResort = await this.findInterpreterWithDapper(baseInterpreterSetting, workspaceFolder);
-            if (lastResort) {
-              this.output.warn(
-                `PyPI and wheel both failed; using ${lastResort} which already has dapper.`
-              );
-              this.lock.active = false;
-              return { pythonPath: lastResort, needsInstall: false };
-            }
-            throw new Error('Both PyPI install and wheel fallback failed; cannot proceed.');
+            throw new Error(`Wheel mode requested but bundled wheels for version ${effectiveDesiredVersion} not found.`);
           }
         }
-      }
-      if (performedInstall) {
-        const newManifest: EnvManifest = {
-          dapperVersionInstalled: effectiveDesiredVersion,
-          installSource: wheelDir ? 'wheel' : 'pypi',
-          wheelHash: currentWheelHash,
-          created: manifest?.created || new Date().toISOString(),
-          updated: new Date().toISOString(),
-        };
-        this.writeManifest(venvPath, newManifest);
-      }
-    } else {
-      this.output.info('Reusing existing installation; no reinstall needed.');
-      // Sanity-check the key entry point is actually importable. Guards against stale
-      // manifest entries where the wheel was updated without bumping the version.
-      const entryOk = await this.checkModuleImportable(pythonPath, 'dapper.launcher.__main__');
-      if (!entryOk) {
-        this.output.warn('dapper.launcher.__main__ not importable — stale install detected. Forcing reinstall...');
-        if (wheelDir) {
-          await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion, true);
-          if (!await this.checkDapperImportable(pythonPath)) {
-            throw new Error(`Forced reinstall completed but 'import dapper' still fails.`);
-          }
+        if (!performedInstall && mode === 'pypi') {
+          this.output.info(`Installing dapper from PyPI: dapper==${effectiveDesiredVersion}`);
+          await this.installFromPyPI(pythonPath, effectiveDesiredVersion, true);
           performedInstall = true;
-        } else {
-          // No wheel available — wipe the manifest so next launch triggers a full reinstall
-          try { fs.unlinkSync(this.manifestPath(venvPath)); } catch { /* ignore */ }
-          throw new Error('Stale dapper install detected but no bundled wheel is available. Reload VS Code to retry.');
+        }
+        if (performedInstall) {
+          const newManifest: EnvManifest = {
+            dapperVersionInstalled: effectiveDesiredVersion,
+            installSource: wheelDir ? 'wheel' : 'pypi',
+            wheelHash: currentWheelHash,
+            created: manifest?.created || new Date().toISOString(),
+            updated: new Date().toISOString(),
+          };
+          this.writeManifest(venvPath, newManifest);
+        }
+      } else {
+        this.output.info('Reusing existing installation; no reinstall needed.');
+        const entryOk = await this.checkModuleImportable(pythonPath, 'dapper.launcher.__main__');
+        if (!entryOk) {
+          this.output.warn('dapper.launcher.__main__ not importable — stale install detected. Forcing reinstall...');
+          if (wheelDir) {
+            await this.installWheel(pythonPath, wheelDir, effectiveDesiredVersion, true);
+            if (!await this.checkDapperImportable(pythonPath)) {
+              throw new Error(`Forced reinstall completed but 'import dapper' still fails.`);
+            }
+            performedInstall = true;
+          } else {
+            try { fs.unlinkSync(this.manifestPath(venvPath)); } catch { /* ignore */ }
+            throw new Error('Stale dapper install detected but no bundled wheel is available. Reload VS Code to retry.');
+          }
         }
       }
+
+      const finalManifest = this.readManifest(venvPath);
+      return {
+        pythonPath,
+        venvPath,
+        dapperVersionInstalled: finalManifest?.dapperVersionInstalled,
+        needsInstall: performedInstall,
+      };
+    } finally {
+      this.lock.active = false;
+    }
+  }
+
+  private async createWorkspaceVenvOrAbort(
+    version: string,
+    wheelDir: string | undefined,
+    workspaceFolder: vscode.WorkspaceFolder | undefined,
+    baseInterpreterSetting: string | undefined,
+    preferredPythonPath: string | undefined,
+    preferredVenvPath: string | undefined,
+    forceReinstall: boolean,
+  ): Promise<PythonEnvInfo> {
+    const targetWorkspaceFolder = workspaceFolder ?? vscode.workspace.workspaceFolders?.[0];
+    if (!targetWorkspaceFolder) {
+      throw new Error('Dapper could not find a workspace virtual environment, and there is no workspace folder available to create one.');
     }
 
-    const finalManifest = this.readManifest(venvPath);
-    this.lock.active = false;
+    const createLabel = 'Create .venv';
+    const choice = await vscode.window.showInformationMessage(
+      `Dapper could not find a workspace virtual environment in ${targetWorkspaceFolder.uri.fsPath}. Create .venv and use it for debugging?`,
+      { modal: true },
+      createLabel,
+    );
+    if (choice !== createLabel) {
+      throw new Error('Launch cancelled because Dapper requires a workspace virtual environment for this debug session.');
+    }
+
+    const venvPath = path.join(targetWorkspaceFolder.uri.fsPath, '.venv');
+    const pythonPath = this.getVenvPythonPath(venvPath);
+    const baseInterpreter = this.resolveWorkspacePython(
+      baseInterpreterSetting,
+      preferredPythonPath,
+      preferredVenvPath,
+    );
+
+    this.output.info(`Creating workspace venv at ${venvPath} with base interpreter ${baseInterpreter}`);
+    await this.createVenv(baseInterpreter, venvPath);
+
+    if (wheelDir) {
+      const libPath = await this.ensureDapperLib(pythonPath, version, wheelDir, forceReinstall);
+      if (libPath) {
+        this.output.info(`Using newly created workspace venv with Dapper injected from ${libPath}`);
+        return {
+          pythonPath,
+          venvPath,
+          needsInstall: false,
+          dapperLibPath: libPath,
+        };
+      }
+      this.output.warn('Failed to prepare injected Dapper library for the new workspace venv; installing directly into the venv instead.');
+    }
+
+    await this.ensurePip(pythonPath);
+    await this.upgradePip(pythonPath);
+    if (wheelDir) {
+      await this.installWheel(pythonPath, wheelDir, version, forceReinstall);
+    } else {
+      await this.installFromPyPI(pythonPath, version, forceReinstall);
+    }
+
     return {
       pythonPath,
       venvPath,
-      dapperVersionInstalled: finalManifest?.dapperVersionInstalled,
-      needsInstall: performedInstall,
+      dapperVersionInstalled: version,
+      needsInstall: true,
     };
   }
 

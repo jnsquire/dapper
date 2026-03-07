@@ -64,6 +64,21 @@ describe('LaunchTool extension-host harness', () => {
     expect(harness.lastStartDebuggingCall?.config.stopOnEntry).toBe(false);
   });
 
+  it('preserves an explicit noDebug=true override for current-file launches', async () => {
+    const filePath = path.join(tmpRoot, 'run_only.py');
+    fs.writeFileSync(filePath, 'print("hello")\n');
+    harness.setActivePythonFile(filePath);
+
+    const result = await launchService.launch({
+      target: { currentFile: true },
+      noDebug: true,
+      stopOnEntry: false,
+    });
+
+    expect(result.configuration.noDebug).toBe(true);
+    expect(harness.lastStartDebuggingCall?.config.noDebug).toBe(true);
+  });
+
   it('launches a workspace-relative file target through the tool interface', async () => {
     const filePath = path.join(tmpRoot, 'src', 'cli.py');
     fs.mkdirSync(path.dirname(filePath), { recursive: true });

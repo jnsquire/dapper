@@ -8,6 +8,7 @@ import { insertLaunchConfiguration } from './utils/insertLaunchConfiguration.js'
 import { JournalRegistry, DapperTrackerFactory } from './agent/stateJournal.js';
 import { registerAgentTools } from './agent/tools/index.js';
 import { LaunchService } from './debugAdapter/launchService.js';
+import type { LaunchOptions } from './debugAdapter/launchService.js';
 import { DapperProcessTreeView } from './views/DapperProcessTreeView.js';
 
 function normalizeFsPath(path: string): string {
@@ -21,6 +22,17 @@ function currentPythonFileBasename(): string | undefined {
   }
 
   return path.basename(editor.document.uri.fsPath);
+}
+
+function normalizeLaunchCommandOptions(value: unknown): LaunchOptions {
+  if (value == null) {
+    return {};
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Dapper launch API commands expect an options object.');
+  }
+
+  return { ...(value as LaunchOptions) };
 }
 
 function* registerCommands(context: vscode.ExtensionContext, launchService: LaunchService): Iterable<vscode.Disposable> {
@@ -151,34 +163,64 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     vscode.window.showInformationMessage('Variable inspector is now active');
   });
 
-  const startCurrentFileDebugging = async (stopOnEntry: boolean) => {
+  const startCurrentFile = async (options: { stopOnEntry: boolean; noDebug: boolean }) => {
     try {
       const fileBasename = currentPythonFileBasename();
-      const sessionName = stopOnEntry
-        ? `Debug ${fileBasename ?? 'Current File'} (Stop on Entry)`
-        : `Debug ${fileBasename ?? 'Current File'}`;
+      const sessionName = options.noDebug
+        ? `Run ${fileBasename ?? 'Current File'}`
+        : options.stopOnEntry
+          ? `Debug ${fileBasename ?? 'Current File'} (Stop on Entry)`
+          : `Debug ${fileBasename ?? 'Current File'}`;
 
       await launchService.launch({
         sessionName,
         target: { currentFile: true },
-        stopOnEntry,
+        stopOnEntry: options.stopOnEntry,
+        noDebug: options.noDebug,
         waitForStop: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const action = stopOnEntry ? 'start debugging current file with stop on entry' : 'start debugging current file';
+      const action = options.noDebug
+        ? 'run the current file'
+        : options.stopOnEntry
+          ? 'start debugging current file with stop on entry'
+          : 'start debugging current file';
       vscode.window.showErrorMessage(`Dapper: Failed to ${action}: ${message}`);
     }
   };
 
   // Start Debugging Command
   yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
-    await startCurrentFileDebugging(false);
+    await startCurrentFile({ stopOnEntry: false, noDebug: false });
   });
 
   // Start Debugging With Stop On Entry Command
   yield vscode.commands.registerCommand('dapper.startDebuggingStopOnEntry', async () => {
-    await startCurrentFileDebugging(true);
+    await startCurrentFile({ stopOnEntry: true, noDebug: false });
+  });
+
+  // Run This Command
+  yield vscode.commands.registerCommand('dapper.runCurrentFile', async () => {
+    await startCurrentFile({ stopOnEntry: false, noDebug: true });
+  });
+
+  // Public launch API commands
+  yield vscode.commands.registerCommand('dapper.api.debugLaunch', async (options?: unknown) => {
+    const launchOptions = normalizeLaunchCommandOptions(options);
+    return launchService.launch({
+      ...launchOptions,
+      noDebug: false,
+    });
+  });
+
+  yield vscode.commands.registerCommand('dapper.api.runLaunch', async (options?: unknown) => {
+    const launchOptions = normalizeLaunchCommandOptions(options);
+    return launchService.launch({
+      ...launchOptions,
+      noDebug: true,
+      stopOnEntry: false,
+    });
   });
 
   // Launch Configuration Wizard Command

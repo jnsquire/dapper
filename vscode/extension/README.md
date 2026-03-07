@@ -83,7 +83,29 @@ Notes:
 
 1. Open **Dapper: Open Launch Configuration Wizard** to create and save a configuration.
 2. Use **Save & Insert to launch.json** in the wizard (or run **Dapper: Add Saved Debug Configuration**) to write it to `launch.json`.
-3. Start debugging with **F5** or the `Dapper: Start Debugging` command.
+3. Start debugging with **F5** or the `Dapper: Debug This` command.
+4. Use `Dapper: Run This` when you want the same interpreter and environment selection logic without attaching the debugger.
+
+### How Debug This Works
+
+`Dapper: Debug This` does not require an existing `launch.json` entry. It builds a temporary Dapper launch configuration for the active Python file, starts that file in an integrated terminal, and names the session from the file name.
+
+`Dapper: Run This` uses the same launch path and environment selection, but sets `noDebug: true` so the process runs without the debugger attached.
+
+The Python environment is chosen in this order:
+
+- Explicit interpreter hints. If a launch request already carries `pythonPath` or `venvPath`, Dapper uses that first.
+- The active Python interpreter from the Python extension. For `Debug This`, `LaunchService` asks `ms-python.python` for the active interpreter in the current workspace and uses it when available.
+- A workspace virtual environment. In `auto` mode, Dapper scans the active workspace for common venv folders such as `.venv`, `venv`, `env`, and `.env`.
+- A new workspace virtual environment that Dapper offers to create. If no usable workspace venv exists, Dapper prompts to create `.venv` in the workspace and aborts the launch if you decline.
+
+How Dapper becomes available inside that interpreter depends on the installation mode:
+
+- `auto`: Prefer the selected workspace interpreter so the debuggee runs with the project's real dependencies. If that interpreter does not already have Dapper installed, the extension extracts the bundled Dapper wheel into extension storage and prepends that location to `PYTHONPATH` instead of modifying the workspace venv. If no workspace venv exists, Dapper offers to create `.venv` for the workspace before launching.
+- `workspace`: Use the chosen workspace interpreter directly. This mode resolves the interpreter from `pythonPath`, `venvPath`, `dapper.python.baseInterpreter`, or finally `python3`/`python` on `PATH`.
+- `wheel` or `pypi`: If no preferred interpreter can already run Dapper, the extension prepares its managed environment and installs Dapper there from the bundled wheel or PyPI.
+
+At launch time, Dapper also builds the process environment by combining the VS Code extension host environment, any explicit `env` values from the launch request, Dapper-specific variables such as `DAPPER_LOG_FILE`, and a `PYTHONPATH` entry when Dapper is injected rather than installed into the selected interpreter.
 
 ### Launch Configuration Wizard
 
@@ -143,12 +165,66 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 ## Commands
 
 - `Dapper: Open Launch Configuration Wizard` - Open the step-by-step launch configuration wizard.
-- `Dapper: Start Debugging` - Start debugging with the current configuration.
+- `Dapper: Debug This` - Start debugging the active Python file without first creating a `launch.json` entry.
+- `Dapper: Run This` - Run the active Python file with Dapper's interpreter-selection logic but without attaching the debugger.
 - `Dapper: Toggle Breakpoint` - Toggles a breakpoint at the current cursor.
 - `Dapper: Show Variable Inspector` - Opens the variable inspector view for the active debug session.
 - `Dapper: Configure Settings` - Legacy alias for opening the launch configuration wizard.
 - `Dapper: Add Saved Debug Configuration to launch.json` - Save and insert a configuration.
 - `Dapper: Start Debugging with Saved Config` - Start debugging using a saved configuration.
+
+## Command API
+
+For integrations, the extension also exposes two API-oriented VS Code commands that reuse the same launch and environment-selection path as `Debug This` and `Run This`:
+
+- `dapper.api.debugLaunch` - Launch with the debugger attached.
+- `dapper.api.runLaunch` - Launch with `noDebug: true`.
+
+These commands are intended for `vscode.commands.executeCommand(...)`, not for the Command Palette. They accept the same options shape used by the shared launch service:
+
+```ts
+type DapperLaunchCommandOptions = {
+  sessionName?: string;
+  target?: {
+    currentFile?: boolean;
+    file?: string;
+    module?: string;
+    configName?: string;
+  };
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  moduleSearchPaths?: string[];
+  venvPath?: string;
+  pythonPath?: string;
+  stopOnEntry?: boolean;
+  justMyCode?: boolean;
+  subprocessAutoAttach?: boolean;
+  waitForStop?: boolean;
+};
+```
+
+Rules:
+
+- Omit `target` to use the active Python file.
+- Provide exactly one target: `currentFile`, `file`, `module`, or `configName`.
+- `dapper.api.runLaunch` always forces `noDebug: true` and disables `stopOnEntry`.
+- Both commands return the same launch result object produced by the shared launch flow.
+
+Examples:
+
+```ts
+await vscode.commands.executeCommand('dapper.api.debugLaunch', {
+  target: { file: '/workspace/app.py' },
+  stopOnEntry: false,
+});
+
+await vscode.commands.executeCommand('dapper.api.runLaunch', {
+  target: { module: 'package.cli' },
+  args: ['--help'],
+  cwd: '/workspace',
+});
+```
 
 ## For Agents
 

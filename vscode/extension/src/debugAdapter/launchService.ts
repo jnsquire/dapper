@@ -26,6 +26,7 @@ export interface LaunchOptions {
   venvPath?: string;
   pythonPath?: string;
   stopOnEntry?: boolean;
+  noDebug?: boolean;
   justMyCode?: boolean;
   subprocessAutoAttach?: boolean;
   waitForStop?: boolean;
@@ -193,6 +194,7 @@ export class LaunchService {
       name: options.sessionName || this._defaultSessionName(target),
       console: 'integratedTerminal',
       stopOnEntry: options.stopOnEntry ?? true,
+      noDebug: options.noDebug ?? false,
       justMyCode: options.justMyCode ?? true,
       subprocessAutoAttach: options.subprocessAutoAttach ?? false,
       cwd: options.cwd || workspaceFolder?.uri.fsPath || (target.program ? path.dirname(target.program) : undefined),
@@ -260,6 +262,7 @@ export class LaunchService {
     if (options.pythonPath) merged.pythonPath = options.pythonPath;
     if (options.venvPath) merged.venvPath = options.venvPath;
     if (options.stopOnEntry !== undefined) merged.stopOnEntry = options.stopOnEntry;
+    if (options.noDebug !== undefined) merged.noDebug = options.noDebug;
     if (options.justMyCode !== undefined) merged.justMyCode = options.justMyCode;
     if (options.subprocessAutoAttach !== undefined) merged.subprocessAutoAttach = options.subprocessAutoAttach;
 
