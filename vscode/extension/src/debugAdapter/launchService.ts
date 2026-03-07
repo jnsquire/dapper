@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { JournalRegistry, StateJournal } from '../agent/stateJournal.js';
-import type { LaunchRequestArguments } from './dapperDebugAdapter.js';
+import type { LaunchRequestArguments } from './debugAdapterTypes.js';
 import { PythonEnvironmentManager } from '../python/environment.js';
 import { logger } from '../utils/logger.js';
 

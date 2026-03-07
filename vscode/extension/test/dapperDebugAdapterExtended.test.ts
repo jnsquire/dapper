@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { DapperDebugSession } from '../src/debugAdapter/dapperDebugAdapter.js';
+import { DapperDebugSession } from '../src/debugAdapter/dapperDebugSession.js';
 import * as Net from 'net';
 import { EventEmitter } from 'events';
 import { DebugProtocol } from '@vscode/debugprotocol';

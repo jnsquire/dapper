@@ -260,6 +260,111 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     helperSocket?.destroy();
   });
 
+  it('returns a direct server descriptor for attach sessions with host and port', async () => {
+    const descriptor = await factory.createDebugAdapterDescriptor({
+      id: 'attach-session',
+      type: 'dapper',
+      name: 'Attach Host Port',
+      configuration: {
+        type: 'dapper',
+        request: 'attach',
+        name: 'Attach Host Port',
+        host: '127.0.0.1',
+        port: 9000,
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined);
+
+    expect(descriptor).toMatchObject({ host: '127.0.0.1', port: 9000 });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses the main-session bootstrap across concurrent descriptor requests and accepts multiple VS Code clients', async () => {
+    const outputChannel = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      show: vi.fn(),
+    };
+    let resolvePrepare: ((value: { pythonPath: string; needsInstall: boolean }) => void) | undefined;
+    (factory as any).envManager.prepareEnvironment = vi.fn(() => new Promise((resolve) => {
+      resolvePrepare = resolve;
+    }));
+    (factory as any).envManager.getOutputChannel = () => outputChannel;
+    (factory as any).envManager.showOutputChannel = vi.fn();
+    const createTerminalSpy = vi.spyOn(vscode.window, 'createTerminal');
+
+    const firstDescriptorPromise = factory.createDebugAdapterDescriptor({
+      id: 'launch-session-1',
+      type: 'dapper',
+      name: 'Launch One',
+      configuration: {
+        type: 'dapper',
+        request: 'launch',
+        name: 'Launch One',
+        program: 'main.py',
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined);
+
+    const secondDescriptorPromise = factory.createDebugAdapterDescriptor({
+      id: 'launch-session-2',
+      type: 'dapper',
+      name: 'Launch Two',
+      configuration: {
+        type: 'dapper',
+        request: 'launch',
+        name: 'Launch Two',
+        program: 'other.py',
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined);
+
+    resolvePrepare?.({
+      pythonPath: '/usr/bin/python3.14',
+      needsInstall: false,
+    });
+
+    const [firstDescriptor, secondDescriptor] = await Promise.all([firstDescriptorPromise, secondDescriptorPromise]);
+    expect((factory as any).envManager.prepareEnvironment).toHaveBeenCalledTimes(1);
+    expect(createTerminalSpy).toHaveBeenCalledTimes(1);
+    expect((firstDescriptor as vscode.DebugAdapterServer).port).toBe((secondDescriptor as vscode.DebugAdapterServer).port);
+
+    const firstSocket = Net.createConnection({
+      host: '127.0.0.1',
+      port: (firstDescriptor as vscode.DebugAdapterServer).port,
+    });
+    await once(firstSocket, 'connect');
+
+    const secondSocket = Net.createConnection({
+      host: '127.0.0.1',
+      port: (secondDescriptor as vscode.DebugAdapterServer).port,
+    });
+    await once(secondSocket, 'connect');
+
+    firstSocket.destroy();
+    secondSocket.destroy();
+  });
+
+  it('rejects attach sessions that mix host/port with a launch target', async () => {
+    await expect(factory.createDebugAdapterDescriptor({
+      id: 'attach-session',
+      type: 'dapper',
+      name: 'Attach Mixed Target',
+      configuration: {
+        type: 'dapper',
+        request: 'attach',
+        name: 'Attach Mixed Target',
+        host: '127.0.0.1',
+        port: 9000,
+        program: 'main.py',
+      },
+      workspaceFolder: { name: 'workspace', uri: { fsPath: '/workspace' } },
+    } as unknown as vscode.DebugSession, undefined)).rejects.toThrow(/exactly one target/i);
+  });
+
   it('surfaces structured helper diagnostics for processId attach failures', async () => {
     const outputChannel = {
       info: vi.fn(),
