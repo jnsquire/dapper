@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from dapper.shared.reload_helpers import _extension_suffixes
+from dapper.shared.reload_helpers import _flush_frame_locals
 from dapper.shared.reload_helpers import _get_all_frames
 from dapper.shared.reload_helpers import _is_closure
 from dapper.shared.reload_helpers import _maybe_update_frame_code
@@ -280,6 +281,35 @@ class TestIsClosure:
     def test_closure_detected(self):
         inner = _closure_factory()
         assert _is_closure(inner) is True
+
+
+# ---------------------------------------------------------------------------
+# _flush_frame_locals
+# ---------------------------------------------------------------------------
+
+
+class TestFlushFrameLocals:
+    def test_skips_non_builtin_frame_type_with_warning(self):
+        warnings: list[str] = []
+        frame = MagicMock(spec=types.FrameType)
+
+        _flush_frame_locals(frame, warnings)
+
+        assert warnings == ["skipped flushing locals: frame is not built-in FrameType"]
+
+    def test_appends_warning_when_ctypes_call_fails(self):
+        warnings: list[str] = []
+
+        class FailingLocalsToFast:
+            def __call__(self, _frame, _clear):
+                raise RuntimeError("boom")
+
+        fake_pythonapi = types.SimpleNamespace(PyFrame_LocalsToFast=FailingLocalsToFast())
+
+        with patch("dapper.shared.reload_helpers.ctypes.pythonapi", fake_pythonapi):
+            _flush_frame_locals(sys._getframe(), warnings)
+
+        assert warnings == ["Failed to flush frame locals: boom"]
 
 
 # ---------------------------------------------------------------------------

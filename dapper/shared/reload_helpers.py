@@ -258,7 +258,7 @@ def _flush_frame_locals(frame: types.FrameType, warnings: list[str]) -> None:
     # ``spec`` of :class:`types.FrameType`.  invoking the C API on a
     # non-native object sometimes segfaults, so we require the value to
     # be exactly a :class:`types.FrameType` instance.
-    if type(frame) is not types.FrameType:  # pragma: no cover - hard to exercise
+    if type(frame) is not types.FrameType:
         warnings.append("skipped flushing locals: frame is not built-in FrameType")
         return
 
@@ -267,7 +267,7 @@ def _flush_frame_locals(frame: types.FrameType, warnings: list[str]) -> None:
         fn.argtypes = [ctypes.py_object, ctypes.c_int]
         fn.restype = None
         fn(frame, 1)
-    except Exception as exc:  # pragma: no cover - ctypes rarely fails
+    except Exception as exc:
         warnings.append(f"Failed to flush frame locals: {exc!s}")
 
 

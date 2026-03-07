@@ -159,7 +159,9 @@ The helpers internally use a defensive `get_running_loop()` wrapped in a `try/ex
 
 - After the minimal changes: run the full pytest suite. The earlier `PytestUnhandledThreadExceptionWarning` should disappear.
 - Add a regression test that starts the debuggee in test mode and asserts no unhandled exceptions surface in worker threads.
-- Consider adding a deterministic shutdown test that uses an acknowledgement Future scheduled on the target loop (instead of naive polling) to validate cross-loop cleanup.
+- Consider adding a deterministic shutdown test that uses an acknowledgement Future scheduled on the 
+
+target loop (instead of naive polling) to validate cross-loop cleanup.
 
 ---
 

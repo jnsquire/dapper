@@ -506,7 +506,7 @@ class InProcessDebugger:
                     "type": type(target[name]).__name__,
                     "variablesReference": 0,
                 }
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:
                 return {"success": False, "message": str(exc)}
         return {"success": False, "message": "Invalid reference"}
 

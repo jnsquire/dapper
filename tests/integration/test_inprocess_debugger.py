@@ -121,6 +121,21 @@ def test_variables_and_stack_trace_and_evaluate_and_set_variable():
     assert bad.get("success") is False
 
 
+def test_set_variable_scope_eval_failure_returns_error_payload():
+    ip = InProcessDebugger()
+    fake = FakeDebugger()
+    ip.debugger = cast("Any", fake)
+
+    frame = FakeFrame(locals_={}, globals_={})
+    fake.frame_id_to_frame[4] = frame
+    fake.var_refs[100] = (4, "globals")
+
+    result = ip.set_variable(100, "x", "__import__('os')")
+
+    assert result.get("success") is False
+    assert "blocked" in str(result.get("message", "")).lower()
+
+
 def test_continue_removes_thread_and_calls_set_continue():
     ip = InProcessDebugger()
     fake = FakeDebugger()

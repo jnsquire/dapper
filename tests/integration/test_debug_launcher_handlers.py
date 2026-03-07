@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -177,4 +178,128 @@ def test_set_data_breakpoints_and_info(use_debug_session):
     assert info["body"]["dataId"] == "x"
 
 
-# TODO: more tests for restart/terminate behavior would require process-level integration
+def test_handle_terminate_marks_session_and_emits_exit_event(use_debug_session):
+    s, _dbg = _session_with_debugger(use_debug_session, DummyDebugger())
+
+    sent_messages: list[tuple[str, dict[str, object]]] = []
+
+    def record_send(message_type: str, **payload: object) -> None:
+        sent_messages.append((message_type, payload))
+
+    s.transport.send = record_send  # type: ignore[assignment]
+    s.ipc_enabled = True
+    s.ipc_wfile = object()
+
+    result = lifecycle_handlers.handle_terminate_impl(state=s)
+
+    assert result == {"success": True}
+    assert s.is_terminated is True
+    assert sent_messages == [("exited", {"exitCode": 0})]
+
+
+def test_handle_restart_cleans_up_resources_and_execs(use_debug_session):
+    s, _dbg = _session_with_debugger(use_debug_session, DummyDebugger())
+
+    sent_messages: list[tuple[str, dict[str, object]]] = []
+    exec_calls: list[tuple[str, list[str]]] = []
+
+    def record_send(message_type: str, **payload: object) -> None:
+        sent_messages.append((message_type, payload))
+
+    class Closable:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class JoinableThread:
+        def __init__(self) -> None:
+            self.join_calls: list[float] = []
+
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            self.join_calls.append(timeout if timeout is not None else -1.0)
+
+    ipc_pipe_conn = Closable()
+    ipc_wfile = Closable()
+    ipc_rfile = Closable()
+    command_thread = JoinableThread()
+
+    def fake_exec(path: str, args: list[str]) -> None:
+        exec_calls.append((path, args))
+
+    s.transport.send = record_send  # type: ignore[assignment]
+    s.ipc_enabled = True
+    s.ipc_pipe_conn = ipc_pipe_conn
+    s.ipc_wfile = ipc_wfile
+    s.ipc_rfile = ipc_rfile
+    s.command_thread = command_thread  # type: ignore[assignment]
+    s.set_exec_func(fake_exec)
+
+    original_argv = sys.argv[:]
+    sys.argv[:] = ["launcher.py", "--program", "sample.py", "--ipc", "tcp"]
+    try:
+        result = lifecycle_handlers.handle_restart_impl(state=s, logger=handlers.logger)
+    finally:
+        sys.argv[:] = original_argv
+
+    assert result == {"success": True}
+    assert s.is_terminated is True
+    assert sent_messages == [("exited", {"exitCode": 0})]
+    assert ipc_pipe_conn.closed is True
+    assert ipc_wfile.closed is True
+    assert ipc_rfile.closed is True
+    assert s.ipc_pipe_conn is None
+    assert s.ipc_wfile is None
+    assert s.ipc_rfile is None
+    assert s.ipc_enabled is False
+    assert command_thread.join_calls == [0.1]
+    assert s.command_thread is None
+    assert exec_calls == [
+        (
+            sys.executable,
+            [sys.executable, "--program", "sample.py", "--ipc", "tcp"],
+        )
+    ]
+
+
+def test_handle_restart_ignores_non_alive_command_thread(use_debug_session):
+    s, _dbg = _session_with_debugger(use_debug_session, DummyDebugger())
+
+    exec_calls: list[tuple[str, list[str]]] = []
+
+    class NotAliveThread:
+        def __init__(self) -> None:
+            self.join_called = False
+
+        def is_alive(self) -> bool:
+            return False
+
+        def join(self, _timeout: float | None = None) -> None:
+            self.join_called = True
+
+    command_thread = NotAliveThread()
+
+    def fake_exec(path: str, args: list[str]) -> None:
+        exec_calls.append((path, args))
+
+    s.transport.send = lambda *_a, **_kw: None  # type: ignore[assignment]
+    s.ipc_enabled = True
+    s.ipc_wfile = object()
+    s.command_thread = command_thread  # type: ignore[assignment]
+    s.set_exec_func(fake_exec)
+
+    original_argv = sys.argv[:]
+    sys.argv[:] = ["launcher.py"]
+    try:
+        result = lifecycle_handlers.handle_restart_impl(state=s, logger=handlers.logger)
+    finally:
+        sys.argv[:] = original_argv
+
+    assert result == {"success": True}
+    assert command_thread.join_called is False
+    assert s.command_thread is None
+    assert exec_calls == [(sys.executable, [sys.executable])]
