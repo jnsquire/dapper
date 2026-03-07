@@ -508,6 +508,7 @@ class DebugSession:
         self._resume_event: threading.Event = threading.Event()
         self.is_terminated: bool = False
         self.command_thread: threading.Thread | None = None
+        self.cleanup_func: Callable[[], None] | None = None
 
         # path to per-session log file (populated by launcher)
         self.session_log_file: str | None = None
@@ -516,6 +517,17 @@ class DebugSession:
         self.sources = SourceCatalog()
         self.dispatcher = CommandDispatcher()
         self.process_control = ProcessControl()
+
+    def run_cleanup(self) -> None:
+        """Run session cleanup exactly once when configured."""
+        cleanup = self.cleanup_func
+        self.cleanup_func = None
+        if cleanup is None:
+            return
+        try:
+            cleanup()
+        except Exception:
+            logger.debug("Session cleanup failed", exc_info=True)
 
     def signal_resume(self) -> None:
         """Signal the resume event to unblock the debugger thread."""

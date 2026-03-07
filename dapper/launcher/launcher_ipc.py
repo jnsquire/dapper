@@ -57,14 +57,12 @@ class SocketConnector:
         create_socket: callable,
         connect: callable,
     ) -> socket.socket | None:
-        last_error: Exception | None = None
         for attempt in range(self.retry_attempts):
             sock = None
             try:
                 sock = create_socket()
                 connect(sock)
-            except Exception as exc:
-                last_error = exc
+            except Exception:
                 if sock is not None:
                     with contextlib.suppress(Exception):
                         sock.close()

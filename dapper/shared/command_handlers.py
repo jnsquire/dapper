@@ -17,6 +17,9 @@ Dependencies:
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
+import sys
 import threading
 from typing import TYPE_CHECKING
 from typing import Any
@@ -693,6 +696,7 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     # immediately, potentially before the kernel flushes the socket buffer).
     state.safe_send_response(**result)
     _flush_transport(state)
+    state.run_cleanup()
     state.exit_func(0)
     return result  # won't reach if exit_func raises, but satisfies type
 
@@ -751,6 +755,32 @@ def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
     )
 
 
+@command_handler("attach")
+def _cmd_attach(_arguments: dict[str, Any] | None = None) -> None:
+    """Acknowledge attach for an already-bootstrapped live process."""
+    session = _active_session()
+    logger.info(
+        "[id=%s] attach received response_sent_before=%s",
+        session.request_id,
+        session.transport.response_sent,
+    )
+    ok = session.safe_send_response(success=True)
+    logger.info(
+        "[id=%s] attach: safe_send_response returned %s response_sent_after=%s",
+        session.request_id,
+        ok,
+        session.transport.response_sent,
+    )
+    process_name = Path(sys.argv[0] if sys.argv else "attached").resolve().name
+    session.safe_send(
+        "process",
+        name=process_name,
+        systemProcessId=os.getpid(),
+        isLocalProcess=True,
+        startMethod="attach",
+    )
+
+
 @command_handler("disconnect")
 def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     """Handle the DAP disconnect request.
@@ -762,6 +792,8 @@ def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     logger.info("[id=%s] disconnect received", session.request_id)
     session.terminate_session()
     session.safe_send_response(success=True)
+    _flush_transport(session)
+    session.run_cleanup()
 
 
 @command_handler("restart")

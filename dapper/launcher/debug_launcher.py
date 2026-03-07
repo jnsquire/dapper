@@ -91,6 +91,20 @@ def _setup_session_log_file(
     return log_path
 
 
+def setup_session_log_file(
+    session_id: str | None,
+    *,
+    log_file: str | None = None,
+    log_level: int | None = None,
+) -> str:
+    """Public wrapper for configuring a per-session log file."""
+    return _setup_session_log_file(
+        session_id,
+        log_file=log_file,
+        log_level=log_level,
+    )
+
+
 # Backward compatibility: tests/legacy code reference debug_launcher.send_debug_message.
 send_debug_message = debug_shared.send_debug_message
 
