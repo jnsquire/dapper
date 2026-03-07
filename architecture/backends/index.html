@@ -1,0 +1,1829 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<link href="https://jnsquire.github.io/dapper/architecture/backends/" rel="canonical"/>
+<link href="../ipc/" rel="prev"/>
+<link href="../breakpoints/" rel="next"/>
+<link href="../../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.4" name="generator"/>
+<title>Backends - Dapper</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="indigo" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#backend-lifecycle-management-guide">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dapper" class="md-header__button md-logo" data-md-component="logo" href="../.." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dapper
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Backends
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dapper" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dapper
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/using-vscode/">
+<span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/standalone-adapter/">
+<span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/manual-testing/">
+<span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/async-debugging/">
+<span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/variable-presentation/">
+<span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/frame-eval/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/watchpoints/">
+<span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/checklist/">
+<span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/operational-modes/">
+<span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/dap-extensions/">
+<span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/telemetry/">
+<span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/setup/">
+<span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/testing/">
+<span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/vscode-extension/">
+<span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/docs/">
+<span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/message-flows/">
+<span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_7_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../concurrency/">
+<span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../ipc/">
+<span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#overview">
+<span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+<nav aria-label="Architecture" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#core-components">
+<span class="md-ellipsis">
+      
+        Core Components
+      
+    </span>
+</a>
+<nav aria-label="Core Components" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-backendlifecyclestate-enum">
+<span class="md-ellipsis">
+      
+        1. BackendLifecycleState Enum
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-lifecyclemanager-class">
+<span class="md-ellipsis">
+      
+        2. LifecycleManager Class
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-basebackend-integration">
+<span class="md-ellipsis">
+      
+        3. BaseBackend Integration
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#state-transitions">
+<span class="md-ellipsis">
+      
+        State Transitions
+      
+    </span>
+</a>
+<nav aria-label="State Transitions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#valid-state-flow">
+<span class="md-ellipsis">
+      
+        Valid State Flow
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#state-descriptions">
+<span class="md-ellipsis">
+      
+        State Descriptions
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#usage-examples">
+<span class="md-ellipsis">
+      
+        Usage Examples
+      
+    </span>
+</a>
+<nav aria-label="Usage Examples" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#backend-initialization">
+<span class="md-ellipsis">
+      
+        Backend Initialization
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#launch-and-attach">
+<span class="md-ellipsis">
+      
+        Launch and Attach
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#operation-context">
+<span class="md-ellipsis">
+      
+        Operation Context
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-handling-and-recovery">
+<span class="md-ellipsis">
+      
+        Error Handling and Recovery
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#implementation-details">
+<span class="md-ellipsis">
+      
+        Implementation Details
+      
+    </span>
+</a>
+<nav aria-label="Implementation Details" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#resource-cleanup">
+<span class="md-ellipsis">
+      
+        Resource Cleanup
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#operation-context-manager">
+<span class="md-ellipsis">
+      
+        Operation Context Manager
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-tracking">
+<span class="md-ellipsis">
+      
+        Error Tracking
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#migration-guide">
+<span class="md-ellipsis">
+      
+        Migration Guide
+      
+    </span>
+</a>
+<nav aria-label="Migration Guide" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#for-existing-backend-implementations">
+<span class="md-ellipsis">
+      
+        For Existing Backend Implementations
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#before">
+<span class="md-ellipsis">
+      
+        Before
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#after">
+<span class="md-ellipsis">
+      
+        After
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#benefits-achieved">
+<span class="md-ellipsis">
+      
+        Benefits Achieved
+      
+    </span>
+</a>
+<nav aria-label="Benefits Achieved" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-consistency">
+<span class="md-ellipsis">
+      
+        1. Consistency
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-reliability">
+<span class="md-ellipsis">
+      
+        2. Reliability
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-maintainability">
+<span class="md-ellipsis">
+      
+        3. Maintainability
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#4-protocol-compliance">
+<span class="md-ellipsis">
+      
+        4. Protocol Compliance
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-considerations">
+<span class="md-ellipsis">
+      
+        Testing Considerations
+      
+    </span>
+</a>
+<nav aria-label="Testing Considerations" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unit-testing">
+<span class="md-ellipsis">
+      
+        Unit Testing
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#integration-testing">
+<span class="md-ellipsis">
+      
+        Integration Testing
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#future-enhancements">
+<span class="md-ellipsis">
+      
+        Future Enhancements
+      
+    </span>
+</a>
+<nav aria-label="Future Enhancements" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#planned-improvements">
+<span class="md-ellipsis">
+      
+        Planned Improvements
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#extension-points">
+<span class="md-ellipsis">
+      
+        Extension Points
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#troubleshooting">
+<span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+</a>
+<nav aria-label="Troubleshooting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#common-issues">
+<span class="md-ellipsis">
+      
+        Common Issues
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#debug-information">
+<span class="md-ellipsis">
+      
+        Debug Information
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../breakpoints/">
+<span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../error-handling/">
+<span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../frame-eval/build-guide/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../sys-monitoring/">
+<span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../current-analysis/">
+<span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/feature-ideas/">
+<span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/dep-001-hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/hot-reload-plan/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#overview">
+<span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+<nav aria-label="Architecture" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#core-components">
+<span class="md-ellipsis">
+      
+        Core Components
+      
+    </span>
+</a>
+<nav aria-label="Core Components" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-backendlifecyclestate-enum">
+<span class="md-ellipsis">
+      
+        1. BackendLifecycleState Enum
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-lifecyclemanager-class">
+<span class="md-ellipsis">
+      
+        2. LifecycleManager Class
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-basebackend-integration">
+<span class="md-ellipsis">
+      
+        3. BaseBackend Integration
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#state-transitions">
+<span class="md-ellipsis">
+      
+        State Transitions
+      
+    </span>
+</a>
+<nav aria-label="State Transitions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#valid-state-flow">
+<span class="md-ellipsis">
+      
+        Valid State Flow
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#state-descriptions">
+<span class="md-ellipsis">
+      
+        State Descriptions
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#usage-examples">
+<span class="md-ellipsis">
+      
+        Usage Examples
+      
+    </span>
+</a>
+<nav aria-label="Usage Examples" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#backend-initialization">
+<span class="md-ellipsis">
+      
+        Backend Initialization
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#launch-and-attach">
+<span class="md-ellipsis">
+      
+        Launch and Attach
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#operation-context">
+<span class="md-ellipsis">
+      
+        Operation Context
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-handling-and-recovery">
+<span class="md-ellipsis">
+      
+        Error Handling and Recovery
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#implementation-details">
+<span class="md-ellipsis">
+      
+        Implementation Details
+      
+    </span>
+</a>
+<nav aria-label="Implementation Details" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#resource-cleanup">
+<span class="md-ellipsis">
+      
+        Resource Cleanup
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#operation-context-manager">
+<span class="md-ellipsis">
+      
+        Operation Context Manager
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-tracking">
+<span class="md-ellipsis">
+      
+        Error Tracking
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#migration-guide">
+<span class="md-ellipsis">
+      
+        Migration Guide
+      
+    </span>
+</a>
+<nav aria-label="Migration Guide" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#for-existing-backend-implementations">
+<span class="md-ellipsis">
+      
+        For Existing Backend Implementations
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#before">
+<span class="md-ellipsis">
+      
+        Before
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#after">
+<span class="md-ellipsis">
+      
+        After
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#benefits-achieved">
+<span class="md-ellipsis">
+      
+        Benefits Achieved
+      
+    </span>
+</a>
+<nav aria-label="Benefits Achieved" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-consistency">
+<span class="md-ellipsis">
+      
+        1. Consistency
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-reliability">
+<span class="md-ellipsis">
+      
+        2. Reliability
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-maintainability">
+<span class="md-ellipsis">
+      
+        3. Maintainability
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#4-protocol-compliance">
+<span class="md-ellipsis">
+      
+        4. Protocol Compliance
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-considerations">
+<span class="md-ellipsis">
+      
+        Testing Considerations
+      
+    </span>
+</a>
+<nav aria-label="Testing Considerations" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unit-testing">
+<span class="md-ellipsis">
+      
+        Unit Testing
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#integration-testing">
+<span class="md-ellipsis">
+      
+        Integration Testing
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#future-enhancements">
+<span class="md-ellipsis">
+      
+        Future Enhancements
+      
+    </span>
+</a>
+<nav aria-label="Future Enhancements" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#planned-improvements">
+<span class="md-ellipsis">
+      
+        Planned Improvements
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#extension-points">
+<span class="md-ellipsis">
+      
+        Extension Points
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#troubleshooting">
+<span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+</a>
+<nav aria-label="Troubleshooting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#common-issues">
+<span class="md-ellipsis">
+      
+        Common Issues
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#debug-information">
+<span class="md-ellipsis">
+      
+        Debug Information
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="backend-lifecycle-management-guide">Backend Lifecycle Management Guide</h1>
+<p>This guide describes the standardized lifecycle management system implemented for Dapper debugger backends, providing consistent state tracking, resource cleanup, and error handling across all backend implementations.</p>
+<h2 id="overview">Overview</h2>
+<p>The lifecycle management system addresses several issues that existed in the original backend implementations:</p>
+<ul>
+<li><strong>Inconsistent initialization patterns</strong> across different backends</li>
+<li><strong>No standardized state tracking</strong> or availability checks</li>
+<li><strong>Inconsistent shutdown handling</strong> and resource cleanup</li>
+<li><strong>Missing protocol compliance</strong> for <code>launch()</code> and <code>attach()</code> methods</li>
+<li><strong>No error recovery mechanisms</strong></li>
+</ul>
+<h2 id="architecture">Architecture</h2>
+<h3 id="core-components">Core Components</h3>
+<h4 id="1-backendlifecyclestate-enum">1. BackendLifecycleState Enum</h4>
+<pre><code class="language-python">class BackendLifecycleState(Enum):
+    UNINITIALIZED = "uninitialized"
+    INITIALIZING = "initializing"
+    READY = "ready"
+    BUSY = "busy"
+    ERROR = "error"
+    TERMINATING = "terminating"
+    TERMINATED = "terminated"
+</code></pre>
+<h4 id="2-lifecyclemanager-class">2. LifecycleManager Class</h4>
+<p>The <code>LifecycleManager</code> provides:
+- <strong>State transition validation</strong> with enforced valid transitions
+- <strong>Operation context management</strong> with automatic state tracking
+- <strong>Cleanup callback registration</strong> for resource management
+- <strong>Error tracking and recovery</strong> capabilities
+- <strong>Thread-safe operations</strong> using asyncio locks</p>
+<h4 id="3-basebackend-integration">3. BaseBackend Integration</h4>
+<p>All backends now inherit from <code>BaseBackend</code> which includes:
+- <strong>Standardized initialization</strong> through <code>initialize()</code> method
+- <strong>Protocol compliance</strong> with <code>launch()</code> and <code>attach()</code> methods
+- <strong>Automatic state management</strong> for all operations
+- <strong>Consistent error handling</strong> and logging</p>
+<h2 id="state-transitions">State Transitions</h2>
+<h3 id="valid-state-flow">Valid State Flow</h3>
+<div class="mermaid">flowchart LR
+    UNINITIALIZED --&gt; INITIALIZING --&gt; READY --&gt; BUSY
+    BUSY &lt;--&gt;
+    READY
+
+    INITIALIZING --&gt; ERROR
+    READY --&gt; TERMINATING --&gt; TERMINATED
+    ERROR --&gt; TERMINATING
+    ERROR --&gt;|recover| READY
+</div>
+<h3 id="state-descriptions">State Descriptions</h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Description</th>
+<th>Operations Allowed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UNINITIALIZED</td>
+<td>Backend created but not initialized</td>
+<td><code>initialize()</code></td>
+</tr>
+<tr>
+<td>INITIALIZING</td>
+<td>Backend is setting up resources</td>
+<td>None (transition only)</td>
+</tr>
+<tr>
+<td>READY</td>
+<td>Backend ready for operations</td>
+<td>All debug operations</td>
+</tr>
+<tr>
+<td>BUSY</td>
+<td>Backend is executing an operation</td>
+<td>None (operation in progress)</td>
+</tr>
+<tr>
+<td>ERROR</td>
+<td>Backend encountered an error</td>
+<td><code>recover()</code> or <code>terminate()</code></td>
+</tr>
+<tr>
+<td>TERMINATING</td>
+<td>Backend is shutting down</td>
+<td>None (cleanup in progress)</td>
+</tr>
+<tr>
+<td>TERMINATED</td>
+<td>Backend fully shut down</td>
+<td>None (final state)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="backend-initialization">Backend Initialization</h3>
+<pre><code class="language-python"># InProcessBackend
+backend = InProcessBackend(bridge)
+await backend.initialize()  # Transitions: UNINITIALIZED → INITIALIZING → READY
+
+# ExternalProcessBackend  
+backend = ExternalProcessBackend(ipc, loop, ...)
+await backend.initialize()  # Validates IPC connection and process state
+</code></pre>
+<h3 id="launch-and-attach">Launch and Attach</h3>
+<pre><code class="language-python"># Launch new debuggee
+await backend.launch(config)  # Calls initialize() internally
+
+# Attach to existing debuggee
+await backend.attach(config)  # Calls initialize() internally
+</code></pre>
+<h3 id="operation-context">Operation Context</h3>
+<pre><code class="language-python"># All operations automatically use lifecycle context
+async def set_breakpoints(self, path, breakpoints):
+    response = await self._execute_with_timeout(
+        "set_breakpoints",
+        {"path": path, "breakpoints": breakpoints}
+    )
+    # State automatically: READY → BUSY → READY (on success)
+    # Or: READY → BUSY → ERROR (on failure)
+</code></pre>
+<h3 id="error-handling-and-recovery">Error Handling and Recovery</h3>
+<pre><code class="language-python"># Check backend state
+if backend.lifecycle_state == BackendLifecycleState.ERROR:
+    print(f"Backend error: {backend.error_info}")
+    await backend.recover()  # Attempt recovery
+
+# Graceful shutdown
+await backend.terminate()  # READY → TERMINATING → TERMINATED
+</code></pre>
+<h2 id="implementation-details">Implementation Details</h2>
+<h3 id="resource-cleanup">Resource Cleanup</h3>
+<p>Backends register cleanup callbacks during initialization:</p>
+<pre><code class="language-python"># In constructor
+self._lifecycle.add_cleanup_callback(self._cleanup_ipc)
+self._lifecycle.add_cleanup_callback(self._cleanup_commands)
+
+# Cleanup methods called automatically during termination
+def _cleanup_ipc(self):
+    if hasattr(self._ipc, 'close'):
+        self._ipc.close()
+</code></pre>
+<h3 id="operation-context-manager">Operation Context Manager</h3>
+<p>All backend operations use the lifecycle context manager:</p>
+<pre><code class="language-python">async with self._lifecycle.operation_context("set_breakpoints"):
+    # Backend state automatically set to BUSY
+    # Operation executes here
+    # State automatically restored to READY or set to ERROR
+</code></pre>
+<h3 id="error-tracking">Error Tracking</h3>
+<p>When errors occur, they're automatically tracked:</p>
+<pre><code class="language-python">try:
+    await self._execute_command(command)
+except Exception as e:
+    await self._lifecycle.mark_error(f"Command failed: {e}")
+    raise
+</code></pre>
+<h2 id="migration-guide">Migration Guide</h2>
+<h3 id="for-existing-backend-implementations">For Existing Backend Implementations</h3>
+<ol>
+<li><strong>Inherit from BaseBackend</strong> instead of direct protocol implementation</li>
+<li><strong>Implement <code>_execute_command()</code></strong> method instead of individual operation methods</li>
+<li><strong>Add lifecycle-aware initialization</strong> in <code>initialize()</code> method</li>
+<li><strong>Register cleanup callbacks</strong> in constructor</li>
+<li><strong>Remove manual state tracking</strong> - handled by LifecycleManager</li>
+</ol>
+<h3 id="before">Before</h3>
+<pre><code class="language-python">class MyBackend:
+    def __init__(self):
+        self._available = True
+
+    def is_available(self):
+        return self._available
+
+    async def set_breakpoints(self, path, breakpoints):
+        try:
+            # Manual implementation
+            pass
+        except Exception:
+            self._available = False
+</code></pre>
+<h3 id="after">After</h3>
+<pre><code class="language-python">class MyBackend(BaseBackend):
+    def __init__(self):
+        super().__init__()
+        self._lifecycle.add_cleanup_callback(self._cleanup)
+
+    async def _execute_command(self, command, args, **kwargs):
+        # Centralized command handling
+        if command == "set_breakpoints":
+            return await self._handle_set_breakpoints(args)
+        # ... other commands
+
+    async def initialize(self):
+        await self._lifecycle.initialize()
+        # Setup logic here
+        await self._lifecycle.mark_ready()
+</code></pre>
+<h2 id="benefits-achieved">Benefits Achieved</h2>
+<h3 id="1-consistency">1. Consistency</h3>
+<ul>
+<li><strong>Standardized state tracking</strong> across all backends</li>
+<li><strong>Uniform error handling</strong> and recovery patterns</li>
+<li><strong>Consistent resource management</strong> and cleanup</li>
+</ul>
+<h3 id="2-reliability">2. Reliability</h3>
+<ul>
+<li><strong>Automatic state validation</strong> prevents invalid operations</li>
+<li><strong>Guaranteed cleanup</strong> through callback system</li>
+<li><strong>Error recovery</strong> capabilities</li>
+</ul>
+<h3 id="3-maintainability">3. Maintainability</h3>
+<ul>
+<li><strong>Reduced boilerplate</strong> code in backend implementations</li>
+<li><strong>Centralized lifecycle logic</strong> easier to maintain</li>
+<li><strong>Better debugging</strong> with detailed state information</li>
+</ul>
+<h3 id="4-protocol-compliance">4. Protocol Compliance</h3>
+<ul>
+<li><strong>All backends implement</strong> <code>launch()</code> and <code>attach()</code> methods</li>
+<li><strong>Consistent interface</strong> for debugger operations</li>
+<li><strong>Better integration</strong> with Dapper configuration system</li>
+</ul>
+<h2 id="testing-considerations">Testing Considerations</h2>
+<h3 id="unit-testing">Unit Testing</h3>
+<pre><code class="language-python">async def test_backend_lifecycle():
+    backend = InProcessBackend(mock_bridge)
+
+    # Test initialization
+    assert backend.lifecycle_state == BackendLifecycleState.UNINITIALIZED
+    await backend.initialize()
+    assert backend.lifecycle_state == BackendLifecycleState.READY
+
+    # Test error handling
+    with pytest.raises(RuntimeError):
+        await backend._execute_command("invalid_command")
+    assert backend.lifecycle_state == BackendLifecycleState.ERROR
+
+    # Test recovery
+    await backend.recover()
+    assert backend.lifecycle_state == BackendLifecycleState.READY
+</code></pre>
+<h3 id="integration-testing">Integration Testing</h3>
+<ul>
+<li>Test backend lifecycle in full debugging scenarios</li>
+<li>Verify cleanup callbacks are executed</li>
+<li>Test error recovery under various failure conditions</li>
+</ul>
+<h2 id="future-enhancements">Future Enhancements</h2>
+<h3 id="planned-improvements">Planned Improvements</h3>
+<ol>
+<li><strong>Metrics collection</strong> for lifecycle events</li>
+<li><strong>Health check endpoints</strong> for monitoring</li>
+<li><strong>Graceful degradation</strong> strategies</li>
+<li><strong>Backend hot-swapping</strong> capabilities</li>
+</ol>
+<h3 id="extension-points">Extension Points</h3>
+<ul>
+<li><strong>Custom state transitions</strong> for specialized backends</li>
+<li><strong>Plugin cleanup callbacks</strong> for resource management</li>
+<li><strong>Event hooks</strong> for lifecycle state changes</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="common-issues">Common Issues</h3>
+<ol>
+<li><strong>Backend stuck in ERROR state</strong></li>
+<li>Check <code>backend.error_info</code> for details</li>
+<li>Call <code>await backend.recover()</code> to attempt recovery</li>
+<li>
+<p>Verify all resources are properly cleaned up</p>
+</li>
+<li>
+<p><strong>Initialization failures</strong></p>
+</li>
+<li>Ensure all dependencies are available</li>
+<li>Check IPC connections and process states</li>
+<li>
+<p>Verify configuration parameters</p>
+</li>
+<li>
+<p><strong>Resource leaks</strong></p>
+</li>
+<li>Ensure all cleanup callbacks are registered</li>
+<li>Test termination process thoroughly</li>
+<li>Monitor resource usage during operations</li>
+</ol>
+<h3 id="debug-information">Debug Information</h3>
+<pre><code class="language-python"># Get current state and error info
+print(f"State: {backend.lifecycle_state}")
+print(f"Available: {backend.is_available()}")
+print(f"Ready: {backend.is_ready()}")
+print(f"Error info: {backend.error_info}")
+</code></pre>
+<p>This lifecycle management system provides a solid foundation for reliable, maintainable debugger backends with consistent behavior across all implementations.</p>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({});</script></body>
+</html>

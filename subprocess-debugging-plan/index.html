@@ -1,0 +1,1048 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<link href="https://jnsquire.github.io/dapper/subprocess-debugging-plan/" rel="canonical"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.4" name="generator"/>
+<title>Subprocess Debugging Plan for Dapper - Dapper</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="indigo" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#subprocess-debugging-plan-for-dapper">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dapper" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dapper
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Subprocess Debugging Plan for Dapper
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dapper" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dapper
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/using-vscode/">
+<span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/standalone-adapter/">
+<span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/manual-testing/">
+<span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/async-debugging/">
+<span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/variable-presentation/">
+<span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/frame-eval/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/watchpoints/">
+<span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../guides/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../reference/configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../reference/checklist/">
+<span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../reference/operational-modes/">
+<span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../reference/dap-extensions/">
+<span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../reference/telemetry/">
+<span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/setup/">
+<span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/testing/">
+<span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/vscode-extension/">
+<span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/docs/">
+<span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../development/message-flows/">
+<span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_5_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_7_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/concurrency/">
+<span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/ipc/">
+<span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/backends/">
+<span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/breakpoints/">
+<span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/error-handling/">
+<span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/frame-eval/build-guide/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/sys-monitoring/">
+<span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/current-analysis/">
+<span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../roadmap/feature-ideas/">
+<span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../roadmap/dep-001-hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../roadmap/hot-reload-plan/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#goals">
+<span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#terminology">
+<span class="md-ellipsis">
+      
+        Terminology
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#current-state-summary">
+<span class="md-ellipsis">
+      
+        Current state (summary)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#design-decision">
+<span class="md-ellipsis">
+      
+        Design decision
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#recommended-end-to-end-flow-high-level">
+<span class="md-ellipsis">
+      
+        Recommended end-to-end flow (high-level)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#implementation-phases">
+<span class="md-ellipsis">
+      
+        Implementation phases
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#minimal-first-pr-scope-suggested">
+<span class="md-ellipsis">
+      
+        Minimal first PR scope (suggested)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#files-likely-to-change">
+<span class="md-ellipsis">
+      
+        Files likely to change
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#risks-open-questions">
+<span class="md-ellipsis">
+      
+        Risks &amp; open questions
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#next-steps">
+<span class="md-ellipsis">
+      
+        Next steps
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="subprocess-debugging-plan-for-dapper">Subprocess Debugging Plan for Dapper</h1>
+<p>This document captures a proposal, design decisions, and a phased implementation plan
+for adding subprocess debugging to Dapper. It is informed by debugpy's subprocess
+debugging approach and adapted to Dapper's current architecture by leveraging a
+direct connection strategy.</p>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>Allow automatic detection and debugging of Python subprocesses spawned by a
+  debugged program.</li>
+<li>Provide a reliable end-to-end experience where each child process can be
+  inspected in VS Code as a separate debug session.</li>
+<li>Establish a highly performant architecture avoiding IPC relay bottlenecks by
+  having child processes connect directly to the active VS Code extension.</li>
+<li>Keep the design incremental and reversible: ship a minimal, working
+  prototype first, then expand features (multiprocessing, execv, pools).</li>
+</ul>
+<h2 id="terminology">Terminology</h2>
+<ul>
+<li>Debuggee process: a process being debugged (root or child).</li>
+<li>Extension / Adapter: the TypeScript <code>DapperDebugSession</code> + VS Code extension
+  code that acts as the adapter for DAP messages.</li>
+<li>Launcher: Python process run with <code>-m dapper.launcher</code> (which imports the <code>debug_launcher</code> module) that
+  hosts the in-process BDB debugger and connects to the extension via binary
+  IPC.</li>
+<li>SubprocessManager: Python component that intercepts <code>subprocess.Popen</code> and
+  prepares child launches.</li>
+</ul>
+<h2 id="current-state-summary">Current state (summary)</h2>
+<ul>
+<li>Dapper runs a <code>debug_launcher</code> per debug session (one root process). The
+  launcher connects to the extension over a binary IPC channel.</li>
+<li><code>SubprocessManager</code> in the launcher patches <code>subprocess.Popen</code> and prepares
+  child command lines by prepending <code>dapper.launcher</code> and
+  <code>--ipc</code> args. It emits <code>dapper/childProcess</code> events to the extension.</li>
+<li>The extension (<code>DapperDebugSession</code>) and adapter factory have plumbing to
+  start the root launcher and accept its IPC connection.</li>
+<li>There is now an end-to-end flow that accepts and creates full child debug
+  sessions in the extension for rewritten Python subprocess launches.</li>
+<li>The extension also exposes a process tree with tracked-PID commands, but it
+  does not yet support true attach-by-PID for an arbitrary already-running
+  Python interpreter.</li>
+</ul>
+<h2 id="design-decision">Design decision</h2>
+<ul>
+<li>Use a per-child debug session model (one VS Code debug session per child
+  process) rather than multiplexing all processes through a single adapter
+  instance. This leverages VS Code's multi-session UI and is simpler to
+  implement in the existing codebase.</li>
+<li><strong>Direct Connection Architecture</strong>: Instead of maintaining intermediate relay
+  threads in the <code>SubprocessManager</code>, child processes connect directly to the
+  extension's existing IPC server. This avoids the complexity of framing relays
+  and ensures lower latency child attachment without compounding resource costs.</li>
+</ul>
+<h2 id="recommended-end-to-end-flow-high-level">Recommended end-to-end flow (high-level)</h2>
+<p>Below is the simplified message flow after adopting the <em>direct connection</em>
+architecture.  The adapter (the TypeScript extension) plays two roles: it runs
+one <code>pythonIpcServer</code> listener and it spawns a new <code>DapperDebugSession</code> each
+time a new child connects.</p>
+<div class="mermaid">sequenceDiagram
+    participant IDE
+    participant Adapter as TS Extension
+    participant Root as launcher (parent)
+    participant Child as launcher (child)
+
+    IDE-&gt;&gt;Adapter: launch request
+    Adapter-&gt;&gt;Root: spawn and pass --ipc-port=PORT
+    Root--&gt;&gt;Adapter: connect to PORT (root)
+    Adapter--&gt;&gt;IDE: initialized, process event
+
+    note right of Root: user code spawns child
+    Root-&gt;&gt;Child: Popen modified with --ipc-port=PORT --child-id=UUID
+    Child--&gt;&gt;Adapter: connect to PORT
+    Adapter--&gt;&gt;Adapter: handshake {childId: UUID}
+    Adapter-&gt;&gt;IDE: emit dapper/childProcess {childId, pid}
+    IDE-&gt;&gt;Adapter: startDebugging (attach, __childId=UUID)
+    Adapter-&gt;&gt;Child: DAP initialization/attach
+    loop
+        IDE&lt;-&gt;&gt;Child: propagate DAP messages
+    end
+</div>
+<ol>
+<li><code>SubprocessManager</code> intercepts <code>Popen</code> for a Python child invocation.</li>
+<li>It generates a unique identifier (UUID) for the new child process.</li>
+<li>The child command line is rewritten to inherit the extension's IPC communication
+   port (<code>--ipc tcp --ipc-port &lt;root-port&gt;</code>) and is given its unique identifier
+   via a new parameter <code>--child-id &lt;uuid&gt;</code>.</li>
+<li><code>SubprocessManager</code> emits a <code>dapper/childProcess</code> event to the extension over
+   the parent's DAP stream, including the child's UUID, command line, and process ID.</li>
+<li>The child begins execution and connects directly to the extension's <code>pythonIpcServer</code>.
+   As its first IPC communication, it sends an initial handshake payload containing its UUID.</li>
+<li>The extension dynamically accepts the connection, parses the handshake UUID, correlates
+   the socket to the pending <code>dapper/childProcess</code> event, and invokes
+   <code>vscode.debug.startDebugging()</code> with an attach configuration carrying the UUID marker.</li>
+<li>A new <code>DapperDebugSession</code> is initialized for the child process. It locates the
+   dynamically queued direct IPC socket using the UUID, establishing a full DAP debug
+   flow without any proxy relay.</li>
+</ol>
+<p>This approach keeps the child process fully debugged via the normal DAP mechanisms
+while keeping connection logic strictly unified at the VS Code extension tier.</p>
+<h2 id="implementation-phases">Implementation phases</h2>
+<p>Phase 1 — Protocol Handshake &amp; Direct Link Routing
+- Overhaul <code>ipc_binary.py</code> (or related connection bootstrapper) to prepend
+  a structured <code>ChildID</code> handshake when transitioning an IPC stream if <code>--child-id</code>
+  is active.
+- Modify <code>patched_popen_init()</code> in <code>dapper/adapter/subprocess_manager.py</code> to:
+  - reuse the existing root <code>--ipc-port</code>,
+  - generate a UUID and append <code>--child-id &lt;uuid&gt;</code>.
+- Expand <code>pythonIpcServer</code> logic in <code>dapperDebugAdapter.ts</code> to accept multi-session
+  socket connections, read the handshake UUID, and queue sockets structurally.</p>
+<p>Phase 2 — Extension: Handle <code>dapper/childProcess</code> Event &amp; Session Mapping
+- Propagate <code>dapper/childProcess</code> events from <code>SubprocessManager</code> injecting the
+  child's identifier.
+- Add event processing inside <code>DapperDebugSession.handleGeneralEvent()</code> to respond
+  by calling <code>vscode.debug.startDebugging()</code> matching an internal <code>attach</code> configuration
+  with the <code>__childId: &lt;uuid&gt;</code> marker.
+- Track resulting child sessions securely for synchronized teardown.</p>
+<p>Phase 3 — Child-Aware Adapter Creation
+- Through <code>DapperDebugAdapterDescriptorFactory.createDebugAdapterDescriptor()</code>:
+  - Validate the <code>__childId</code> marker.
+  - Subvert invoking a redundant process terminal; instead, extract the fully setup socket
+    from the pending socket queue mapping the UUID.
+  - Return the respective <code>DebugAdapterServer</code> assigning the captured child connection directly.</p>
+<p>Phase 4 — Lifecycle and Error Handling
+- Guard network queues cleanly. If a <code>dapper/childProcess</code> is terminated before
+  association concludes, discard pending stale UUID sockets to prevent resource leaks.
+- Retain <code>SubprocessManager</code> <code>on_child_exited</code> bounds to dispatch cleanup validations locally.</p>
+<p>Phase 5 — Recursive Subprocesses
+- Support nested debugging (<code>--subprocess-auto-attach</code>) so child launchers cascade the extension's
+  IPC port securely while generating their own grandchildren process UUID configurations natively.
+- Apply equivalent adaptations to standard multiprocessing or ProcessPool implementations.</p>
+<p>Phase 6 — Tests, Docs, and UX
+- Solidify automated test loops around UUID multi-socket handshake bindings.
+- Expose configurations and visibility for overarching auto-attach parameters enabling recursive hooks.</p>
+<p>Phase 7 — Attach by PID for live Python 3.14 interpreters
+- Reuse the process tree / tracked-PID UX as the entry point for a true
+  <code>processId</code> attach flow.
+- Allocate the extension-side IPC listener before attach and invoke a local
+  CPython 3.14 helper to call <code>sys.remote_exec(pid, script)</code> against the
+  target interpreter.
+- Have the injected bootstrap initialize Dapper inside the target process and
+  reconnect over the existing IPC session path rather than inventing a second
+  debugger transport.
+- Treat attach-by-PID as a complementary flow to child auto-attach: child
+  auto-attach handles processes Dapper launches or rewrites, while PID attach
+  handles already-running compatible Python interpreters.</p>
+<h2 id="minimal-first-pr-scope-suggested">Minimal first PR scope (suggested)</h2>
+<ul>
+<li>Target Phase 1 (connection handshake integration) and Phase 2 (handler integration)
+  structuring the core foundation enabling a single subprocess root-node demo producing
+  two robust debugging sessions connecting un-multiplexed back against the single VS Code adapter tier.</li>
+<li>Update <code>doc/</code> with this rewritten architectural plan.</li>
+</ul>
+<h2 id="files-likely-to-change">Files likely to change</h2>
+<p>re-DAP handshake bytes.
+- <code>dapper/launcher/debug_launcher.py</code>: ingest the <code>--child-id</code> mapping constraint mapping initialization hooks.
+- <code>dapper/adapter/subprocess_manager.py</code>: orchestrate <code>childProcess</code> events carrying explicit UUID links alongside shared connection ports.
+- <code>vscode/extension/src/debugAdapter/dapperDebugAdapter.ts</code>: transition the singleton root <code>pythonIpcServer</code> socket processor into a multi-socket handshaking queue structure mapping direct Dapper sessions efficiently.</p>
+<h2 id="risks-open-questions">Risks &amp; open questions</h2>
+<ul>
+<li><strong>Protocol Handshake Design</strong>: Implementing the bridging handshake correctly
+  within standard Dapper binary IPC boundaries ensuring clear packet demarcations.</li>
+<li><strong>Race conditions</strong>: It's possible the child process successfully connects before
+  the parent DAP event fires. By relying on the UUID handshake queueing on the extension tier,
+  order sensitivity remains strictly disjointed effectively preventing data races.</li>
+<li><strong>Security Context</strong>: Children will span directly exposing equivalent <code>localhost</code> TCP connections; security topology mirrors general debug adapter standards natively.</li>
+</ul>
+<h2 id="next-steps">Next steps</h2>
+<ol>
+<li>Define and implement the pre-DAP UUID connection handshake protocol.</li>
+<li>Advance Python-side <code>SubprocessManager</code> capabilities configuring the explicit target routing payload.</li>
+<li>Migrate VS Code's IPC architecture accepting multiple buffered connections correlated dynamically into VS Code APIs invoking <code>startDebugging</code>.</li>
+<li>Add the Python 3.14 attach-by-PID bootstrap and extension-side <code>processId</code>
+  attach handshake as the next phase after the child-session tree work.</li>
+</ol>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({});</script></body>
+</html>
