@@ -9,7 +9,7 @@ import {
   WarningBanner,
   WizardFooter,
   WizardRail,
-} from './ConfigViewComponents.js';
+} from '../../components/ConfigViewComponents.js';
 import {
   BasicsStep,
   DebugStep,

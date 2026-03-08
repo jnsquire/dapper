@@ -12,7 +12,7 @@ import {
   TextInputField,
   WarningBanner,
   type StringListItem,
-} from './ConfigViewComponents.js';
+} from '../../components/ConfigViewComponents.js';
 
 interface SharedStepProps {
   config?: Partial<DebugConfiguration>;
