@@ -2,5 +2,6 @@
   "pythonVersion": "3.11",
   "venvPath": ".",
   "venv": ".venv",
-  "include": ["dapper"]
+  "include": ["dapper"],
+  "exclude": ["dapper/_frame_eval/_frame_evaluator.pyx"]
 }

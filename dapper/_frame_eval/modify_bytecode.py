@@ -13,6 +13,7 @@ Lower-level helpers live in neighbouring modules:
 from __future__ import annotations
 
 import dis
+from importlib import import_module
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypedDict
@@ -103,12 +104,20 @@ class BytecodeModifier:
             return True, code_obj
 
         try:
+            frame_evaluator = import_module("dapper._frame_eval._frame_evaluator")
+
             # Create a cache key for this code object
             cache_key = self._get_cache_key(code_obj, breakpoint_lines)
 
             # Check if we already have a modified version
             if cache_key in self.modified_code_objects:
-                return True, self.modified_code_objects[cache_key]
+                modified_code = self.modified_code_objects[cache_key]
+                frame_evaluator._store_modified_code_for_evaluation(
+                    code_obj,
+                    modified_code,
+                    breakpoint_lines,
+                )
+                return True, modified_code
 
             # Get original instructions (including CACHE entries on 3.11+)
             instructions = get_instructions(code_obj)
@@ -132,6 +141,11 @@ class BytecodeModifier:
 
             # Cache the result
             self.modified_code_objects[cache_key] = modified_code
+            frame_evaluator._store_modified_code_for_evaluation(
+                code_obj,
+                modified_code,
+                breakpoint_lines,
+            )
         except Exception as e:
             if debug_mode:
                 print(f"Error injecting breakpoints: {e}")
@@ -585,6 +599,16 @@ def remove_breakpoint_bytecode(code_obj: CodeType) -> CodeType:
 
     """
     return _bytecode_modifier.remove_breakpoints(code_obj)
+
+
+def invalidate_bytecode_cache_for_file(filepath: str) -> int:
+    """Remove cached modified code objects associated with *filepath*."""
+    keys_to_remove = [
+        key for key in list(_bytecode_modifier.modified_code_objects.keys()) if key[0] == filepath
+    ]
+    for key in keys_to_remove:
+        del _bytecode_modifier.modified_code_objects[key]
+    return len(keys_to_remove)
 
 
 def clear_bytecode_cache() -> None:

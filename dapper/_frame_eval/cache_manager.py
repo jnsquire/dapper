@@ -8,6 +8,7 @@ data structures.
 from __future__ import annotations
 
 from collections import OrderedDict
+from importlib import import_module
 import logging
 from pathlib import Path
 import threading
@@ -18,6 +19,8 @@ from typing import ClassVar
 from typing import Final
 from typing import TypedDict
 import weakref
+
+from dapper._frame_eval.telemetry import telemetry
 
 # Third-party imports
 # Local application imports
@@ -113,6 +116,7 @@ class CacheManager:
     # Class variables for caching
     _breakpoint_cache: ClassVar[dict[str, set[int]]] = {}
     _func_code_cache: ClassVar[dict[CodeType, CodeType]] = {}
+    _func_code_paths: ClassVar[dict[CodeType, str]] = {}
     _cache_lock: ClassVar[threading.RLock] = threading.RLock()
     _global_cache_enabled: ClassVar[bool] = True
     _cache_stats: ClassVar[GlobalCacheStats] = {
@@ -133,6 +137,7 @@ class CacheManager:
         """
         with cls._cache_lock:
             cls._func_code_cache[original_code] = modified_code
+            cls._func_code_paths[original_code] = getattr(original_code, "co_filename", "")
 
     @classmethod
     def _get_cached_code(cls, original_code: CodeType) -> CodeType | None:
@@ -146,6 +151,29 @@ class CacheManager:
         """
         with cls._cache_lock:
             return cls._func_code_cache.get(original_code)
+
+    @classmethod
+    def _remove_cached_code(cls, original_code: CodeType) -> bool:
+        """Remove cached modified code for an original code object."""
+        with cls._cache_lock:
+            removed = original_code in cls._func_code_cache
+            cls._func_code_cache.pop(original_code, None)
+            cls._func_code_paths.pop(original_code, None)
+            return removed
+
+    @classmethod
+    def _invalidate_cached_code_for_file(cls, filepath: str) -> list[CodeType]:
+        """Remove cached modified code entries associated with *filepath*."""
+        with cls._cache_lock:
+            removed_codes = [
+                code_obj
+                for code_obj, cached_path in cls._func_code_paths.items()
+                if cached_path == filepath
+            ]
+            for code_obj in removed_codes:
+                cls._func_code_cache.pop(code_obj, None)
+                cls._func_code_paths.pop(code_obj, None)
+            return removed_codes
 
     @classmethod
     def _get_cached_breakpoints(cls, filepath: str) -> set[int] | None:
@@ -177,6 +205,7 @@ class CacheManager:
         with cls._cache_lock:
             cls._breakpoint_cache.clear()
             cls._func_code_cache.clear()
+            cls._func_code_paths.clear()
 
     @classmethod
     def get_cache_statistics(cls) -> CacheStatistics:
@@ -829,9 +858,40 @@ def set_breakpoints(filepath: str, breakpoints: Iterable[int]) -> None:
     _caches.breakpoint.set_breakpoints(filepath, breakpoints)
 
 
-def invalidate_breakpoints(filepath: str) -> None:
-    """Invalidate cached breakpoints for a file."""
+def set_cached_code(original_code: CodeType, modified_code: CodeType) -> None:
+    """Cache modified code for an original code object."""
+    CacheManager._set_cached_code(original_code, modified_code)
+
+
+def get_cached_code(original_code: CodeType) -> CodeType | None:
+    """Get cached modified code for an original code object."""
+    return CacheManager._get_cached_code(original_code)
+
+
+def invalidate_breakpoints(filepath: str, *, reason: str = "breakpoint_change") -> None:
+    """Invalidate cached breakpoints and related modified-code caches for a file."""
     _caches.breakpoint.invalidate_file(filepath)
+    removed_codes = CacheManager._invalidate_cached_code_for_file(filepath)
+    modify_bytecode = import_module("dapper._frame_eval.modify_bytecode")
+
+    removed_bytecode = modify_bytecode.invalidate_bytecode_cache_for_file(filepath)
+    if removed_codes:
+        frame_evaluator = import_module("dapper._frame_eval._frame_evaluator")
+
+        for code_obj in removed_codes:
+            frame_evaluator._clear_code_extra_metadata(code_obj)
+
+    invalidated_entries = len(removed_codes) + removed_bytecode
+    if reason == "file_reload":
+        telemetry.record_cache_invalidation_file_reload(
+            filepath=filepath,
+            invalidated_entries=invalidated_entries,
+        )
+    else:
+        telemetry.record_cache_invalidation_breakpoint_change(
+            filepath=filepath,
+            invalidated_entries=invalidated_entries,
+        )
 
 
 def cleanup_caches() -> CleanupResults:
@@ -846,12 +906,24 @@ def cleanup_caches() -> CleanupResults:
     }
 
 
-def clear_all_caches() -> None:
+def clear_all_caches(*, reason: str | None = None) -> None:
     """Clear all caches."""
+    cached_code_objects = list(CacheManager._func_code_cache.keys())
+    if cached_code_objects:
+        frame_evaluator = import_module("dapper._frame_eval._frame_evaluator")
+
+        for code_obj in cached_code_objects:
+            frame_evaluator._clear_code_extra_metadata(code_obj)
+
+    import_module("dapper._frame_eval.modify_bytecode").clear_bytecode_cache()
+
     _caches.func_code.clear()
     _caches.thread_local.clear_thread_local()
     _caches.breakpoint.clear_all()
     CacheManager._clear_caches()
+
+    if reason == "config_change":
+        telemetry.record_cache_invalidation_config_change(scope="all")
 
 
 def get_cache_statistics() -> CacheStatistics:

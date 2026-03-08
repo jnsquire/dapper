@@ -31,6 +31,7 @@ from dapper._frame_eval.cache_manager import get_cache_statistics
 from dapper._frame_eval.cache_manager import set_func_code_info
 from dapper._frame_eval.modify_bytecode import BytecodeModifier
 from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
+from dapper._frame_eval.selective_tracer import _decision_should_trace
 from dapper._frame_eval.selective_tracer import disable_selective_tracing
 from dapper._frame_eval.selective_tracer import enable_selective_tracing
 from dapper._frame_eval.selective_tracer import get_selective_trace_function
@@ -129,7 +130,7 @@ class DebuggerFrameEvalBridge:
             trace_manager = get_trace_manager()
             if trace_manager.is_enabled():
                 decision = trace_manager.dispatcher.analyzer.should_trace_frame(frame)
-                if not decision["should_trace"]:
+                if not _decision_should_trace(decision):
                     self.integration_stats["trace_calls_saved"] += 1
                     return True
         except Exception:
@@ -545,10 +546,12 @@ def get_integration_statistics() -> IntegrationStatistics:
 def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
     """Wire *debugger_instance* to *backend* using the appropriate path.
 
-    For :class:`~dapper._frame_eval.monitoring_backend.SysMonitoringBackend`:
-    calls ``backend.install(debugger_instance)`` directly and returns
-    ``True``.  The ``sys.monitoring`` path does **not** wrap ``user_line``
-    or install ``sys.settrace``; the backend's callbacks handle everything.
+    For non-tracing backends such as
+    :class:`~dapper._frame_eval.monitoring_backend.SysMonitoringBackend` and
+    :class:`~dapper._frame_eval.eval_frame_backend.EvalFrameBackend`, calls
+    ``backend.install(debugger_instance)`` directly and returns ``True``.
+    These backends manage their own callbacks and must not be routed through
+    the legacy BDB integration wrapper.
 
     For :class:`~dapper._frame_eval.settrace_backend.SettraceBackend` (or
     any other :class:`~dapper._frame_eval.tracing_backend.TracingBackend`):
@@ -563,6 +566,16 @@ def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
 
     """
     try:
+        from dapper._frame_eval.tracing_backend import TracingBackend  # noqa: PLC0415
+
+        if not isinstance(backend, TracingBackend):
+            try:
+                backend.install(debugger_instance)
+                return True
+            except Exception:
+                telemetry.record_integration_bdb_failed()
+                return False
+
         # Importing here keeps the dependency optional; ruff PLC0415 is
         # suppressed because this is intentional.
         from dapper._frame_eval.monitoring_backend import SysMonitoringBackend  # noqa: PLC0415

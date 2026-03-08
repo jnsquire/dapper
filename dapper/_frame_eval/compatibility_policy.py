@@ -1,3 +1,4 @@
+# ruff: noqa: PLC0415
 """Compatibility policy for frame evaluation runtime.
 
 Centralizes Python/platform/environment compatibility checks so all call sites
@@ -86,6 +87,31 @@ class FrameEvalCompatibilityPolicy:
             return True
 
         return bool(any(name in modules for name in self.incompatible_coverage_tools))
+
+    def supports_eval_frame(self) -> bool:
+        """Return True if the runtime is capable of eval-frame hooking.
+
+        The default implementation is conservative: it only returns ``True``
+        when the compiled ``_frame_evaluator`` extension module is available
+        and reports that the hook API claims to be ``available``.  This
+        allows the compatibility object to serve as the central source of
+        truth for feature presence without duplicating logic elsewhere.
+
+        When the module is missing or has not yet been built, or when the
+        module explicitly reports ``available=False`` (the stub state during
+        Phase 2 development), this method returns ``False``.  Higher layers may
+        consult other policy methods (e.g. Python version) as additional
+        filters if desired.
+        """
+        try:
+            from dapper._frame_eval._frame_evaluator import get_eval_frame_hook_status
+
+            status = get_eval_frame_hook_status()
+            return bool(status.get("available", False))
+        except ImportError:
+            return False
+        except Exception:  # pragma: no cover - be conservative on unexpected errors
+            return False
 
     def evaluate_environment(
         self,

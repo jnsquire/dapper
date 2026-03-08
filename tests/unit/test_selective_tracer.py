@@ -79,6 +79,37 @@ class TestFrameTraceAnalyzerUnconditional:
 
 
 class TestFrameTraceAnalyzerConditional:
+    def test_should_trace_code_reuses_conditional_logic(self):
+        analyzer = FrameTraceAnalyzer()
+        filename = "/src/cond_code.py"
+        analyzer.set_breakpoint_conditions(filename, {11: "value == 42"})
+
+        frame_hit = _make_frame(filename, 11, local_vars={"value": 42})
+        frame_miss = _make_frame(filename, 11, local_vars={"value": 0})
+
+        with _with_breakpoints(filename, {11}):
+            hit = analyzer.should_trace_code(frame_hit.f_code, 11, frame_hit)
+            miss = analyzer.should_trace_code(frame_miss.f_code, 11, frame_miss)
+
+        assert hit["path"] == "breakpointed"
+        assert hit["should_trace"] is True
+        assert miss["path"] == "original"
+        assert miss["should_trace"] is False
+
+    def test_should_trace_code_without_frame_conservatively_traces_conditionals(self):
+        analyzer = FrameTraceAnalyzer()
+        filename = "/src/cond_pending.py"
+        analyzer.set_breakpoint_conditions(filename, {9: "value == 42"})
+
+        frame = _make_frame(filename, 9, local_vars={"value": 0})
+
+        with _with_breakpoints(filename, {9}):
+            decision = analyzer.should_trace_code(frame.f_code, 9, None)
+
+        assert decision["path"] == "breakpointed"
+        assert decision["should_trace"] is True
+        assert decision["reason"] == "conditional_breakpoint_pending"
+
     def test_true_condition_allows_trace(self):
         analyzer = FrameTraceAnalyzer()
         filename = "/src/cond_true.py"
@@ -86,6 +117,7 @@ class TestFrameTraceAnalyzerConditional:
         frame = _make_frame(filename, 5, local_vars={"x": 10})
         with _with_breakpoints(filename, {5}):
             decision = analyzer.should_trace_frame(frame)
+        assert decision["path"] == "breakpointed"
         assert decision["should_trace"] is True
 
     def test_false_condition_skips_trace(self):
@@ -95,6 +127,7 @@ class TestFrameTraceAnalyzerConditional:
         frame = _make_frame(filename, 5)
         with _with_breakpoints(filename, {5}):
             decision = analyzer.should_trace_frame(frame)
+        assert decision["path"] == "original"
         assert decision["should_trace"] is False
         assert decision["reason"] == "condition_not_met"
 
@@ -107,8 +140,13 @@ class TestFrameTraceAnalyzerConditional:
         frame_miss = _make_frame(filename, 20, local_vars={"value": 0})
 
         with _with_breakpoints(filename, {20}):
-            assert analyzer.should_trace_frame(frame_hit)["should_trace"] is True
-            assert analyzer.should_trace_frame(frame_miss)["should_trace"] is False
+            hit = analyzer.should_trace_frame(frame_hit)
+            miss = analyzer.should_trace_frame(frame_miss)
+
+        assert hit["path"] == "breakpointed"
+        assert hit["should_trace"] is True
+        assert miss["path"] == "original"
+        assert miss["should_trace"] is False
 
     def test_condition_error_falls_back_to_trace(self):
         """A broken condition expression is conservative: trace the frame."""
@@ -119,6 +157,7 @@ class TestFrameTraceAnalyzerConditional:
         with _with_breakpoints(filename, {7}):
             decision = analyzer.should_trace_frame(frame)
         # fallback=True → passed=True → should_trace=True
+        assert decision["path"] == "breakpointed"
         assert decision["should_trace"] is True
 
     def test_none_condition_treated_as_unconditional(self):
@@ -129,6 +168,7 @@ class TestFrameTraceAnalyzerConditional:
         frame = _make_frame(filename, 3)
         with _with_breakpoints(filename, {3}):
             decision = analyzer.should_trace_frame(frame)
+        assert decision["path"] == "breakpointed"
         assert decision["should_trace"] is True
         assert decision["reason"] == "breakpoint_on_line"
 
@@ -141,6 +181,7 @@ class TestFrameTraceAnalyzerConditional:
         frame = _make_frame(filename, 1)
         with _with_breakpoints(filename, {1}):
             decision = analyzer.should_trace_frame(frame)
+        assert decision["path"] == "breakpointed"
         assert decision["should_trace"] is True
 
 
@@ -163,8 +204,13 @@ class TestFrameTraceManagerConditional:
 
         analyzer = manager.dispatcher.analyzer
         with _with_breakpoints(filename, {15}):
-            assert analyzer.should_trace_frame(frame_hit)["should_trace"] is True
-            assert analyzer.should_trace_frame(frame_miss)["should_trace"] is False
+            hit = analyzer.should_trace_frame(frame_hit)
+            miss = analyzer.should_trace_frame(frame_miss)
+
+        assert hit["path"] == "breakpointed"
+        assert hit["should_trace"] is True
+        assert miss["path"] == "original"
+        assert miss["should_trace"] is False
 
     def test_set_conditional_breakpoints_unconditional_spec(self):
         manager = FrameTraceManager()
@@ -175,7 +221,10 @@ class TestFrameTraceManagerConditional:
         manager.set_conditional_breakpoints(filename, specs)
         frame = _make_frame(filename, 8)
         with _with_breakpoints(filename, {8}):
-            assert manager.dispatcher.analyzer.should_trace_frame(frame)["should_trace"] is True
+            decision = manager.dispatcher.analyzer.should_trace_frame(frame)
+
+        assert decision["path"] == "breakpointed"
+        assert decision["should_trace"] is True
 
     def test_get_breakpoints_reflects_conditional_spec(self):
         manager = FrameTraceManager()

@@ -6,9 +6,87 @@ pure-Python backends do not duplicate the same state classes and helpers.
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 from cpython.object cimport PyObject
+from cpython.exc cimport PyErr_Fetch, PyErr_NormalizeException, PyErr_Restore
 
 import contextvars
+import sys
 import types
+from typing import Any as TypingAny
+from typing import cast
+
+from dapper._frame_eval.cache_manager import get_breakpoints as _get_breakpoints
+from dapper._frame_eval.telemetry import telemetry
+
+# exposing interpreter state structures needed for eval-frame hooking
+cdef extern from "internal/pycore_frame.h":
+    ctypedef struct _PyInterpreterFrame:
+        PyCodeObject *f_code
+        _PyInterpreterFrame *previous
+        PyObject *f_funcobj
+        PyObject *f_globals
+        PyObject *f_builtins
+        PyObject *f_locals
+        PyFrameObject *frame_obj
+
+
+cdef extern from "Python.h":
+    ctypedef struct PyInterpreterState:
+        pass
+    ctypedef struct PyThreadState:
+        pass
+    ctypedef struct PyCodeObject:
+        pass
+    ctypedef struct PyFrameObject:
+        pass
+    ctypedef PyObject *(*_PyFrameEvalFunction)(PyThreadState *, _PyInterpreterFrame *, int) noexcept
+    PyInterpreterState *PyInterpreterState_Get()
+    _PyFrameEvalFunction _PyInterpreterState_GetEvalFrameFunc(PyInterpreterState *interp)
+    void _PyInterpreterState_SetEvalFrameFunc(
+        PyInterpreterState *interp,
+        _PyFrameEvalFunction eval_frame,
+    )
+    PyObject *_PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int exc)
+    object PyUnstable_InterpreterFrame_GetCode(_PyInterpreterFrame *frame)
+    int PyUnstable_InterpreterFrame_GetLine(_PyInterpreterFrame *frame)
+
+
+cdef bint _should_trace_code_for_eval_frame_impl(
+    ThreadInfo thread_info,
+    code_obj,
+    int lineno,
+    object frame_obj,
+    bint allow_current_eval_frame,
+) except -1:
+    cdef FuncCodeInfo func_code_info
+    cdef object decision
+
+    try:
+        from dapper._frame_eval.selective_tracer import should_trace_code_location
+
+        decision = should_trace_code_location(
+            code_obj,
+            lineno,
+            cast(TypingAny, frame_obj),
+            allow_current_eval_frame=bool(allow_current_eval_frame),
+        )
+        return <bint>bool(decision.get("path") == "breakpointed")
+    except Exception:
+        pass
+
+    if not allow_current_eval_frame and thread_info.inside_frame_eval > 0:
+        return <bint>False
+    if not thread_info.fully_initialized:
+        return <bint>False
+    if thread_info.is_debugger_internal_thread:
+        return <bint>False
+    if thread_info.skip_all_frames:
+        return <bint>False
+
+    func_code_info = get_func_code_info(None, code_obj)
+    if lineno in func_code_info.breakpoint_lines:
+        return <bint>True
+
+    return <bint>(func_code_info.breakpoint_found and thread_info.step_mode)
 
 
 cdef class ThreadInfo:
@@ -55,6 +133,141 @@ cdef class FuncCodeInfo:
         self.always_skip_code = <bint>(not bool(self.breakpoint_lines))
 
 
+def _collect_code_lines(code_obj):
+    """Collect executable source lines for a code object."""
+    try:
+        return {
+            line
+            for _, _, line in code_obj.co_lines()
+            if line is not None
+        }
+    except Exception:
+        return {code_obj.co_firstlineno}
+
+
+def _should_trace_code_for_eval_frame(code_obj, lineno: int) -> bool:
+    """Return whether eval-frame should take the slow path for this code/line."""
+    cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
+    return bool(
+        _should_trace_code_for_eval_frame_impl(
+            thread_info,
+            code_obj,
+            lineno,
+            None,
+            <bint>False,
+        )
+    )
+
+
+def _should_trace_code_for_eval_frame_with_frame(code_obj, lineno: int, frame_obj=None) -> bool:
+    """Return whether eval-frame should take the slow path for this code/line."""
+    cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
+    return bool(
+        _should_trace_code_for_eval_frame_impl(
+            thread_info,
+            code_obj,
+            lineno,
+            frame_obj,
+            <bint>False,
+        )
+    )
+
+
+def _set_thread_trace_func(trace_func) -> None:
+    """Store the active trace callback for the current thread."""
+    cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
+    thread_info.thread_trace_func = trace_func
+
+
+def _clear_thread_trace_func() -> None:
+    """Clear the active trace callback for the current thread."""
+    cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
+    thread_info.thread_trace_func = None
+
+
+def _make_eval_frame_trace_func(code_obj, root_trace_func):
+    """Return a temporary global trace function scoped to one code object."""
+
+    def wrap_trace_callback(trace_func):
+        if trace_func is None:
+            return None
+
+        def wrapped_trace(frame, event, arg):
+            cdef object next_trace
+
+            if getattr(frame, "f_code", None) is not code_obj:
+                return None
+            if event == "return":
+                _state.record_return_event()
+            elif event == "exception":
+                _state.record_exception_event()
+            next_trace = trace_func(frame, event, arg)
+            return wrap_trace_callback(next_trace)
+
+        return wrapped_trace
+
+    def eval_frame_trace(frame, event, arg):
+        if getattr(frame, "f_code", None) is not code_obj:
+            return None
+        return wrap_trace_callback(root_trace_func(frame, event, arg))
+
+    return eval_frame_trace
+
+
+cdef bint _dispatch_trace_callback_impl(frame_obj, str event="line", arg=None) except -1:
+    """Dispatch the active trace callback for *frame_obj*.
+
+    Per-frame callbacks live on ``frame_obj.f_trace``. The thread-local
+    ``thread_trace_func`` remains the root callback used when a frame has not
+    installed its own local trace function yet.
+    """
+    cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
+    cdef object trace_func = getattr(frame_obj, "f_trace", None)
+    cdef object next_trace_func
+
+    if trace_func is None:
+        trace_func = thread_info.thread_trace_func
+
+    if trace_func is None:
+        return <bint>False
+
+    next_trace_func = getattr(trace_func, "__call__")(frame_obj, event, arg)
+    frame_obj.f_trace = next_trace_func
+    return <bint>True
+
+
+def _dispatch_trace_callback(frame_obj, str event="line", arg=None) -> bool:
+    return bool(_dispatch_trace_callback_impl(frame_obj, event, arg))
+
+
+cdef bint _dispatch_eval_frame_entry_trace_impl(frame_obj) except -1:
+    """Dispatch synthetic entry events for an eval-frame materialized frame."""
+    cdef object local_trace = getattr(frame_obj, "f_trace", None)
+
+    if local_trace is None:
+        if not _dispatch_trace_callback_impl(frame_obj, "call", None):
+            return <bint>False
+        if getattr(frame_obj, "f_trace", None) is None:
+            return <bint>True
+
+    return _dispatch_trace_callback_impl(frame_obj, "line", None)
+
+
+def _dispatch_eval_frame_entry_trace(frame_obj) -> bool:
+    return bool(_dispatch_eval_frame_entry_trace_impl(frame_obj))
+
+
+cdef bint _dispatch_eval_frame_return_trace_impl(frame_obj, arg=None) except -1:
+    """Dispatch a synthetic return event for an eval-frame materialized frame."""
+    if getattr(frame_obj, "f_trace", None) is None:
+        return <bint>False
+    return _dispatch_trace_callback_impl(frame_obj, "return", arg)
+
+
+def _dispatch_eval_frame_return_trace(frame_obj, arg=None) -> bool:
+    return bool(_dispatch_eval_frame_return_trace_impl(frame_obj, arg))
+
+
 class _FrameEvalModuleState:
     def __init__(self) -> None:
         self.active = False
@@ -63,6 +276,11 @@ class _FrameEvalModuleState:
         self.hook_error = None
         self._unset = object()
         self.thread_info_var = contextvars.ContextVar("thread_info", default=self._unset)
+        self.slow_path_attempts = 0
+        self.slow_path_activations = 0
+        self.scoped_trace_installs = 0
+        self.return_events = 0
+        self.exception_events = 0
 
     def enable(self) -> None:
         self.active = True
@@ -104,11 +322,24 @@ class _FrameEvalModuleState:
     def clear_thread_local_info(self) -> None:
         self.thread_info_var.set(self._unset)
 
+    def record_slow_path_attempt(self, activated: bool, scoped_trace_installed: bool) -> None:
+        self.slow_path_attempts += 1
+        if activated:
+            self.slow_path_activations += 1
+        if scoped_trace_installed:
+            self.scoped_trace_installs += 1
+
+    def record_return_event(self) -> None:
+        self.return_events += 1
+
+    def record_exception_event(self) -> None:
+        self.exception_events += 1
+
     def get_stats(self) -> dict[str, object]:
         return {
             "active": self.active,
             "has_breakpoint_manager": False,
-            "frames_evaluated": 0,
+            "frames_evaluated": self.slow_path_activations,
             "cache_hits": 0,
             "cache_misses": 0,
             "evaluation_time": 0.0,
@@ -116,19 +347,70 @@ class _FrameEvalModuleState:
             "hook_available": self.hook_available,
             "hook_installed": self.hook_installed,
             "hook_error": self.hook_error,
+            "slow_path_attempts": self.slow_path_attempts,
+            "slow_path_activations": self.slow_path_activations,
+            "scoped_trace_installs": self.scoped_trace_installs,
+            "return_events": self.return_events,
+            "exception_events": self.exception_events,
         }
 
 
 _state = _FrameEvalModuleState()
 
+# store the previous eval_frame pointer so we can restore it on uninstall
+cdef _PyFrameEvalFunction _old_eval_frame
+cdef bint _eval_frame_hook_installed
+cdef object _code_extra_index
+
+# initialize pointer to NULL at module load
+_old_eval_frame = NULL
+_eval_frame_hook_installed = <bint>False
+_code_extra_index = -2
+
 
 def install_eval_frame_hook() -> bool:
-    """Install the low-level eval-frame hook controller."""
+    """Install the low-level eval-frame hook controller.
+
+    This implementation actually registers ``get_bytecode_while_frame_eval``
+    as the interpreter's frame evaluation function.  The previous value is
+    saved in ``_old_eval_frame`` so that ``uninstall_eval_frame_hook`` can
+    restore it later.  The hook function itself still returns ``NULL`` which
+    causes default evaluation; bytecode-selection logic will be added in a
+    later phase.
+    """
+    # attempt to register the real hook at the C level
+    cdef PyInterpreterState *interp
+    try:
+        global _old_eval_frame, _eval_frame_hook_installed
+        if _eval_frame_hook_installed:
+            return _state.install_hook()
+        interp = PyInterpreterState_Get()
+        _old_eval_frame = _PyInterpreterState_GetEvalFrameFunc(interp)
+        _PyInterpreterState_SetEvalFrameFunc(interp, get_bytecode_while_frame_eval)
+        _eval_frame_hook_installed = <bint>True
+    except Exception:
+        # fall back to no-op controller
+        pass
     return _state.install_hook()
 
 
 def uninstall_eval_frame_hook() -> bool:
-    """Uninstall the low-level eval-frame hook controller."""
+    """Uninstall the low-level eval-frame hook controller.
+
+    The interpreter's original ``eval_frame`` function is restored if we
+    previously saved it during install.  The state tracker is also notified
+    so Python-level consumers see the updated status.
+    """
+    cdef PyInterpreterState *interp
+    try:
+        global _old_eval_frame, _eval_frame_hook_installed
+        if _eval_frame_hook_installed:
+            interp = PyInterpreterState_Get()
+            _PyInterpreterState_SetEvalFrameFunc(interp, _old_eval_frame)
+            _old_eval_frame = NULL
+            _eval_frame_hook_installed = <bint>False
+    except Exception:
+        pass
     return _state.uninstall_hook()
 
 
@@ -137,10 +419,39 @@ def get_eval_frame_hook_status() -> dict[str, object]:
     return _state.get_hook_status()
 
 
+cpdef unsigned long _get_current_eval_frame_address():
+    """Return the raw pointer value currently stored as ``eval_frame``.
+
+    This helper is intended for testing and diagnostics; it allows Python
+    tests to verify that ``install_eval_frame_hook`` actually modified the
+    interpreter state.  A return value of ``0`` means there is no function set
+    or the state could not be determined.
+    """
+    cdef PyInterpreterState *interp
+    cdef void *addr
+    try:
+        interp = PyInterpreterState_Get()
+        addr = <void *>_PyInterpreterState_GetEvalFrameFunc(interp)
+        return <unsigned long>addr
+    except Exception:
+        return <unsigned long>0
+
+
 cpdef FuncCodeInfo get_func_code_info(frame_obj, code_obj):
     del frame_obj
     cdef FuncCodeInfo info = FuncCodeInfo()
+    cdef object file_breakpoints
+    cdef object code_lines
+
     info.update_breakpoint_info(code_obj)
+    if isinstance(code_obj, types.CodeType):
+        info.new_code = _get_modified_code_for_evaluation(code_obj)
+    file_breakpoints = _get_breakpoints(code_obj.co_filename)
+    if file_breakpoints:
+        code_lines = _collect_code_lines(code_obj)
+        info.breakpoint_lines = set(file_breakpoints).intersection(code_lines)
+        info.breakpoint_found = <bint>bool(info.breakpoint_lines)
+        info.always_skip_code = <bint>(not info.breakpoint_found)
     return info
 
 
@@ -183,44 +494,101 @@ cdef bint should_trace_frame(frame_obj) except -1:
     return <bint>func_code_info.breakpoint_found
 
 
-cdef PyObject *get_bytecode_while_frame_eval(frame_obj, int exc):
+cdef PyObject *get_bytecode_while_frame_eval(
+    PyThreadState *tstate,
+    _PyInterpreterFrame *frame,
+    int exc,
+) noexcept:
     """
     Main frame evaluation hook.
-    
+
     This function is called by Python's frame evaluation mechanism and
-    determines whether to use the default evaluation or inject debugging logic.
+    currently delegates back to the previously installed evaluator. The
+    breakpoint-aware interception logic will be added in a later phase.
     """
+    cdef _PyFrameEvalFunction fallback_eval
     cdef ThreadInfo thread_info
-    cdef FuncCodeInfo func_code_info
-    cdef PyObject *result
-    
-    # Get thread info
+    cdef object code_obj
+    cdef object frame_obj = None
+    cdef object result_value = None
+    cdef object previous_trace = None
+    cdef object exception_arg = None
+    cdef object scoped_trace_func = None
+    cdef PyObject *result_obj
+    cdef PyObject *exc_type = NULL
+    cdef PyObject *exc_value = NULL
+    cdef PyObject *exc_tb = NULL
+    cdef int lineno
+    cdef bint trace_installed = <bint>False
+    cdef bint restore_exception = <bint>False
+
+    fallback_eval = _old_eval_frame
+    if fallback_eval is NULL:
+        fallback_eval = _PyEval_EvalFrameDefault
+
     thread_info = <ThreadInfo>_state.get_thread_info()
+    if thread_info.inside_frame_eval > 0:
+        return fallback_eval(tstate, frame, exc)
+
     thread_info.enter_frame_eval()
-    
     try:
-        # Check if we should trace this frame
-        if not should_trace_frame(frame_obj):
-            # Use default evaluation for frames without breakpoints
-            # For now, return NULL to use default evaluation
-            result = NULL
-            return result
-        
-        # Get code info
-        func_code_info = get_func_code_info(frame_obj, frame_obj.f_code)
-        
-        # Use default evaluation (with potentially modified code)
-        # For now, return NULL to use default evaluation
-        result = NULL
-        return result
-        
-    except:
-        # On any exception, fall back to default evaluation
-        result = NULL
-        return result
+        code_obj = PyUnstable_InterpreterFrame_GetCode(frame)
+        lineno = PyUnstable_InterpreterFrame_GetLine(frame)
+
+        if frame.frame_obj:
+            frame_obj = <object>frame.frame_obj
+
+        if not _should_trace_code_for_eval_frame_impl(
+            thread_info,
+            code_obj,
+            lineno,
+            frame_obj,
+            <bint>True,
+        ):
+            return fallback_eval(tstate, frame, exc)
+
+        _state.record_slow_path_attempt(True, thread_info.thread_trace_func is not None)
+
+        if thread_info.thread_trace_func is not None:
+            previous_trace = sys.gettrace()
+            scoped_trace_func = _make_eval_frame_trace_func(code_obj, thread_info.thread_trace_func)
+            sys.settrace(scoped_trace_func)
+            trace_installed = <bint>True
+
+        result_obj = _PyEval_EvalFrameDefault(tstate, frame, exc)
+        if not result_obj:
+            PyErr_Fetch(&exc_type, &exc_value, &exc_tb)
+            PyErr_NormalizeException(&exc_type, &exc_value, &exc_tb)
+            restore_exception = <bint>True
+
+            if trace_installed and frame.frame_obj:
+                frame_obj = <object>frame.frame_obj
+            if frame_obj is not None and getattr(frame_obj, "f_trace", None) is not None:
+                exception_arg = (
+                    <object>exc_type if exc_type else None,
+                    <object>exc_value if exc_value else None,
+                    <object>exc_tb if exc_tb else None,
+                )
+                _dispatch_trace_callback_impl(frame_obj, "exception", exception_arg)
+            return result_obj
+
+        if trace_installed:
+            if frame.frame_obj:
+                frame_obj = <object>frame.frame_obj
+        if frame_obj is not None and result_obj:
+            result_value = <object>result_obj
+            if getattr(frame_obj, "f_trace", None) is not None:
+                _dispatch_eval_frame_return_trace_impl(frame_obj, result_value)
+
+        return result_obj
+    except Exception:
+        return fallback_eval(tstate, frame, exc)
     finally:
-        # Always exit frame evaluation context
+        if trace_installed:
+            sys.settrace(previous_trace)
         thread_info.exit_frame_eval()
+        if restore_exception:
+            PyErr_Restore(exc_type, exc_value, exc_tb)
 
 
 # _PyEval_RequestCodeExtraIndex, _PyCode_SetExtra, and _PyCode_GetExtra were all
@@ -298,6 +666,104 @@ def _PyCode_GetExtra(object code, Py_ssize_t index):
     return py_obj
 
 
+cdef bint _ensure_code_extra_index() except -1:
+    global _code_extra_index
+    cdef int code_extra_index
+
+    code_extra_index = int(cast(TypingAny, _code_extra_index))
+    if code_extra_index >= -1:
+        return <bint>(code_extra_index >= 0)
+
+    try:
+        _code_extra_index = _dapper_RequestCodeExtraIndex_C(_cleanup_code_extra)
+    except Exception:
+        _code_extra_index = -1
+
+    return <bint>(_code_extra_index >= 0)
+
+
+def _get_code_extra_metadata(object code):
+    """Get eval-frame metadata stored directly on a code object."""
+    cdef Py_ssize_t code_extra_index
+
+    if not isinstance(code, types.CodeType):
+        raise TypeError("code argument must be a code object")
+    if not _ensure_code_extra_index():
+        return None
+    code_extra_index = <Py_ssize_t>_code_extra_index
+    return _PyCode_GetExtra(code, code_extra_index)
+
+
+def _store_code_extra_metadata(object code, object metadata) -> bool:
+    """Store eval-frame metadata directly on a code object."""
+    cdef Py_ssize_t code_extra_index
+
+    if not isinstance(code, types.CodeType):
+        raise TypeError("code argument must be a code object")
+    if not _ensure_code_extra_index():
+        return False
+    code_extra_index = <Py_ssize_t>_code_extra_index
+    return _PyCode_SetExtra(code, code_extra_index, metadata) == 0
+
+
+def _clear_code_extra_metadata(object code) -> bool:
+    """Remove eval-frame metadata from a code object."""
+    cdef Py_ssize_t code_extra_index
+
+    if not isinstance(code, types.CodeType):
+        raise TypeError("code argument must be a code object")
+    if not _ensure_code_extra_index():
+        return False
+    code_extra_index = <Py_ssize_t>_code_extra_index
+    return _PyCode_SetExtra(code, code_extra_index, None) == 0
+
+
+def _store_modified_code_for_evaluation(
+    object original_code,
+    object modified_code,
+    object breakpoint_lines=None,
+) -> bool:
+    """Persist modified-code metadata for eval-frame lookup."""
+    cdef object metadata
+
+    if not isinstance(modified_code, types.CodeType):
+        raise TypeError("modified_code argument must be a code object")
+
+    metadata = {
+        "modified_code": modified_code,
+        "breakpoint_lines": set(cast(TypingAny, breakpoint_lines or ())),
+    }
+
+    from dapper._frame_eval.cache_manager import CacheManager
+
+    CacheManager._set_cached_code(cast(TypingAny, original_code), modified_code)
+    return _store_code_extra_metadata(original_code, metadata)
+
+
+def _get_modified_code_for_evaluation(object code_obj):
+    """Return the modified code object associated with *code_obj*, if any."""
+    cdef object metadata = _get_code_extra_metadata(code_obj)
+    cdef object modified_code = None
+    cdef object cached_code = None
+    cdef object filename = getattr(code_obj, "co_filename", None)
+
+    if isinstance(metadata, dict):
+        modified_code = metadata.get("modified_code")
+        if isinstance(modified_code, types.CodeType):
+            telemetry.record_cache_hit(source="code_extra", filename=filename)
+            return modified_code
+
+    from dapper._frame_eval.cache_manager import CacheManager
+
+    cached_code = CacheManager._get_cached_code(cast(TypingAny, code_obj))
+    if isinstance(cached_code, types.CodeType):
+        telemetry.record_cache_hit(source="cache_manager", filename=filename)
+        return cached_code
+
+    telemetry.record_cache_miss(filename=filename)
+    return None
+
+
 __all__ = [
     "FuncCodeInfo",
     "ThreadInfo",
@@ -305,10 +771,22 @@ __all__ = [
     "_PyCode_GetExtra",
     "_PyCode_SetExtra",
     "_PyEval_RequestCodeExtraIndex",
+    "_clear_code_extra_metadata",
     "_state",
     "dummy_trace_dispatch",
     "get_eval_frame_hook_status",
     "get_func_code_info",
     "install_eval_frame_hook",
+    "_collect_code_lines",
+    "_clear_thread_trace_func",
+    "_get_code_extra_metadata",
+    "_dispatch_trace_callback",
+    "_get_modified_code_for_evaluation",
     "uninstall_eval_frame_hook",
+    "_get_current_eval_frame_address",
+    "_set_thread_trace_func",
+    "_store_code_extra_metadata",
+    "_store_modified_code_for_evaluation",
+    "_should_trace_code_for_eval_frame",
+    "_should_trace_code_for_eval_frame_with_frame",
 ]

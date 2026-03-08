@@ -24,7 +24,18 @@ FrameStats = dict[str, Union[int, float, bool]]
 class _FrameEvalModuleState:
     """Mutable state shared by frame-evaluation backends."""
 
-    __slots__ = ("active", "hook_available", "hook_error", "hook_installed", "thread_info_var")
+    __slots__ = (
+        "active",
+        "exception_events",
+        "hook_available",
+        "hook_error",
+        "hook_installed",
+        "return_events",
+        "scoped_trace_installs",
+        "slow_path_activations",
+        "slow_path_attempts",
+        "thread_info_var",
+    )
 
     def __init__(self) -> None:
         self.active: bool = False
@@ -34,6 +45,11 @@ class _FrameEvalModuleState:
         self.thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
             "thread_info", default=None
         )
+        self.slow_path_attempts: int = 0
+        self.slow_path_activations: int = 0
+        self.scoped_trace_installs: int = 0
+        self.return_events: int = 0
+        self.exception_events: int = 0
 
     def enable(self) -> None:
         self.active = True
@@ -68,17 +84,35 @@ class _FrameEvalModuleState:
     def clear_thread_local_info(self) -> None:
         self.thread_info_var.set(None)
 
+    def record_slow_path_attempt(self, activated: bool, scoped_trace_installed: bool) -> None:
+        self.slow_path_attempts += 1
+        if activated:
+            self.slow_path_activations += 1
+        if scoped_trace_installed:
+            self.scoped_trace_installs += 1
+
+    def record_return_event(self) -> None:
+        self.return_events += 1
+
+    def record_exception_event(self) -> None:
+        self.exception_events += 1
+
     def get_stats(self) -> FrameStats:
         return {
             "active": self.active,
             "has_breakpoint_manager": False,
-            "frames_evaluated": 0,
+            "frames_evaluated": self.slow_path_activations,
             "cache_hits": 0,
             "cache_misses": 0,
             "evaluation_time": 0.0,
             "is_active": self.active,
             "hook_available": self.hook_available,
             "hook_installed": self.hook_installed,
+            "slow_path_attempts": self.slow_path_attempts,
+            "slow_path_activations": self.slow_path_activations,
+            "scoped_trace_installs": self.scoped_trace_installs,
+            "return_events": self.return_events,
+            "exception_events": self.exception_events,
         }
 
 

@@ -6,16 +6,17 @@ sys.monitoring-based). Implementations should be thread-safe where noted.
 
 from __future__ import annotations
 
-from abc import ABC
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 from typing import Any
+
+from dapper._frame_eval.backend import FrameEvalBackend
 
 if TYPE_CHECKING:
     from dapper._frame_eval.debugger_integration import IntegrationStatistics
 
 
-class TracingBackend(ABC):
+class TracingBackend(FrameEvalBackend):
     """Abstract tracing backend.
 
     Concrete backends must implement lifecycle and control operations used by

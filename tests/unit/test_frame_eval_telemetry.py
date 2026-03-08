@@ -79,3 +79,29 @@ def test_telemetry_records_hot_reload_metrics() -> None:
     assert len(snap.recent_events) == 2
     assert snap.recent_events[0].reason_code == "HOT_RELOAD_SUCCEEDED"
     assert snap.recent_events[1].reason_code == "HOT_RELOAD_FAILED"
+
+
+def test_telemetry_records_cache_metrics() -> None:
+    """Cache telemetry should record hits, misses, and invalidation reasons."""
+    reset_frame_eval_telemetry()
+
+    telemetry.record_cache_hit(source="code_extra")
+    telemetry.record_cache_miss(filename="sample.py")
+    telemetry.record_cache_invalidation_breakpoint_change(filepath="sample.py")
+    telemetry.record_cache_invalidation_config_change(scope="all")
+    telemetry.record_cache_invalidation_file_reload(filepath="sample.py")
+
+    snap = get_frame_eval_telemetry()
+
+    assert snap.reason_counts.cache_hit == 1
+    assert snap.reason_counts.cache_miss == 1
+    assert snap.reason_counts.cache_invalidation_breakpoint_change == 1
+    assert snap.reason_counts.cache_invalidation_config_change == 1
+    assert snap.reason_counts.cache_invalidation_file_reload == 1
+    assert [event.reason_code for event in snap.recent_events] == [
+        "CACHE_HIT",
+        "CACHE_MISS",
+        "CACHE_INVALIDATION_BREAKPOINT_CHANGE",
+        "CACHE_INVALIDATION_CONFIG_CHANGE",
+        "CACHE_INVALIDATION_FILE_RELOAD",
+    ]

@@ -95,6 +95,7 @@ def test_runtime_status_shape() -> None:
     assert status.tracing_enabled is False
     assert status.hook_available is True
     assert status.hook_installed is False
+    assert isinstance(status.backend_type, str)
 
     # Verify new serialization helper
     d = status.as_dict()
@@ -102,6 +103,7 @@ def test_runtime_status_shape() -> None:
     assert d["config"]["enabled"] == status.config.enabled
     assert d["hook_available"] is True
     assert d["hook_installed"] is False
+    assert d["backend_type"] == status.backend_type
 
 
 def test_runtime_stats_include_telemetry() -> None:
@@ -112,6 +114,8 @@ def test_runtime_stats_include_telemetry() -> None:
     runtime = FrameEvalRuntime()
     stats = runtime.get_stats()
 
+    assert hasattr(stats, "hook_stats")
+    assert "hook_installed" in stats.hook_stats
     assert hasattr(stats, "telemetry")
     assert hasattr(stats.telemetry, "reason_counts")
     assert stats.telemetry.reason_counts.auto_integration_failed >= 1

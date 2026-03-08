@@ -92,6 +92,27 @@ def test_setup_frame_eval():
         assert result is False
 
 
+def test_setup_applies_config_before_initialization():
+    """The configuration should be applied (via update_config) before components are initialized."""
+    manager = FrameEvalManager()
+    config = {"backend": "tracing", "tracing_backend": "SETTRACE"}
+
+    def fake_init():
+        # when initialization is invoked the updated config should already be applied
+        assert manager._frame_eval_config.backend is FrameEvalConfig.BackendKind.TRACING
+        return True
+
+    with (
+        patch.object(manager, "_validate_config", return_value=True),
+        patch.object(manager, "update_config", wraps=manager.update_config) as wrapped_update,
+        patch.object(manager, "_initialize_components", fake_init),
+        patch.object(manager._runtime, "initialize", return_value=True),
+    ):
+        assert manager.setup_frame_eval(config) is True
+
+    assert wrapped_update.called
+
+
 def test_shutdown_frame_eval():
     """Test frame evaluation shutdown."""
     # Setup mock state
@@ -101,10 +122,6 @@ def test_shutdown_frame_eval():
     # Create a test config that's different from default
     test_config = FrameEvalConfig()
     test_config.enabled = True
-    test_config.debug = True
-
-    # Use setattr to bypass type checking for test purposes
-    manager._frame_eval_config = test_config
 
     # Test shutdown
     with patch.object(manager, "_cleanup_components") as mock_cleanup:

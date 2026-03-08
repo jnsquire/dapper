@@ -6,6 +6,9 @@ import threading
 import time
 from typing import Any
 
+from dapper._frame_eval._frame_evaluator import _get_modified_code_for_evaluation
+from dapper._frame_eval._frame_evaluator import _store_modified_code_for_evaluation
+from dapper._frame_eval._frame_evaluator import get_func_code_info as get_eval_func_code_info
 from dapper._frame_eval.cache_manager import BreakpointCache
 from dapper._frame_eval.cache_manager import FuncCodeInfoCache
 from dapper._frame_eval.cache_manager import ThreadLocalCache
@@ -14,6 +17,7 @@ from dapper._frame_eval.cache_manager import cleanup_caches
 from dapper._frame_eval.cache_manager import clear_all_caches
 from dapper._frame_eval.cache_manager import configure_caches
 from dapper._frame_eval.cache_manager import get_breakpoints
+from dapper._frame_eval.cache_manager import get_cached_code
 from dapper._frame_eval.cache_manager import get_func_code_info
 from dapper._frame_eval.cache_manager import get_thread_info
 from dapper._frame_eval.cache_manager import invalidate_breakpoints
@@ -243,3 +247,24 @@ def test_cache_configuration():
 
     # Test clear all
     clear_all_caches()
+
+
+def test_breakpoint_invalidation_clears_modified_code_cache() -> None:
+    """Invalidating a file's breakpoints should drop cached modified code for that file."""
+    clear_all_caches()
+    original_code = sample_function.__code__
+    modified_code = another_function.__code__
+
+    _store_modified_code_for_evaluation(
+        original_code, modified_code, {original_code.co_firstlineno}
+    )
+    assert get_cached_code(original_code) is modified_code
+    assert _get_modified_code_for_evaluation(original_code) is modified_code
+
+    info = get_eval_func_code_info(None, original_code)
+    assert info.new_code is modified_code
+
+    invalidate_breakpoints(original_code.co_filename)
+
+    assert get_cached_code(original_code) is None
+    assert _get_modified_code_for_evaluation(original_code) is None

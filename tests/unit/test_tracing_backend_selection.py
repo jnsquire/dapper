@@ -187,6 +187,32 @@ class TestSupportsSysMonitoring:
             result = policy.supports_sys_monitoring()
         assert result is False
 
+    def test_eval_frame_availability_reflects_extension_status(self):
+        """supports_eval_frame should mirror what the Cython module reports."""
+        policy = FrameEvalCompatibilityPolicy()
+
+        # when the module import fails entirely, result must be False
+        with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": None}):
+            assert policy.supports_eval_frame() is False
+
+        # when module exists but reports available=False
+        class Dummy:
+            pass
+
+        dummy_mod = Dummy()
+
+        def fake_status():
+            return {"available": False}
+
+        dummy_mod.get_eval_frame_hook_status = fake_status
+        with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": dummy_mod}):
+            assert policy.supports_eval_frame() is False
+
+        # available=True case
+        dummy_mod.get_eval_frame_hook_status = lambda: {"available": True}
+        with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": dummy_mod}):
+            assert policy.supports_eval_frame() is True
+
     def test_returns_true_on_3_12_with_monitoring_attr(self):
         policy = FrameEvalCompatibilityPolicy()
         mock_monitoring = MagicMock()
@@ -222,6 +248,7 @@ class TestCreateBackend:
     def test_explicit_settrace_returns_settrace_backend(self):
         mgr = _fresh_manager()
         cfg = FrameEvalConfig(tracing_backend=FrameEvalConfig.TracingBackendKind.SETTRACE)
+        cfg.backend = FrameEvalConfig.BackendKind.TRACING
         backend = mgr._create_backend(cfg)
         assert isinstance(backend, SettraceBackend)
 
@@ -229,6 +256,7 @@ class TestCreateBackend:
         mgr = _fresh_manager()
         mgr._compatibility_policy = FrameEvalCompatibilityPolicy()
         cfg = FrameEvalConfig(tracing_backend=FrameEvalConfig.TracingBackendKind.AUTO)
+        cfg.backend = FrameEvalConfig.BackendKind.TRACING
         with patch.object(
             mgr._compatibility_policy,
             "supports_sys_monitoring",
@@ -241,6 +269,7 @@ class TestCreateBackend:
         """When monitoring_backend module hasn't been written yet, fall back gracefully."""
         mgr = _fresh_manager()
         cfg = FrameEvalConfig(tracing_backend=FrameEvalConfig.TracingBackendKind.SYS_MONITORING)
+        cfg.backend = FrameEvalConfig.BackendKind.TRACING
         # Simulate the module not existing
         with patch.dict("sys.modules", {"dapper._frame_eval.monitoring_backend": None}):
             backend = mgr._create_backend(cfg)
@@ -249,6 +278,7 @@ class TestCreateBackend:
     def test_auto_on_new_python_falls_back_when_module_missing(self):
         mgr = _fresh_manager()
         cfg = FrameEvalConfig(tracing_backend=FrameEvalConfig.TracingBackendKind.AUTO)
+        cfg.backend = FrameEvalConfig.BackendKind.TRACING
         with (
             patch.object(mgr._compatibility_policy, "supports_sys_monitoring", return_value=True),
             patch.dict("sys.modules", {"dapper._frame_eval.monitoring_backend": None}),
@@ -262,6 +292,7 @@ class TestCreateBackend:
 
     def test_active_backend_set_to_settrace_after_setup(self):
         mgr = _fresh_manager()
+        mgr._frame_eval_config.backend = FrameEvalConfig.BackendKind.TRACING
         mgr._frame_eval_config.tracing_backend = FrameEvalConfig.TracingBackendKind.SETTRACE
         # Patch away real runtime/integration side-effects
         with patch.object(mgr._runtime, "initialize", return_value=True):
@@ -273,6 +304,7 @@ class TestCreateBackend:
     def test_active_backend_cleared_after_shutdown(self):
         mgr = _fresh_manager()
         mgr._frame_eval_config.tracing_backend = FrameEvalConfig.TracingBackendKind.SETTRACE
+        mgr._frame_eval_config.backend = FrameEvalConfig.BackendKind.TRACING
         with patch.object(mgr._runtime, "initialize", return_value=True):
             mgr._initialize_components()
 

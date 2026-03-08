@@ -11,6 +11,7 @@ import pytest
 
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
 from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
+from dapper.adapter import hot_reload as hot_reload_module
 from dapper.adapter.server import PyDebugger
 from dapper.adapter.source_tracker import LoadedSourceTracker
 
@@ -91,6 +92,23 @@ async def test_hot_reload_inprocess_success(tmp_path: Path) -> None:
     assert snapshot.reason_counts.hot_reload_succeeded >= 1
 
     sys.modules.pop(module_name, None)
+
+
+def test_hot_reload_frame_eval_invalidation_uses_file_reload_reason() -> None:
+    debugger = PyDebugger(Mock())
+    service = cast("Any", debugger)._hot_reload_service
+    warnings: list[str] = []
+    invalidate_breakpoints = Mock()
+
+    old_invalidate = hot_reload_module._invalidate_breakpoints
+    hot_reload_module._invalidate_breakpoints = invalidate_breakpoints
+    try:
+        service._invalidate_frame_eval_cache("sample.py", warnings)
+    finally:
+        hot_reload_module._invalidate_breakpoints = old_invalidate
+
+    invalidate_breakpoints.assert_called_once_with("sample.py", reason="file_reload")
+    assert warnings == []
 
 
 @pytest.mark.asyncio

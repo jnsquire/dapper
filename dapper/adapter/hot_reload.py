@@ -642,7 +642,7 @@ class HotReloadService:
     def _invalidate_frame_eval_cache(self, path: str, warnings: list[str]) -> None:
         try:
             if _invalidate_breakpoints is not None:
-                _invalidate_breakpoints(path)
+                _invalidate_breakpoints(path, reason="file_reload")
         except Exception as exc:
             warnings.append(f"Frame-eval cache invalidation failed: {exc!s}")
 

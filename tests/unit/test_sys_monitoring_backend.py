@@ -658,6 +658,16 @@ class TestIntegrateWithBackend:
         backend_mock.install.assert_called_once_with(debugger)
         assert result is True
 
+    def test_routes_eval_frame_backend_to_install(self):
+        from dapper._frame_eval.debugger_integration import integrate_with_backend
+        from dapper._frame_eval.eval_frame_backend import EvalFrameBackend
+
+        backend_mock = MagicMock(spec=EvalFrameBackend)
+        debugger = MagicMock()
+        result = integrate_with_backend(backend_mock, debugger)
+        backend_mock.install.assert_called_once_with(debugger)
+        assert result is True
+
     def test_routes_settrace_backend_to_integrate_debugger_bdb(self):
         from dapper._frame_eval.debugger_integration import integrate_with_backend
         from dapper._frame_eval.settrace_backend import SettraceBackend

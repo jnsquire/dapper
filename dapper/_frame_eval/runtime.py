@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from dataclasses import dataclass
+from importlib import import_module
 import threading
 from typing import Any
 
@@ -19,6 +20,7 @@ from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.telemetry import FrameEvalTelemetrySnapshot
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
 from dapper._frame_eval.types import get_eval_frame_hook_status
+from dapper._frame_eval.types import get_frame_eval_stats
 
 
 @dataclass
@@ -65,6 +67,7 @@ class FrameEvalRuntimeStatus:
     tracing_enabled: bool
     hook_available: bool
     hook_installed: bool
+    backend_type: str  # name of the active backend, e.g. "SettraceBackend" or "EvalFrameBackend"
 
     def as_dict(self) -> dict[str, Any]:
         """Return a primitive dict representation (suitable for JSON/UI)."""
@@ -74,6 +77,7 @@ class FrameEvalRuntimeStatus:
             "tracing_enabled": self.tracing_enabled,
             "hook_available": self.hook_available,
             "hook_installed": self.hook_installed,
+            "backend_type": self.backend_type,
         }
 
 
@@ -82,6 +86,7 @@ class FrameEvalRuntimeStats:
     """Runtime subsystem statistics payload."""
 
     initialized: bool
+    hook_stats: dict[str, Any]
     cache_stats: CacheStatistics
     trace_stats: dict[str, Any]
     integration_stats: IntegrationStatistics
@@ -91,6 +96,7 @@ class FrameEvalRuntimeStats:
         """Return a primitive dict representation (suitable for JSON/UI)."""
         return {
             "initialized": self.initialized,
+            "hook_stats": self.hook_stats,
             "cache_stats": self.cache_stats,
             "trace_stats": self.trace_stats,
             "integration_stats": self.integration_stats,
@@ -155,6 +161,7 @@ class FrameEvalRuntime:
 
         return FrameEvalRuntimeStats(
             initialized=self._initialized,
+            hook_stats=get_frame_eval_stats(),
             cache_stats=get_cache_statistics(),
             trace_stats=trace_manager.get_statistics(),
             integration_stats=integration_bridge.get_integration_statistics(),
@@ -166,10 +173,17 @@ class FrameEvalRuntime:
         trace_manager = get_trace_manager()
         cfg = FrameEvalRuntimeConfig.from_frame_eval_config(self._config)
         hook_status = get_eval_frame_hook_status()
+
+        backend = (
+            import_module("dapper._frame_eval.frame_eval_main").FrameEvalManager().active_backend
+        )
+        backend_type = type(backend).__name__ if backend is not None else "none"
+
         return FrameEvalRuntimeStatus(
             initialized=self._initialized,
             config=cfg,
             tracing_enabled=trace_manager.is_enabled(),
             hook_available=bool(hook_status.get("available", False)),
             hook_installed=bool(hook_status.get("installed", False)),
+            backend_type=backend_type,
         )

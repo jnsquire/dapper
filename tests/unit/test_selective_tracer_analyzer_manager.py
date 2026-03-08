@@ -49,6 +49,7 @@ def test_should_trace_frame_skips_when_thread_requests(monkeypatch):
     monkeypatch.setattr(st, "get_thread_info", lambda: _FakeThreadInfo(skip=True))
     decision = analyzer.should_trace_frame(frame)
 
+    assert decision["path"] == "skip"
     assert decision["should_trace"] is False
     assert decision["reason"] == "thread_skip_frame"
 
@@ -62,6 +63,7 @@ def test_should_trace_frame_breakpoint_on_current_line(monkeypatch):
 
     decision = analyzer.should_trace_frame(frame)
 
+    assert decision["path"] == "breakpointed"
     assert decision["should_trace"] is True
     assert decision["reason"] == "breakpoint_on_line"
     assert decision["breakpoint_lines"] == {12}
@@ -77,6 +79,7 @@ def test_should_trace_frame_function_breakpoints_in_step_mode(monkeypatch):
 
     decision = analyzer.should_trace_frame(frame)
 
+    assert decision["path"] == "breakpointed"
     assert decision["should_trace"] is True
     assert decision["reason"] == "function_has_breakpoints"
     assert decision["breakpoint_lines"] == {28, 40}
@@ -91,6 +94,7 @@ def test_should_trace_frame_with_untracked_file_and_no_breakpoints(monkeypatch):
 
     decision = analyzer.should_trace_frame(frame)
 
+    assert decision["path"] == "skip"
     assert decision["should_trace"] is False
     assert decision["reason"] == "file_not_tracked"
 
@@ -147,6 +151,7 @@ def test_dispatcher_stats_for_none_frame_and_skip(monkeypatch):
         dispatcher.analyzer,
         "should_trace_frame",
         lambda _frame: {
+            "path": "original",
             "should_trace": False,
             "reason": "no_breakpoints_in_function",
             "breakpoint_lines": set(),
@@ -179,6 +184,7 @@ def test_dispatcher_dispatches_when_decision_is_true(monkeypatch):
         dispatcher.analyzer,
         "should_trace_frame",
         lambda _frame: {
+            "path": "breakpointed",
             "should_trace": True,
             "reason": "breakpoint_on_line",
             "breakpoint_lines": {7},

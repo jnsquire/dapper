@@ -8,6 +8,7 @@ frame evaluation lifecycle.
 
 from __future__ import annotations
 
+from enum import Enum
 import logging
 import os
 import platform
@@ -17,8 +18,16 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import ClassVar
 
+if TYPE_CHECKING:
+    # Avoid circular import when the module is first loaded
+    from dapper._frame_eval.backend import FrameEvalBackend
+
+from dapper._frame_eval.cache_manager import clear_all_caches
+from dapper._frame_eval.cache_manager import configure_caches
 from dapper._frame_eval.compatibility_policy import FrameEvalCompatibilityPolicy
+from dapper._frame_eval.condition_evaluator import get_condition_evaluator
 from dapper._frame_eval.config import FrameEvalConfig
+from dapper._frame_eval.modify_bytecode import set_optimization_enabled
 from dapper._frame_eval.runtime import FrameEvalRuntime
 
 if TYPE_CHECKING:
@@ -76,7 +85,16 @@ class FrameEvalManager:
         )
         self._is_initialized = False
         self._runtime = FrameEvalRuntime(self._frame_eval_config)
-        self._active_backend: TracingBackend | None = None
+        # The currently active backend, which may be a tracing-based
+        # backend or (eventually) an eval-frame backend.  We use the more
+        # general ``FrameEvalBackend`` protocol for typing, but because all
+        # existing backends subclass ``TracingBackend`` this change is
+        # backwards-compatible.
+        # ``FrameEvalBackend`` is imported lazily to avoid a circular
+        # import during module initialization.  The type-checker needs to see
+        # it so we re-import under TYPE_CHECKING at the top of the module.
+
+        self._active_backend: FrameEvalBackend | None = None
         self._compatibility_cache: dict[tuple, dict[str, Any]] = {}
         self._logger = logging.getLogger(__name__)
 
@@ -88,18 +106,64 @@ class FrameEvalManager:
         self._frame_eval_config.timeout = 30.0
 
     @property
-    def active_backend(self) -> TracingBackend | None:
-        """The currently active tracing backend, or None if not yet set up."""
+    def active_backend(self) -> FrameEvalBackend | None:
+        """The currently active backend (tracing or eval-frame), or ``None`` if
+        none has been created yet."""
         return self._active_backend
 
-    def _create_backend(self, config: FrameEvalConfig) -> TracingBackend:
-        """Factory: instantiate the correct TracingBackend for *config*.
+    def _create_backend(self, config: FrameEvalConfig) -> FrameEvalBackend:
+        """Factory: instantiate the correct backend for *config*.
 
-        Selection logic:
-        - ``AUTO``:  use ``SysMonitoringBackend`` when the running interpreter
-          supports ``sys.monitoring`` (≥ 3.12); otherwise ``SettraceBackend``.
-        - ``SYS_MONITORING``: always ``SysMonitoringBackend``.
-        - ``SETTRACE``: always ``SettraceBackend``.
+        Prior to Phase 1, only tracing backends existed.  We now support two
+        backend families:
+
+        * ``TRACING`` - the traditional settrace/sys.monitoring path.
+        * ``EVAL_FRAME`` - an interpreter hook that may bypass tracing
+          entirely.  (Currently only a stub.)
+
+        The ``AUTO`` mode will pick eval-frame when it is reported as
+        available by the compatibility policy, falling back to tracing
+        otherwise.  Explicit ``TRACING`` or ``EVAL_FRAME`` choices are honored
+        unless the requested backend is not supported, in which case the
+        fallback is tracing.
+        """
+        # Local aliases for readability
+        bk = FrameEvalConfig.BackendKind
+
+        # Choose helper according to backend field
+        if config.backend is bk.AUTO:
+            if self._compatibility_policy.supports_eval_frame():
+                try:
+                    return self._create_eval_frame_backend(config)
+                except Exception:
+                    # if creation fails for some reason, fall through
+                    self._logger.warning(
+                        "Eval-frame backend requested but failed to initialize; falling back to tracing",
+                    )
+            # default to tracing
+            return self._create_tracing_backend(config)
+
+        if config.backend is bk.EVAL_FRAME:
+            if self._compatibility_policy.supports_eval_frame():
+                try:
+                    return self._create_eval_frame_backend(config)
+                except Exception:
+                    self._logger.warning(
+                        "Eval-frame backend requested but failed to initialize; falling back to tracing",
+                    )
+            else:
+                self._logger.warning(
+                    "Eval-frame backend explicitly requested but not supported; using tracing instead",
+                )
+            return self._create_tracing_backend(config)
+
+        # TRACING or any other value
+        return self._create_tracing_backend(config)
+
+    def _create_tracing_backend(self, config: FrameEvalConfig) -> TracingBackend:
+        """Instantiate the appropriate tracing backend.  Extracted from the
+        original ``_create_backend`` implementation to keep the new logic
+        cleaner.
         """
         kind = config.tracing_backend
         backend_kind = FrameEvalConfig.TracingBackendKind  # local alias
@@ -136,6 +200,17 @@ class FrameEvalManager:
 
         return SettraceBackend()
 
+    def _create_eval_frame_backend(self, config: FrameEvalConfig) -> FrameEvalBackend:  # noqa: ARG002
+        """Instantiate (or stub) an eval-frame implementation.
+
+        In Phase 1 this is only a placeholder that may raise or log; once the
+        low-level eval-frame hook is implemented we will populate this with a
+        real backend.
+        """
+        from dapper._frame_eval.eval_frame_backend import EvalFrameBackend  # noqa: PLC0415
+
+        return EvalFrameBackend()
+
     @property
     def is_initialized(self) -> bool:
         """Check if frame evaluation is initialized."""
@@ -145,6 +220,21 @@ class FrameEvalManager:
     def config(self) -> FrameEvalConfig:
         """Get the current frame evaluation configuration."""
         return self._frame_eval_config
+
+    @staticmethod
+    def _coerce_enum_update(current_value: Any, candidate_value: Any) -> Any:
+        """Coerce string-like config updates to the enum type of the current value."""
+        if not isinstance(current_value, Enum) or isinstance(candidate_value, Enum):
+            return candidate_value
+
+        enum_type = type(current_value)
+        try:
+            return enum_type[candidate_value]
+        except Exception:
+            try:
+                return enum_type(candidate_value)
+            except Exception:
+                return candidate_value
 
     def update_config(self, updates: dict[str, Any]) -> bool:
         """
@@ -175,9 +265,11 @@ class FrameEvalManager:
             for key, value in updates.items():
                 if hasattr(temp_config, key):
                     current_value = getattr(temp_config, key)
-                    if value != current_value:  # Only update if value is different
-                        setattr(temp_config, key, value)
-                        valid_updates[key] = value
+                    coerced_value = self._coerce_enum_update(current_value, value)
+
+                    if coerced_value != current_value:  # Only update if value is different
+                        setattr(temp_config, key, coerced_value)
+                        valid_updates[key] = coerced_value
 
             if not valid_updates:  # No valid updates
                 self._logger.warning("No valid configuration updates provided")
@@ -196,12 +288,39 @@ class FrameEvalManager:
             for key, value in valid_updates.items():
                 setattr(self._frame_eval_config, key, value)
 
+            self._apply_config_side_effects(set(valid_updates))
+            self._runtime.initialize(self._frame_eval_config)
+
             self._logger.debug("Updated frame evaluation config: %s", valid_updates)
         except Exception as e:
             self._logger.warning("Failed to update configuration: %s", e)
             return False
         else:
             return True
+
+    def _apply_config_side_effects(self, updated_keys: set[str]) -> None:
+        """Propagate config changes to caches, bytecode state, and condition evaluation."""
+        if not updated_keys:
+            return
+
+        if "cache_size" in updated_keys:
+            configure_caches(func_code_max_size=self._frame_eval_config.cache_size)
+
+        if "optimize" in updated_keys:
+            set_optimization_enabled(self._frame_eval_config.optimize)
+
+        if {
+            "conditional_breakpoints_enabled",
+            "condition_budget_s",
+        } & updated_keys:
+            evaluator = get_condition_evaluator()
+            evaluator.enabled = self._frame_eval_config.conditional_breakpoints_enabled
+            evaluator._budget_s = self._frame_eval_config.condition_budget_s  # noqa: SLF001
+            if "conditional_breakpoints_enabled" in updated_keys:
+                evaluator.clear_cache()
+
+        if {"cache_size", "optimize", "conditional_breakpoints_enabled"} & updated_keys:
+            clear_all_caches(reason="config_change")
 
     def _validate_config(self, config: FrameEvalConfig) -> bool:
         """
@@ -313,15 +432,19 @@ class FrameEvalManager:
         if not self._validate_config(frame_eval_config):
             return False
 
-        # Initialize components
+        # Apply the validated configuration to the manager state.  We use
+        # :meth:`update_config` here so that any existing validation hooks are
+        # exercised and downstream code always sees the same ``FrameEvalConfig``
+        # instance that callers manipulated.
+        if not self.update_config(config):
+            return False
+
+        # Initialize components now that the config has been applied.  This ensures
+        # backend selection sees the desired settings (e.g. ``backend``/``tracing_backend``).
         try:
             self._initialize_components()
         except Exception:
             self._logger.exception("Failed to initialize frame evaluation components")
-            return False
-
-        # Update the configuration using update_config to ensure proper validation
-        if not self.update_config(config):
             return False
 
         # Keep runtime configuration in sync with validated manager config
@@ -381,9 +504,9 @@ class FrameEvalManager:
                 self._logger.warning("Runtime initialization returned False")
                 return False
 
-            # Create and store the active tracing backend.
+            # Create and store the active backend (tracing or eval-frame).
             self._active_backend = self._create_backend(self._frame_eval_config)
-            self._logger.debug("Tracing backend selected: %s", type(self._active_backend).__name__)
+            self._logger.debug("Backend selected: %s", type(self._active_backend).__name__)
             self._logger.debug("Initializing frame evaluation components")
         except Exception:
             self._logger.exception("Failed to initialize frame evaluation components")

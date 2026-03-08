@@ -439,7 +439,7 @@ def _try_invalidate_frame_eval(path: str, warnings: list[str]) -> None:
     try:
         from dapper._frame_eval.cache_manager import invalidate_breakpoints  # noqa: PLC0415
 
-        invalidate_breakpoints(path)
+        invalidate_breakpoints(path, reason="file_reload")
     except Exception as exc:
         warnings.append(f"Frame-eval cache invalidation failed: {exc!s}")
 

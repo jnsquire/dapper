@@ -7,6 +7,17 @@ This guide explains how to enable and use Dapper's frame evaluation system for h
 
 Frame evaluation is an optimization that replaces traditional line-by-line tracing with selective evaluation that only intervenes when breakpoints are present. This can reduce debugging overhead by 60-80% while maintaining full debugging functionality.
 
+## Current Support
+
+The frame-eval subsystem now has a real `eval_frame` backend on supported CPython builds.
+
+- `tracing` remains the safest default family and uses `sys.settrace` or `sys.monitoring`.
+- `eval_frame` installs a CPython eval-frame callback and, for selected frames, temporarily enables a scoped trace function only for the target code object.
+- Runtime status now reports the selected backend and low-level hook status.
+- Hook statistics now expose slow-path activations and live return/exception event counts.
+
+Current limitation: the eval-frame backend still relies on scoped tracing for debugger event delivery once a frame is selected. It does not yet switch between original and modified code objects at frame-entry time.
+
 ## Quick Start
 
 ### Basic Usage
@@ -42,10 +53,11 @@ Add to your `launch.json`:
     "console": "integratedTerminal",
     "frameEval": true,
     "frameEvalConfig": {
-        "selective_tracing": true,
-        "bytecode_optimization": true,
-        "cache_enabled": true,
-        "performance_monitoring": true
+        "backend": "auto",
+        "tracing_backend": "auto",
+        "enabled": true,
+        "fallback_to_tracing": true,
+        "conditional_breakpoints_enabled": true
     }
 }
 ```
@@ -56,32 +68,95 @@ Add to your `launch.json`:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `enabled` | bool | true | Enable/disable frame evaluation system |
-| `selective_tracing` | bool | true | Only trace frames with breakpoints |
-| `bytecode_optimization` | bool | true | Optimize bytecode for faster breakpoint checking |
-| `cache_enabled` | bool | true | Enable breakpoint and code object caching |
-| `performance_monitoring` | bool | true | Collect performance statistics |
-| `fallback_on_error` | bool | true | Fall back to traditional tracing on errors |
+| `enabled` | bool | false | Enable or disable frame evaluation |
+| `backend` | string | `auto` | Select `auto`, `tracing`, or `eval_frame` |
+| `tracing_backend` | string | `auto` | Select `auto`, `settrace`, or `sys_monitoring` when tracing is used |
+| `fallback_to_tracing` | bool | true | Fall back to tracing if eval-frame is unavailable or rejected |
+| `debug` | bool | false | Enable extra frame-eval diagnostics |
+| `cache_size` | int | 1000 | Maximum cache size for frame-eval helpers |
+| `optimize` | bool | true | Enable frame-eval optimizations |
+| `timeout` | float | 30.0 | Runtime timeout budget for frame-eval operations |
+| `conditional_breakpoints_enabled` | bool | true | Evaluate conditional breakpoints before dispatch when supported |
+| `condition_budget_s` | float | 0.1 | Soft wall-clock budget for a single conditional breakpoint evaluation |
 
 ### Advanced Configuration
 
-```python
-from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
+#### Backend Selection
 
-# Advanced configuration
+The frame evaluation subsystem currently supports two backend families:
+
+* **tracing** — uses the traditional ``sys.settrace`` or ``sys.monitoring``
+  APIs.  This is the default and is guaranteed to work on all supported
+  interpreters.
+* **eval_frame** — a CPython eval-frame hook that selects frames at entry and
+    installs a scoped trace function only for the matching code object. This
+    backend is available only on supported CPython builds.
+
+Backend configuration is controlled with two keys in the config object:
+
+```json
+{
+    "backend": "auto",            // one of "auto", "tracing", "eval_frame"
+    "tracing_backend": "auto"     // existing setting for tracing family
+}
+```
+
+The `auto` backend mode prefers `eval_frame` when the compatibility policy
+reports the interpreter has the necessary support; otherwise it falls back to
+the tracing family. The tracing backend key still controls which tracing
+implementation is chosen when `backend` is `auto` or `tracing`.
+
+### Verifying The Active Backend
+
+Use runtime status and hook stats to confirm that eval-frame is actually active:
+
+```python
+from dapper._frame_eval.frame_eval_main import frame_eval_manager
+
+debug_info = frame_eval_manager.get_debug_info()
+runtime_status = debug_info["runtime_status"]
+
+print("backend:", runtime_status.backend_type)
+print("hook installed:", runtime_status.hook_installed)
+```
+
+For hook-level counters:
+
+```python
+from dapper._frame_eval.runtime import FrameEvalRuntime
+
+runtime = FrameEvalRuntime()
+stats = runtime.get_stats()
+print(stats.hook_stats)
+```
+
+Useful hook counters include:
+
+- `slow_path_attempts`
+- `slow_path_activations`
+- `scoped_trace_installs`
+- `return_events`
+- `exception_events`
+
+If `backend_type` is not `EvalFrameBackend` or `hook_installed` is `False`, the process is not currently running through the eval-frame backend.
+
+Manager configuration example:
+
+
+```python
+# Advanced manager/runtime configuration
 config = {
     'enabled': True,
-    'selective_tracing': True,
-    'bytecode_optimization': True,
-    'cache_enabled': True,
-    'performance_monitoring': True,
-    'fallback_on_error': True,
-    'max_cache_size': 1000,
-    'cache_ttl': 300,  # 5 minutes
-    'trace_overhead_threshold': 0.1,  # 10% overhead threshold
+    'backend': 'eval_frame',
+    'tracing_backend': 'auto',
+    'fallback_to_tracing': True,
+    'conditional_breakpoints_enabled': True,
+    'condition_budget_s': 0.1,
 }
 
-bridge = DebuggerFrameEvalBridge(config)
+from dapper._frame_eval.frame_eval_main import frame_eval_manager
+
+frame_eval_manager.setup_frame_eval(config)
 ```
 
 ## Performance Characteristics
@@ -146,6 +221,12 @@ print("trace stats:", stats["trace_stats"])
 2. **Monitor Performance**: Use performance monitoring to verify improvements
 3. **Fallback Gracefully**: Let the system fall back to traditional tracing when needed
 4. **Cache Management**: Enable caching for the best performance
+
+### Known Limitations
+
+1. The current eval-frame backend still delivers debugger events through scoped tracing after the frame is selected.
+2. Breakpoint activation is currently based on executable lines known at frame entry, so the backend may register all executable lines in a function even when the debugger ultimately stops on only one line.
+3. Bytecode-modified code-object selection at eval-frame entry is still a roadmap item. Code-extra-backed modified-code caching and invalidation are now implemented, but the hook still executes the original frame and relies on scoped tracing for delivery.
 
 ### Common Scenarios
 

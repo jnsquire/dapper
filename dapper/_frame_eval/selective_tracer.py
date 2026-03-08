@@ -13,6 +13,7 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import Literal
 from typing import Protocol
 from typing import TypedDict
 
@@ -22,10 +23,26 @@ from dapper._frame_eval.cache_manager import set_breakpoints
 from dapper._frame_eval.condition_evaluator import get_condition_evaluator
 
 
+def _safe_int(value: object, default: int) -> int:
+    """Return *value* when it is an int, otherwise use *default*."""
+    return value if isinstance(value, int) else default
+
+
+def _decision_should_trace(decision: Mapping[str, Any]) -> bool:
+    """Support both modern and legacy trace-decision shapes."""
+    path = decision.get("path")
+    if path is not None:
+        return path == "breakpointed"
+    return bool(decision.get("should_trace", False))
+
+
 class ThreadInfo(Protocol):
     """Protocol defining the interface for thread information objects."""
 
+    inside_frame_eval: int
     fully_initialized: bool
+    is_debugger_internal_thread: bool
+    skip_all_frames: bool
     step_mode: bool
 
     def should_skip_frame(self, frame: FrameType) -> bool:
@@ -44,6 +61,8 @@ class FrameDebugInfo(TypedDict):
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from collections.abc import Mapping
+    from types import CodeType
     from types import FrameType
 else:
     try:
@@ -62,7 +81,10 @@ except ImportError:
     class _FallbackThreadInfo:
         """Fallback implementation of ThreadInfo protocol."""
 
+        inside_frame_eval: int = 0
         fully_initialized: bool = False
+        is_debugger_internal_thread: bool = False
+        skip_all_frames: bool = False
         step_mode: bool = False
 
         def should_skip_frame(self, frame: FrameType) -> bool:  # noqa: ARG002
@@ -85,6 +107,7 @@ def get_thread_info() -> ThreadInfo:
 class TraceDecision(TypedDict):
     """TypedDict for trace decision results."""
 
+    path: Literal["skip", "original", "breakpointed"]
     should_trace: bool
     reason: str
     breakpoint_lines: set[int]
@@ -137,12 +160,17 @@ class FrameTraceAnalyzer:
         frame_info: FrameDebugInfo,
         breakpoint_lines: set[int] | None = None,
         update_stats: bool = False,
+        path: Literal["skip", "original", "breakpointed"] | None = None,
     ) -> TraceDecision:
         """Helper to create a TraceDecision with consistent defaults."""
         if update_stats and should_trace:
             self._stats["traced_frames"] += 1
 
+        if path is None:
+            path = "breakpointed" if should_trace else "original"
+
         return TraceDecision(
+            path=path,
             should_trace=should_trace,
             reason=reason,
             breakpoint_lines=breakpoint_lines or set(),
@@ -159,6 +187,7 @@ class FrameTraceAnalyzer:
                 should_trace=False,
                 reason="thread_skip_frame",
                 frame_info=self._get_frame_info(frame),
+                path="skip",
             )
         return None
 
@@ -169,12 +198,182 @@ class FrameTraceAnalyzer:
                 should_trace=False,
                 reason="no_breakpoints_in_file",
                 frame_info=frame_info,
+                path="original",
             )
         return self._create_trace_decision(
             should_trace=False,
             reason="file_not_tracked",
             frame_info=frame_info,
+            path="skip",
         )
+
+    def _get_code_info(self, code_obj: CodeType, lineno: int) -> FrameDebugInfo:
+        """Build frame-style debug info from a code object and line number."""
+        return {
+            "filename": code_obj.co_filename,
+            "function": code_obj.co_name,
+            "lineno": lineno,
+            "is_module": code_obj.co_name == "<module>",
+        }
+
+    def _should_skip_code_location(
+        self,
+        code_obj: CodeType,
+        *,
+        frame: Any | None,
+        allow_current_eval_frame: bool,
+        frame_info: FrameDebugInfo,
+    ) -> TraceDecision | None:
+        """Apply shared thread-level skip rules for a code location."""
+        thread_info = get_thread_info()
+
+        if not allow_current_eval_frame and bool(getattr(thread_info, "inside_frame_eval", 0)):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="inside_frame_eval",
+                frame_info=frame_info,
+                path="skip",
+            )
+
+        if not bool(getattr(thread_info, "fully_initialized", True)):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="thread_not_initialized",
+                frame_info=frame_info,
+                path="skip",
+            )
+
+        if bool(getattr(thread_info, "is_debugger_internal_thread", False)):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="debugger_internal_thread",
+                frame_info=frame_info,
+                path="skip",
+            )
+
+        if bool(getattr(thread_info, "skip_all_frames", False)):
+            return self._create_trace_decision(
+                should_trace=False,
+                reason="thread_skip_frame",
+                frame_info=frame_info,
+                path="skip",
+            )
+
+        if frame is not None:
+            skip_decision = self._check_skip_frame(frame)
+            if skip_decision is not None:
+                return skip_decision
+
+        del code_obj
+        return None
+
+    def _get_code_breakpoints(
+        self,
+        code_obj: CodeType,
+        file_breakpoints: set[int],
+        frame: FrameType | None = None,
+    ) -> set[int]:
+        """Return tracked breakpoint lines that belong to *code_obj*."""
+        try:
+            code_lines = {line for _, _, line in code_obj.co_lines() if line is not None}
+        except Exception:
+            code_lines = set()
+
+        if code_lines:
+            return file_breakpoints.intersection(code_lines)
+
+        default_start = getattr(frame, "f_lineno", 0) if frame is not None else 0
+        func_start = _safe_int(getattr(code_obj, "co_firstlineno", None), default_start)
+        func_end = self._estimate_function_end(frame) if frame is not None else func_start + 100
+        return {line for line in file_breakpoints if func_start <= line <= func_end}
+
+    def should_trace_code(
+        self,
+        code_obj: CodeType,
+        lineno: int,
+        frame: Any | None = None,
+        *,
+        allow_current_eval_frame: bool = False,
+    ) -> TraceDecision:
+        """Determine if a code object location should take the debugger path.
+
+        This is the shared decision entry point used by both selective tracing
+        and the eval-frame hook.
+        """
+        self._stats["total_frames"] += 1
+        frame_info = self._get_code_info(code_obj, lineno)
+        filename = frame_info["filename"]
+
+        skip_decision = self._should_skip_code_location(
+            code_obj,
+            frame=frame,
+            allow_current_eval_frame=allow_current_eval_frame,
+            frame_info=frame_info,
+        )
+        if skip_decision is not None:
+            decision = skip_decision
+        else:
+            file_breakpoints = get_breakpoints(filename)
+            if file_breakpoints is None or not file_breakpoints:
+                decision = self._handle_no_breakpoints(filename, frame_info)
+            elif lineno in file_breakpoints:
+                condition = self._breakpoint_conditions.get(filename, {}).get(lineno)
+                if condition is not None and frame is None:
+                    decision = self._create_trace_decision(
+                        should_trace=True,
+                        reason="conditional_breakpoint_pending",
+                        frame_info=frame_info,
+                        breakpoint_lines={lineno},
+                        update_stats=True,
+                        path="breakpointed",
+                    )
+                elif condition is not None:
+                    result = get_condition_evaluator().evaluate(condition, frame)
+                    if not result["passed"] and not result["fallback"]:
+                        decision = self._create_trace_decision(
+                            should_trace=False,
+                            reason="condition_not_met",
+                            frame_info=frame_info,
+                            path="original",
+                        )
+                    else:
+                        decision = self._create_trace_decision(
+                            should_trace=True,
+                            reason="breakpoint_on_line",
+                            frame_info=frame_info,
+                            breakpoint_lines={lineno},
+                            update_stats=True,
+                            path="breakpointed",
+                        )
+                else:
+                    decision = self._create_trace_decision(
+                        should_trace=True,
+                        reason="breakpoint_on_line",
+                        frame_info=frame_info,
+                        breakpoint_lines={lineno},
+                        update_stats=True,
+                        path="breakpointed",
+                    )
+            else:
+                func_breakpoints = self._get_code_breakpoints(code_obj, file_breakpoints, frame)
+                if func_breakpoints and self._should_trace_function_for_step(frame):
+                    decision = self._create_trace_decision(
+                        should_trace=True,
+                        reason="function_has_breakpoints",
+                        frame_info=frame_info,
+                        breakpoint_lines=func_breakpoints,
+                        update_stats=True,
+                        path="breakpointed",
+                    )
+                else:
+                    decision = self._create_trace_decision(
+                        should_trace=False,
+                        reason="no_breakpoints_in_function",
+                        frame_info=frame_info,
+                        path="original",
+                    )
+
+        return decision
 
     def should_trace_frame(self, frame: FrameType) -> TraceDecision:
         """Determine if a frame should be traced based on breakpoints.
@@ -186,59 +385,10 @@ class FrameTraceAnalyzer:
             TraceDecision containing the decision and reasoning
 
         """
-        self._stats["total_frames"] += 1
-        frame_info = self._get_frame_info(frame)
-        filename = frame_info["filename"]
-        lineno = frame_info["lineno"]
-
-        # Check if frame should be skipped
-        skip_decision = self._check_skip_frame(frame)
-        if skip_decision is not None:
-            return skip_decision
-
-        # Get breakpoints for the file
-        file_breakpoints = get_breakpoints(filename)
-
-        # Handle cases with no breakpoints or no file tracking
-        if file_breakpoints is None or not file_breakpoints:
-            return self._handle_no_breakpoints(filename, frame_info)
-
-        # Check for breakpoint on current line
-        if lineno in file_breakpoints:
-            # Fast-path: evaluate condition before full dispatch.
-            condition = self._breakpoint_conditions.get(filename, {}).get(lineno)
-            if condition is not None:
-                result = get_condition_evaluator().evaluate(condition, frame)
-                if not result["passed"] and not result["fallback"]:
-                    return self._create_trace_decision(
-                        should_trace=False,
-                        reason="condition_not_met",
-                        frame_info=frame_info,
-                    )
-            return self._create_trace_decision(
-                should_trace=True,
-                reason="breakpoint_on_line",
-                frame_info=frame_info,
-                breakpoint_lines={lineno},
-                update_stats=True,
-            )
-
-        # Check for function breakpoints that might need tracing
-        func_breakpoints = self._get_function_breakpoints(frame, file_breakpoints)
-        if func_breakpoints and self._should_trace_function_for_step(frame):
-            return self._create_trace_decision(
-                should_trace=True,
-                reason="function_has_breakpoints",
-                frame_info=frame_info,
-                breakpoint_lines=func_breakpoints,
-                update_stats=True,
-            )
-
-        # Default case: no tracing needed
-        return self._create_trace_decision(
-            should_trace=False,
-            reason="no_breakpoints_in_function",
-            frame_info=frame_info,
+        return self.should_trace_code(
+            frame.f_code,
+            frame.f_lineno,
+            frame=frame,
         )
 
     def _should_track_file(self, filename: str) -> bool:
@@ -278,9 +428,16 @@ class FrameTraceAnalyzer:
 
     def _estimate_function_end(self, frame: FrameType) -> int:
         """Estimate the end line of a function."""
+        default_start = _safe_int(getattr(frame, "f_lineno", None), 0)
+        code_obj = getattr(frame, "f_code", None)
+        fallback_end = _safe_int(getattr(code_obj, "co_firstlineno", None), default_start) + 100
+
         try:
+            if code_obj is None:
+                return fallback_end
+
             # Get all line numbers from the code object
-            instructions = list(dis.get_instructions(frame.f_code))
+            instructions = list(dis.get_instructions(code_obj))
             line_numbers: set[int] = set()
 
             for instr in instructions:
@@ -290,12 +447,12 @@ class FrameTraceAnalyzer:
                     line_numbers.add(line)
 
             if not line_numbers:
-                return frame.f_code.co_firstlineno + 100  # Fallback estimate
+                return fallback_end
             return max(line_numbers)
         except Exception:
-            return frame.f_code.co_firstlineno + 100  # Fallback estimate
+            return fallback_end
 
-    def _should_trace_function_for_step(self, _frame: FrameType) -> bool:
+    def _should_trace_function_for_step(self, _frame: FrameType | None) -> bool:
         """Determine if a function should be traced for step-over functionality."""
         thread_info = get_thread_info()
 
@@ -429,7 +586,7 @@ class SelectiveTraceDispatcher:
         # Analyze frame to determine if tracing is needed
         decision = self.analyzer.should_trace_frame(frame)
 
-        if not decision["should_trace"]:
+        if not _decision_should_trace(decision):
             with self._lock:
                 self._dispatch_stats["skipped_calls"] += 1
             return None
@@ -628,6 +785,22 @@ def disable_selective_tracing() -> None:
 def get_selective_trace_function() -> Callable | None:
     """Get the selective trace function for sys.settrace()."""
     return _trace_manager.get_trace_function()
+
+
+def should_trace_code_location(
+    code_obj: CodeType,
+    lineno: int,
+    frame: Any | None = None,
+    *,
+    allow_current_eval_frame: bool = False,
+) -> TraceDecision:
+    """Return the shared tracing decision for a code object location."""
+    return _trace_manager.dispatcher.analyzer.should_trace_code(
+        code_obj,
+        lineno,
+        frame=frame,
+        allow_current_eval_frame=allow_current_eval_frame,
+    )
 
 
 def update_breakpoints(filename: str, breakpoints: set[int]) -> None:

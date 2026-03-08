@@ -33,11 +33,26 @@ class MockBreakpointCache:
 # Create a mock breakpoint cache
 mock_bp_cache = MockBreakpointCache()
 
-# Mock the get_breakpoints and set_breakpoints functions in the cache_manager
-cache_manager.get_breakpoints = mock_bp_cache.get_breakpoints
-cache_manager.set_breakpoints = mock_bp_cache.set_breakpoints
-
 # Now import the modules we're testing
+
+
+@pytest.fixture(autouse=True)
+def _patch_breakpoint_cache(monkeypatch):
+    mock_bp_cache.breakpoints.clear()
+    monkeypatch.setattr(cache_manager, "get_breakpoints", mock_bp_cache.get_breakpoints)
+    monkeypatch.setattr(cache_manager, "set_breakpoints", mock_bp_cache.set_breakpoints)
+    monkeypatch.setattr(
+        dapper._frame_eval.selective_tracer,
+        "get_breakpoints",
+        mock_bp_cache.get_breakpoints,
+    )
+    monkeypatch.setattr(
+        dapper._frame_eval.selective_tracer,
+        "set_breakpoints",
+        mock_bp_cache.set_breakpoints,
+    )
+    yield
+    mock_bp_cache.breakpoints.clear()
 
 
 class TestFrameAnalyzer:

@@ -46,6 +46,18 @@ class FrameEvalConfig:
 
     tracing_backend: TracingBackendKind = TracingBackendKind.AUTO
 
+    # **new** backend selection: allow either a tracing-based or an
+    # eval-frame-based backend. AUTO will prefer eval-frame when the
+    # compatibility policy reports support (see
+    # ``FrameEvalCompatibilityPolicy.supports_eval_frame``) and fall back to
+    # tracing otherwise.
+    class BackendKind(Enum):
+        AUTO = "auto"
+        TRACING = "tracing"
+        EVAL_FRAME = "eval_frame"
+
+    backend: BackendKind = BackendKind.AUTO
+
     def __post_init__(self):
         """Initialize the configuration and handle any unknown fields."""
         # This method will be called by dataclass after __init__
@@ -66,6 +78,7 @@ class FrameEvalConfig:
             "conditional_breakpoints_enabled": self.conditional_breakpoints_enabled,
             "condition_budget_s": self.condition_budget_s,
             "tracing_backend": self.tracing_backend.name,
+            "backend": self.backend.name,
         }
 
     @classmethod
@@ -98,6 +111,16 @@ class FrameEvalConfig:
                     filtered_dict["tracing_backend"] = cls.TracingBackendKind(val)
                 except Exception:
                     filtered_dict.pop("tracing_backend", None)
+
+        if "backend" in filtered_dict:
+            val = filtered_dict["backend"]
+            try:
+                filtered_dict["backend"] = cls.BackendKind[val]
+            except Exception:
+                try:
+                    filtered_dict["backend"] = cls.BackendKind(val)
+                except Exception:
+                    filtered_dict.pop("backend", None)
 
         return cls(**filtered_dict)
 

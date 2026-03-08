@@ -1,29 +1,36 @@
-"""import sys
-from pathlib import Path
+"""Simple test for frame evaluation functionality.
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent.parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-Simple test script for frame evaluation functionality.
+This module was originally a standalone script that enabled frame evaluation
+at import time.  That caused pytest to hang during collection because the
+low-level eval-frame hook would activate while pytest was importing test
+modules, triggering deep recursion.  The code has been moved into a test
+function so the hook is only enabled during an actual test run.
 """
 
-try:
-    import dapper._frame_eval
-    from dapper._frame_eval import enable_frame_eval
-    from dapper._frame_eval import is_frame_eval_available
+import dapper._frame_eval
+from dapper._frame_eval import disable_frame_eval
+from dapper._frame_eval import enable_frame_eval
+from dapper._frame_eval import is_frame_eval_available
 
-    print(f"CYTHON_AVAILABLE: {dapper._frame_eval.CYTHON_AVAILABLE}")
-    print(f"Frame eval available: {is_frame_eval_available()}")
 
-    if is_frame_eval_available():
+def test_enable_frame_eval():
+    """Ensure the frame-eval subsystem can be enabled when available.
+
+    The test does **not** enable the hook at import time; doing so would
+    interfere with pytest's own execution (see issue #...).
+    """
+
+    # sanity-check availability
+    assert isinstance(dapper._frame_eval.CYTHON_AVAILABLE, bool)
+    available = is_frame_eval_available()
+
+    if available:
         success = enable_frame_eval()
-        print(f"Frame eval enabled: {success}")
+        assert success is True
+        # verify we can disable again to avoid leaving the hook active for the
+        # remainder of the test suite
+        assert disable_frame_eval() is True
     else:
-        print("Frame evaluation not available on this Python version")
-
-except ImportError as e:
-    print(f"Import error: {e}")
-except Exception as e:
-    print(f"Error: {e}")
+        # on unsupported interpreters the call should simply be a no-op
+        # (``enable_frame_eval`` returns False).
+        assert enable_frame_eval() is False

@@ -30,6 +30,11 @@ class FrameEvalReasonCounts:
     """
 
     auto_integration_failed: int = 0
+    cache_hit: int = 0
+    cache_invalidation_breakpoint_change: int = 0
+    cache_invalidation_config_change: int = 0
+    cache_invalidation_file_reload: int = 0
+    cache_miss: int = 0
     bytecode_injection_failed: int = 0
     bytecode_optimization_failed: int = 0
     bytecode_optimization_file_read_failed: int = 0
@@ -46,6 +51,11 @@ class FrameEvalReasonCounts:
         # Explicit, literal mapping from enum value -> dataclass field.
         out = {
             "AUTO_INTEGRATION_FAILED": self.auto_integration_failed,
+            "CACHE_HIT": self.cache_hit,
+            "CACHE_INVALIDATION_BREAKPOINT_CHANGE": self.cache_invalidation_breakpoint_change,
+            "CACHE_INVALIDATION_CONFIG_CHANGE": self.cache_invalidation_config_change,
+            "CACHE_INVALIDATION_FILE_RELOAD": self.cache_invalidation_file_reload,
+            "CACHE_MISS": self.cache_miss,
             "BYTECODE_INJECTION_FAILED": self.bytecode_injection_failed,
             "BYTECODE_OPTIMIZATION_FAILED": self.bytecode_optimization_failed,
             "BYTECODE_OPTIMIZATION_FILE_READ_FAILED": self.bytecode_optimization_file_read_failed,
@@ -116,6 +126,33 @@ class FrameEvalTelemetry:
 
     def record_auto_integration_failed(self, **kwargs: Any) -> None:
         self._record("AUTO_INTEGRATION_FAILED", "auto_integration_failed", **kwargs)
+
+    def record_cache_hit(self, **kwargs: Any) -> None:
+        self._record("CACHE_HIT", "cache_hit", **kwargs)
+
+    def record_cache_invalidation_breakpoint_change(self, **kwargs: Any) -> None:
+        self._record(
+            "CACHE_INVALIDATION_BREAKPOINT_CHANGE",
+            "cache_invalidation_breakpoint_change",
+            **kwargs,
+        )
+
+    def record_cache_invalidation_config_change(self, **kwargs: Any) -> None:
+        self._record(
+            "CACHE_INVALIDATION_CONFIG_CHANGE",
+            "cache_invalidation_config_change",
+            **kwargs,
+        )
+
+    def record_cache_invalidation_file_reload(self, **kwargs: Any) -> None:
+        self._record(
+            "CACHE_INVALIDATION_FILE_RELOAD",
+            "cache_invalidation_file_reload",
+            **kwargs,
+        )
+
+    def record_cache_miss(self, **kwargs: Any) -> None:
+        self._record("CACHE_MISS", "cache_miss", **kwargs)
 
     def record_bytecode_injection_failed(self, **kwargs: Any) -> None:
         self._record("BYTECODE_INJECTION_FAILED", "bytecode_injection_failed", **kwargs)
