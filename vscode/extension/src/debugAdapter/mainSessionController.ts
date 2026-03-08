@@ -2,16 +2,22 @@ import * as vscode from 'vscode';
 import { DebugAdapterServer } from 'vscode';
 import { spawn } from 'child_process';
 import * as Net from 'net';
-import * as os from 'os';
-import { delimiter as pathDelimiter } from 'path';
 import { EnvironmentManager, InstallMode } from '../environment/EnvironmentManager.js';
-import { buildDefaultLogFilePath } from './logFileNaming.js';
 import {
   type AttachByPidDiagnostic,
   type AttachRequestArguments,
   type LaunchRequestArguments,
 } from './debugAdapterTypes.js';
 import { DapperDebugSession, PythonDebugAdapterTransport } from './dapperDebugSession.js';
+import {
+  assertSingleLaunchTarget,
+  buildLauncherArgs,
+  buildProcessEnv,
+  type PreparedEnvironment,
+  resolveAttachTarget,
+  resolveLaunchToken,
+  resolveProcessId,
+} from './mainSessionHelpers.js';
 import type { DapperLaunchHistoryService } from '../views/DapperLaunchesView.js';
 
 const ATTACH_BY_PID_DIAGNOSTIC_PREFIX = 'DAPPER_ATTACH_BY_PID_DIAGNOSTIC ';
@@ -30,6 +36,19 @@ class DapperAttachByPidError extends Error {
       (this as Error & { cause?: Error }).cause = options.cause;
     }
   }
+}
+
+interface MainSessionBootstrapContext {
+  config: vscode.DebugConfiguration;
+  attachConfig: AttachRequestArguments;
+  outChannel: vscode.LogOutputChannel;
+  envInfo: PreparedEnvironment;
+  pythonPath: string;
+  cwd: string;
+  terminalEnv: Record<string, string>;
+  logFile: string;
+  launchToken?: string;
+  processId?: number;
 }
 
 export class MainSessionController {
@@ -74,29 +93,22 @@ export class MainSessionController {
       return undefined;
     }
 
-    const processId = this._resolveProcessId(configuration);
-    const host = typeof configuration.host === 'string' ? configuration.host.trim() : '';
-    const rawPort = configuration.port;
-    const port = typeof rawPort === 'number'
-      ? rawPort
-      : typeof rawPort === 'string' && rawPort.trim()
-        ? Number(rawPort)
-        : undefined;
-    const program = typeof configuration.program === 'string' ? configuration.program.trim() : '';
-    const moduleName = typeof configuration.module === 'string' ? configuration.module.trim() : '';
+    const target = resolveAttachTarget(configuration);
+    const hasHostPort = Boolean(target.host) && target.port != null;
 
-    const hasHostPort = Boolean(host) && Number.isInteger(port) && (port as number) > 0;
-    if ((program && moduleName) || (hasHostPort && (program || moduleName)) || (processId != null && (program || moduleName))) {
-      throw new Error('Provide exactly one target: processId, host/port, program, or module.');
-    }
-    if (processId != null && hasHostPort) {
+    if (target.processId != null && hasHostPort) {
       throw new Error('Provide exactly one attach target: processId or host/port.');
     }
     if (!hasHostPort) {
       return undefined;
     }
 
-    return new DebugAdapterServer(port as number, host);
+    const { port } = target;
+    if (port == null) {
+      return undefined;
+    }
+
+    return new DebugAdapterServer(port, target.host);
   }
 
   public async ensureMainSessionInfrastructure(session: vscode.DebugSession): Promise<void> {
@@ -226,24 +238,6 @@ export class MainSessionController {
     outChannel.info(`Attached process ${processId} connected back over IPC`);
   }
 
-  private _resolveProcessId(config: vscode.DebugConfiguration): number | undefined {
-    const raw = (config as AttachRequestArguments).processId;
-    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-      return raw;
-    }
-    if (typeof raw === 'string') {
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return undefined;
-      }
-      const parsed = Number(trimmed);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-    return undefined;
-  }
-
   private _createPythonIpcServer(outChannel: vscode.LogOutputChannel): number {
     const transport = this._mainTransport ?? new PythonDebugAdapterTransport();
     this._mainTransport = transport;
@@ -292,7 +286,14 @@ export class MainSessionController {
     this._serverPort = (server.address() as Net.AddressInfo).port;
   }
 
-  private async _initializeMainSessionInfrastructure(session: vscode.DebugSession): Promise<void> {
+  private _initializeTransportServers(outChannel: vscode.LogOutputChannel): number {
+    this._mainTransport = new PythonDebugAdapterTransport();
+    const pythonIpcPort = this._createPythonIpcServer(outChannel);
+    this._createAdapterServer(outChannel);
+    return pythonIpcPort;
+  }
+
+  private async _buildBootstrapContext(session: vscode.DebugSession): Promise<MainSessionBootstrapContext> {
     const config = session.configuration;
     const attachConfig = config as AttachRequestArguments;
     const installMode = (vscode.workspace.getConfiguration('dapper.python').get<string>('installMode') || 'auto') as InstallMode;
@@ -305,99 +306,77 @@ export class MainSessionController {
       preferredPythonPath: typeof config.pythonPath === 'string' ? config.pythonPath : undefined,
       preferredVenvPath: typeof config.venvPath === 'string' ? config.venvPath : undefined,
     });
-    const pythonPath = envInfo.pythonPath;
     const cwd = (config.cwd as string | undefined) || session.workspaceFolder?.uri.fsPath || process.cwd();
-    const { terminalEnv, logFile } = this._buildProcessEnv(
+    const { terminalEnv, logFile } = buildProcessEnv(
+      this._extensionVersion,
       envInfo,
       config as LaunchRequestArguments | AttachRequestArguments,
       session,
     );
-    const launchToken = this._resolveLaunchToken(config);
+    const launchToken = resolveLaunchToken(config);
     if (launchToken) {
       this._launchHistory?.updateLogFile(launchToken, logFile);
     }
-    const processId = this._resolveProcessId(config);
 
-    this._mainTransport = new PythonDebugAdapterTransport();
-    const pythonIpcPort = this._createPythonIpcServer(outChannel);
-    this._createAdapterServer(outChannel);
+    return {
+      config,
+      attachConfig,
+      outChannel,
+      envInfo,
+      pythonPath: envInfo.pythonPath,
+      cwd,
+      terminalEnv,
+      logFile,
+      launchToken,
+      processId: resolveProcessId(config),
+    };
+  }
 
-    if (config.request === 'launch') {
-      const program = config.program as string | undefined;
-      const moduleName = config.module as string | undefined;
-      if (program && moduleName) {
-        throw new Error('Provide exactly one launch target: program or module.');
-      }
-    }
-
-    if (config.request === 'attach' && processId != null) {
-      await this._spawnAttachByPidHelper(
-        pythonPath,
-        processId,
-        pythonIpcPort,
-        cwd,
-        terminalEnv,
-        attachConfig,
-        outChannel,
-      );
-      outChannel.info(`Waiting for attached process ${processId} to connect back over IPC`);
-      await this._waitForPythonIpcSocket(processId, outChannel);
+  private async _initializeAttachByPidSession(
+    context: MainSessionBootstrapContext,
+    pythonIpcPort: number,
+  ): Promise<void> {
+    if (context.processId == null) {
       return;
     }
 
-    const args: string[] = ['-m', 'dapper.launcher'];
-    const program = config.program as string | undefined;
-    const moduleName = config.module as string | undefined;
-    if (program) {
-      const programPath = String(program).replace(/\\/g, '/');
-      args.push('--program', programPath);
-    } else if (moduleName) {
-      args.push('--module', String(moduleName));
-    } else {
-      vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
-    }
+    await this._spawnAttachByPidHelper(
+      context.pythonPath,
+      context.processId,
+      pythonIpcPort,
+      context.cwd,
+      context.terminalEnv,
+      context.attachConfig,
+      context.outChannel,
+    );
+    context.outChannel.info(`Waiting for attached process ${context.processId} to connect back over IPC`);
+    await this._waitForPythonIpcSocket(context.processId, context.outChannel);
+  }
 
-    if (Array.isArray(config.moduleSearchPaths)) {
-      for (const p of config.moduleSearchPaths) {
-        args.push('--module-search-path', String(p));
-      }
-    }
-    if (config.args && Array.isArray(config.args)) {
-      for (const a of config.args) {
-        args.push('--arg', String(a));
-      }
-    }
-    if (config.stopOnEntry) {
-      args.push('--stop-on-entry');
-    }
-    if (config.noDebug) {
-      args.push('--no-debug');
-    }
-
-    args.push('--ipc', 'tcp');
-    args.push('--ipc-port', pythonIpcPort.toString());
-
-    if (envInfo.dapperLibPath) {
-      outChannel.info(`PYTHONPATH injection: ${envInfo.dapperLibPath}`);
-    }
-
-    outChannel.info(`Session log file: ${logFile}`);
-    const sessionName = session.name || (config.name as string | undefined) || 'Debug';
-
+  private _createAdapterTerminal(context: MainSessionBootstrapContext, shellArgs: string[], session: vscode.DebugSession): vscode.Terminal {
+    const sessionName = session.name || (context.config.name as string | undefined) || 'Debug';
     const adapterTerminal = vscode.window.createTerminal({
       name: `Dapper: ${sessionName}`,
-      shellPath: pythonPath,
-      shellArgs: args,
-      cwd,
-      env: terminalEnv,
+      shellPath: context.pythonPath,
+      shellArgs,
+      cwd: context.cwd,
+      env: context.terminalEnv,
       isTransient: true,
     });
+
     this._adapterTerminal = adapterTerminal;
-    if (launchToken) {
-      this._launchHistory?.attachTerminal(launchToken, adapterTerminal);
+    if (context.launchToken) {
+      this._launchHistory?.attachTerminal(context.launchToken, adapterTerminal);
     }
     adapterTerminal.show(false);
+    return adapterTerminal;
+  }
 
+  private _registerTerminalCloseHandler(
+    adapterTerminal: vscode.Terminal,
+    outChannel: vscode.LogOutputChannel,
+    launchToken?: string,
+  ): void {
     this._terminalCloseDisposable = vscode.window.onDidCloseTerminal((terminal) => {
       if (terminal !== adapterTerminal) {
         return;
@@ -426,56 +405,43 @@ export class MainSessionController {
     });
   }
 
-  private _resolveLaunchToken(config: vscode.DebugConfiguration): string | undefined {
-    const candidate = config as Record<string, unknown>;
-    return typeof candidate.__dapperLaunchToken === 'string' ? candidate.__dapperLaunchToken : undefined;
+  private _initializeLauncherSession(
+    context: MainSessionBootstrapContext,
+    pythonIpcPort: number,
+    session: vscode.DebugSession,
+  ): void {
+    assertSingleLaunchTarget(
+      context.config.program as string | undefined || '',
+      context.config.module as string | undefined || '',
+      'Provide exactly one launch target: program or module.',
+    );
+
+    const args = buildLauncherArgs(
+      context.config,
+      pythonIpcPort,
+      () => {
+        vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
+      },
+    );
+    if (context.envInfo.dapperLibPath) {
+      context.outChannel.info(`PYTHONPATH injection: ${context.envInfo.dapperLibPath}`);
+    }
+    context.outChannel.info(`Session log file: ${context.logFile}`);
+
+    const adapterTerminal = this._createAdapterTerminal(context, args, session);
+    this._registerTerminalCloseHandler(adapterTerminal, context.outChannel, context.launchToken);
   }
 
-  private _buildProcessEnv(
-    envInfo: Awaited<ReturnType<EnvironmentManager['prepareEnvironment']>>,
-    config: LaunchRequestArguments | AttachRequestArguments,
-    session: vscode.DebugSession,
-  ): { terminalEnv: Record<string, string>; logFile: string; debugLogLevel: string } {
-    const debuggerConfig = vscode.workspace.getConfiguration('dapper.debugger');
-    const configuredLogFile = (debuggerConfig.get<string>('logFile', '') || '').trim();
-    let logFile: string;
-    if (configuredLogFile) {
-      const wsFolder = session.workspaceFolder?.uri.fsPath
-        ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-        ?? '';
-      logFile = configuredLogFile.replace(/\$\{workspaceFolder\}/g, wsFolder);
-      logFile = logFile.replace(/%([^%]+)%/g, (_match: string, name: string) => process.env[name] ?? `%${name}%`);
-      if (process.platform !== 'win32') {
-        logFile = logFile.replace(/\\/g, '/');
-      }
-    } else {
-      logFile = buildDefaultLogFilePath('debug', session.id);
+  private async _initializeMainSessionInfrastructure(session: vscode.DebugSession): Promise<void> {
+    const context = await this._buildBootstrapContext(session);
+    const pythonIpcPort = this._initializeTransportServers(context.outChannel);
+
+    if (context.config.request === 'attach' && context.processId != null) {
+      await this._initializeAttachByPidSession(context, pythonIpcPort);
+      return;
     }
 
-    const debugLogLevel = (debuggerConfig.get<string>('logLevel', 'DEBUG') || 'DEBUG').toUpperCase();
-    const rawEnv = {
-      ...process.env,
-      ...(config.env || {}),
-      DAPPER_MANAGED_VENV: envInfo.venvPath || '',
-      DAPPER_VERSION_EXPECTED: this._extensionVersion,
-      DAPPER_LOG_FILE: logFile,
-      DAPPER_LOG_LEVEL: debugLogLevel,
-    };
-    const terminalEnv: Record<string, string> = {};
-    for (const [key, value] of Object.entries(rawEnv)) {
-      if (typeof value === 'string') {
-        terminalEnv[key] = value;
-      }
-    }
-
-    if (envInfo.dapperLibPath) {
-      const existing = terminalEnv.PYTHONPATH || '';
-      terminalEnv.PYTHONPATH = existing
-        ? `${envInfo.dapperLibPath}${pathDelimiter}${existing}`
-        : envInfo.dapperLibPath;
-    }
-
-    return { terminalEnv, logFile, debugLogLevel };
+    this._initializeLauncherSession(context, pythonIpcPort, session);
   }
 
   private async _spawnAttachByPidHelper(
