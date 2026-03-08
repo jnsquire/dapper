@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import logging
+from pathlib import Path
+import re
 import sys
 import threading
 import types as _types
@@ -17,9 +19,6 @@ from unittest.mock import patch
 
 import pytest
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 from dapper.ipc.ipc_binary import pack_frame
 
 # Import the module to test
@@ -31,6 +30,7 @@ from dapper.shared import debug_shared
 from dapper.shared import lifecycle_handlers
 from dapper.shared import stepping_handlers
 from dapper.shared import variable_handlers
+from dapper.utils.logging_names import DAPPER_LOGGER_LAUNCHER
 from tests.mocks import make_real_frame
 
 
@@ -275,7 +275,7 @@ class TestDebugLauncherBasic:
         log_path.write_text("stale-data\n", encoding="utf-8")
 
         dapper_logger = logging.getLogger("dapper")
-        launcher_logger = logging.getLogger("dapper.launcher.debug_launcher")
+        launcher_logger = logging.getLogger(DAPPER_LOGGER_LAUNCHER)
         root_logger = logging.getLogger()
         original_handlers = list(dapper_logger.handlers)
         original_propagate = dapper_logger.propagate
@@ -320,6 +320,32 @@ class TestDebugLauncherBasic:
             dapper_logger.propagate = original_propagate
             root_logger.removeHandler(root_handler)
             root_handler.close()
+
+    def test_setup_session_log_file_derives_timestamped_basename(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        dapper_logger = logging.getLogger("dapper")
+        original_handlers = list(dapper_logger.handlers)
+        original_propagate = dapper_logger.propagate
+
+        monkeypatch.setattr(dl.tempfile, "gettempdir", lambda: str(tmp_path))
+
+        try:
+            returned_path = Path(dl.setup_session_log_file("session-123"))
+
+            assert returned_path.parent == tmp_path
+            assert re.fullmatch(
+                r"dapper-debug-\d{8}-\d{6}-\d{3}-session-123\.log",
+                returned_path.name,
+            )
+        finally:
+            for handler in dapper_logger.handlers[:]:
+                if handler not in original_handlers:
+                    dapper_logger.removeHandler(handler)
+                    handler.close()
+            dapper_logger.propagate = original_propagate
 
 
 class TestBreakpointHandling:

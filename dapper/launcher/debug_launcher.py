@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import argparse
 import atexit
+from datetime import UTC
+from datetime import datetime
 import json
 import logging
 from multiprocessing import connection as _mpc
@@ -29,15 +31,22 @@ from dapper.ipc.ipc_binary import unpack_header
 from dapper.launcher.launcher_ipc import connector as default_connector
 from dapper.shared import debug_shared
 from dapper.shared.command_handlers import handle_debug_command
+from dapper.utils.logging_config import configure_package_file_logging
+from dapper.utils.logging_config import configure_root_console_logging
 from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_names import DAPPER_LOGGER_LAUNCHER
 
 """
 Debug launcher entry point. Delegates to split modules.
 """
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(DAPPER_LOGGER_LAUNCHER)
 
 KIND_COMMAND = 2
+
+
+def _format_log_timestamp(now: datetime) -> str:
+    return f"{now:%Y%m%d-%H%M%S}-{now.microsecond // 1000:03d}"
 
 
 def _setup_session_log_file(
@@ -54,7 +63,8 @@ def _setup_session_log_file(
 
     If ``log_file`` is supplied (e.g. from the ``DAPPER_LOG_FILE`` env var
     set by the VS Code extension) that path is used directly; otherwise a
-    path is derived from ``session_id`` in the system temp directory.
+    path is derived from ``session_id`` in the system temp directory with a
+    timestamped basename so consecutive launches remain distinct.
 
     ``log_level`` controls the minimum severity written to the file.  When
     ``None`` it defaults to ``TRACE`` so that full DAP message contents are
@@ -68,26 +78,20 @@ def _setup_session_log_file(
         log_path = log_file
     else:
         sid = session_id or uuid.uuid4().hex
-        log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{sid}.log")
+        timestamp = _format_log_timestamp(datetime.now(UTC).astimezone())
+        log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{timestamp}-{sid}.log")
     # Truncate once up front, then keep the live handler in append mode.
     # Other diagnostic paths also open the same file in append mode, and
     # mixing those writers with a long-lived handler opened in write mode can
     # create sparse gaps that show up as NUL bytes in the log.
-    Path(log_path).write_text("", encoding="utf-8")
-    fh = logging.FileHandler(log_path, mode="a", encoding="utf-8", delay=False)
-    fh.setLevel(effective_level)
-    fh.setFormatter(
-        logging.Formatter(
-            "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
-            datefmt="%H:%M:%S",
-        )
+    configure_package_file_logging(
+        "dapper",
+        effective_level,
+        file_path=log_path,
+        format_string="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        truncate=True,
     )
-    dapper_logger = logging.getLogger("dapper")
-    dapper_logger.setLevel(effective_level)
-    dapper_logger.addHandler(fh)
-    # Keep dapper.* diagnostics in the session log file instead of letting
-    # them bubble up to the root logger's console/terminal handler.
-    dapper_logger.propagate = False
     # also remember on the active session object so other components can write
     try:
         from dapper.shared.debug_shared import get_active_session  # noqa: PLC0415 - dynamic import
@@ -551,8 +555,9 @@ def main():  # noqa: PLR0912, PLR0915
     session.module_search_paths = list(getattr(args, "module_search_path", []))
 
     # Configure logging for debug messages
-    logging.basicConfig(
-        level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    configure_root_console_logging(
+        logging.DEBUG,
+        format_string="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
     # Per-session log file — set up before IPC so transport/handshake issues

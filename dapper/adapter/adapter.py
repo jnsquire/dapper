@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from dapper.adapter.server_core import DebugAdapterServer
 from dapper.ipc.connections.pipe import NamedPipeServerConnection
 from dapper.ipc.connections.tcp import TCPServerConnection
+from dapper.utils.logging_config import configure_root_console_logging
 
 if TYPE_CHECKING:
     from dapper.ipc.connections.base import ConnectionBase
@@ -92,11 +93,6 @@ def main() -> None:
     # tests that patch the module logger don't cause the test runner to open
     # files during import/execution which can lead to ResourceWarning/unraisable
     # exceptions in some test environments.
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[logging.StreamHandler()],
-    )
     parser = argparse.ArgumentParser(description="Debug adapter for Python")
 
     connection_group = parser.add_mutually_exclusive_group(required=True)
@@ -119,7 +115,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    logging.getLogger().setLevel(NAME_TO_LEVEL.get(args.log_level, logging.INFO))
+    configure_root_console_logging(
+        NAME_TO_LEVEL.get(args.log_level, logging.INFO),
+        format_string="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
     if args.port:
         connection_type = "tcp"
