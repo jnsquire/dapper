@@ -20,6 +20,57 @@ if TYPE_CHECKING:
     from types import CodeType
 
 
+def _find_or_append_constant(constants: list[object], value: object) -> int:
+    """Return the index for *value* in *constants*, appending if needed."""
+    for index, existing in enumerate(constants):
+        if type(existing) is type(value) and existing == value:
+            return index
+
+    constants.append(value)
+    return len(constants) - 1
+
+
+def _find_or_append_name(names: list[str], value: object) -> int:
+    """Return the index for *value* in *names*, appending if needed."""
+    name = str(value)
+    try:
+        return names.index(name)
+    except ValueError:
+        names.append(name)
+        return len(names) - 1
+
+
+def _resolve_instruction_arguments(
+    original_code: CodeType,
+    instructions: list[dis.Instruction],
+) -> tuple[list[dis.Instruction], list[object], list[str]]:
+    """Resolve any synthetic instruction arguments against code metadata."""
+    constants = list(original_code.co_consts)
+    names = list(original_code.co_names)
+    resolved: list[dis.Instruction] = []
+
+    for instr in instructions:
+        resolved_instr = instr
+        arg = instr.arg
+
+        if instr.opname == "LOAD_CONST" and (arg is None or arg < 0):
+            arg = _find_or_append_constant(constants, instr.argval)
+            resolved_instr = instr._replace(arg=arg)
+        elif instr.opname == "LOAD_GLOBAL" and (arg is None or arg < 0):
+            name_index = _find_or_append_name(names, instr.argval)
+            if sys.version_info >= (3, 11):
+                # On 3.11+, the low bit requests the implicit NULL sentinel
+                # that CALL expects for Python-level function invocation.
+                arg = (name_index << 1) | 1
+            else:
+                arg = name_index
+            resolved_instr = instr._replace(arg=arg)
+
+        resolved.append(resolved_instr)
+
+    return resolved, constants, names
+
+
 def rebuild_code_object(  # noqa: PLR0912
     original_code: CodeType,
     new_instructions: list[dis.Instruction],
@@ -29,6 +80,11 @@ def rebuild_code_object(  # noqa: PLR0912
     Returns ``(accepted, code)`` where *accepted* is ``False`` when the safety
     validator rejects the candidate (caller should fall back to the original).
     """
+    new_instructions, constants, names = _resolve_instruction_arguments(
+        original_code,
+        new_instructions,
+    )
+
     # Convert instructions back to bytecode.
     # Python 3.6+ uses a fixed 2-byte word-code format: one byte for the
     # opcode and one byte for the argument (low 8 bits).  Arguments that
@@ -48,6 +104,8 @@ def rebuild_code_object(  # noqa: PLR0912
         try:
             candidate = original_code.replace(
                 co_code=bytes(bytecode),
+                co_consts=tuple(constants),
+                co_names=tuple(names),
                 co_stacksize=original_code.co_stacksize + 2,
             )
             return safe_replace_code(original_code, candidate)
@@ -56,8 +114,6 @@ def rebuild_code_object(  # noqa: PLR0912
             pass
 
     # Extract constants and names
-    constants = list(original_code.co_consts)
-    names = list(original_code.co_names)
     varnames = list(original_code.co_varnames)
 
     # Create new code object with appropriate parameters based on Python version

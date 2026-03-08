@@ -23,7 +23,6 @@ from dapper._frame_eval.tracing_backend import TracingBackend
 # ---------------------------------------------------------------------------
 
 
-
 def _fresh_manager():
     """Return a *new* FrameEvalManager instance (bypasses singleton)."""
     from dapper._frame_eval.frame_eval_main import FrameEvalManager

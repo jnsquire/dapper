@@ -19,12 +19,14 @@ import types
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
+from dapper._frame_eval import _code_object_builder
+from dapper._frame_eval._bytecode_instructions import CACHE
 from dapper._frame_eval._bytecode_instructions import CALL_FUNCTION
 from dapper._frame_eval._bytecode_instructions import LOAD_CONST
+from dapper._frame_eval._bytecode_instructions import LOAD_GLOBAL
 from dapper._frame_eval._bytecode_instructions import POP_TOP
 from dapper._frame_eval._bytecode_instructions import get_instructions
 from dapper._frame_eval._bytecode_instructions import make_instruction
-from dapper._frame_eval._code_object_builder import rebuild_code_object
 from dapper._frame_eval.cache_manager import CacheManager
 from dapper._frame_eval.telemetry import telemetry
 
@@ -154,7 +156,10 @@ class BytecodeModifier:
             try:
                 code_obj = code_obj.replace(co_consts=tuple(consts))
             except Exception:
-                _, code_obj = rebuild_code_object(code_obj, get_instructions(code_obj))
+                _, code_obj = _code_object_builder.rebuild_code_object(
+                    code_obj,
+                    get_instructions(code_obj),
+                )
                 # ignore failure
         return code_obj
 
@@ -185,7 +190,7 @@ class BytecodeModifier:
                 return True, code_obj
 
             new_instructions = self._create_breakpoint_instructions(instructions, injection_points)
-            accepted, modified_code = rebuild_code_object(code_obj, new_instructions)
+            accepted, modified_code = self._rebuild_code_object(code_obj, new_instructions)
             if not accepted:
                 if existing and fp in existing:
                     del existing[fp]
@@ -297,7 +302,7 @@ __dapper_breakpoint_wrapper_{line}()
         try:
             instructions = get_instructions(code_obj)
             optimized_instructions = self._optimize_instructions(instructions)
-            _accepted, optimized = rebuild_code_object(code_obj, optimized_instructions)
+            _accepted, optimized = self._rebuild_code_object(code_obj, optimized_instructions)
         except Exception:
             telemetry.record_bytecode_optimization_failed(
                 filename=getattr(code_obj, "co_filename", "unknown"),
@@ -334,7 +339,7 @@ __dapper_breakpoint_wrapper_{line}()
                 cleaned_instructions.append(instr)
                 i += 1
 
-            _accepted, cleaned = rebuild_code_object(code_obj, cleaned_instructions)
+            _accepted, cleaned = self._rebuild_code_object(code_obj, cleaned_instructions)
 
         except Exception:
             telemetry.record_bytecode_optimization_failed(
@@ -422,49 +427,92 @@ __dapper_breakpoint_wrapper_{line}()
         validator can recognise and preserve it.  It simply loads the line
         number constant, looks up a module-level helper, and calls it.
         """
-        # sequence must match the pattern recognised by bytecode_safety and
-        # by any later analysis that inspects instrumented code.
-        return [
+        instructions = [
             make_instruction(
-                opname="LOAD_CONST",
-                opcode=LOAD_CONST,
-                arg=0,
-                argval=line,
-                argrepr=str(line),
+                opname="LOAD_GLOBAL",
+                opcode=LOAD_GLOBAL,
+                arg=-1,
+                argval="_dapper_breakpoint",
+                argrepr="_dapper_breakpoint",
                 offset=0,
                 starts_line=None,
                 is_jump_target=False,
             ),
+        ]
+        instructions.extend(
+            self._make_inline_cache_instructions(LOAD_GLOBAL, len(instructions) * 2)
+        )
+        instructions.append(
             make_instruction(
-                opname="LOAD_GLOBAL",
-                opcode=dis.opmap.get("LOAD_GLOBAL", 116),
-                arg=0,
-                argval="_dapper_breakpoint",
-                argrepr="_dapper_breakpoint",
-                offset=2,
+                opname="LOAD_CONST",
+                opcode=LOAD_CONST,
+                arg=-1,
+                argval=line,
+                argrepr=str(line),
+                offset=len(instructions) * 2,
                 starts_line=None,
                 is_jump_target=False,
             ),
+        )
+        call_opname = "CALL" if sys.version_info >= (3, 11) else "CALL_FUNCTION"
+        instructions.append(
             make_instruction(
-                opname="CALL_FUNCTION",
+                opname=call_opname,
                 opcode=CALL_FUNCTION,
                 arg=1,
                 argval=1,
                 argrepr="",
-                offset=4,
+                offset=len(instructions) * 2,
                 starts_line=None,
                 is_jump_target=False,
             ),
+        )
+        instructions.extend(
+            self._make_inline_cache_instructions(CALL_FUNCTION, len(instructions) * 2),
+        )
+        instructions.append(
             make_instruction(
                 opname="POP_TOP",
                 opcode=POP_TOP,
                 arg=None,
                 argval=None,
                 argrepr="",
-                offset=6,
+                offset=len(instructions) * 2,
                 starts_line=None,
                 is_jump_target=False,
             ),
+        )
+        return instructions
+
+    def _make_inline_cache_instructions(
+        self,
+        opcode: int,
+        offset: int,
+    ) -> list[dis.Instruction]:
+        """Return the CACHE pseudo-instructions required after *opcode*."""
+        if sys.version_info < (3, 11):
+            return []
+
+        cache_entries = getattr(dis, "_inline_cache_entries", ())
+        count = 0
+        try:
+            count = cache_entries[opcode]
+        except (IndexError, KeyError, TypeError):
+            if isinstance(cache_entries, dict):
+                count = cache_entries.get(opcode, 0)
+
+        return [
+            make_instruction(
+                opname="CACHE",
+                opcode=CACHE,
+                arg=0,
+                argval=None,
+                argrepr="",
+                offset=offset + (index * 2),
+                starts_line=None,
+                is_jump_target=False,
+            )
+            for index in range(count)
         ]
 
     def _optimize_instructions(self, instructions: list[dis.Instruction]) -> list[dis.Instruction]:
@@ -501,19 +549,58 @@ __dapper_breakpoint_wrapper_{line}()
         start_index: int,
     ) -> bool:
         """Check if instructions starting at start_index form a breakpoint sequence."""
-        if start_index + 2 >= len(instructions):
-            return False
+        return self._match_breakpoint_sequence(instructions, start_index) > 0
 
-        instr1 = instructions[start_index]
-        instr2 = instructions[start_index + 1]
-        instr3 = instructions[start_index + 2]
+    def _match_breakpoint_sequence(
+        self,
+        instructions: list[dis.Instruction],
+        start_index: int,
+    ) -> int:
+        """Return the full breakpoint-sequence length or ``0`` if unmatched."""
 
-        return (
-            instr1.opname == "LOAD_CONST"
-            and isinstance(instr1.argval, int)
-            and instr2.opname == "CALL_FUNCTION"
-            and instr3.opname == "POP_TOP"
-        )
+        def skip_caches(index: int) -> int:
+            while index < len(instructions) and instructions[index].opname == "CACHE":
+                index += 1
+            return index
+
+        def read_expected(index: int, *opnames: str) -> tuple[dis.Instruction | None, int]:
+            index = skip_caches(index)
+            if index >= len(instructions):
+                return None, index
+
+            instr = instructions[index]
+            if instr.opname not in opnames:
+                return None, index
+            return instr, index + 1
+
+        if start_index >= len(instructions):
+            return 0
+
+        first = instructions[start_index]
+        if first.opname == "LOAD_GLOBAL":
+            load_global = first
+            load_const, next_index = read_expected(start_index + 1, "LOAD_CONST")
+        elif first.opname == "LOAD_CONST":
+            load_const = first
+            load_global, next_index = read_expected(start_index + 1, "LOAD_GLOBAL")
+        else:
+            return 0
+
+        if load_global is None or load_const is None:
+            return 0
+
+        call_instr, next_index = read_expected(next_index, "CALL", "CALL_FUNCTION")
+        pop_top_instr, end_index = read_expected(next_index, "POP_TOP")
+
+        if not (
+            load_global.argval == "_dapper_breakpoint"
+            and isinstance(load_const.argval, int)
+            and call_instr is not None
+            and pop_top_instr is not None
+        ):
+            return 0
+
+        return end_index - start_index
 
     def _get_breakpoint_sequence_length(
         self,
@@ -521,9 +608,8 @@ __dapper_breakpoint_wrapper_{line}()
         start_index: int,
     ) -> int:
         """Get the length of a breakpoint instruction sequence."""
-        if self._is_breakpoint_sequence(instructions, start_index):
-            return 3
-        return 1
+        length = self._match_breakpoint_sequence(instructions, start_index)
+        return length or 1
 
     def _rebuild_code_object(
         self,
@@ -531,7 +617,7 @@ __dapper_breakpoint_wrapper_{line}()
         new_instructions: list[dis.Instruction],
     ) -> tuple[bool, CodeType]:
         """Delegate to the module-level :func:`rebuild_code_object`."""
-        return rebuild_code_object(original_code, new_instructions)
+        return _code_object_builder.rebuild_code_object(original_code, new_instructions)
 
 
 # Global bytecode modifier instance

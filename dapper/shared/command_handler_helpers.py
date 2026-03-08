@@ -184,12 +184,11 @@ def make_variable(
     var_obj = None
     if callable(fn):
         try:
-            if (
-                getattr(fn, "__code__", None) is not None
-                and fn.__code__.co_argcount > _SIMPLE_MAKE_VAR_ARGCOUNT
-            ):
+            # Prefer a frame-aware debugger implementation; fall back to
+            # the simple (name, value) signature on TypeError.
+            try:
                 var_obj = fn(name, value, frame)
-            else:
+            except TypeError:
                 var_obj = fn(name, value)
         except Exception:
             var_obj = None

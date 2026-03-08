@@ -1002,8 +1002,23 @@ def make_variable_object(
     fails or is absent, fall back to the internal implementation.
     """
     if dbg is not None:
-        res = dbg.make_variable_object(name, value, frame, max_string_length=max_string_length)
-        if isinstance(res, dict):
-            return cast("Variable", res)
+        try:
+            # Prefer an extended debugger-provided implementation accepting
+            # a frame and the max_string_length keyword. Fall back to
+            # progressively simpler call signatures on TypeError.
+            try:
+                res = dbg.make_variable_object(
+                    name, value, frame, max_string_length=max_string_length
+                )
+            except TypeError:
+                try:
+                    res = dbg.make_variable_object(name, value, frame)
+                except TypeError:
+                    res = dbg.make_variable_object(name, value)
+            if isinstance(res, dict):
+                return cast("Variable", res)
+        except Exception:
+            # Defensive: any unexpected failure falls through to internal impl.
+            pass
 
     return _make_variable_object_impl(name, value, dbg, frame, max_string_length=max_string_length)

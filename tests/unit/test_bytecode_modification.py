@@ -116,6 +116,15 @@ def _build_code_args(code_attrs: dict) -> list:
     return args
 
 
+def _first_executable_line(code_obj: types.CodeType) -> int:
+    """Return the first source line after the function definition line."""
+    return next(
+        line
+        for _, _, line in code_obj.co_lines()
+        if line is not None and line > code_obj.co_firstlineno
+    )
+
+
 def test_validate_bytecode(original_code: types.CodeType) -> None:
     """Test bytecode validation."""
     # Test with a valid code object
@@ -369,7 +378,12 @@ def test_rollback_on_rebuild_failure(
     from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
 
     reset_frame_eval_telemetry()
-    success, new_code = bytecode_modifier.inject_breakpoints(original_code, {2}, debug_mode=True)
+    target_line = _first_executable_line(original_code)
+    success, new_code = bytecode_modifier.inject_breakpoints(
+        original_code,
+        {target_line},
+        debug_mode=True,
+    )
     assert not success
     assert new_code is original_code
     stats = get_cache_stats()
@@ -479,8 +493,16 @@ def test_recursive_instrumentation(bytecode_modifier: BytecodeModifier) -> None:
         return inner()
 
     code = outer.__code__
-    # pick a line inside inner (we can inspect co_lines)
-    lines = {line for _, _, line in code.co_consts[0].co_lines() if line is not None}
+    inner_code = next(
+        (
+            const
+            for const in code.co_consts
+            if isinstance(const, types.CodeType) and const.co_name == "inner"
+        ),
+        None,
+    )
+    assert inner_code is not None
+    lines = {line for _, _, line in inner_code.co_lines() if line is not None}
     # there should be at least one line to target
     if not lines:
         pytest.skip("no inner lines discovered")
@@ -496,7 +518,8 @@ def test_cache_invalidation(original_code: types.CodeType) -> None:
     """Invalidating breakpoints removes cached bytecode entries."""
     from dapper._frame_eval.cache_manager import invalidate_breakpoints
 
-    success, modified = inject_breakpoint_bytecode(original_code, {3})
+    target_line = _first_executable_line(original_code)
+    success, modified = inject_breakpoint_bytecode(original_code, {target_line})
     assert success and modified is not original_code
     # simulate a breakpoint change
     invalidate_breakpoints(original_code.co_filename)
@@ -549,21 +572,7 @@ def test_lazy_eager_instrumentation_behavior(
 # Instruction analysis tests
 def test_breakpoint_sequence_detection(bytecode_modifier: BytecodeModifier) -> None:
     """Test breakpoint sequence detection."""
-    # Create a fake breakpoint sequence
-    if sys.version_info >= (3, 11):
-        # Python 3.11+ has an extra `positions` field (Positions | None)
-        fake_instructions = [
-            dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False, None),
-            dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False, None),
-            dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False, None),
-        ]
-    else:
-        # Python 3.10 and earlier
-        fake_instructions = [
-            dis.Instruction("LOAD_CONST", 100, 0, 42, "42", 0, None, False),
-            dis.Instruction("CALL_FUNCTION", 142, 1, 1, "", 2, None, False),
-            dis.Instruction("POP_TOP", 1, None, None, "", 3, None, False),
-        ]
+    fake_instructions = bytecode_modifier._create_breakpoint_check_instructions(42)
 
     is_breakpoint = bytecode_modifier._is_breakpoint_sequence(fake_instructions, 0)
     assert is_breakpoint

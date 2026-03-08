@@ -381,7 +381,6 @@ class DebuggerFrameEvalBridge:
                 "eager_instrumentation"
             ) and self._instrument_live_code_objects_for_file(filepath, breakpoint_lines):
                 self.integration_stats["bytecode_eager_instrumentation"] += 1
-                telemetry.record_bytecode_eager_instrumentation(filepath=filepath)
                 return
 
             # Otherwise fall back to reading/compiling the file as before
@@ -440,6 +439,8 @@ class DebuggerFrameEvalBridge:
                         code_obj, {"modified_code": modified, "breakpoints": breakpoint_lines}
                     )
                     modified_any = True
+        if modified_any:
+            telemetry.record_bytecode_eager_instrumentation(filepath=_filepath)
         return modified_any
 
     def remove_integration(self, debugger_instance) -> bool:

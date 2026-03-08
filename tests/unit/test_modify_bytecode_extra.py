@@ -1,59 +1,13 @@
-import dis
 import types
 
 from dapper._frame_eval import modify_bytecode as mb
-from dapper._frame_eval._bytecode_instructions import CALL_FUNCTION
-from dapper._frame_eval._bytecode_instructions import LOAD_CONST
-from dapper._frame_eval._bytecode_instructions import POP_TOP
-from dapper._frame_eval._bytecode_instructions import make_instruction
 
 
 def test_is_breakpoint_sequence_and_length():
-    instrs = [
-        make_instruction(
-            opname="LOAD_CONST",
-            opcode=LOAD_CONST,
-            arg=0,
-            argval=123,
-            argrepr="123",
-            offset=0,
-            starts_line=None,
-            is_jump_target=False,
-        ),
-        make_instruction(
-            opname="LOAD_GLOBAL",
-            opcode=dis.opmap.get("LOAD_GLOBAL", 116),
-            arg=0,
-            argval="_dapper_breakpoint",
-            argrepr="_dapper_breakpoint",
-            offset=2,
-            starts_line=None,
-            is_jump_target=False,
-        ),
-        make_instruction(
-            opname="CALL_FUNCTION",
-            opcode=CALL_FUNCTION,
-            arg=1,
-            argval=1,
-            argrepr="",
-            offset=4,
-            starts_line=None,
-            is_jump_target=False,
-        ),
-        make_instruction(
-            opname="POP_TOP",
-            opcode=POP_TOP,
-            arg=None,
-            argval=None,
-            argrepr="",
-            offset=6,
-            starts_line=None,
-            is_jump_target=False,
-        ),
-    ]
+    instrs = mb._bytecode_modifier._create_breakpoint_check_instructions(123)
 
     assert mb._bytecode_modifier._is_breakpoint_sequence(instrs, 0) is True
-    assert mb._bytecode_modifier._get_breakpoint_sequence_length(instrs, 0) == 4
+    assert mb._bytecode_modifier._get_breakpoint_sequence_length(instrs, 0) == len(instrs)
 
     # Non-matching sequence
     instrs2 = list(instrs)
