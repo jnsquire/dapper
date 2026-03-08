@@ -122,6 +122,18 @@ class FrameEvalRuntime:
         """Current runtime configuration."""
         return self._config
 
+    def _apply_condition_evaluator_config(self) -> None:
+        """Synchronize global conditional-breakpoint state with runtime config."""
+        evaluator = get_condition_evaluator()
+        evaluator.enabled = self._config.conditional_breakpoints_enabled
+        evaluator._budget_s = self._config.condition_budget_s  # noqa: SLF001
+
+    def _reset_config(self) -> None:
+        """Reset runtime configuration to a clean default state."""
+        self._config = FrameEvalConfig()
+        self._apply_condition_evaluator_config()
+        get_condition_evaluator().clear_cache()
+
     def initialize(self, config: dict[str, Any] | FrameEvalConfig | None = None) -> bool:
         """Initialize runtime with provided configuration."""
         with self._lock:
@@ -134,11 +146,7 @@ class FrameEvalRuntime:
                     return False
 
             self._initialized = True
-
-            # Propagate condition-evaluator settings to the global singleton.
-            evaluator = get_condition_evaluator()
-            evaluator.enabled = self._config.conditional_breakpoints_enabled
-            evaluator._budget_s = self._config.condition_budget_s  # noqa: SLF001
+            self._apply_condition_evaluator_config()
 
             return True
 
@@ -147,6 +155,7 @@ class FrameEvalRuntime:
         with self._lock:
             disable_selective_tracing()
             clear_all_caches()
+            self._reset_config()
             self._initialized = False
 
     def update_breakpoints(self, filename: str, lines: set[int]) -> None:

@@ -106,6 +106,24 @@ reports the interpreter has the necessary support; otherwise it falls back to
 the tracing family. The tracing backend key still controls which tracing
 implementation is chosen when `backend` is `auto` or `tracing`.
 
+#### Why Choose `eval_frame` Over `sys.monitoring`
+
+`sys.monitoring` is already a strong tracing backend on Python 3.12+, so the reason to prefer `eval_frame` is not that it replaces debugger semantics. The reason is that it moves the first routing decision earlier, at frame entry, before Dapper has committed to tracing callbacks for that frame.
+
+In practice, `eval_frame` is the better fit when you want Dapper to avoid entering the debugger path for as many frames as possible.
+
+- `eval_frame` can reject a frame at interpreter entry and leave it entirely on the normal evaluation fast path.
+- `sys.monitoring` still works as an event-driven tracing backend, which is cheaper than `sys.settrace` but still fundamentally organized around monitoring events after the frame has already entered the tracing/monitoring machinery.
+- `eval_frame` gives Dapper one place to decide whether a frame should stay untouched, enter scoped tracing, or eventually switch to modified code-object execution when that roadmap item lands.
+- `sys.monitoring` is still the better choice when you want the simplest supported tracing backend on Python 3.12+ without depending on CPython eval-frame hook availability.
+
+The practical rule is:
+
+- choose `eval_frame` if you want the most aggressive reduction in debugger involvement for non-target frames on supported CPython builds;
+- choose `sys_monitoring` if you want a lower-overhead tracing backend with a simpler compatibility story and fewer CPython-specific constraints.
+
+Today the gap is mostly about control-point placement rather than completely different debugger behavior, because the current `eval_frame` backend still uses scoped tracing after it selects a frame.
+
 ### Verifying The Active Backend
 
 Use runtime status and hook stats to confirm that eval-frame is actually active:
@@ -139,6 +157,18 @@ Useful hook counters include:
 - `exception_events`
 
 If `backend_type` is not `EvalFrameBackend` or `hook_installed` is `False`, the process is not currently running through the eval-frame backend.
+
+### Unsupported And Fallback Scenarios
+
+The `eval_frame` backend is intentionally conservative.
+
+- Non-CPython interpreters are supported only through the tracing backends.
+- Python versions or platform/architecture combinations outside the compatibility policy stay on tracing.
+- If another debugger (`pydevd`, `pdb`, `ipdb`), coverage tooling (`coverage`, `pytest_cov`), or known conflicting environment markers are already active, `auto` falls back to tracing.
+- If the compiled eval-frame hook is missing or backend installation fails, `auto` falls back to tracing and the manager logs one concise reason for that selection instead of repeating the same message on every setup attempt.
+- If you explicitly request `backend: "eval_frame"` and set `fallback_to_tracing: false`, setup fails fast instead of silently switching to tracing.
+
+Repeated setup and shutdown cycles are also expected to be safe: shutdown removes the hook, disables selective tracing, clears frame-eval caches, and resets condition-evaluator settings before the next setup cycle.
 
 Manager configuration example:
 
@@ -227,6 +257,50 @@ print("trace stats:", stats["trace_stats"])
 1. The current eval-frame backend still delivers debugger events through scoped tracing after the frame is selected.
 2. Breakpoint activation is currently based on executable lines known at frame entry, so the backend may register all executable lines in a function even when the debugger ultimately stops on only one line.
 3. Bytecode-modified code-object selection at eval-frame entry is still a roadmap item. Code-extra-backed modified-code caching and invalidation are now implemented, but the hook still executes the original frame and relies on scoped tracing for delivery.
+4. Dapper intentionally treats alternate interpreters, other active debuggers, and coverage-instrumented runtimes as tracing-only environments for now.
+
+## Migration From Selective Tracing Only
+
+If you already rely on Dapper's tracing-only path today, treat `eval_frame` as an incremental routing optimization rather than a debugger-model change.
+
+### What Stays The Same
+
+- Breakpoints, stepping, and exception handling still flow through the existing tracing machinery once a frame is selected.
+- `tracing` remains the baseline backend family and is still the right choice for unsupported environments, coverage-heavy workflows, or alternate interpreters.
+- `backend: "auto"` is designed to fall back to tracing automatically, so existing launch configurations can adopt frame-eval conservatively.
+
+### Recommended Migration Sequence
+
+1. Start from a known-good tracing configuration and keep `fallback_to_tracing` enabled.
+2. Switch `backend` from `tracing` to `auto` first, not directly to `eval_frame`.
+3. Verify runtime status and hook counters during a real debugging session.
+4. Leave `tracing_backend` unchanged while you evaluate frame-eval; that preserves the existing tracing path as the fallback target.
+5. Only move to explicit `backend: "eval_frame"` after you have confirmed the environment is compatible and your normal stepping/breakpoint workflows behave as expected.
+
+Example migration from tracing-only to conservative auto-selection:
+
+```json
+{
+    "frameEval": true,
+    "frameEvalConfig": {
+        "backend": "auto",
+        "tracing_backend": "settrace",
+        "fallback_to_tracing": true,
+        "conditional_breakpoints_enabled": true
+    }
+}
+```
+
+### When To Stay On Tracing
+
+Stay on `backend: "tracing"` if any of the following are true:
+
+- You need identical behavior across CPython and alternate interpreters.
+- You regularly debug under coverage or alongside another debugger.
+- You are diagnosing eval-frame-specific issues and want to remove backend selection from the problem.
+- You do not need the reduced tracing overhead enough to justify validating a second backend path.
+
+If you later want strict enforcement instead of conservative rollout, switch to `backend: "eval_frame"` and set `fallback_to_tracing: false`. That turns compatibility failures into explicit setup errors instead of silent fallback.
 
 ### Common Scenarios
 

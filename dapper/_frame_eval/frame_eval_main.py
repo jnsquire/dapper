@@ -97,6 +97,7 @@ class FrameEvalManager:
         self._active_backend: FrameEvalBackend | None = None
         self._compatibility_cache: dict[tuple, dict[str, Any]] = {}
         self._logger = logging.getLogger(__name__)
+        self._last_backend_fallback_log: tuple[str, str, str] | None = None
 
         # Initialize default configuration
         self._frame_eval_config.enabled = True
@@ -110,6 +111,25 @@ class FrameEvalManager:
         """The currently active backend (tracing or eval-frame), or ``None`` if
         none has been created yet."""
         return self._active_backend
+
+    def _log_backend_fallback(self, *, request: str, reason: str, level: int) -> None:
+        """Log backend fallback decisions without repeating identical messages."""
+        normalized_reason = reason or "unknown reason"
+        log_key = (logging.getLevelName(level), request, normalized_reason)
+        if self._last_backend_fallback_log == log_key:
+            return
+
+        self._last_backend_fallback_log = log_key
+        log_method = self._logger.warning if level >= logging.WARNING else self._logger.info
+        log_method("%s; falling back to tracing: %s", request, normalized_reason)
+
+    @staticmethod
+    def _format_backend_initialization_error(exc: Exception) -> str:
+        """Return a concise, actionable backend initialization failure summary."""
+        detail = str(exc).strip()
+        if detail:
+            return f"backend initialization failed ({type(exc).__name__}: {detail})"
+        return f"backend initialization failed ({type(exc).__name__})"
 
     def _create_backend(self, config: FrameEvalConfig) -> FrameEvalBackend:
         """Factory: instantiate the correct backend for *config*.
@@ -144,15 +164,17 @@ class FrameEvalManager:
             if can_use_eval_frame:
                 try:
                     return self._create_eval_frame_backend(config)
-                except Exception:
-                    # if creation fails for some reason, fall through
-                    self._logger.warning(
-                        "Eval-frame backend requested but failed to initialize; falling back to tracing",
+                except Exception as exc:
+                    self._log_backend_fallback(
+                        request="Eval-frame AUTO selection",
+                        reason=self._format_backend_initialization_error(exc),
+                        level=logging.WARNING,
                     )
             elif eval_frame_reason:
-                self._logger.info(
-                    "Eval-frame AUTO selection fell back to tracing: %s",
-                    eval_frame_reason,
+                self._log_backend_fallback(
+                    request="Eval-frame AUTO selection",
+                    reason=eval_frame_reason,
+                    level=logging.INFO,
                 )
             # default to tracing
             return self._create_tracing_backend(config)
@@ -161,14 +183,17 @@ class FrameEvalManager:
             if can_use_eval_frame:
                 try:
                     return self._create_eval_frame_backend(config)
-                except Exception:
-                    self._logger.warning(
-                        "Eval-frame backend requested but failed to initialize; falling back to tracing",
-                    )
+                except Exception as exc:
+                    reason = self._format_backend_initialization_error(exc)
                     if not config.fallback_to_tracing:
                         raise RuntimeError(
                             "Eval-frame backend initialization failed and tracing fallback is disabled",
                         ) from None
+                    self._log_backend_fallback(
+                        request="Eval-frame backend explicitly requested",
+                        reason=reason,
+                        level=logging.WARNING,
+                    )
             else:
                 if not config.fallback_to_tracing:
                     message = (
@@ -178,9 +203,10 @@ class FrameEvalManager:
                     raise RuntimeError(
                         message,
                     )
-                self._logger.warning(
-                    "Eval-frame backend explicitly requested but unavailable; using tracing instead: %s",
-                    eval_frame_reason,
+                self._log_backend_fallback(
+                    request="Eval-frame backend explicitly requested",
+                    reason=eval_frame_reason,
+                    level=logging.WARNING,
                 )
             return self._create_tracing_backend(config)
 
@@ -434,7 +460,7 @@ class FrameEvalManager:
         arch = platform.architecture()[0]
         return self._compatibility_policy.is_supported_platform(current_platform, arch)
 
-    def setup_frame_eval(self, config: dict[str, Any]) -> bool:  # noqa: PLR0911
+    def setup_frame_eval(self, config: dict[str, Any]) -> bool:
         """
         Set up frame evaluation with the provided configuration.
 
@@ -472,11 +498,6 @@ class FrameEvalManager:
             self._initialize_components()
         except Exception:
             self._logger.exception("Failed to initialize frame evaluation components")
-            return False
-
-        # Keep runtime configuration in sync with validated manager config
-        if not self._runtime.initialize(self._frame_eval_config.to_dict()):
-            self._logger.warning("Failed to initialize frame evaluation runtime")
             return False
 
         self._is_initialized = True
@@ -526,6 +547,9 @@ class FrameEvalManager:
             bool: True if initialization was successful
         """
         try:
+            if self._active_backend is not None or self._runtime.initialized:
+                self._cleanup_components()
+
             # Delegate component lifecycle to the runtime composition root.
             if not self._runtime.initialize(self._frame_eval_config.to_dict()):
                 self._logger.warning("Runtime initialization returned False")

@@ -182,18 +182,21 @@ This checklist turns the current frame-eval work into an execution plan that mat
 
 ## Phase 8: Harden Fallback And Compatibility Behavior
 
-- [ ] Audit all environments already considered incompatible in `FrameEvalCompatibilityPolicy`.
+- [x] Audit all environments already considered incompatible in `FrameEvalCompatibilityPolicy`.
 - [x] Define exact fallback behavior for unsupported Python versions, alternate interpreters, coverage tools, and other debuggers.
 - [x] Ensure partial initialization cannot leave the process in a half-hooked state.
-- [ ] Ensure repeated enable-disable cycles are safe.
-- [ ] Add logging that is actionable but not noisy in normal debugging sessions.
-- [ ] Document any intentionally unsupported scenarios.
+- [x] Ensure repeated enable-disable cycles are safe.
+- [x] Add logging that is actionable but not noisy in normal debugging sessions.
+- [x] Document any intentionally unsupported scenarios.
 
 ### Phase 8 Notes
 
 - `FrameEvalCompatibilityPolicy` now reports eval-frame-specific support details separately from the broader environment payload, including a concrete fallback reason and recommended backend.
 - Explicit eval-frame requests now honor `fallback_to_tracing=False`: unsupported or unavailable eval-frame environments fail fast instead of silently switching backends.
 - Manager initialization now shuts the runtime back down if backend selection fails, preventing partially initialized state from surviving an eval-frame startup error.
+- Compatibility policy tests now cover the specific debugger, environment-variable, and coverage-tool reasons already encoded in policy, plus the tracing-only behavior for alternate interpreters.
+- Re-initialization now tears down any existing backend/runtime state before bringing a new backend up, and runtime shutdown resets condition-evaluator configuration so repeated setup/shutdown cycles start cleanly.
+- Backend-selection fallback logs now include the concrete reason once per consecutive decision, which keeps setup diagnostics actionable without repeating the same warning every cycle.
 
 ## Phase 9: Tests
 
@@ -215,7 +218,11 @@ This checklist turns the current frame-eval work into an execution plan that mat
 - [x] Add an implementation note describing the backend architecture and fallback model.
 - [x] Document how to verify that eval-frame is active in logs, stats, or debug info.
 - [x] Document known limitations by Python version and debugger scenario.
-- [ ] Document the expected migration path if users already rely on selective tracing only.
+- [x] Document the expected migration path if users already rely on selective tracing only.
+
+### Phase 10 Notes
+
+- The user guide now includes a migration section for tracing-only users that frames `eval_frame` as a conservative routing optimization, recommends `backend: "auto"` as the first rollout step, and calls out when staying on tracing is still the right operational choice.
 
 ## Suggested File Touchpoints
 

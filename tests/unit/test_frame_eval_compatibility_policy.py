@@ -105,3 +105,45 @@ def test_policy_reports_eval_frame_specific_fallback_reason() -> None:
     assert result["eval_frame_supported"] is False
     assert result["eval_frame_reason"] == "Eval-frame hook API not available in this runtime"
     assert result["recommended_backend"] == "tracing"
+
+
+def test_policy_reports_specific_incompatible_environment_reasons() -> None:
+    """Each incompatible-environment category should surface its own reason string."""
+    policy = FrameEvalCompatibilityPolicy(
+        incompatible_debuggers=("pdb",),
+        incompatible_environment_vars=("PYCHARM_HOSTED",),
+        incompatible_coverage_tools=("coverage",),
+    )
+
+    assert (
+        policy.get_incompatible_environment_reason({"pdb": object()}, {})
+        == "Incompatible debugger detected: pdb"
+    )
+    assert (
+        policy.get_incompatible_environment_reason({}, {"PYCHARM_HOSTED": "1"})
+        == "Incompatible environment variable detected: PYCHARM_HOSTED"
+    )
+    assert (
+        policy.get_incompatible_environment_reason({"coverage": object()}, {})
+        == "Incompatible coverage tool detected: coverage"
+    )
+
+
+def test_policy_treats_alternate_implementations_as_tracing_only() -> None:
+    """Non-CPython runtimes stay generally compatible but disable eval-frame explicitly."""
+    policy = FrameEvalCompatibilityPolicy()
+
+    result = policy.evaluate_environment(
+        version_info=VersionInfo(3, 11, 4),
+        platform_name="Linux-6.8",
+        platform_system="Linux",
+        architecture="64bit",
+        implementation="PyPy",
+        modules={},
+        environ={},
+    )
+
+    assert result["compatible"] is True
+    assert result["eval_frame_supported"] is False
+    assert result["eval_frame_reason"] == "Eval-frame backend requires CPython (got PyPy)"
+    assert result["recommended_backend"] == "tracing"

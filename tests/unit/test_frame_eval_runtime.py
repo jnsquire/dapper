@@ -65,6 +65,35 @@ def test_runtime_shutdown_disables_tracing_and_clears_cache() -> None:
     assert runtime.initialized is False
 
 
+def test_runtime_shutdown_resets_config_and_condition_state() -> None:
+    """Shutdown should clear sticky condition-evaluator settings between cycles."""
+    runtime = FrameEvalRuntime()
+    default_config = FrameEvalConfig()
+
+    with (
+        patch("dapper._frame_eval.runtime.disable_selective_tracing"),
+        patch("dapper._frame_eval.runtime.clear_all_caches"),
+        patch("dapper._frame_eval.runtime.get_condition_evaluator") as get_evaluator,
+    ):
+        evaluator = get_evaluator.return_value
+        evaluator.enabled = True
+        evaluator._budget_s = 0.5
+
+        runtime.initialize(
+            {
+                "conditional_breakpoints_enabled": True,
+                "condition_budget_s": 0.25,
+            }
+        )
+        runtime.shutdown()
+
+    assert runtime.initialized is False
+    assert runtime.config == default_config
+    assert evaluator.enabled is default_config.conditional_breakpoints_enabled
+    assert evaluator._budget_s == default_config.condition_budget_s
+    evaluator.clear_cache.assert_called_once_with()
+
+
 def test_runtime_update_breakpoints_delegates_to_trace_manager() -> None:
     """Breakpoint updates should be forwarded to trace manager."""
     runtime = FrameEvalRuntime()

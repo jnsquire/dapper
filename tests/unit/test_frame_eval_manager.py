@@ -318,6 +318,71 @@ class TestFrameEvalManager:
         shutdown_runtime.assert_called_once_with()
         assert self.manager.active_backend is None
 
+    def test_initialize_components_replaces_existing_backend_cleanly(self):
+        """Re-initialization should tear down the previous backend before replacing it."""
+        old_backend = MagicMock()
+        new_backend = MagicMock()
+        self.manager._active_backend = old_backend
+        self.manager._runtime._initialized = True
+
+        with (
+            patch.object(self.manager._runtime, "initialize", return_value=True),
+            patch.object(self.manager._runtime, "shutdown") as shutdown_runtime,
+            patch.object(self.manager, "_create_backend", return_value=new_backend),
+        ):
+            assert self.manager._initialize_components() is True
+
+        old_backend.shutdown.assert_called_once_with()
+        shutdown_runtime.assert_called_once_with()
+        assert self.manager.active_backend is new_backend
+
+    def test_backend_selection_deduplicates_repeated_auto_fallback_logs(self):
+        """Repeated AUTO fallback decisions should not spam identical log lines."""
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (
+            False,
+            "Incompatible coverage tool detected: coverage",
+        )
+        config = FrameEvalConfig()
+        config.backend = FrameEvalConfig.BackendKind.AUTO
+
+        with (
+            patch.object(self.manager, "_create_tracing_backend", return_value=MagicMock()),
+            patch.object(self.manager._logger, "info") as log_info,
+        ):
+            self.manager._create_backend(config)
+            self.manager._create_backend(config)
+
+        assert log_info.call_count == 1
+        assert log_info.call_args.args == (
+            "%s; falling back to tracing: %s",
+            "Eval-frame AUTO selection",
+            "Incompatible coverage tool detected: coverage",
+        )
+
+    def test_backend_selection_logs_actionable_init_failure_reason(self):
+        """Fallback logs should include the concrete backend initialization failure."""
+        tracing_backend = MagicMock()
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (True, "")
+        config = FrameEvalConfig()
+        config.backend = FrameEvalConfig.BackendKind.EVAL_FRAME
+
+        with (
+            patch.object(
+                self.manager,
+                "_create_eval_frame_backend",
+                side_effect=RuntimeError("install failed"),
+            ),
+            patch.object(self.manager, "_create_tracing_backend", return_value=tracing_backend),
+            patch.object(self.manager._logger, "warning") as log_warning,
+        ):
+            assert self.manager._create_backend(config) is tracing_backend
+
+        assert log_warning.call_args.args == (
+            "%s; falling back to tracing: %s",
+            "Eval-frame backend explicitly requested",
+            "backend initialization failed (RuntimeError: install failed)",
+        )
+
     def test_manager_selects_eval_frame_backend_and_integrates_it(self):
         """The manager-selected eval-frame backend should integrate through the backend router."""
         self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (True, "")

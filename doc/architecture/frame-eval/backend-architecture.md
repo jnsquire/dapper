@@ -63,11 +63,31 @@ This keeps CPython-specific logic in the Cython boundary while leaving policy an
 
 Backend selection is driven by `FrameEvalConfig.backend`.
 
-- `auto` prefers eval-frame when `FrameEvalCompatibilityPolicy.supports_eval_frame()` returns true
+- `auto` prefers eval-frame when `FrameEvalCompatibilityPolicy.can_use_eval_frame(...)` reports the full environment as eligible
 - `eval_frame` requests the eval-frame backend explicitly
 - `tracing` forces the legacy tracing family
 
 When tracing is selected, `FrameEvalConfig.tracing_backend` still chooses between `sys.monitoring`, `settrace`, or `auto` within that family.
+
+### Why `eval_frame` Exists Alongside `sys.monitoring`
+
+`sys.monitoring` and `eval_frame` both reduce the cost of always-on `sys.settrace`, but they operate at different control points.
+
+- `sys.monitoring` is a tracing backend. It improves how events are delivered once monitoring is active.
+- `eval_frame` is a frame-entry router. It decides whether a frame should enter debugger work at all before the normal tracing path is engaged for that frame.
+
+That distinction matters because Dapper's long-term design needs a place to choose among three outcomes at frame entry:
+
+- keep running the original frame untouched,
+- activate scoped debugger tracing for the frame,
+- or run a breakpoint-aware modified code object.
+
+`sys.monitoring` is useful for the second outcome. `eval_frame` is the only backend family here that naturally owns the first decision point and can later absorb the third.
+
+So the current recommendation is pragmatic:
+
+- prefer `sys.monitoring` when you want a simpler tracing backend on Python 3.12+;
+- prefer `eval_frame` when you want the architecture that best matches Dapper's future frame-selection and code-selection model, and your runtime is compatible with the CPython hook.
 
 ## Fallback Model
 
@@ -80,8 +100,11 @@ If eval-frame is requested but not supported, the manager falls back to a tracin
 Common reasons include:
 
 - the compiled extension is unavailable
-- the compatibility policy reports eval-frame support as unavailable
+- the compatibility policy reports eval-frame support as unavailable for the current interpreter or environment
 - eval-frame backend creation raises during initialization
+- another debugger, coverage tool, or known conflicting environment marker is already active
+
+When fallback is allowed, manager logging is intentionally deduplicated for consecutive identical reasons so repeated setup attempts do not flood normal debugging sessions with the same warning.
 
 ### Runtime Fallback Inside The Hook
 
@@ -99,6 +122,8 @@ This means the current eval-frame backend is additive: it opts into scoped debug
 Shutdown removes the eval-frame hook before clearing thread-local trace state and backend bookkeeping.
 
 That order matters because it avoids leaving a hook installed after the manager believes frame evaluation is disabled.
+
+Runtime shutdown also resets condition-evaluator settings and runtime config back to defaults so repeated enable-disable cycles start from a clean state.
 
 ## Current Decision Path
 
