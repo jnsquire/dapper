@@ -42,8 +42,11 @@ from dapper.shared import stepping_handlers
 from dapper.shared import variable_handlers
 from dapper.shared.value_conversion import convert_value_with_context
 from dapper.shared.value_conversion import evaluate_with_policy
+from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_message_summary import format_dap_message
+from dapper.utils.logging_names import DAPPER_LOGGER_COMMANDS
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(DAPPER_LOGGER_COMMANDS)
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import CommandHandlerDebuggerLike
@@ -150,12 +153,16 @@ def handle_debug_command(
     """
     active_session = session if session is not None else _d_shared.get_active_session()
     with _d_shared.use_session(active_session):
+        trace_enabled = logger.isEnabledFor(TRACE)
+        if trace_enabled:
+            logger.log(TRACE, "recv %s", format_dap_message(command))
+
         cmd = command.get("command")
         cmd_id = command.get("id")  # request id to echo back in the response
         arguments = command.get("arguments", {})
-        logger.debug("[id=%s] handle_debug_command: cmd=%s", cmd_id, cmd)
         # Ensure the command name is a string before looking up the handler
         if not isinstance(cmd, str):
+            logger.warning("[id=%s] invalid command payload: %r", cmd_id, cmd)
             active_session.safe_send(
                 "response",
                 id=cmd_id,
@@ -170,14 +177,7 @@ def handle_debug_command(
             # Look up the command handler in the mapping table and dispatch
             handler_func = COMMAND_HANDLERS.get(cmd)
             if handler_func is not None:
-                result = handler_func(arguments)
-                logger.info(
-                    "[id=%s] handle_debug_command: cmd=%s handler_returned=%r response_sent=%s",
-                    cmd_id,
-                    cmd,
-                    result,
-                    transport.response_sent,
-                )
+                handler_func(arguments)
                 # We no longer send an automatic acknowledgement.  the handler is
                 # responsible for calling ``session.safe_send_response`` when it
                 # has finished processing.  If the transport still shows
@@ -185,22 +185,24 @@ def handle_debug_command(
                 # warning so that misbehaving handlers are easier to spot.
                 if cmd_id is not None and not transport.response_sent:
                     logger.warning(
-                        "[id=%s] handle_debug_command: no response sent by handler for cmd=%s",
+                        "[id=%s] cmd=%s response=missing",
                         cmd_id,
                         cmd,
                     )
-                elif cmd_id is not None and transport.response_sent:
-                    # explicit acknowledgement already emitted by handler
+                elif cmd_id is not None and transport.response_sent and not trace_enabled:
                     logger.info(
-                        "[id=%s] handle_debug_command: handler sent response for cmd=%s",
+                        "[id=%s] cmd=%s response=sent",
                         cmd_id,
                         cmd,
                     )
+                elif transport.response_sent and not trace_enabled:
+                    logger.info("cmd=%s response=sent", cmd)
                 # Signal resume for stepping/continue/terminate commands so the
                 # debugger thread unblocks from process_queued_commands_launcher.
                 if cmd in _RESUME_COMMANDS:
                     active_session.signal_resume()
             else:
+                logger.warning("[id=%s] unknown command: %s", cmd_id, cmd)
                 active_session.safe_send(
                     "response",
                     id=cmd_id,
@@ -670,7 +672,6 @@ def _cmd_exception_info(arguments: dict[str, Any]) -> None:
 @command_handler("configurationDone")
 def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     session = _active_session()
-    logger.info("[id=%s] configurationDone received", session.request_id)
     lifecycle_handlers.handle_configuration_done_impl()
     # Acknowledge the request so the TS adapter's sendRequestToPython resolves.
     # We must send the response *and flush* before setting the event that
@@ -681,13 +682,11 @@ def _cmd_configuration_done(_arguments: dict[str, Any] | None = None) -> None:
     _flush_transport(session)
     # Unblock the launcher main thread which is waiting before starting the program
     session.configuration_done_event.set()
-    logger.debug("[id=%s] configurationDone: configuration_done_event set", session.request_id)
 
 
 @command_handler("terminate")
 def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     state = _active_session()
-    logger.info("[id=%s] terminate received", state.request_id)
     result = lifecycle_handlers.handle_terminate_impl(
         state=state,
     )
@@ -704,30 +703,12 @@ def _cmd_terminate(_arguments: dict[str, Any] | None = None) -> dict[str, Any]:
 @command_handler("initialize")
 def _cmd_initialize(_arguments: dict[str, Any] | None = None) -> None:
     session = _active_session()
-    logger.info("[id=%s] initialize received", session.request_id)
     result = lifecycle_handlers.handle_initialize_impl()
-    logger.info(
-        "[id=%s] initialize: handle_initialize_impl returned result=%r response_sent_before=%s",
-        session.request_id,
-        type(result).__name__,
-        session.transport.response_sent,
-    )
     if result:
-        ok = session.safe_send_response(**result)
-        logger.info(
-            "[id=%s] initialize: safe_send_response returned %s response_sent_after=%s",
-            session.request_id,
-            ok,
-            session.transport.response_sent,
-        )
-    else:
-        logger.info(
-            "[id=%s] initialize: result is falsy — skipping safe_send_response", session.request_id
-        )
+        session.safe_send_response(**result)
     # After responding to initialize, emit the 'initialized' event so the client
     # knows it can send setBreakpoints / setExceptionBreakpoints / configurationDone.
     session.safe_send("initialized")
-    logger.info("[id=%s] initialize: sent initialized event", session.request_id)
 
 
 @command_handler("launch")
@@ -741,36 +722,14 @@ def _cmd_launch(_arguments: dict[str, Any] | None = None) -> None:
     (``setBreakpoints`` → ``configurationDone``).
     """
     session = _active_session()
-    logger.info(
-        "[id=%s] launch received response_sent_before=%s",
-        session.request_id,
-        session.transport.response_sent,
-    )
-    ok = session.safe_send_response(success=True)
-    logger.info(
-        "[id=%s] launch: safe_send_response returned %s response_sent_after=%s",
-        session.request_id,
-        ok,
-        session.transport.response_sent,
-    )
+    session.safe_send_response(success=True)
 
 
 @command_handler("attach")
 def _cmd_attach(_arguments: dict[str, Any] | None = None) -> None:
     """Acknowledge attach for an already-bootstrapped live process."""
     session = _active_session()
-    logger.info(
-        "[id=%s] attach received response_sent_before=%s",
-        session.request_id,
-        session.transport.response_sent,
-    )
-    ok = session.safe_send_response(success=True)
-    logger.info(
-        "[id=%s] attach: safe_send_response returned %s response_sent_after=%s",
-        session.request_id,
-        ok,
-        session.transport.response_sent,
-    )
+    session.safe_send_response(success=True)
     process_name = Path(sys.argv[0] if sys.argv else "attached").resolve().name
     session.safe_send(
         "process",
@@ -789,7 +748,6 @@ def _cmd_disconnect(_arguments: dict[str, Any] | None = None) -> None:
     launcher can exit cleanly.
     """
     session = _active_session()
-    logger.info("[id=%s] disconnect received", session.request_id)
     session.terminate_session()
     session.safe_send_response(success=True)
     _flush_transport(session)
@@ -949,15 +907,11 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
     just_my_code = args.get("justMyCode", True)
 
     session = _active_session()
-    logger.debug(
-        "[id=%s] dapper/agentSnapshot: entered, target_tid=%s depth=%s",
-        session.request_id,
-        target_tid,
-        depth,
-    )
     dbg = session.debugger
     if dbg is None:
-        logger.warning("[id=%s] dapper/agentSnapshot: no active debugger", session.request_id)
+        logger.warning(
+            "[id=%s] dapper/agentSnapshot failed: no active debugger", session.request_id
+        )
         session.safe_send_response(success=False, message="No active debugger")
         return
 
@@ -966,27 +920,17 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
     running_ids: list[int] = [
         tid for tid in tracker.threads if tid not in tracker.stopped_thread_ids
     ]
-    logger.debug(
-        "[id=%s] dapper/agentSnapshot: stopped_ids=%s running_ids=%s",
-        session.request_id,
-        stopped_ids,
-        running_ids,
-    )
 
     if not stopped_ids:
-        logger.warning("[id=%s] dapper/agentSnapshot: no stopped threads", session.request_id)
+        logger.warning(
+            "[id=%s] dapper/agentSnapshot failed: no stopped threads", session.request_id
+        )
         session.safe_send_response(success=False, message="No stopped threads")
         return
 
     tid = target_tid if target_tid in stopped_ids else stopped_ids[0]
 
     raw_frames: list[dict[str, Any]] = list(tracker.frames_by_thread.get(tid, []))
-    logger.debug(
-        "[id=%s] dapper/agentSnapshot: tid=%s raw_frames=%d",
-        session.request_id,
-        tid,
-        len(raw_frames),
-    )
     if just_my_code:
         raw_frames = [f for f in raw_frames if not _is_library_frame_dict(f)]
     raw_frames = raw_frames[:depth]
@@ -1006,12 +950,6 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
             frame_id = frame_dict.get("id")
             actual_frame = (
                 tracker.frame_id_to_frame.get(frame_id) if frame_id is not None else None
-            )
-            logger.debug(
-                "[id=%s] dapper/agentSnapshot: top frame_id=%s actual_frame=%s",
-                session.request_id,
-                frame_id,
-                actual_frame is not None,
             )
             if actual_frame is not None:
                 top_locals = _extract_vars(actual_frame.f_locals, max_vars)
@@ -1041,10 +979,14 @@ def _cmd_agent_snapshot(arguments: dict[str, Any] | None) -> None:
             stop_reason = "exception"
 
     logger.debug(
-        "[id=%s] dapper/agentSnapshot: sending response, callStack=%d locals=%d stop_reason=%s",
+        "[id=%s] dapper/agentSnapshot success: thread=%s call_stack=%d locals=%d globals=%d stopped=%d running=%d stop_reason=%s",
         session.request_id,
+        tid,
         len(call_stack),
         len(top_locals),
+        len(top_globals),
+        len(stopped_ids),
+        len(running_ids),
         stop_reason,
     )
     session.safe_send_response(
@@ -1074,13 +1016,6 @@ def _cmd_agent_eval(arguments: dict[str, Any] | None) -> None:
         expressions = [single]
     frame_index = int(args.get("frameIndex", 0))
 
-    logger.debug(
-        "[id=%s] dapper/agentEval: entered, expressions=%d frame_index=%s",
-        session.request_id,
-        len(expressions),
-        frame_index,
-    )
-
     if not expressions:
         session.safe_send_response(success=False, message="No expressions provided")
         return
@@ -1092,17 +1027,21 @@ def _cmd_agent_eval(arguments: dict[str, Any] | None) -> None:
 
     dbg = session.debugger
     if dbg is None:
-        logger.warning("[id=%s] dapper/agentEval: no active debugger", session.request_id)
+        logger.warning("[id=%s] dapper/agentEval failed: no active debugger", session.request_id)
         session.safe_send_response(success=False, message="No active debugger")
         return
 
     frame = _get_frame_by_index(dbg, frame_index)
-    logger.debug("[id=%s] dapper/agentEval: frame=%s", session.request_id, frame)
 
     results = [_evaluate_agent_expression(expr, frame) for expr in expressions]
 
     logger.debug(
-        "[id=%s] dapper/agentEval: sending response, %d results", session.request_id, len(results)
+        "[id=%s] dapper/agentEval success: expressions=%d results=%d frame_index=%s frame_available=%s",
+        session.request_id,
+        len(expressions),
+        len(results),
+        frame_index,
+        frame is not None,
     )
     session.safe_send_response(success=True, body={"results": results})
 
@@ -1117,20 +1056,15 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
     max_items = min(int(args.get("maxItems", 20)), 100)
     frame_index = int(args.get("frameIndex", 0))
 
-    logger.debug(
-        "[id=%s] dapper/agentInspect: entered, expression=%r frame_index=%s",
-        session.request_id,
-        expression,
-        frame_index,
-    )
-
     if not expression:
         session.safe_send_response(success=False, message="No expression provided")
         return
 
     dbg = session.debugger
     if dbg is None:
-        logger.warning("[id=%s] dapper/agentInspect: no active debugger", session.request_id)
+        logger.warning(
+            "[id=%s] dapper/agentInspect failed: no active debugger", session.request_id
+        )
         session.safe_send_response(success=False, message="No active debugger")
         return
 
@@ -1140,7 +1074,7 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
         value = evaluate_with_policy(expression, frame) if frame is not None else eval(expression)
     except Exception as exc:
         logger.warning(
-            "[id=%s] dapper/agentInspect: evaluation failed: %s", session.request_id, exc
+            "[id=%s] dapper/agentInspect failed: evaluation error=%s", session.request_id, exc
         )
         session.safe_send_response(success=False, message=f"Evaluation failed: {exc!s}")
         return
@@ -1178,7 +1112,13 @@ def _cmd_agent_inspect(arguments: dict[str, Any] | None) -> None:
     root = _expand(value, max_depth)
     root["name"] = expression
 
+    child_count = len(cast("list[dict[str, Any]]", root.get("children", [])))
     logger.debug(
-        "[id=%s] dapper/agentInspect: sending response for %r", session.request_id, expression
+        "[id=%s] dapper/agentInspect success: expression=%r frame_index=%s depth=%d children=%d",
+        session.request_id,
+        expression,
+        frame_index,
+        max_depth,
+        child_count,
     )
     session.safe_send_response(success=True, body={"root": root})

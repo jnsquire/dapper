@@ -17,12 +17,14 @@ from dapper.ipc.ipc_binary import HEADER_SIZE
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_message_summary import summarize_dap_message
+from dapper.utils.logging_names import DAPPER_LOGGER_TRANSPORT
 
 # Binary frame kind for adapter→launcher commands
 _KIND_COMMAND = 2
 
-logger = logging.getLogger(__name__)
-traffic_logger = logging.getLogger("dapper.connection.traffic")
+logger = logging.getLogger(DAPPER_LOGGER_TRANSPORT)
+traffic_logger = logger
 
 
 class NamedPipeServerConnection(ConnectionBase):
@@ -174,7 +176,7 @@ class NamedPipeServerConnection(ConnectionBase):
                 payload = str(incoming).encode("utf-8")
 
             message = json.loads(payload.decode("utf-8"))
-            traffic_logger.log(TRACE, "Received message: %s", message)
+            traffic_logger.log(TRACE, "recv %s", summarize_dap_message(message))
             return message
 
         if not self.reader:
@@ -202,7 +204,7 @@ class NamedPipeServerConnection(ConnectionBase):
                 return None
 
         message = json.loads(payload_bytes.decode("utf-8"))
-        traffic_logger.log(TRACE, "Received message: %s", message)
+        traffic_logger.log(TRACE, "recv %s", summarize_dap_message(message))
         return message
 
     async def write_message(self, message: dict[str, Any]) -> None:
@@ -213,7 +215,7 @@ class NamedPipeServerConnection(ConnectionBase):
         if sys.platform == "win32" and self._pipe_conn is not None:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._pipe_conn.send_bytes, payload)
-            logger.log(TRACE, "Sent message: %s", message)
+            traffic_logger.log(TRACE, "send %s", summarize_dap_message(message))
             return
 
         if not getattr(self, "writer", None) and not getattr(self, "pipe_file", None):
@@ -228,4 +230,4 @@ class NamedPipeServerConnection(ConnectionBase):
             pf.write(payload)
             pf.flush()
 
-        logger.log(TRACE, "Sent message: %s", message)
+        traffic_logger.log(TRACE, "send %s", summarize_dap_message(message))

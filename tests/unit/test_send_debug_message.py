@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.shared.command_handlers import _active_session
 import dapper.shared.debug_shared as ds
+from dapper.utils.logging_levels import TRACE
 
 
 class _PipeConn:
@@ -63,6 +65,48 @@ def test_send_debug_message_binary_ipc(debug_session):
     assert data["body"]["value"] == 5
 
 
+def test_send_debug_message_does_not_append_directly_to_session_log(
+    tmp_path, monkeypatch, debug_session
+):
+    debug_session.ipc_enabled = True
+    debug_session.transport.session_log_file = str(tmp_path / "session.log")
+
+    monkeypatch.setattr(debug_session.transport, "require_ipc", lambda: None)
+    monkeypatch.setattr(debug_session.transport, "require_ipc_write_channel", lambda: None)
+
+    class DummyWriter:
+        def __init__(self):
+            self.frames: list[bytes] = []
+
+        def write(self, data):
+            self.frames.append(data)
+
+        def flush(self):
+            pass
+
+    writer = DummyWriter()
+    debug_session.transport.ipc_wfile = writer
+
+    records: list[tuple[str, tuple[object, ...]]] = []
+
+    def _capture(msg, *args, **kwargs):
+        records.append((msg, args))
+
+    monkeypatch.setattr(ds.transport_logger, "debug", _capture)
+
+    with debug_session.transport.request_scope(7):
+        debug_session.transport.send("response", success=True)
+
+    assert writer.frames
+    assert not (tmp_path / "session.log").exists()
+    assert records == [
+        (
+            "[id=%s] transport.send %s",
+            (7, "response id=7 success=True"),
+        )
+    ]
+
+
 def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session):
     # simulate transport.send failing after marking response_sent
     transport = debug_session.transport
@@ -113,7 +157,7 @@ def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session
     COMMAND_HANDLERS["foo"] = ret_handler  # type: ignore[assignment] - return value dict not None, handler sends response directly
     info_logs.clear()
     handle_debug_command({"command": "foo", "id": 42})
-    assert any("no response sent by handler for cmd=foo" in m for m in info_logs)
+    assert any("cmd=foo response=missing" in m for m in info_logs)
     # transport.send should never have been invoked
     assert calls == []
 
@@ -132,9 +176,165 @@ def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session
     info_logs.clear()
     handle_debug_command({"command": "foo", "id": 43})
     # there should be no warning about a missing response
-    assert not any("no response sent by handler for cmd=foo" in m for m in info_logs)
-    # the handler-sent acknowledgement should be recorded in the log
-    assert any("handler sent response for cmd=foo" in m for m in info_logs)
+    assert not any("cmd=foo response=missing" in m for m in info_logs)
+    # the dispatcher should emit a single concise acknowledgement line
+    assert any("cmd=foo response=sent" in m for m in info_logs)
+
+
+def test_handle_debug_command_logs_full_trace_messages(monkeypatch, debug_session):
+    from dapper.shared import command_handlers  # noqa: PLC0415
+
+    debug_session.ipc_enabled = True
+    monkeypatch.setattr(debug_session.transport, "require_ipc", lambda: None)
+    monkeypatch.setattr(debug_session.transport, "require_ipc_write_channel", lambda: None)
+
+    class DummyWriter:
+        def __init__(self):
+            self.frames: list[bytes] = []
+
+        def write(self, data):
+            self.frames.append(data)
+
+        def flush(self):
+            pass
+
+    writer = DummyWriter()
+    debug_session.transport.ipc_wfile = writer
+
+    trace_logs: list[str] = []
+
+    def _capture_trace(level, msg, *args, **kwargs):
+        if level == TRACE:
+            trace_logs.append(msg % args if args else str(msg))
+
+    monkeypatch.setattr(command_handlers.logger, "isEnabledFor", lambda level: level >= TRACE)
+    monkeypatch.setattr(command_handlers.logger, "log", _capture_trace)
+
+    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
+    from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+
+    def foo_handler(_args=None):
+        session = _active_session()
+        session.safe_send_response(success=True, body={"status": "ok"})
+
+    COMMAND_HANDLERS["foo"] = foo_handler
+    try:
+        handle_debug_command(
+            {"command": "foo", "id": 43, "arguments": {"alpha": 1}},
+            session=debug_session,
+        )
+    finally:
+        COMMAND_HANDLERS.pop("foo", None)
+
+    assert writer.frames
+    assert trace_logs == [
+        'recv {"arguments": {"alpha": 1}, "command": "foo", "id": 43}',
+        'send {"body": {"status": "ok"}, "event": "response", "id": 43, "success": true}',
+    ]
+
+
+def test_handle_debug_command_trace_logging_suppresses_info_ack(monkeypatch, debug_session):
+    from dapper.shared import command_handlers  # noqa: PLC0415
+    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
+    from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+
+    info_logs: list[str] = []
+
+    monkeypatch.setattr(command_handlers.logger, "isEnabledFor", lambda level: level >= TRACE)
+    monkeypatch.setattr(command_handlers.logger, "log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        command_handlers.logger,
+        "info",
+        lambda msg, *args, **kwargs: info_logs.append(msg % args if args else str(msg)),
+    )
+
+    def foo_handler(_args=None):
+        session = _active_session()
+        session.transport.response_sent = True
+
+    COMMAND_HANDLERS["foo"] = foo_handler
+    try:
+        handle_debug_command({"command": "foo", "id": 43}, session=debug_session)
+    finally:
+        COMMAND_HANDLERS.pop("foo", None)
+
+    assert info_logs == []
+
+
+def test_agent_command_logs_are_condensed(monkeypatch, debug_session):
+    from dapper.shared import command_handlers  # noqa: PLC0415
+
+    debug_logs: list[str] = []
+    warning_logs: list[str] = []
+    responses: list[dict[str, object]] = []
+
+    def _capture_debug(msg, *args, **kwargs):
+        debug_logs.append(msg % args if args else str(msg))
+
+    def _capture_warning(msg, *args, **kwargs):
+        warning_logs.append(msg % args if args else str(msg))
+
+    frame_id = 55
+    thread_id = 22
+    tracker = SimpleNamespace(
+        stopped_thread_ids={thread_id},
+        threads={thread_id: object()},
+        frames_by_thread={
+            thread_id: [
+                {
+                    "id": frame_id,
+                    "name": "worker",
+                    "line": 17,
+                    "source": {"path": "/tmp/worker.py"},
+                }
+            ]
+        },
+        frame_id_to_frame={
+            frame_id: SimpleNamespace(
+                f_locals={"value": 42},
+                f_globals={"visible": "yes", "__name__": "fixture"},
+            )
+        },
+    )
+    debug_session.debugger = SimpleNamespace(
+        thread_tracker=tracker,
+        exception_handler=SimpleNamespace(exception_info_by_thread={}),
+    )
+
+    monkeypatch.setattr(command_handlers.logger, "debug", _capture_debug)
+    monkeypatch.setattr(command_handlers.logger, "warning", _capture_warning)
+    monkeypatch.setattr(
+        debug_session,
+        "safe_send_response",
+        lambda **payload: responses.append(payload) or True,
+    )
+    monkeypatch.setattr(command_handlers, "_get_frame_by_index", lambda dbg, frame_index: object())
+    monkeypatch.setattr(
+        command_handlers,
+        "_evaluate_agent_expression",
+        lambda expr, frame: {"expression": expr, "result": repr(frame)},
+    )
+    monkeypatch.setattr(
+        command_handlers,
+        "evaluate_with_policy",
+        lambda expression, frame: {"alpha": 1, "beta": 2},
+    )
+
+    with debug_session.transport.request_scope(99):
+        command_handlers._cmd_agent_snapshot({"threadId": thread_id})
+    with debug_session.transport.request_scope(100):
+        command_handlers._cmd_agent_eval({"expressions": ["x", "y"], "frameIndex": 1})
+    with debug_session.transport.request_scope(101):
+        command_handlers._cmd_agent_inspect({"expression": "alpha", "frameIndex": 2, "depth": 2})
+
+    assert warning_logs == []
+    assert any("dapper/agentSnapshot success:" in line for line in debug_logs)
+    assert any("dapper/agentEval success:" in line for line in debug_logs)
+    assert any("dapper/agentInspect success:" in line for line in debug_logs)
+    assert not any("entered" in line for line in debug_logs)
+    assert not any("sending response" in line for line in debug_logs)
+    assert not any("top frame_id" in line for line in debug_logs)
+    assert len(responses) == 3
 
 
 def test_send_debug_message_response_autofills_id_and_warns(debug_session, monkeypatch):
@@ -166,7 +366,7 @@ def test_send_debug_message_response_autofills_id_and_warns(debug_session, monke
     debug_session.transport.ipc_wfile = writer
 
     logged: list[str] = []
-    # the warning is emitted on the module logger rather than send_logger
+    # the warning is emitted on the module logger rather than the transport logger
     monkeypatch.setattr(
         ds.logger, "warning", lambda msg, *args, **kwargs: logged.append(msg % args)
     )
@@ -198,3 +398,46 @@ def test_send_debug_message_response_autofills_id_and_warns(debug_session, monke
     # when there is no current_request_id the field may be omitted
     assert data2.get("id", None) is None
     assert data2.get("success") is True
+
+
+def test_send_debug_message_trace_logging_suppresses_debug_summary(debug_session, monkeypatch):
+    debug_session.ipc_enabled = True
+    monkeypatch.setattr(debug_session.transport, "require_ipc", lambda: None)
+    monkeypatch.setattr(debug_session.transport, "require_ipc_write_channel", lambda: None)
+
+    class DummyWriter:
+        def __init__(self):
+            self.frames: list[bytes] = []
+
+        def write(self, data):
+            self.frames.append(data)
+
+        def flush(self):
+            pass
+
+    writer = DummyWriter()
+    debug_session.transport.ipc_wfile = writer
+
+    trace_logs: list[str] = []
+    debug_logs: list[str] = []
+
+    monkeypatch.setattr(ds.commands_logger, "isEnabledFor", lambda level: level >= TRACE)
+    monkeypatch.setattr(
+        ds.commands_logger,
+        "log",
+        lambda level, msg, *args, **kwargs: (
+            trace_logs.append(msg % args if args else str(msg)) if level == TRACE else None
+        ),
+    )
+    monkeypatch.setattr(
+        ds.transport_logger,
+        "debug",
+        lambda msg, *args, **kwargs: debug_logs.append(msg % args if args else str(msg)),
+    )
+
+    with debug_session.transport.request_scope(7):
+        debug_session.transport.send("response", success=True)
+
+    assert writer.frames
+    assert trace_logs == ['send {"event": "response", "id": 7, "success": true}']
+    assert debug_logs == []

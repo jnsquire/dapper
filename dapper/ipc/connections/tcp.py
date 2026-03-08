@@ -13,11 +13,14 @@ from dapper.ipc.connections.base import ConnectionBase
 from dapper.ipc.ipc_binary import pack_frame
 from dapper.ipc.ipc_binary import unpack_header
 from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_message_summary import summarize_dap_message
+from dapper.utils.logging_names import DAPPER_LOGGER_TRANSPORT
 
 # Binary frame kind for adapter→launcher commands
 _KIND_COMMAND = 2
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(DAPPER_LOGGER_TRANSPORT)
+traffic_logger = logger
 
 
 class TCPServerConnection(ConnectionBase):
@@ -201,16 +204,13 @@ class TCPServerConnection(ConnectionBase):
 
     async def _read_binary_message(self) -> dict[str, Any] | None:
         """Read a binary frame message."""
-        logger.debug("Reading binary frame...")
         # Read header first
         header_data = await self.reader.readexactly(8)
         if not header_data:
-            logger.debug("No header data received")
             return None  # Connection closed
 
         try:
-            kind, length = unpack_header(header_data)
-            logger.debug("Binary frame: kind=%d, length=%d", kind, length)
+            _kind, length = unpack_header(header_data)
         except ValueError:
             logger.exception("Failed to unpack binary header")
             return None
@@ -221,13 +221,12 @@ class TCPServerConnection(ConnectionBase):
         else:
             payload = await self.reader.readexactly(length)
             if not payload:
-                logger.debug("No payload data received")
                 return None
 
         # Parse JSON payload
         try:
             message = json.loads(payload.decode("utf-8"))
-            logger.log(TRACE, "Received binary message: %s", message)
+            traffic_logger.log(TRACE, "recv %s", summarize_dap_message(message))
         except json.JSONDecodeError:
             logger.exception("Failed to decode binary message JSON")
             return None
@@ -245,7 +244,7 @@ class TCPServerConnection(ConnectionBase):
         self.writer.write(frame)
 
         await self.writer.drain()
-        logger.log(TRACE, "Sent message: %s", message)
+        traffic_logger.log(TRACE, "send %s", summarize_dap_message(message))
 
     def __del__(self):  # pragma: no cover - best-effort cleanup
         # Ensure underlying server socket is closed if user forgot.

@@ -26,6 +26,12 @@ from dapper.ipc.ipc_binary import pack_frame  # lightweight util
 from dapper.shared.runtime_source_registry import RuntimeSourceEntry
 from dapper.shared.runtime_source_registry import RuntimeSourceRegistry
 from dapper.utils.events import EventEmitter
+from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_message_summary import format_dap_message
+from dapper.utils.logging_message_summary import summarize_dap_message
+from dapper.utils.logging_names import DAPPER_LOGGER_COMMANDS
+from dapper.utils.logging_names import DAPPER_LOGGER_SESSION
+from dapper.utils.logging_names import DAPPER_LOGGER_TRANSPORT
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -55,8 +61,9 @@ STRING_RAW_THRESHOLD = 80
 # Number of positional args for the simple make_variable_object signature
 MAKE_VAR_SIMPLE_ARGCOUNT = 2
 
-send_logger = logging.getLogger(__name__ + ".send")
-logger = logging.getLogger(__name__)
+commands_logger = logging.getLogger(DAPPER_LOGGER_COMMANDS)
+transport_logger = logging.getLogger(DAPPER_LOGGER_TRANSPORT)
+logger = logging.getLogger(DAPPER_LOGGER_SESSION)
 
 
 class SourceReferenceMetaBase(TypedDict):
@@ -181,26 +188,18 @@ class SessionTransport:
                 if self.current_request_id is not None:
                     # retroactively attach the id we should have echoed
                     message["id"] = self.current_request_id
-        # Always log outgoing messages for debugging (responses and events)
-        # always append raw text to the session log file as well so that
-        # logging configuration changes in the debuggee cannot prevent us
-        # from capturing events.
-        log_path = getattr(self, "session_log_file", None)
-        if log_path:
-            try:
-                # use Path.open() to satisfy ruff PTH123
-                with Path(log_path).open("a", encoding="utf-8") as lf:
-                    lf.write(
-                        f"[id={self.current_request_id}] transport.send: type={message_type} keys={list(message.keys())}\n"
-                    )
-            except Exception:
-                pass
-        send_logger.debug(
-            "[id=%s] transport.send: type=%s keys=%s",
-            self.current_request_id,
-            message_type,
-            list(message.keys()),
-        )
+        # Always log outgoing messages for debugging (responses and events).
+        # Session-file capture is handled by the configured dapper logger
+        # hierarchy rather than a raw file append side channel.
+        trace_enabled = commands_logger.isEnabledFor(TRACE)
+        if trace_enabled:
+            commands_logger.log(TRACE, "send %s", format_dap_message(message))
+        else:
+            transport_logger.debug(
+                "[id=%s] transport.send %s",
+                self.current_request_id,
+                summarize_dap_message(message),
+            )
 
         with contextlib.suppress(Exception):
             self.on_debug_message.emit(message_type, **kwargs)
