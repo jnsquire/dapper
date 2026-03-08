@@ -103,6 +103,25 @@ describe('EnvironmentManager helpers', () => {
     expect(runCalls).toHaveLength(0);
   });
 
+  it('reuses the in-flight prepare promise for concurrent callers', async () => {
+    let resolvePrepare: ((value: any) => void) | undefined;
+    const prepareResult = new Promise((resolve) => {
+      resolvePrepare = resolve;
+    });
+    const prepareSpy = vi.spyOn(envMgr as any, '_prepare').mockReturnValue(prepareResult);
+
+    const firstCall = envMgr.prepareEnvironment('1.2.3', 'auto', false, undefined);
+    const secondCall = envMgr.prepareEnvironment('1.2.3', 'auto', false, undefined);
+
+    expect(firstCall).toBe(secondCall);
+    expect(prepareSpy).toHaveBeenCalledTimes(1);
+
+    resolvePrepare?.({ pythonPath: '/python', needsInstall: false });
+
+    await expect(firstCall).resolves.toEqual({ pythonPath: '/python', needsInstall: false });
+    await expect(secondCall).resolves.toEqual({ pythonPath: '/python', needsInstall: false });
+  });
+
   describe('workspace venv handling', () => {
     let tmpRoot: string | undefined;
     const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
