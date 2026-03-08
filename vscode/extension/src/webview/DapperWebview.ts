@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { logger } from '../utils/logger.js';
 import { insertLaunchConfiguration } from '../utils/insertLaunchConfiguration.js';
 import { IViewComponent } from './components/BaseView.js';
-import { DebugView } from './components/debug/DebugView.js';
+import { DebugView } from './pages/DebugView.js';
 
 // Type for view components
 type ViewType = 'debug' | 'config';

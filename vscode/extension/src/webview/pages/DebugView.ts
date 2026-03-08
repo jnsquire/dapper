@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { BaseView } from '../BaseView.js';
-import type { WebviewToHostMessage } from '../../debugViewProtocol.js';
-import { DebugViewSessionWatcher } from '../../DebugViewSessionWatcher.js';
+import { BaseView } from '../components/BaseView.js';
+import type { WebviewToHostMessage } from '../debugViewProtocol.js';
+import { DebugViewSessionWatcher } from '../DebugViewSessionWatcher.js';
 
 export class DebugView extends BaseView {
   private _selectedFrameId: number | null = null;
@@ -20,6 +20,7 @@ export class DebugView extends BaseView {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${cspSource} https: data:; font-src ${cspSource};">
   <title>Debug View</title>
+  <!-- @vscode-elements -->
   <script type="module" nonce="${nonce}" src="${elementsUri}"></script>
 </head>
 <body style="display:flex;flex-direction:column;height:100vh;padding:0;margin:0;overflow:hidden">
@@ -270,7 +271,7 @@ export class DebugView extends BaseView {
           message.threads.forEach(t => {
             const option = document.createElement('vscode-option');
             option.setAttribute('value', String(t.id));
-            option.textContent = \`\${t.name} (\${t.state})\`;
+            option.textContent = t.name + " (" + t.state + ")";
             threadSelect.appendChild(option);
           });
           const badge = document.getElementById('thread-state-badge');
