@@ -198,6 +198,43 @@ def test_eval_frame_decision_conservatively_traces_conditional_breakpoints_witho
         trace_manager.invalidate_file_cache(filename)
 
 
+def test_eval_frame_decision_traces_when_conditional_breakpoint_falls_back(monkeypatch) -> None:
+    """Condition-evaluator fallback should conservatively keep eval-frame on the traced path."""
+    filename = "/tmp/eval_frame_conditional_fallback.py"
+    trace_manager = get_trace_manager()
+    frame = make_real_frame({"value": 0}, filename=filename, lineno=21, func_name="frame_fallback")
+
+    trace_manager.set_conditional_breakpoints(
+        filename,
+        [{"lineno": 21, "condition": "value == 42"}],
+    )
+
+    class _FallbackResult(dict):
+        def __init__(self):
+            super().__init__(passed=True, fallback=True, error="boom", elapsed_s=0.0)
+
+    class _FallbackEvaluator:
+        @staticmethod
+        def evaluate(_condition, _frame):
+            return _FallbackResult()
+
+    monkeypatch.setattr(
+        "dapper._frame_eval.selective_tracer.get_condition_evaluator",
+        _FallbackEvaluator,
+    )
+    try:
+        assert (
+            _should_trace_code_for_eval_frame_with_frame(
+                frame.f_code,
+                frame.f_lineno,
+                frame,
+            )
+            is True
+        )
+    finally:
+        trace_manager.invalidate_file_cache(filename)
+
+
 def test_lazy_instrumentation_triggers_bytecode_injection(monkeypatch) -> None:
     """The eval-frame decision path should lazily call the bytecode injector."""
 
@@ -283,6 +320,38 @@ def test_dispatch_trace_callback_uses_registered_callback() -> None:
         assert _state.get_thread_info().thread_trace_func is trace_func
         assert frame.f_trace is None
     finally:
+        _clear_thread_trace_func()
+
+
+def test_dispatch_trace_callback_marks_debugger_internal_during_callback() -> None:
+    """Nested eval-frame decisions inside debugger callbacks should see debugger-internal state."""
+
+    def sample_function():
+        first = 1
+        second = 2
+        return first + second
+
+    code = sample_function.__code__
+    breakpoint_line = next(
+        line for line in _collect_code_lines(code) if line > code.co_firstlineno
+    )
+    decisions: list[bool] = []
+
+    def trace_func(frame, event, arg):
+        del frame, event, arg
+        decisions.append(_should_trace_code_for_eval_frame(code, breakpoint_line))
+
+    frame = inspect.currentframe()
+    assert frame is not None
+
+    set_breakpoints(code.co_filename, {breakpoint_line})
+    try:
+        _set_thread_trace_func(trace_func)
+        assert _dispatch_trace_callback(frame, "line", None) is True
+        assert decisions == [False]
+        assert _state.get_thread_info().is_debugger_internal_thread is False
+    finally:
+        invalidate_breakpoints(code.co_filename)
         _clear_thread_trace_func()
 
 

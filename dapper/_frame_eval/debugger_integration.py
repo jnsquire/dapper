@@ -597,6 +597,14 @@ def get_integration_statistics() -> IntegrationStatistics:
     return _integration_bridge.get_integration_statistics()
 
 
+def _telemetry_type_name(instance: object) -> str:
+    """Return a stable class name for telemetry, preserving mock spec classes."""
+    spec_class = getattr(instance, "_spec_class", None)
+    if spec_class is not None:
+        return getattr(spec_class, "__name__", type(instance).__name__)
+    return type(instance).__name__
+
+
 def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
     """Wire *debugger_instance* to *backend* using the appropriate path.
 
@@ -627,7 +635,11 @@ def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
                 backend.install(debugger_instance)
                 return True
             except Exception:
-                telemetry.record_integration_bdb_failed()
+                telemetry.record_integration_bdb_failed(
+                    backend_type=_telemetry_type_name(backend),
+                    debugger_type=_telemetry_type_name(debugger_instance),
+                    fallback="integration_failed",
+                )
                 return False
 
         # Importing here keeps the dependency optional; ruff PLC0415 is
@@ -639,7 +651,11 @@ def integrate_with_backend(backend: Any, debugger_instance: object) -> bool:
                 backend.install(debugger_instance)
                 return True
             except Exception:
-                telemetry.record_integration_bdb_failed()
+                telemetry.record_integration_bdb_failed(
+                    backend_type=_telemetry_type_name(backend),
+                    debugger_type=_telemetry_type_name(debugger_instance),
+                    fallback="integration_failed",
+                )
                 return False
     except ImportError:
         pass

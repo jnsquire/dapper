@@ -167,11 +167,18 @@ This checklist turns the current frame-eval work into an execution plan that mat
 ## Phase 7: Integrate With Debugger Operations
 
 - [x] Ensure breakpoint updates from the debugger reach both the tracing path and the eval-frame cache path.
-- [ ] Ensure step-over, step-in, step-out, and pause semantics still work when eval-frame is active.
-- [ ] Ensure debugger-owned internal frames and Dapper internal files are skipped consistently.
-- [ ] Decide how conditional breakpoints are evaluated in the eval-frame path and when they force tracing fallback.
-- [ ] Confirm compatibility with `DebuggerFrameEvalBridge` rather than bypassing it with a parallel control path.
-- [ ] Add explicit telemetry for debugger-integration failures that trigger fallback.
+- [x] Ensure step-over, step-in, step-out, and pause semantics still work when eval-frame is active.
+- [x] Ensure debugger-owned internal frames and Dapper internal files are skipped consistently.
+- [x] Decide how conditional breakpoints are evaluated in the eval-frame path and when they force tracing fallback.
+- [x] Confirm compatibility with `DebuggerFrameEvalBridge` rather than bypassing it with a parallel control path.
+- [x] Add explicit telemetry for debugger-integration failures that trigger fallback.
+
+### Phase 7 Notes
+
+- Eval-frame backend stepping now has focused coverage for `STEP_IN`, `STEP_OVER`, `STEP_OUT`, `PAUSE`, and continue-mode normalization through the shared thread-local step flag.
+- Trace callbacks now execute with the debugger-internal-thread guard raised, so nested eval-frame decisions skip debugger-owned frames while preserving the caller's prior thread state.
+- Conditional breakpoints continue on the eval-frame traced path when evaluation is pending or when the condition evaluator reports a conservative fallback, which keeps debugger behavior aligned with the tracing path.
+- Backend integration continues to flow through the shared `integrate_with_backend()` entry point, and installation failures now emit structured telemetry including backend/debugger type context.
 
 ## Phase 8: Harden Fallback And Compatibility Behavior
 

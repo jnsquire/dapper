@@ -100,7 +100,14 @@ def _dispatch_trace_callback(frame_obj, event: str = "line", arg=None) -> bool:
         trace_func = info.thread_trace_func
     if trace_func is None:
         return False
-    next_trace_func = trace_func(frame_obj, event, arg)
+
+    was_debugger_internal = bool(info.is_debugger_internal_thread)
+    info.is_debugger_internal_thread = True
+    try:
+        next_trace_func = trace_func(frame_obj, event, arg)
+    finally:
+        info.is_debugger_internal_thread = was_debugger_internal
+
     frame_obj.f_trace = next_trace_func
     return True
 

@@ -373,6 +373,33 @@ class TestFrameEvalManager:
         assert backend.get_statistics()["step_mode"] == "CONTINUE"
         assert backend.get_statistics()["stepping_active"] is False
 
+    @pytest.mark.parametrize(
+        ("mode", "expected_mode", "expected_active"),
+        [
+            ("STEP_IN", "STEP_IN", True),
+            ("STEP_OVER", "STEP_OVER", True),
+            ("STEP_OUT", "STEP_OUT", True),
+            ("PAUSE", "PAUSE", True),
+            ("RUN", "RUN", False),
+        ],
+    )
+    def test_eval_frame_backend_preserves_step_mode_strings(
+        self,
+        mode,
+        expected_mode,
+        expected_active,
+    ):
+        """Eval-frame backend should retain the concrete debugger stepping mode."""
+        backend = EvalFrameBackend()
+        thread_info = get_thread_info()
+        thread_info.step_mode = False
+
+        backend.set_stepping(mode)
+
+        assert backend.get_statistics()["step_mode"] == expected_mode
+        assert backend.get_statistics()["stepping_active"] is expected_active
+        assert thread_info.step_mode is expected_active
+
     def test_eval_frame_backend_shutdown_clears_stepping(self):
         """Shutdown should leave eval-frame thread stepping state disabled."""
         backend = EvalFrameBackend()
@@ -445,3 +472,20 @@ class TestFrameEvalManager:
             backend.shutdown()
 
         assert backend.get_statistics()["exception_breakpoint_filters"] == []
+
+    def test_integrate_with_backend_records_eval_frame_install_failure_context(self):
+        """Eval-frame install failures should emit debugger-integration telemetry with context."""
+        from dapper._frame_eval.debugger_integration import integrate_with_backend
+        from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+        from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
+
+        backend = MagicMock(spec=EvalFrameBackend)
+        backend.install.side_effect = RuntimeError("install failed")
+        debugger = MagicMock()
+
+        reset_frame_eval_telemetry()
+        assert integrate_with_backend(backend, debugger) is False
+
+        snap = get_frame_eval_telemetry()
+        assert snap.reason_counts.integration_bdb_failed == 1
+        assert snap.recent_events[-1].context["backend_type"] == "EvalFrameBackend"

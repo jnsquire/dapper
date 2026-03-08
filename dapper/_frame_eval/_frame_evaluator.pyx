@@ -267,6 +267,7 @@ cdef bint _dispatch_trace_callback_impl(frame_obj, str event="line", arg=None) e
     cdef ThreadInfo thread_info = <ThreadInfo>_state.get_thread_info()
     cdef object trace_func = getattr(frame_obj, "f_trace", None)
     cdef object next_trace_func
+    cdef bint was_debugger_internal
 
     if trace_func is None:
         trace_func = thread_info.thread_trace_func
@@ -274,7 +275,13 @@ cdef bint _dispatch_trace_callback_impl(frame_obj, str event="line", arg=None) e
     if trace_func is None:
         return <bint>False
 
-    next_trace_func = getattr(trace_func, "__call__")(frame_obj, event, arg)
+    was_debugger_internal = thread_info.is_debugger_internal_thread
+    thread_info.is_debugger_internal_thread = <bint>True
+    try:
+        next_trace_func = getattr(trace_func, "__call__")(frame_obj, event, arg)
+    finally:
+        thread_info.is_debugger_internal_thread = was_debugger_internal
+
     frame_obj.f_trace = next_trace_func
     return <bint>True
 
