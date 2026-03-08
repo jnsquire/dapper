@@ -21,10 +21,10 @@ This checklist turns the current frame-eval work into an execution plan that mat
 ## Success Criteria
 
 - [x] A supported CPython build can enable frame evaluation and install a real eval-frame callback.
-- [ ] The callback can decide, per frame, whether to run original code or a breakpoint-instrumented code object.
+- [x] The callback can decide, per frame, whether to run original code or a breakpoint-instrumented code object.
 - [x] Breakpoint updates invalidate or refresh cached code decisions correctly enough for the current line-based eval-frame path.
 - [x] Step, skip, and debugger-thread rules remain correct and do not recurse infinitely for the current scoped-tracing implementation.
-- [ ] Unsupported environments fall back to tracing without crashes or silent corruption.
+- [x] Unsupported environments fall back to tracing without crashes or silent corruption.
 - [ ] Tests cover the wrapper API, backend lifecycle, cache invalidation, breakpoint behavior, fallback behavior, and at least one end-to-end activation path.
 - [x] User-facing docs describe what is actually implemented and how to verify it.
 
@@ -121,32 +121,39 @@ This checklist turns the current frame-eval work into an execution plan that mat
 
 ### Phase 5 Plan
 
-- [ ] Lock the generation contract before changing the hook path.
+- [x] Lock the generation contract before changing the hook path.
   - Treat instrumentation as lazy on the first `breakpointed` eval-frame decision by default; do not eagerly rebuild every file on breakpoint updates unless later measurements justify it.
   - Build modified code from the live `CodeType` objects already flowing through `FuncCodeInfo` and eval-frame decisions instead of recompiling whole source files inside `DebuggerFrameEvalBridge`.
   - Extend stored metadata to include the modified code object, the exact breakpoint line set, and a cheap breakpoint fingerprint/version so cache reuse can be validated quickly.
-- [ ] Tighten `modify_bytecode.py` so it emits one supported and testable instrumentation shape.
+- [x] Tighten `modify_bytecode.py` so it emits one supported and testable instrumentation shape.
   - Replace the current placeholder breakpoint sequence with a helper-call sequence that `rebuild_code_object()` and the safety layer can preserve across supported CPython versions.
   - Preserve `co_lines()` / line-table data, exception behavior, flags, closure metadata, and other debuggability surfaces well enough that stepping and trace events stay aligned with source.
   - Walk nested code objects recursively and instrument only child code objects whose executable lines intersect the active breakpoint set.
-- [ ] Unify caching and invalidation around original code identity.
+- [x] Unify caching and invalidation around original code identity.
   - Key modified-code caches primarily by original `CodeType` identity plus breakpoint fingerprint; keep filename/name/first-line data only as diagnostics.
   - Route cache writes through `_store_modified_code_for_evaluation()` and `CacheManager` so code-extra storage, fallback caches, and Python-side bytecode caches all invalidate together.
   - Ensure breakpoint changes, file reloads, and config changes evict stale modified code without keeping dead code objects alive.
-- [ ] Add explicit rollback and fallback behavior.
+- [x] Add explicit rollback and fallback behavior.
   - If instrumentation, rebuild, or validation fails, clear any partial cache entries, record telemetry, and leave the frame on the existing tracing path.
   - Surface a distinct runtime/debug reason for "modified code unavailable" so later debugger-integration work can distinguish unsupported code from transient build failures.
-- [ ] Validate semantics before broad rollout.
+- [x] Validate semantics before broad rollout.
   - Add focused unit tests for cache keying, metadata versioning, invalidation, and rollback on injection failure.
   - Add integration coverage for plain functions, nested functions, generators, async functions, and module-level code.
   - Add regression checks that breakpointed execution, line mapping, and exception propagation still match tracing-path behavior.
 
+### Phase 5 Notes
+
+- The helper-call instrumentation contract is now explicit and version-aware: synthetic `LOAD_GLOBAL` / `LOAD_CONST` operands are resolved against `co_names` and `co_consts`, and Python 3.11+ cache entries are emitted so rebuilt bytecode remains decodable.
+- Modified-code caching is now keyed by original `CodeType` identity plus breakpoint fingerprint, with writes routed through `_store_modified_code_for_evaluation()` and invalidation coordinated with `CacheManager`.
+- Focused bytecode coverage now exercises rollback on rebuild failure, metadata-version mismatch handling, cache invalidation, live-object instrumentation telemetry, and nested, generator, async, and module-level instrumentation paths.
+- The eval-frame decision path now records a dedicated `MODIFIED_CODE_UNAVAILABLE` telemetry reason when a breakpointed frame falls back to tracing because no modified code object could be produced or recovered.
+
 ### Phase 5 Exit Criteria
 
-- [ ] Eval-frame can reuse a cached modified code object for a live `CodeType` without recompiling the source file.
-- [ ] Breakpoint changes replace stale modified code on the next eligible hit.
-- [ ] Injection failures fall back to tracing without leaving stale metadata behind.
-- [ ] Nested-function, generator, async, and module-level cases have focused coverage.
+- [x] Eval-frame can reuse a cached modified code object for a live `CodeType` without recompiling the source file.
+- [x] Breakpoint changes replace stale modified code on the next eligible hit.
+- [x] Injection failures fall back to tracing without leaving stale metadata behind.
+- [x] Nested-function, generator, async, and module-level cases have focused coverage.
 
 ## Phase 6: Wire The Backend Into Manager And Runtime
 
@@ -169,11 +176,17 @@ This checklist turns the current frame-eval work into an execution plan that mat
 ## Phase 8: Harden Fallback And Compatibility Behavior
 
 - [ ] Audit all environments already considered incompatible in `FrameEvalCompatibilityPolicy`.
-- [ ] Define exact fallback behavior for unsupported Python versions, alternate interpreters, coverage tools, and other debuggers.
-- [ ] Ensure partial initialization cannot leave the process in a half-hooked state.
+- [x] Define exact fallback behavior for unsupported Python versions, alternate interpreters, coverage tools, and other debuggers.
+- [x] Ensure partial initialization cannot leave the process in a half-hooked state.
 - [ ] Ensure repeated enable-disable cycles are safe.
 - [ ] Add logging that is actionable but not noisy in normal debugging sessions.
 - [ ] Document any intentionally unsupported scenarios.
+
+### Phase 8 Notes
+
+- `FrameEvalCompatibilityPolicy` now reports eval-frame-specific support details separately from the broader environment payload, including a concrete fallback reason and recommended backend.
+- Explicit eval-frame requests now honor `fallback_to_tracing=False`: unsupported or unavailable eval-frame environments fail fast instead of silently switching backends.
+- Manager initialization now shuts the runtime back down if backend selection fails, preventing partially initialized state from surviving an eval-frame startup error.
 
 ## Phase 9: Tests
 
@@ -181,12 +194,12 @@ This checklist turns the current frame-eval work into an execution plan that mat
 - [x] Add focused unit tests for hook installation and teardown.
 - [x] Add tests for per-thread recursion guards and exception fallback inside the hook.
 - [ ] Add tests for code-extra storage and cleanup semantics.
-- [ ] Add tests for cache invalidation after breakpoint changes.
+- [x] Add tests for cache invalidation after breakpoint changes.
 - [ ] Add tests for modified-code selection versus original-code selection.
 - [x] Add integration tests that prove a breakpointed function takes the eval-frame path.
 - [x] Add integration tests that prove a non-breakpointed function stays on the fast path.
 - [x] Add tests for step-mode behavior when eval-frame is enabled.
-- [ ] Add tests for fallback to tracing when eval-frame is unavailable or fails.
+- [x] Add tests for fallback to tracing when eval-frame is unavailable or fails.
 - [ ] Add at least one smoke test that validates the compiled Cython wrapper path in CI.
 
 ## Phase 10: Documentation And Rollout
@@ -223,8 +236,8 @@ This checklist turns the current frame-eval work into an execution plan that mat
 - [x] Add the real low-level hook lifecycle without yet selecting modified code.
 - [x] Wire manager and runtime so the backend can be enabled and reported.
 - [x] Integrate shared frame-decision logic.
-- [ ] Integrate code-extra caching.
-- [ ] Integrate bytecode selection and invalidation.
+- [x] Integrate code-extra caching.
+- [x] Integrate bytecode selection and invalidation.
 - [ ] Add debugger semantics and fallback hardening.
 - [x] Finish with documentation and end-to-end validation.
 

@@ -86,10 +86,29 @@ cdef bint _should_trace_code_for_eval_frame_impl(
                 if existing is None:
                     try:
                         from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
+                        from dapper._frame_eval.telemetry import telemetry
+
                         success, new_code = inject_breakpoint_bytecode(code_obj, bp_lines)
                         if success and new_code is not code_obj:
                             _store_modified_code_for_evaluation(code_obj, new_code, bp_lines)
-                    except Exception:
+                        else:
+                            getattr(telemetry, "record_modified_code_unavailable")(
+                                filename=getattr(code_obj, "co_filename", "unknown"),
+                                name=getattr(code_obj, "co_name", "unknown"),
+                                breakpoint_lines=sorted(bp_lines),
+                                cause="no_modified_code_generated",
+                                success=bool(success),
+                            )
+                    except Exception as exc:
+                        from dapper._frame_eval.telemetry import telemetry
+
+                        getattr(telemetry, "record_modified_code_unavailable")(
+                            filename=getattr(code_obj, "co_filename", "unknown"),
+                            name=getattr(code_obj, "co_name", "unknown"),
+                            breakpoint_lines=sorted(bp_lines),
+                            cause="inject_exception",
+                            error_type=type(exc).__name__,
+                        )
                         # swallow errors; we will simply fallback to tracing later
                         pass
             return <bint>True

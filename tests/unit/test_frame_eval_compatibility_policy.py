@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from dapper._frame_eval.compatibility_policy import FrameEvalCompatibilityPolicy
 
 
@@ -81,3 +83,25 @@ def test_policy_evaluate_environment_shape() -> None:
     assert result["platform"] == "Linux-6.8"
     assert result["architecture"] == "64bit"
     assert result["implementation"] == "CPython"
+    assert result["recommended_backend"] in {"eval_frame", "tracing"}
+
+
+def test_policy_reports_eval_frame_specific_fallback_reason() -> None:
+    """Eval-frame compatibility details should point callers at tracing when unavailable."""
+    policy = FrameEvalCompatibilityPolicy()
+
+    with patch.object(policy, "supports_eval_frame", return_value=False):
+        result = policy.evaluate_environment(
+            version_info=VersionInfo(3, 11, 4),
+            platform_name="Linux-6.8",
+            platform_system="Linux",
+            architecture="64bit",
+            implementation="CPython",
+            modules={},
+            environ={},
+        )
+
+    assert result["compatible"] is True
+    assert result["eval_frame_supported"] is False
+    assert result["eval_frame_reason"] == "Eval-frame hook API not available in this runtime"
+    assert result["recommended_backend"] == "tracing"

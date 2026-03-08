@@ -55,8 +55,33 @@ def _should_trace_code_for_eval_frame_with_frame(
     frame_obj=None,
 ) -> bool:
     selective_tracer = import_module("dapper._frame_eval.selective_tracer")
+    modify_bytecode = import_module("dapper._frame_eval.modify_bytecode")
 
     decision = selective_tracer.should_trace_code_location(code_obj, lineno, frame_obj)
+    if decision["path"] == "breakpointed":
+        bp_lines = set(decision.get("breakpoint_lines") or ())
+        if bp_lines and _get_modified_code_for_evaluation(code_obj) is None:
+            try:
+                success, new_code = modify_bytecode.inject_breakpoint_bytecode(code_obj, bp_lines)
+            except Exception as exc:
+                telemetry.record_modified_code_unavailable(
+                    filename=code_obj.co_filename,
+                    name=code_obj.co_name,
+                    breakpoint_lines=sorted(bp_lines),
+                    cause="inject_exception",
+                    error_type=type(exc).__name__,
+                )
+            else:
+                if success and new_code is not code_obj:
+                    _store_modified_code_for_evaluation(code_obj, new_code, bp_lines)
+                else:
+                    telemetry.record_modified_code_unavailable(
+                        filename=code_obj.co_filename,
+                        name=code_obj.co_name,
+                        breakpoint_lines=sorted(bp_lines),
+                        cause="no_modified_code_generated",
+                        success=bool(success),
+                    )
     return decision["path"] == "breakpointed"
 
 

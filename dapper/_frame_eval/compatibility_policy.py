@@ -88,6 +88,42 @@ class FrameEvalCompatibilityPolicy:
 
         return bool(any(name in modules for name in self.incompatible_coverage_tools))
 
+    def get_incompatible_environment_reason(
+        self,
+        modules: dict[str, Any],
+        environ: Mapping[str, str],
+    ) -> str:
+        """Return a specific reason for an incompatible runtime environment."""
+        debugger_name = next(
+            (name for name in self.incompatible_debuggers if name in modules),
+            None,
+        )
+        if debugger_name is not None:
+            return f"Incompatible debugger detected: {debugger_name}"
+
+        env_var = next(
+            (name for name in self.incompatible_environment_vars if name in environ),
+            None,
+        )
+        if env_var is not None:
+            return f"Incompatible environment variable detected: {env_var}"
+
+        coverage_tool = next(
+            (name for name in self.incompatible_coverage_tools if name in modules),
+            None,
+        )
+        if coverage_tool is not None:
+            return f"Incompatible coverage tool detected: {coverage_tool}"
+
+        return ""
+
+    @staticmethod
+    def is_supported_implementation(implementation: str) -> tuple[bool, str]:
+        """Return whether *implementation* can use eval-frame hooking."""
+        if implementation != "CPython":
+            return False, f"Eval-frame backend requires CPython (got {implementation})"
+        return True, ""
+
     def supports_eval_frame(self) -> bool:
         """Return True if the runtime is capable of eval-frame hooking.
 
@@ -113,6 +149,37 @@ class FrameEvalCompatibilityPolicy:
         except Exception:  # pragma: no cover - be conservative on unexpected errors
             return False
 
+    def can_use_eval_frame(
+        self,
+        *,
+        version_info: Any,
+        platform_system: str,
+        architecture: str,
+        implementation: str,
+        modules: dict[str, Any],
+        environ: Mapping[str, str],
+    ) -> tuple[bool, str]:
+        """Return whether eval-frame can be used and the blocking reason if not."""
+        python_supported, reason = self.is_supported_python(version_info)
+        if not python_supported:
+            return False, reason
+
+        if not self.is_supported_platform(platform_system, architecture):
+            return False, f"Platform {platform_system} / {architecture} not supported"
+
+        implementation_supported, reason = self.is_supported_implementation(implementation)
+        if not implementation_supported:
+            return False, reason
+
+        environment_reason = self.get_incompatible_environment_reason(modules, environ)
+        if environment_reason:
+            return False, environment_reason
+
+        if not self.supports_eval_frame():
+            return False, "Eval-frame hook API not available in this runtime"
+
+        return True, ""
+
     def evaluate_environment(
         self,
         *,
@@ -133,6 +200,9 @@ class FrameEvalCompatibilityPolicy:
             "platform": platform_name,
             "architecture": architecture,
             "implementation": implementation,
+            "eval_frame_supported": False,
+            "eval_frame_reason": "",
+            "recommended_backend": "tracing",
         }
 
         python_supported, reason = self.is_supported_python(version_info)
@@ -145,10 +215,19 @@ class FrameEvalCompatibilityPolicy:
             return compatibility
 
         if self.is_incompatible_environment(modules, environ):
-            compatibility["reason"] = (
-                "Running in incompatible environment (debugger or IDE detected)"
-            )
+            compatibility["reason"] = self.get_incompatible_environment_reason(modules, environ)
             return compatibility
 
         compatibility["compatible"] = True
+        eval_frame_supported, eval_frame_reason = self.can_use_eval_frame(
+            version_info=version_info,
+            platform_system=platform_system,
+            architecture=architecture,
+            implementation=implementation,
+            modules=modules,
+            environ=environ,
+        )
+        compatibility["eval_frame_supported"] = eval_frame_supported
+        compatibility["eval_frame_reason"] = eval_frame_reason
+        compatibility["recommended_backend"] = "eval_frame" if eval_frame_supported else "tracing"
         return compatibility

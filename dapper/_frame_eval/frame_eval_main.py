@@ -127,12 +127,21 @@ class FrameEvalManager:
         unless the requested backend is not supported, in which case the
         fallback is tracing.
         """
+        can_use_eval_frame, eval_frame_reason = self._compatibility_policy.can_use_eval_frame(
+            version_info=sys.version_info,
+            platform_system=platform.system(),
+            architecture=platform.architecture()[0],
+            implementation=platform.python_implementation(),
+            modules=sys.modules,
+            environ=os.environ,
+        )
+
         # Local aliases for readability
         bk = FrameEvalConfig.BackendKind
 
         # Choose helper according to backend field
         if config.backend is bk.AUTO:
-            if self._compatibility_policy.supports_eval_frame():
+            if can_use_eval_frame:
                 try:
                     return self._create_eval_frame_backend(config)
                 except Exception:
@@ -140,20 +149,38 @@ class FrameEvalManager:
                     self._logger.warning(
                         "Eval-frame backend requested but failed to initialize; falling back to tracing",
                     )
+            elif eval_frame_reason:
+                self._logger.info(
+                    "Eval-frame AUTO selection fell back to tracing: %s",
+                    eval_frame_reason,
+                )
             # default to tracing
             return self._create_tracing_backend(config)
 
         if config.backend is bk.EVAL_FRAME:
-            if self._compatibility_policy.supports_eval_frame():
+            if can_use_eval_frame:
                 try:
                     return self._create_eval_frame_backend(config)
                 except Exception:
                     self._logger.warning(
                         "Eval-frame backend requested but failed to initialize; falling back to tracing",
                     )
+                    if not config.fallback_to_tracing:
+                        raise RuntimeError(
+                            "Eval-frame backend initialization failed and tracing fallback is disabled",
+                        ) from None
             else:
+                if not config.fallback_to_tracing:
+                    message = (
+                        "Eval-frame backend explicitly requested but unavailable: "
+                        f"{eval_frame_reason}"
+                    )
+                    raise RuntimeError(
+                        message,
+                    )
                 self._logger.warning(
-                    "Eval-frame backend explicitly requested but not supported; using tracing instead",
+                    "Eval-frame backend explicitly requested but unavailable; using tracing instead: %s",
+                    eval_frame_reason,
                 )
             return self._create_tracing_backend(config)
 
@@ -509,6 +536,8 @@ class FrameEvalManager:
             self._logger.debug("Backend selected: %s", type(self._active_backend).__name__)
             self._logger.debug("Initializing frame evaluation components")
         except Exception:
+            self._runtime.shutdown()
+            self._active_backend = None
             self._logger.exception("Failed to initialize frame evaluation components")
             return False
         else:

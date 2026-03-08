@@ -257,14 +257,17 @@ class TestFrameEvalManager:
     def test_backend_selection_logic(self):
         """The manager should pick an appropriate backend based on compatibility."""
         # AUTO should prefer eval-frame when available
-        self.manager._compatibility_policy.supports_eval_frame = lambda: True
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (True, "")
         cfg = FrameEvalConfig()
         cfg.backend = FrameEvalConfig.BackendKind.AUTO
         backend = self.manager._create_backend(cfg)
         assert isinstance(backend, EvalFrameBackend)
 
         # AUTO falls back to tracing if eval-frame unavailable
-        self.manager._compatibility_policy.supports_eval_frame = lambda: False
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (
+            False,
+            "Eval-frame hook API not available in this runtime",
+        )
         cfg.backend = FrameEvalConfig.BackendKind.AUTO
         backend = self.manager._create_backend(cfg)
         # should fall back to a tracing backend of some kind
@@ -280,9 +283,44 @@ class TestFrameEvalManager:
         backend = self.manager._create_backend(cfg)
         assert not isinstance(backend, EvalFrameBackend)
 
+    def test_explicit_eval_frame_request_can_fail_without_tracing_fallback(self):
+        """Explicit eval-frame requests should fail when tracing fallback is disabled."""
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (
+            False,
+            "Incompatible coverage tool detected: coverage",
+        )
+
+        cfg = FrameEvalConfig()
+        cfg.backend = FrameEvalConfig.BackendKind.EVAL_FRAME
+        cfg.fallback_to_tracing = False
+
+        with pytest.raises(RuntimeError, match="Eval-frame backend explicitly requested"):
+            self.manager._create_backend(cfg)
+
+    def test_initialize_components_cleans_up_runtime_on_backend_failure(self):
+        """Initialization should not leave the runtime half-initialized if backend selection fails."""
+        self.manager._frame_eval_config.backend = FrameEvalConfig.BackendKind.EVAL_FRAME
+        self.manager._frame_eval_config.fallback_to_tracing = False
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (
+            False,
+            "Eval-frame hook API not available in this runtime",
+        )
+
+        with (
+            patch.object(self.manager._runtime, "initialize", return_value=True),
+            patch.object(
+                self.manager._runtime,
+                "shutdown",
+            ) as shutdown_runtime,
+        ):
+            assert self.manager._initialize_components() is False
+
+        shutdown_runtime.assert_called_once_with()
+        assert self.manager.active_backend is None
+
     def test_manager_selects_eval_frame_backend_and_integrates_it(self):
         """The manager-selected eval-frame backend should integrate through the backend router."""
-        self.manager._compatibility_policy.supports_eval_frame = lambda: True
+        self.manager._compatibility_policy.can_use_eval_frame = lambda **kwargs: (True, "")
         self.manager._frame_eval_config.backend = FrameEvalConfig.BackendKind.EVAL_FRAME
 
         with patch.object(self.manager._runtime, "initialize", return_value=True):

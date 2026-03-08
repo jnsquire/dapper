@@ -42,6 +42,7 @@ class FrameEvalReasonCounts:
     bytecode_rollback: int = 0
     bytecode_eager_instrumentation: int = 0
     bytecode_cache_key_mismatch: int = 0
+    modified_code_unavailable: int = 0
     integration_bdb_failed: int = 0
     integration_remove_failed: int = 0
     hot_reload_failed: int = 0
@@ -66,6 +67,7 @@ class FrameEvalReasonCounts:
             "BYTECODE_ROLLBACK": self.bytecode_rollback,
             "BYTECODE_EAGER_INSTRUMENTATION": self.bytecode_eager_instrumentation,
             "BYTECODE_CACHE_KEY_MISMATCH": self.bytecode_cache_key_mismatch,
+            "MODIFIED_CODE_UNAVAILABLE": self.modified_code_unavailable,
             "HOT_RELOAD_FAILED": self.hot_reload_failed,
             "HOT_RELOAD_SUCCEEDED": self.hot_reload_succeeded,
             "INTEGRATION_BDB_FAILED": self.integration_bdb_failed,
@@ -181,6 +183,13 @@ class FrameEvalTelemetry:
         self._record(
             "BYTECODE_CACHE_KEY_MISMATCH",
             "bytecode_cache_key_mismatch",
+            **kwargs,
+        )
+
+    def record_modified_code_unavailable(self, **kwargs: Any) -> None:
+        self._record(
+            "MODIFIED_CODE_UNAVAILABLE",
+            "modified_code_unavailable",
             **kwargs,
         )
 

@@ -28,6 +28,8 @@ from dapper._frame_eval.cache_manager import invalidate_breakpoints
 from dapper._frame_eval.cache_manager import set_breakpoints
 from dapper._frame_eval.eval_frame_backend import EvalFrameBackend
 from dapper._frame_eval.selective_tracer import get_trace_manager
+from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
 from dapper.core.debugger_bdb import DebuggerBDB
 from tests.mocks import make_real_frame
 
@@ -231,6 +233,36 @@ def test_lazy_instrumentation_triggers_bytecode_injection(monkeypatch) -> None:
         result = _should_trace_code_for_eval_frame(code, lineno)
         assert result is True
         assert calls["count"] == 1
+    finally:
+        set_breakpoints(code.co_filename, set())
+
+
+def test_lazy_instrumentation_records_modified_code_unavailable(monkeypatch) -> None:
+    """A breakpointed frame without generated modified code should emit a distinct reason."""
+
+    def sample():
+        a = 1
+        return a
+
+    code = sample.__code__
+    lineno = next(line for line in _collect_code_lines(code) if line > code.co_firstlineno)
+
+    reset_frame_eval_telemetry()
+
+    def fake_inject(co, lines):
+        return True, co
+
+    monkeypatch.setattr(
+        "dapper._frame_eval.modify_bytecode.inject_breakpoint_bytecode",
+        fake_inject,
+    )
+
+    set_breakpoints(code.co_filename, {lineno})
+    try:
+        assert _should_trace_code_for_eval_frame(code, lineno) is True
+        snap = get_frame_eval_telemetry()
+        assert snap.reason_counts.modified_code_unavailable == 1
+        assert snap.recent_events[-1].reason_code == "MODIFIED_CODE_UNAVAILABLE"
     finally:
         set_breakpoints(code.co_filename, set())
 

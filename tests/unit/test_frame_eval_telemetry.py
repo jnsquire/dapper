@@ -105,3 +105,16 @@ def test_telemetry_records_cache_metrics() -> None:
         "CACHE_INVALIDATION_CONFIG_CHANGE",
         "CACHE_INVALIDATION_FILE_RELOAD",
     ]
+
+
+def test_telemetry_records_modified_code_unavailable() -> None:
+    """Modified-code fallback should record a distinct reason code."""
+    reset_frame_eval_telemetry()
+
+    telemetry.record_modified_code_unavailable(filename="sample.py", cause="cache_miss")
+
+    snap = get_frame_eval_telemetry()
+
+    assert snap.reason_counts.modified_code_unavailable == 1
+    assert snap.recent_events[0].reason_code == "MODIFIED_CODE_UNAVAILABLE"
+    assert snap.recent_events[0].context["filename"] == "sample.py"
