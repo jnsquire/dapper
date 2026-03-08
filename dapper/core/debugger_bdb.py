@@ -1,4 +1,4 @@
-# ruff: noqa: PLC0415, I001
+# ruff: noqa: PLC0415
 """DebuggerBDB class and related helpers for debug launcher."""
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ import contextlib
 import logging
 import threading
 import types
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -27,6 +26,9 @@ from dapper.core.stepping_controller import SteppingController
 from dapper.core.thread_tracker import ThreadTracker
 from dapper.core.variable_manager import VariableManager
 from dapper.shared.runtime_source_registry import annotate_stack_frames_with_source_refs
+from dapper.utils.logging_levels import TRACE
+from dapper.utils.logging_message_summary import summarize_debugger_bdb_event
+from dapper.utils.logging_names import DAPPER_LOGGER_BDB
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import Variable as VariableDict
@@ -38,7 +40,7 @@ try:
 except ImportError:  # pragma: no cover - optional integration
     integrate_debugger_bdb = None
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(DAPPER_LOGGER_BDB)
 
 # Filename substrings that identify asyncio / event-loop internal frames.
 # Normalise to forward slashes so the check works identically on Windows and
@@ -71,6 +73,19 @@ def _noop_send_message(*args, **kwargs):
 
 def _noop_process_commands():
     pass
+
+
+def _log_debug_event(
+    event: str,
+    trace_message: str,
+    *trace_args: Any,
+    **summary_fields: Any,
+) -> None:
+    if logger.isEnabledFor(TRACE):
+        logger.log(TRACE, trace_message, *trace_args)
+        return
+
+    logger.debug(summarize_debugger_bdb_event(event, **summary_fields))
 
 
 class DebuggerBDB(bdb.Bdb):
@@ -461,13 +476,18 @@ class DebuggerBDB(bdb.Bdb):
         False if no breakpoint exists at this location.
         """
         canonical_filename = self.canonic(filename)
-        # debug info about breakpoint table membership
-        logger.debug(
+        breaks = self.breaks.get(filename) or self.breaks.get(canonical_filename)
+        _log_debug_event(
+            "regular_breakpoint.check",
             "_handle_regular_breakpoint checking %s:%s (canonical=%s) breaks=%r",
             filename,
             line,
             canonical_filename,
-            self.breaks.get(filename) or self.breaks.get(canonical_filename),
+            breaks,
+            file=filename,
+            line=line,
+            canonical=canonical_filename if canonical_filename != filename else None,
+            breaks=breaks if breaks is not None else (),
         )
         has_line_in_break_table = False
         with contextlib.suppress(Exception):
@@ -492,10 +512,13 @@ class DebuggerBDB(bdb.Bdb):
         if not (
             check_get_break or has_line_in_break_table or check_custom_raw or check_custom_canon
         ):
-            logger.debug(
+            _log_debug_event(
+                "regular_breakpoint.miss",
                 "_handle_regular_breakpoint: no match at %s:%s → returning False",
                 filename,
                 line,
+                file=filename,
+                line=line,
             )
             return False
 
@@ -509,11 +532,15 @@ class DebuggerBDB(bdb.Bdb):
             ]
             if val
         ]
-        logger.debug(
+        _log_debug_event(
+            "regular_breakpoint.hit",
             "_handle_regular_breakpoint: match at %s:%s via %s",
             filename,
             line,
             matched_via,
+            file=filename,
+            line=line,
+            via=matched_via,
         )
 
         meta = self.bp_manager.line_meta.get((filename, int(line)))
@@ -552,12 +579,17 @@ class DebuggerBDB(bdb.Bdb):
         description: str | None = None,
     ) -> None:
         """Emit a stopped event with proper bookkeeping."""
-        logger.debug(
+        _log_debug_event(
+            "stopped.emit",
             "_emit_stopped_event: reason=%r file=%s line=%s thread_id=%s",
             reason,
             frame.f_code.co_filename,
             frame.f_lineno,
             thread_id,
+            reason=reason,
+            file=frame.f_code.co_filename,
+            line=frame.f_lineno,
+            thread=thread_id,
         )
         self.stepping_controller.current_frame = frame
         self.thread_tracker.stopped_thread_ids.add(thread_id)
@@ -575,19 +607,16 @@ class DebuggerBDB(bdb.Bdb):
         self.send_message("stopped", **event_args)
 
     def user_line(self, frame: types.FrameType) -> None:
-        # Log every line executed for diagnostic purposes (also to session log file)
         filename = frame.f_code.co_filename
         line = frame.f_lineno
-        msg = f"user_line: {filename}:{line}\n"
-        logger.debug(msg.strip())
-        # append raw message so logger level changes don't suppress it
-        log_path = getattr(self, "session_log_file", None)
-        if log_path:
-            try:
-                with Path(log_path).open("a", encoding="utf-8") as lf:
-                    lf.write(msg)
-            except Exception:
-                pass
+        _log_debug_event(
+            "user_line",
+            "user_line: %s:%s",
+            filename,
+            line,
+            file=filename,
+            line=line,
+        )
 
         # Async-aware stepping: when we're stepping over/into an await expression
         # the event loop resumes before the user coroutine does.  Skip any
@@ -659,12 +688,17 @@ class DebuggerBDB(bdb.Bdb):
         # If the stepping controller has no explicit reason to stop
         # (neither stop_on_entry nor user-initiated stepping), this is a
         # spurious stop from BDB's initial step mode.  Resume silently.
-        logger.debug(
+        _log_debug_event(
+            "user_line.spurious_guard",
             "user_line: spurious-stop guard: stop_on_entry=%s stepping=%s at %s:%s",
             self.stepping_controller.stop_on_entry,
             self.stepping_controller.stepping,
             filename,
             line,
+            entry=self.stepping_controller.stop_on_entry,
+            stepping=self.stepping_controller.stepping,
+            file=filename,
+            line=line,
         )
         if not self.stepping_controller.stop_on_entry and not self.stepping_controller.stepping:
             self.set_continue()
@@ -726,26 +760,40 @@ class DebuggerBDB(bdb.Bdb):
             return
 
         exc_type, exc_value, _tb = exc_info
-        logger.debug(
+        exc_name = exc_type.__name__ if exc_type else "?"
+        _log_debug_event(
+            "user_exception.check",
             "user_exception: %s at %s:%s — checking should_break",
-            exc_type.__name__ if exc_type else "?",
+            exc_name,
             frame.f_code.co_filename,
             frame.f_lineno,
+            exc=exc_name,
+            file=frame.f_code.co_filename,
+            line=frame.f_lineno,
         )
         if not self.exception_handler.should_break(frame, exc_info=exc_info):
-            logger.debug(
+            _log_debug_event(
+                "user_exception.skip",
                 "user_exception: should_break=False, ignoring %s at %s:%s",
-                exc_type.__name__ if exc_type else "?",
+                exc_name,
                 frame.f_code.co_filename,
                 frame.f_lineno,
+                exc=exc_name,
+                file=frame.f_code.co_filename,
+                line=frame.f_lineno,
             )
             return
-        logger.debug(
+        _log_debug_event(
+            "user_exception.stop",
             "user_exception: should_break=True for %s(%s) at %s:%s — stopping",
-            exc_type.__name__ if exc_type else "?",
+            exc_name,
             exc_value,
             frame.f_code.co_filename,
             frame.f_lineno,
+            exc=exc_name,
+            value=exc_value,
+            file=frame.f_code.co_filename,
+            line=frame.f_lineno,
         )
         thread_id = threading.get_ident()
 

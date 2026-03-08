@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from dapper.core.breakpoint_resolver import ResolveAction
 import dapper.core.debugger_bdb as debugger_bdb_module
 from dapper.core.debugger_bdb import DebuggerBDB
+from dapper.utils.logging_levels import TRACE
 from tests.mocks import make_real_frame
 
 
@@ -597,6 +598,74 @@ def test_handle_regular_breakpoint_line_meta_raw_path_used_first(monkeypatch):
     dbg._handle_regular_breakpoint(raw_filename, line, _make_frame())
 
     assert resolved_metas[0] is raw_meta, "raw path meta must take priority over canonical"
+
+
+def test_handle_regular_breakpoint_logs_compact_summary_when_trace_disabled(monkeypatch):
+    dbg = DebuggerBDB()
+    debug_logs: list[str] = []
+    trace_logs: list[tuple[int, str]] = []
+
+    monkeypatch.setattr(dbg, "canonic", lambda path: path)
+    monkeypatch.setattr(dbg, "get_break", lambda _filename, _line: False)
+    monkeypatch.setattr(debugger_bdb_module.logger, "isEnabledFor", lambda level: False)
+    monkeypatch.setattr(
+        debugger_bdb_module.logger,
+        "debug",
+        lambda msg, *args, **kwargs: debug_logs.append(msg % args if args else str(msg)),
+    )
+    monkeypatch.setattr(
+        debugger_bdb_module.logger,
+        "log",
+        lambda level, msg, *args, **kwargs: trace_logs.append(
+            (level, msg % args if args else str(msg))
+        ),
+    )
+
+    result = dbg._handle_regular_breakpoint("/tmp/example/app.py", 12, _make_frame())
+
+    assert result is False
+    assert debug_logs == [
+        "regular_breakpoint.check file=app.py line=12 breaks=-",
+        "regular_breakpoint.miss file=app.py line=12",
+    ]
+    assert trace_logs == []
+
+
+def test_handle_regular_breakpoint_logs_trace_detail_when_trace_enabled(monkeypatch):
+    dbg = DebuggerBDB()
+    debug_logs: list[str] = []
+    trace_logs: list[tuple[int, str]] = []
+
+    monkeypatch.setattr(dbg, "canonic", lambda path: path)
+    monkeypatch.setattr(dbg, "get_break", lambda _filename, _line: False)
+    monkeypatch.setattr(debugger_bdb_module.logger, "isEnabledFor", lambda level: level <= TRACE)
+    monkeypatch.setattr(
+        debugger_bdb_module.logger,
+        "debug",
+        lambda msg, *args, **kwargs: debug_logs.append(msg % args if args else str(msg)),
+    )
+    monkeypatch.setattr(
+        debugger_bdb_module.logger,
+        "log",
+        lambda level, msg, *args, **kwargs: trace_logs.append(
+            (level, msg % args if args else str(msg))
+        ),
+    )
+
+    result = dbg._handle_regular_breakpoint("/tmp/example/app.py", 12, _make_frame())
+
+    assert result is False
+    assert debug_logs == []
+    assert trace_logs == [
+        (
+            TRACE,
+            "_handle_regular_breakpoint checking /tmp/example/app.py:12 (canonical=/tmp/example/app.py) breaks=None",
+        ),
+        (
+            TRACE,
+            "_handle_regular_breakpoint: no match at /tmp/example/app.py:12 → returning False",
+        ),
+    ]
 
 
 def test_clear_breaks_for_file_success_path_clears_lines_and_meta(monkeypatch):
