@@ -105,7 +105,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any)._childSessions.get('child-launcher-session')?.listener).toBeDefined();
+      expect((factory as any).childSessionManager.childSessions.get('child-launcher-session')?.listener).toBeDefined();
     });
 
     const childSocket = Net.createConnection({ host: '127.0.0.1', port });
@@ -150,7 +150,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     } as unknown as vscode.DebugSession, undefined);
 
     expect((descriptor as vscode.DebugAdapterServer).port).toBeGreaterThan(0);
-    expect((factory as any)._childSessions.get('child-launcher-session')?.vscodeSessionId).toBe('child-vscode-session');
+    expect((factory as any).childSessionManager.childSessions.get('child-launcher-session')?.vscodeSessionId).toBe('child-vscode-session');
 
     childSocket.destroy();
   });
@@ -177,7 +177,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any)._childSessions.has('child-launcher-session')).toBe(true);
+      expect((factory as any).childSessionManager.childSessions.has('child-launcher-session')).toBe(true);
     });
 
     fireDebugEvent('onDidReceiveDebugSessionCustomEvent', {
@@ -191,8 +191,8 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any)._childSessions.has('child-launcher-session')).toBe(false);
-      expect((factory as any)._childSessionIdsByPid.has(4242)).toBe(false);
+      expect((factory as any).childSessionManager.childSessions.has('child-launcher-session')).toBe(false);
+      expect((factory as any).childSessionManager.childSessionIdsByPid.has(4242)).toBe(false);
     });
   });
 

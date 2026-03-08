@@ -14,7 +14,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   private readonly extensionVersion: string;
   private readonly _mainSessionController: MainSessionController;
   private readonly _childSessionManager: ChildSessionManager;
-  private readonly _disposables: vscode.Disposable[] = [];
+  private readonly _disposables: vscode.Disposable;
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -24,7 +24,9 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     this.extensionVersion = context.extension.packageJSON.version || '0.0.0';
     this._mainSessionController = new MainSessionController(this.envManager, this.extensionVersion, launchHistory);
     this._childSessionManager = new ChildSessionManager(() => this.envManager.getOutputChannel());
-    this._disposables.push(
+
+    // `Disposable.from` bundles multiple disposables for easier cleanup
+    this._disposables = vscode.Disposable.from(
       vscode.debug.onDidReceiveDebugSessionCustomEvent((event) => {
         void this._handleDebugSessionCustomEvent(event);
       }),
@@ -34,21 +36,15 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     );
   }
 
-  private get _childSessions() {
-    return this._childSessionManager.childSessions;
+  // ------------------------------------------------------------------
+  // Public helpers (exposed for testing or external use)
+  // ------------------------------------------------------------------
+
+  public get childSessionManager(): ChildSessionManager {
+    return this._childSessionManager;
   }
 
-  private get _childSessionIdsByPid() {
-    return this._childSessionManager.childSessionIdsByPid;
-  }
-
-  private _isInternalChildLaunchConfig(
-    config: vscode.DebugConfiguration,
-  ): config is InternalChildLaunchConfiguration {
-    const candidate = config as Partial<InternalChildLaunchConfiguration>;
-    return candidate.__dapperIsChildSession === true
-      && typeof candidate.__dapperChildSessionId === 'string';
-  }
+  // (note: the guard is exported below, outside the class)
 
   private async _handleDebugSessionCustomEvent(
     event: vscode.DebugSessionCustomEvent,
@@ -57,16 +53,23 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       return;
     }
 
+    const outChannel = this.envManager.getOutputChannel();
+    const body = event.body ?? {};
+
     try {
-      if (event.event === 'dapper/childProcess') {
-        await this._childSessionManager.handleChildProcessEvent(event.session, event.body ?? {});
-      } else if (event.event === 'dapper/childProcessExited') {
-        this._childSessionManager.handleChildProcessExitedEvent(event.body ?? {});
-      } else if (event.event === 'dapper/childProcessCandidate') {
-        this._childSessionManager.handleChildProcessCandidateEvent(event.session, event.body ?? {});
+      switch (event.event) {
+        case 'dapper/childProcess':
+          await this._childSessionManager.handleChildProcessEvent(event.session, body);
+          break;
+        case 'dapper/childProcessExited':
+          this._childSessionManager.handleChildProcessExitedEvent(body);
+          break;
+        case 'dapper/childProcessCandidate':
+          this._childSessionManager.handleChildProcessCandidateEvent(event.session, body);
+          break;
       }
     } catch (error) {
-      this.envManager.getOutputChannel().error(
+      outChannel.error(
         `Child session event handling failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -77,7 +80,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       return;
     }
 
-    if (this._isInternalChildLaunchConfig(session.configuration)) {
+    if (isInternalChildLaunchConfig(session.configuration)) {
       this._childSessionManager.disposePendingChildSession(
         session.configuration.__dapperChildSessionId,
         { destroySocket: true },
@@ -97,7 +100,7 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
     session: vscode.DebugSession,
     _executable: DebugAdapterExecutable | undefined,
   ): Promise<DebugAdapterDescriptor> {
-    if (this._isInternalChildLaunchConfig(session.configuration)) {
+    if (isInternalChildLaunchConfig(session.configuration)) {
       return this._childSessionManager.createChildDebugAdapterDescriptor(session, session.configuration);
     }
 
@@ -106,20 +109,25 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
       return directAttachDescriptor;
     }
 
-    try {
-      return await this._mainSessionController.createDebugAdapterDescriptor(session);
-    } catch (error) {
-      logger.error('Error creating debug adapter', error);
-      throw error;
-    }
+    // let caller log errors to avoid wrapping
+    return this._mainSessionController.createDebugAdapterDescriptor(session);
   }
 
   public dispose(): void {
-    for (const disposable of this._disposables) {
-      disposable.dispose();
-    }
-    this._disposables.length = 0;
+    this._disposables.dispose();
     this._childSessionManager.dispose();
     this._mainSessionController.dispose();
   }
+}
+
+// ------------------------------------------------------------------
+// helpers exported for use elsewhere/tests
+// ------------------------------------------------------------------
+
+export function isInternalChildLaunchConfig(
+  config: vscode.DebugConfiguration,
+): config is InternalChildLaunchConfiguration {
+  const candidate = config as Partial<InternalChildLaunchConfiguration>;
+  return candidate.__dapperIsChildSession === true
+    && typeof candidate.__dapperChildSessionId === 'string';
 }
