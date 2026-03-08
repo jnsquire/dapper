@@ -3,8 +3,9 @@ import { DebugAdapterServer } from 'vscode';
 import { spawn } from 'child_process';
 import * as Net from 'net';
 import * as os from 'os';
-import { delimiter as pathDelimiter, join as pathJoin } from 'path';
+import { delimiter as pathDelimiter } from 'path';
 import { EnvironmentManager, InstallMode } from '../environment/EnvironmentManager.js';
+import { buildDefaultLogFilePath } from './logFileNaming.js';
 import {
   type AttachByPidDiagnostic,
   type AttachRequestArguments,
@@ -448,7 +449,7 @@ export class MainSessionController {
         logFile = logFile.replace(/\\/g, '/');
       }
     } else {
-      logFile = pathJoin(os.tmpdir(), `dapper-debug-${session.id}.log`);
+      logFile = buildDefaultLogFilePath('debug', session.id);
     }
 
     const debugLogLevel = (debuggerConfig.get<string>('logLevel', 'DEBUG') || 'DEBUG').toUpperCase();

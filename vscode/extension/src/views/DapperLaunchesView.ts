@@ -1,4 +1,8 @@
 import * as vscode from 'vscode';
+import { basename } from 'path';
+
+const DEBUGGER_LOG_LEVELS = ['TRACE', 'DEBUG', 'INFO', 'WARNING', 'ERROR'] as const;
+type DebuggerLogLevel = typeof DEBUGGER_LOG_LEVELS[number];
 
 export interface LaunchRecord {
   launchToken: string;
@@ -225,6 +229,10 @@ export class DapperLaunchHistoryService implements vscode.Disposable {
     return true;
   }
 
+  public hasTerminal(launchToken: string): boolean {
+    return this._terminalsByLaunchToken.has(launchToken);
+  }
+
   public deleteLaunch(launchToken: string): boolean {
     const record = this._records.get(launchToken);
     if (!record) {
@@ -297,12 +305,7 @@ class DapperLaunchesProvider implements vscode.TreeDataProvider<LaunchTreeElemen
     item.description = this._describe(record);
     item.tooltip = this._tooltip(record);
     item.iconPath = new vscode.ThemeIcon(this._icon(record));
-    item.contextValue = record.logFile ? 'dapperLaunchRecordWithLog' : 'dapperLaunchRecord';
-    item.command = {
-      command: 'dapper.launches.focusTerminal',
-      title: 'Focus Launch Terminal',
-      arguments: [element],
-    };
+    item.contextValue = this._contextValue(record);
     return item;
   }
 
@@ -332,6 +335,7 @@ class DapperLaunchesProvider implements vscode.TreeDataProvider<LaunchTreeElemen
       record.pid != null ? `PID: ${record.pid}` : undefined,
       record.startMethod ? `Start: ${record.startMethod}` : undefined,
       record.exitCode != null ? `Exit code: ${record.exitCode}` : undefined,
+      record.logFile ? `Log name: ${basename(record.logFile)}` : undefined,
       record.logFile ? `Log file: ${record.logFile}` : undefined,
       record.error ? `Error: ${record.error}` : undefined,
     ].filter((value): value is string => Boolean(value)).join('\n');
@@ -350,6 +354,17 @@ class DapperLaunchesProvider implements vscode.TreeDataProvider<LaunchTreeElemen
       case 'terminated':
         return 'debug-stop';
     }
+  }
+
+  private _contextValue(record: LaunchRecord): string {
+    const parts = ['dapperLaunchRecord'];
+    if (record.logFile) {
+      parts.push('withLog');
+    }
+    if (this._history.hasTerminal(record.launchToken)) {
+      parts.push('withTerminal');
+    }
+    return parts.join(' ');
   }
 }
 
@@ -371,6 +386,11 @@ export class DapperLaunchesView implements vscode.Disposable {
     this._disposables.push(
       this._treeView,
       this._history,
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('dapper.debugger.logLevel')) {
+          this._updateViewState();
+        }
+      }),
       this._history.onDidChange(() => {
         this._updateViewState();
       }),
@@ -426,6 +446,28 @@ export class DapperLaunchesView implements vscode.Disposable {
     this._updateViewState();
   }
 
+  public async selectLogLevel(): Promise<void> {
+    const debuggerConfig = vscode.workspace.getConfiguration('dapper.debugger');
+    const currentLevel = this._getCurrentLogLevel(debuggerConfig);
+    const picked = await vscode.window.showQuickPick(
+      DEBUGGER_LOG_LEVELS.map((level) => ({
+        label: level,
+        description: level === currentLevel ? 'Current' : undefined,
+      })),
+      {
+        title: 'Dapper Launch Log Level',
+        placeHolder: 'Choose the log level for future Dapper launch logs.',
+      },
+    );
+    if (!picked || picked.label === currentLevel) {
+      return;
+    }
+
+    await debuggerConfig.update('logLevel', picked.label, vscode.ConfigurationTarget.Workspace);
+    this._updateViewState();
+    vscode.window.showInformationMessage(`Dapper launch log level set to ${picked.label}.`);
+  }
+
   public dispose(): void {
     for (const disposable of this._disposables) {
       disposable.dispose();
@@ -435,8 +477,15 @@ export class DapperLaunchesView implements vscode.Disposable {
 
   private _updateViewState(): void {
     const count = this._history.records.length;
+    const currentLevel = this._getCurrentLogLevel(vscode.workspace.getConfiguration('dapper.debugger'));
     this._treeView.message = count === 0 ? 'No Dapper launches recorded in this window.' : undefined;
     this._treeView.badge = count > 0 ? { value: count, tooltip: `${count} recorded launch${count === 1 ? '' : 'es'}` } : undefined;
+    this._treeView.description = `Recent runs and debug launches • log ${currentLevel}`;
+  }
+
+  private _getCurrentLogLevel(configuration: vscode.WorkspaceConfiguration): DebuggerLogLevel {
+    const rawLevel = (configuration.get<string>('logLevel', 'DEBUG') || 'DEBUG').toUpperCase();
+    return DEBUGGER_LOG_LEVELS.find((level) => level === rawLevel) ?? 'DEBUG';
   }
 }
 

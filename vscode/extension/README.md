@@ -105,7 +105,9 @@ How Dapper becomes available inside that interpreter depends on the installation
 - `workspace`: Use the chosen workspace interpreter directly. This mode resolves the interpreter from `pythonPath`, `venvPath`, `dapper.python.baseInterpreter`, or finally `python3`/`python` on `PATH`.
 - `wheel` or `pypi`: If no preferred interpreter can already run Dapper, the extension prepares its managed environment and installs Dapper there from the bundled wheel or PyPI.
 
-At launch time, Dapper also builds the process environment by combining the VS Code extension host environment, any explicit `env` values from the launch request, Dapper-specific variables such as `DAPPER_LOG_FILE`, and a `PYTHONPATH` entry when Dapper is injected rather than installed into the selected interpreter.
+At launch time, Dapper also builds the process environment by combining the VS Code extension host environment, any explicit `env` values from the launch request, Dapper-specific variables such as `DAPPER_LOG_FILE` and `DAPPER_LOG_LEVEL`, and a `PYTHONPATH` entry when Dapper is injected rather than installed into the selected interpreter.
+
+The session log level comes from the `dapper.debugger.logLevel` setting. The extension passes that value to the Python launcher through `DAPPER_LOG_LEVEL`, so the same setting applies to both debugger-attached launches and `Run This` launches.
 
 ### Launch Configuration Wizard
 
@@ -294,6 +296,8 @@ The extension exposes the following settings under `dapper`:
 
 - `dapper.logLevel` (debug|info|warn|error) - Logging verbosity.
 - `dapper.logToConsole` (boolean) - Also write logs to the dev tools console.
+- `dapper.debugger.logFile` (string) - Persistent log file path for the Python debug session. Supports `${workspaceFolder}`.
+- `dapper.debugger.logLevel` (TRACE|DEBUG|INFO|WARNING|ERROR) - Log level for the Python debug session log file. This is passed to the launcher as `DAPPER_LOG_LEVEL`.
 - `dapper.python.installMode` (auto|wheel|pypi|workspace) - How the Python package is installed.
 - `dapper.python.baseInterpreter` (string) - Absolute path to a base Python interpreter.
 - `dapper.python.forceReinstall` (boolean) - Force reinstall the Python package on activation.

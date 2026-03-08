@@ -820,6 +820,12 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "dapper.launches.focusTerminal",
+        "title": "Dapper: Focus Launch Terminal",
+        "category": "Dapper",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "dapper.launches.delete",
         "title": "Dapper: Delete Launch Record",
         "category": "Dapper",
@@ -830,6 +836,12 @@
         "title": "Dapper: Clear Launch History",
         "category": "Dapper",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "dapper.launches.selectLogLevel",
+        "title": "Dapper: Select Launch Log Level",
+        "category": "Dapper",
+        "icon": "$(list-selection)"
       }
     ],
     "views": {
@@ -931,6 +943,11 @@
           "group": "navigation"
         },
         {
+          "command": "dapper.launches.selectLogLevel",
+          "when": "view == dapperLaunches",
+          "group": "navigation"
+        },
+        {
           "command": "dapper.processTree.addPid",
           "when": "view == dapperProcessTree",
           "group": "navigation"
@@ -953,8 +970,13 @@
           "group": "inline"
         },
         {
+          "command": "dapper.launches.focusTerminal",
+          "when": "view == dapperLaunches && viewItem =~ /(^| )withTerminal( |$)/",
+          "group": "inline"
+        },
+        {
           "command": "dapper.launches.openLog",
-          "when": "view == dapperLaunches && viewItem == dapperLaunchRecordWithLog",
+          "when": "view == dapperLaunches && viewItem =~ /(^| )withLog( |$)/",
           "group": "inline"
         },
         {

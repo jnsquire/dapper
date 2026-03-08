@@ -1,8 +1,8 @@
 import * as Net from 'net';
-import * as os from 'os';
-import { delimiter as pathDelimiter, join as pathJoin } from 'path';
+import { delimiter as pathDelimiter } from 'path';
 import * as vscode from 'vscode';
 import { EnvironmentManager, InstallMode, type PythonEnvInfo } from '../environment/EnvironmentManager.js';
+import { buildDefaultLogFilePath } from './logFileNaming.js';
 import type { LaunchRequestArguments } from './debugAdapterTypes.js';
 import { PythonDebugAdapterTransport, type TransportSession } from './pythonDebugAdapterTransport.js';
 import { logger } from '../utils/logger.js';
@@ -216,7 +216,7 @@ export class DapperNoDebugLauncher implements NoDebugLaunchHandler {
         logFile = logFile.replace(/\\/g, '/');
       }
     } else {
-      logFile = pathJoin(os.tmpdir(), `dapper-run-${runId}.log`);
+      logFile = buildDefaultLogFilePath('run', runId);
     }
 
     const debugLogLevel = (debuggerConfig.get<string>('logLevel', 'DEBUG') || 'DEBUG').toUpperCase();

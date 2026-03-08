@@ -461,6 +461,10 @@ function* registerViews(
     launchesView.clearHistory();
   });
 
+  yield vscode.commands.registerCommand('dapper.launches.selectLogLevel', async () => {
+    await launchesView.selectLogLevel();
+  });
+
   yield processTreeView;
   yield launchesView;
 }

@@ -290,10 +290,16 @@ export const DebugConsoleMode = {
   MergeWithParent: 'mergeWithParent',
 };
 
+export const ConfigurationTarget = {
+  Global: 1,
+  Workspace: 2,
+  WorkspaceFolder: 3,
+};
+
 window.createWebviewPanel = createWebviewPanel;
 export const EventEmitter = MockEventEmitter;
 
-export default { workspace, window, Uri, Position, Range, Location, Breakpoint, SourceBreakpoint, commands, debug, extensions, env, lm, LanguageModelTextPart, LanguageModelToolResult, DebugAdapterServer, DebugAdapterExecutable, DebugConsoleMode, TreeItem, TreeItemCollapsibleState, ThemeIcon, EventEmitter, Disposable };
+export default { workspace, window, Uri, Position, Range, Location, Breakpoint, SourceBreakpoint, commands, debug, extensions, env, lm, LanguageModelTextPart, LanguageModelToolResult, DebugAdapterServer, DebugAdapterExecutable, DebugConsoleMode, ConfigurationTarget, TreeItem, TreeItemCollapsibleState, ThemeIcon, EventEmitter, Disposable };
 export const ViewColumn = { One: 1, Two: 2 };
 export const resetDebugListeners = () => {
   _debugListeners.onDidStartDebugSession.length = 0;
