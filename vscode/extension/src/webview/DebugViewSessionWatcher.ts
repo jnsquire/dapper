@@ -7,6 +7,8 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
 
   constructor(panel: vscode.WebviewPanel) {
     this._panel = panel;
+    // dispose this watcher when the panel is closed to avoid leaks
+    panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._registerListeners();
   }
 
@@ -46,13 +48,14 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
     try {
       // Get the current thread ID from the active stack item
       const activeItem = vscode.debug.activeStackItem;
-      const threadId: number | undefined =
+      // activeItem could be a StackFrame or Thread; neither has a common
+      // typed property for the thread ID so we use type assertions here.
+      const threadId =
         activeItem && 'threadId' in activeItem
           ? (activeItem as any).threadId
-          : activeItem
+          : activeItem && 'id' in activeItem
             ? (activeItem as any).id
             : undefined;
-      
       if (threadId === undefined) return;
 
       const response = await session.customRequest('stackTrace', {
@@ -62,20 +65,12 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
       });
 
       const rawFrames: any[] = response?.stackFrames ?? [];
-      const frames: StackFrame[] = rawFrames.map((f: any) => ({
-        id: f.id,
-        name: f.name ?? '<unknown>',
-        source: f.source?.path ?? f.source?.name ?? '<unknown>',
-        line: f.line ?? 0,
-        column: f.column ?? 0,
-        isOptimized: f.presentationHint === 'subtle',
-        isSynthetic: typeof f.source?.path === 'string' && /^<.*>$/.test(f.source.path),
-        isCython: typeof f.source?.path === 'string' && f.source.path.endsWith('.pyx'),
-      }));
+      const frames: StackFrame[] = this._mapFrames(rawFrames);
 
       this._post({ command: 'stackTrace', frames });
-    } catch {
-      // Silently ignore — session may have ended
+    } catch (e) {
+      // session may have ended; log for debugging
+      console.error('Error fetching stack trace', e);
     }
   }
 
@@ -89,16 +84,20 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
       const threads: ThreadInfo[] = rawThreads.map((t: any) => ({
         id: t.id,
         name: t.name ?? `Thread ${t.id}`,
-        state: 'paused', // We show all as paused when we have the info
+        state: 'paused', // debug adapter doesn't currently report per‑thread state
       }));
       this._post({ command: 'threads', threads });
-    } catch {
-      // Silently ignore
+    } catch (e) {
+      console.error('Error refreshing thread list', e);
     }
   }
 
   /** Handle a selectThread command from the webview. Fetches the stack for that thread. */
-  async handleSelectThread(threadId: number): Promise<void> {
+  /**
+   * Handle a selectThread command from the webview. Fetches and posts a stack trace
+   * for the requested thread. Public because it's invoked by the webview host.
+   */
+  public async handleSelectThread(threadId: number): Promise<void> {
     const session = vscode.debug.activeDebugSession;
     if (!session) return;
     try {
@@ -108,24 +107,19 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
         levels: 50,
       });
       const rawFrames: any[] = response?.stackFrames ?? [];
-      const frames: StackFrame[] = rawFrames.map((f: any) => ({
-        id: f.id,
-        name: f.name ?? '<unknown>',
-        source: f.source?.path ?? f.source?.name ?? '<unknown>',
-        line: f.line ?? 0,
-        column: f.column ?? 0,
-        isOptimized: f.presentationHint === 'subtle',
-        isSynthetic: typeof f.source?.path === 'string' && /^<.*>$/.test(f.source.path),
-        isCython: typeof f.source?.path === 'string' && f.source.path.endsWith('.pyx'),
-      }));
+      const frames: StackFrame[] = this._mapFrames(rawFrames);
       this._post({ command: 'stackTrace', frames });
-    } catch {
-      // Silently ignore
+    } catch (e) {
+      console.error('Error fetching stack for selected thread', e);
     }
   }
 
   /** Handle an expandFrame / selectFrame request from the webview — fetches variables. */
-  async handleFetchVariables(frameId: number): Promise<void> {
+  /**
+   * Called by the webview when a frame is expanded/selected. Retrieves all
+   * variables visible in that frame and sends them to the webview.
+   */
+  public async handleFetchVariables(frameId: number): Promise<void> {
     const session = vscode.debug.activeDebugSession;
     if (!session) return;
     try {
@@ -148,21 +142,38 @@ export class DebugViewSessionWatcher implements vscode.Disposable {
         }
       }
       this._panel.webview.postMessage({ command: 'variables', frameId, variables: allVars });
-    } catch {
-      // Silently ignore
+    } catch (e) {
+      console.error('Error fetching variables for frame', e);
     }
   }
 
   private _post(message: any): void {
     try {
       this._panel.webview.postMessage(message);
-    } catch {
+    } catch (e) {
       // Panel may have been disposed
+      console.error('Failed to post message to webview', e);
     }
   }
 
   dispose(): void {
     this._disposables.forEach(d => d.dispose());
     this._disposables.length = 0;
+  }
+
+  /**
+   * Map raw stack frames returned by the debug adapter into our protocol type.
+   */
+  private _mapFrames(rawFrames: any[]): StackFrame[] {
+    return rawFrames.map((f: any) => ({
+      id: f.id,
+      name: f.name ?? '<unknown>',
+      source: f.source?.path ?? f.source?.name ?? '<unknown>',
+      line: f.line ?? 0,
+      column: f.column ?? 0,
+      isOptimized: f.presentationHint === 'subtle',
+      isSynthetic: typeof f.source?.path === 'string' && /^<.*>$/.test(f.source.path),
+      isCython: typeof f.source?.path === 'string' && f.source.path.endsWith('.pyx'),
+    }));
   }
 }
