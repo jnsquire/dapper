@@ -1,5 +1,5 @@
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EnvironmentManager } from '../src/environment/EnvironmentManager.js';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -18,16 +18,26 @@ const fakeOutputChannel: any = {
 describe('EnvironmentManager helpers', () => {
   let envMgr: EnvironmentManager;
   let runCalls: Array<{ cmd: string; args: string[]; opts: any }>;
+  let resultCalls: Array<{ cmd: string; args: string[]; opts: any }>;
 
   beforeEach(() => {
     envMgr = new EnvironmentManager(fakeContext, fakeOutputChannel);
     runCalls = [];
+    resultCalls = [];
 
-    // stub runProcess so we can inspect the arguments passed and avoid spawning real processes
     (envMgr as any).runProcess = async (cmd: string, args: string[], opts: any) => {
       runCalls.push({ cmd, args, opts });
       return Promise.resolve();
     };
+
+    (envMgr as any).runProcessResult = async (cmd: string, args: string[], opts: any) => {
+      resultCalls.push({ cmd, args, opts });
+      return { ok: true, code: 0, output: '' };
+    };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('installWheel adds --force-reinstall and --no-cache-dir when forced', async () => {
@@ -62,6 +72,37 @@ describe('EnvironmentManager helpers', () => {
     expect(args).not.toContain('--force-reinstall');
   });
 
+  it('ensurePip runs ensurepip when pip is unavailable', async () => {
+    (envMgr as any).runProcessResult = async (cmd: string, args: string[], opts: any) => {
+      resultCalls.push({ cmd, args, opts });
+      return { ok: false, code: 1, output: 'No module named pip' };
+    };
+
+    await (envMgr as any).ensurePip('/python');
+
+    expect(resultCalls).toContainEqual({
+      cmd: '/python',
+      args: ['-m', 'pip', '--version'],
+      opts: { label: 'check pip' },
+    });
+    expect(runCalls).toContainEqual({
+      cmd: '/python',
+      args: ['-m', 'ensurepip', '--upgrade'],
+      opts: { label: 'ensurepip' },
+    });
+  });
+
+  it('ensurePip skips ensurepip when pip is already available', async () => {
+    await (envMgr as any).ensurePip('/python');
+
+    expect(resultCalls).toContainEqual({
+      cmd: '/python',
+      args: ['-m', 'pip', '--version'],
+      opts: { label: 'check pip' },
+    });
+    expect(runCalls).toHaveLength(0);
+  });
+
   describe('workspace venv handling', () => {
     let tmpRoot: string | undefined;
     const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
@@ -75,7 +116,6 @@ describe('EnvironmentManager helpers', () => {
       if (tmpRoot) {
         try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { }
       }
-      vi.restoreAllMocks();
     });
 
     it('uses PYTHONPATH injection when version mismatches (no venv mutation)', async () => {

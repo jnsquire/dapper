@@ -1,35 +1,37 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, spawnSync } from 'child_process';
+import * as path from 'path';
 
-export type InstallMode = 'auto' | 'wheel' | 'pypi' | 'workspace';
+import * as vscode from 'vscode';
 
-export interface EnvManifest {
-  dapperVersionInstalled: string;
-  installSource: 'wheel' | 'pypi';
-  // SHA256 of the bundle wheel directory contents; used to detect rebuilds
-  wheelHash?: string;
-  created: string;
-  updated: string;
-}
+import {
+  checkDapperImportable,
+  checkModuleImportable,
+  computeWheelHash,
+  createVenv,
+  ensureDapperLib,
+  ensurePip,
+  findBundledWheelDir,
+  getDapperVersion,
+  installFromPyPI,
+  installToTargetDir,
+  installWheel,
+  manifestPath,
+  readManifest,
+  type EnvironmentInstallDeps,
+  upgradePip,
+  writeManifest,
+} from './environmentInstall.js';
+import {
+  createWorkspaceVenvOrAbort as createWorkspaceVenvOrAbortHelper,
+  tryPreferredInterpreter as tryPreferredInterpreterHelper,
+  tryWorkspaceVenv as tryWorkspaceVenvHelper,
+  type EnvironmentSelectionDeps,
+} from './environmentSelection.js';
+import { getVenvPythonPath, normalizePrepareOptions, resolveBaseInterpreter, resolveWorkspacePython } from './paths.js';
+import { runLoggedProcess, runLoggedProcessResult, type ProcessRunResult } from './processRunner.js';
+import type { EnvManifest, InstallMode, PrepareEnvironmentOptions, PythonEnvInfo } from './types.js';
 
-export interface PythonEnvInfo {
-  pythonPath: string;        // interpreter used for launching adapter
-  venvPath?: string;         // present unless workspace mode
-  dapperVersionInstalled?: string;
-  needsInstall: boolean;     // true if install performed this activation
-  /** When set, this directory must be prepended to PYTHONPATH so that
-   *  `import dapper` resolves without dapper being installed into the
-   *  interpreter's own site-packages. */
-  dapperLibPath?: string;
-}
-
-export interface PrepareEnvironmentOptions {
-  workspaceFolder?: vscode.WorkspaceFolder;
-  preferredPythonPath?: string;
-  preferredVenvPath?: string;
-}
+export type { EnvManifest, InstallMode, PrepareEnvironmentOptions, PythonEnvInfo } from './types.js';
 
 /**
  * Manages the Python runtime environment for the Dapper extension.
@@ -39,7 +41,7 @@ export interface PrepareEnvironmentOptions {
 export class EnvironmentManager {
   private readonly output: vscode.LogOutputChannel;
   private preparePromise: Promise<PythonEnvInfo> | undefined;
-  private readonly lock: { active: boolean } = { active: false }; // simple in-memory guard
+  private readonly lock: { active: boolean } = { active: false };
 
   constructor(private readonly context: vscode.ExtensionContext, output: vscode.LogOutputChannel) {
     this.output = output;
@@ -67,6 +69,7 @@ export class EnvironmentManager {
         }, 50);
       });
     }
+
     this.preparePromise = this._prepare(desiredVersion, mode, forceReinstall, prepareOptions)
       .catch(err => {
         this.output.error(`prepareEnvironment failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -146,11 +149,6 @@ export class EnvironmentManager {
 
       const venvExists = fs.existsSync(pythonPath);
       this.output.info(`Venv python exists: ${venvExists} (${pythonPath})`);
-      if (venvExists) {
-        const r = spawnSync(pythonPath, ['--version'], { encoding: 'utf8' });
-        const version = (r.stdout || r.stderr || '').trim();
-        this.output.info(`Venv Python version: ${version}`);
-      }
       if (!venvExists) {
         const base = this.resolveBaseInterpreter(baseInterpreterSetting);
         this.output.info(`Creating venv at ${venvPath} with base interpreter ${base}`);
@@ -169,7 +167,7 @@ export class EnvironmentManager {
 
       let currentWheelHash: string | undefined;
       if (wheelDir) {
-        currentWheelHash = await this.computeWheelHash(wheelDir);
+        currentWheelHash = this.computeWheelHash(wheelDir);
         this.output.info(`Current wheel hash: ${currentWheelHash}`);
       }
       const reinstallNeeded = this.shouldReinstall(
@@ -242,6 +240,31 @@ export class EnvironmentManager {
     }
   }
 
+  private installDeps(): EnvironmentInstallDeps {
+    return {
+      context: this.context,
+      output: this.output,
+      runProcess: this.runProcess.bind(this),
+      runProcessResult: this.runProcessResult.bind(this),
+    };
+  }
+
+  private selectionDeps(): EnvironmentSelectionDeps {
+    return {
+      output: this.output,
+      checkDapperImportable: this.checkDapperImportable.bind(this),
+      createVenv: this.createVenv.bind(this),
+      ensureDapperLib: this.ensureDapperLib.bind(this),
+      ensurePip: this.ensurePip.bind(this),
+      getDapperVersion: this.getDapperVersion.bind(this),
+      getVenvPythonPath: this.getVenvPythonPath.bind(this),
+      installFromPyPI: this.installFromPyPI.bind(this),
+      installWheel: this.installWheel.bind(this),
+      resolveWorkspacePython: this.resolveWorkspacePython.bind(this),
+      upgradePip: this.upgradePip.bind(this),
+    };
+  }
+
   private async createWorkspaceVenvOrAbort(
     version: string,
     wheelDir: string | undefined,
@@ -251,60 +274,16 @@ export class EnvironmentManager {
     preferredVenvPath: string | undefined,
     forceReinstall: boolean,
   ): Promise<PythonEnvInfo> {
-    const targetWorkspaceFolder = workspaceFolder ?? vscode.workspace.workspaceFolders?.[0];
-    if (!targetWorkspaceFolder) {
-      throw new Error('Dapper could not find a workspace virtual environment, and there is no workspace folder available to create one.');
-    }
-
-    const createLabel = 'Create .venv';
-    const choice = await vscode.window.showInformationMessage(
-      `Dapper could not find a workspace virtual environment in ${targetWorkspaceFolder.uri.fsPath}. Create .venv and use it for debugging?`,
-      { modal: true },
-      createLabel,
-    );
-    if (choice !== createLabel) {
-      throw new Error('Launch cancelled because Dapper requires a workspace virtual environment for this debug session.');
-    }
-
-    const venvPath = path.join(targetWorkspaceFolder.uri.fsPath, '.venv');
-    const pythonPath = this.getVenvPythonPath(venvPath);
-    const baseInterpreter = this.resolveWorkspacePython(
+    return createWorkspaceVenvOrAbortHelper(
+      version,
+      wheelDir,
+      workspaceFolder,
       baseInterpreterSetting,
       preferredPythonPath,
       preferredVenvPath,
+      forceReinstall,
+      this.selectionDeps(),
     );
-
-    this.output.info(`Creating workspace venv at ${venvPath} with base interpreter ${baseInterpreter}`);
-    await this.createVenv(baseInterpreter, venvPath);
-
-    if (wheelDir) {
-      const libPath = await this.ensureDapperLib(pythonPath, version, wheelDir, forceReinstall);
-      if (libPath) {
-        this.output.info(`Using newly created workspace venv with Dapper injected from ${libPath}`);
-        return {
-          pythonPath,
-          venvPath,
-          needsInstall: false,
-          dapperLibPath: libPath,
-        };
-      }
-      this.output.warn('Failed to prepare injected Dapper library for the new workspace venv; installing directly into the venv instead.');
-    }
-
-    await this.ensurePip(pythonPath);
-    await this.upgradePip(pythonPath);
-    if (wheelDir) {
-      await this.installWheel(pythonPath, wheelDir, version, forceReinstall);
-    } else {
-      await this.installFromPyPI(pythonPath, version, forceReinstall);
-    }
-
-    return {
-      pythonPath,
-      venvPath,
-      dapperVersionInstalled: version,
-      needsInstall: true,
-    };
   }
 
   /**
@@ -322,58 +301,7 @@ export class EnvironmentManager {
     workspaceFolder?: vscode.WorkspaceFolder,
     forceReinstall = false
   ): Promise<PythonEnvInfo | undefined> {
-    const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
-    const pyExe = process.platform === 'win32' ? 'python.exe' : 'python';
-    const venvDirs = ['.venv', 'venv', 'env', '.env'];
-
-    // Collect candidate workspace folders (session folder first)
-    const allWsFolders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
-    const sessionFolder = workspaceFolder?.uri.fsPath;
-    const folders = sessionFolder && !allWsFolders.includes(sessionFolder)
-      ? [sessionFolder, ...allWsFolders]
-      : (sessionFolder ? [sessionFolder, ...allWsFolders.filter(f => f !== sessionFolder)] : allWsFolders);
-    this.output.info(`tryWorkspaceVenv: scanning folders [${folders.join(', ')}]`);
-
-    for (const folder of folders) {
-      for (const vd of venvDirs) {
-        const candidate = path.join(folder, vd, binDir, pyExe);
-        this.output.debug(`tryWorkspaceVenv: checking ${candidate}`);
-        if (!fs.existsSync(candidate)) continue;
-
-        this.output.info(`auto mode: found workspace venv at ${candidate}`);
-
-        // If the workspace venv already has the right version of dapper and
-        // we are not forcing a reinstall, use it directly — no mutation needed.
-        if (!forceReinstall && await this.checkDapperImportable(candidate)) {
-          const installedVersion = await this.getDapperVersion(candidate);
-          if (installedVersion === version) {
-            this.output.info(`auto mode: dapper already installed in workspace venv (version ${installedVersion}), using it.`);
-            return { pythonPath: candidate, needsInstall: false };
-          }
-          this.output.info(
-            `auto mode: workspace venv has dapper ${installedVersion} but need ${version}; ` +
-            'will use PYTHONPATH injection instead of modifying the venv.'
-          );
-        }
-
-        // Either dapper is missing from the venv, the version is wrong, or a
-        // force-reinstall was requested.  Instead of touching the workspace
-        // venv, extract dapper to an extension-managed directory.
-        if (wheelDir) {
-          const libPath = await this.ensureDapperLib(candidate, version, wheelDir, forceReinstall);
-          if (libPath) {
-            this.output.info(`auto mode: dapper ${version} available via PYTHONPATH at ${libPath}`);
-            return { pythonPath: candidate, needsInstall: false, dapperLibPath: libPath };
-          }
-          this.output.warn('auto mode: failed to extract dapper for PYTHONPATH injection; falling back.');
-        } else {
-          this.output.info('auto mode: workspace venv found but no bundled wheels for PYTHONPATH injection; falling back to managed venv.');
-        }
-        // First venv found is the one to try — don't silently skip to the next
-        return undefined;
-      }
-    }
-    return undefined;
+    return tryWorkspaceVenvHelper(version, wheelDir, workspaceFolder, forceReinstall, this.selectionDeps());
   }
 
   private async tryPreferredInterpreter(
@@ -383,369 +311,75 @@ export class EnvironmentManager {
     preferredVenvPath: string | undefined,
     forceReinstall: boolean,
   ): Promise<PythonEnvInfo | undefined> {
-    const candidate = preferredPythonPath
-      ?? (preferredVenvPath ? this.getVenvPythonPath(preferredVenvPath) : undefined);
-    if (!candidate) {
-      return undefined;
-    }
-    if (!fs.existsSync(candidate)) {
-      this.output.warn(`Preferred interpreter does not exist: ${candidate}`);
-      return undefined;
-    }
-
-    this.output.info(`Using preferred interpreter candidate: ${candidate}`);
-    const importable = await this.checkDapperImportable(candidate);
-    if (!forceReinstall && importable) {
-      const installedVersion = await this.getDapperVersion(candidate);
-      if (installedVersion === version || !wheelDir) {
-        this.output.info(`Preferred interpreter already provides dapper${installedVersion ? ` ${installedVersion}` : ''}.`);
-        return { pythonPath: candidate, venvPath: preferredVenvPath, needsInstall: false };
-      }
-    }
-
-    if (wheelDir) {
-      const libPath = await this.ensureDapperLib(candidate, version, wheelDir, forceReinstall);
-      if (libPath) {
-        return {
-          pythonPath: candidate,
-          venvPath: preferredVenvPath,
-          needsInstall: false,
-          dapperLibPath: libPath,
-        };
-      }
-    }
-
-    if (importable) {
-      this.output.warn('Preferred interpreter has dapper available but the version may differ from the extension bundle. Reusing it anyway.');
-      return { pythonPath: candidate, venvPath: preferredVenvPath, needsInstall: false };
-    }
-
-    return undefined;
+    return tryPreferredInterpreterHelper(
+      version,
+      wheelDir,
+      preferredPythonPath,
+      preferredVenvPath,
+      forceReinstall,
+      this.selectionDeps(),
+    );
   }
-
-  // ---------------------------------------------------------------------------
-  // PYTHONPATH-based dapper injection (avoids installing into workspace venvs)
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Ensure the dapper package is available in an isolated, extension-managed
-   * directory suitable for PYTHONPATH injection.  Uses `pip install --target`
-   * (or `uv pip install --target`) to extract the correct platform-specific
-   * wheel without modifying any venv.
-   *
-   * Returns the target directory path, or `undefined` on failure.
-   */
   private async ensureDapperLib(
     pythonPath: string,
     version: string,
     wheelDir: string,
     forceReinstall: boolean,
   ): Promise<string | undefined> {
-    const libBase = path.join(this.context.globalStorageUri.fsPath, 'dapper-lib');
-    const targetDir = path.join(libBase, version);
-    const manifestPath = path.join(libBase, 'dapper-lib.json');
-
-    // Read existing manifest
-    let manifest: { version: string; wheelHash?: string } | undefined;
-    try {
-      if (fs.existsSync(manifestPath)) {
-        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      }
-    } catch { /* ignore corrupt manifest */ }
-
-    const currentWheelHash = await this.computeWheelHash(wheelDir);
-
-    const extractNeeded = forceReinstall
-      || !manifest
-      || manifest.version !== version
-      || (currentWheelHash && manifest.wheelHash !== currentWheelHash)
-      || !fs.existsSync(path.join(targetDir, 'dapper', '__init__.py'));
-
-    if (!extractNeeded) {
-      this.output.info(`dapper lib already extracted at ${targetDir}; reusing.`);
-      return targetDir;
-    }
-
-    this.output.info(`Extracting dapper ${version} to ${targetDir} for PYTHONPATH injection...`);
-
-    // Clean up any previous extraction so we start fresh
-    if (fs.existsSync(targetDir)) {
-      await fs.promises.rm(targetDir, { recursive: true, force: true });
-    }
-
-    try {
-      await this.installToTargetDir(pythonPath, wheelDir, version, targetDir);
-
-      // Verify the extraction produced a usable package tree
-      if (!fs.existsSync(path.join(targetDir, 'dapper', '__init__.py'))) {
-        this.output.error('Extraction succeeded but dapper/__init__.py not found in target dir');
-        return undefined;
-      }
-
-      // Persist manifest so subsequent launches skip re-extraction
-      const newManifest = { version, wheelHash: currentWheelHash };
-      fs.mkdirSync(libBase, { recursive: true });
-      fs.writeFileSync(manifestPath, JSON.stringify(newManifest, null, 2), 'utf8');
-
-      this.output.info(`dapper ${version} extracted successfully to ${targetDir}`);
-      return targetDir;
-    } catch (err) {
-      this.output.error(`Failed to extract dapper to target dir: ${err}`);
-      return undefined;
-    }
+    return ensureDapperLib(pythonPath, version, wheelDir, forceReinstall, this.installDeps());
   }
 
-  /**
-   * Extract the dapper wheel into an isolated target directory using only
-   * Python's stdlib `zipfile` module.  This avoids any dependency on pip,
-   * uv, or any other package manager.
-   *
-   * A `.whl` file is a standard zip archive whose top-level entries are the
-   * package directory (e.g. `dapper/`) and a `*.dist-info/` metadata
-   * directory.  Extracting the zip into `targetDir` produces exactly the
-   * layout needed for PYTHONPATH-based imports.
-   */
   private async installToTargetDir(
     pythonPath: string,
     wheelDir: string,
     version: string,
     targetDir: string,
   ): Promise<void> {
-    fs.mkdirSync(targetDir, { recursive: true });
-
-    // Locate the wheel file — there may be several platform-specific wheels;
-    // prefer the most specific one but fall back to a universal wheel.
-    const allWheels = fs.readdirSync(wheelDir)
-      .filter(f => f.startsWith(`dapper-${version}`) && f.endsWith('.whl'))
-      .sort();
-    if (allWheels.length === 0) {
-      throw new Error(`No wheel files matching dapper-${version}*.whl found in ${wheelDir}`);
-    }
-    const wheelFile = path.join(wheelDir, allWheels[0]);
-    this.output.info(`Extracting wheel ${allWheels[0]} → ${targetDir}`);
-
-    // Use Python's zipfile stdlib module to extract — available everywhere.
-    const extractScript = [
-      'import sys, zipfile, os',
-      `whl = sys.argv[1]`,
-      `dst = sys.argv[2]`,
-      'os.makedirs(dst, exist_ok=True)',
-      'with zipfile.ZipFile(whl) as zf:',
-      '    zf.extractall(dst)',
-    ].join('\n');
-
-    await this.runProcess(
-      pythonPath,
-      ['-c', extractScript, wheelFile, targetDir],
-      { label: `extract wheel dapper ${version}` },
-    );
+    await installToTargetDir(pythonPath, wheelDir, version, targetDir, this.installDeps());
   }
 
   private getVenvPythonPath(venvPath: string): string {
-    // Windows vs POSIX layout
-    return process.platform === 'win32'
-      ? path.join(venvPath, 'Scripts', 'python.exe')
-      : path.join(venvPath, 'bin', 'python');
+    return getVenvPythonPath(venvPath);
   }
 
   private resolveBaseInterpreter(setting?: string): string {
-    if (setting && fs.existsSync(setting)) {
-      return setting;
-    }
-    // Fallback to 'python' on PATH; caller must handle missing
-    // Try common alternative on *nix systems
-    if (process.platform !== 'win32') {
-      return 'python3';
-    }
-    return 'python';
+    return resolveBaseInterpreter(setting);
   }
 
   private resolveWorkspacePython(setting?: string, preferredPythonPath?: string, preferredVenvPath?: string): string {
-    if (preferredPythonPath && fs.existsSync(preferredPythonPath)) {
-      return preferredPythonPath;
-    }
-    if (preferredVenvPath) {
-      const candidate = this.getVenvPythonPath(preferredVenvPath);
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-    if (setting && fs.existsSync(setting)) {
-      return setting;
-    }
-    return process.platform !== 'win32' ? 'python3' : 'python'; // Defer failure if not found
+    return resolveWorkspacePython(setting, preferredPythonPath, preferredVenvPath);
   }
 
   private normalizePrepareOptions(options?: vscode.WorkspaceFolder | PrepareEnvironmentOptions): PrepareEnvironmentOptions {
-    if (!options) {
-      return {};
-    }
-    if ('uri' in options) {
-      return { workspaceFolder: options };
-    }
-    return options;
+    return normalizePrepareOptions(options);
   }
 
   private async createVenv(baseInterpreter: string, venvPath: string): Promise<void> {
-    await this.runProcess(baseInterpreter, ['-m', 'venv', venvPath], { label: 'create venv' });
+    await createVenv(baseInterpreter, venvPath, this.installDeps());
   }
 
   private async ensurePip(pythonPath: string): Promise<void> {
-    try {
-      await this.runProcess(pythonPath, ['-m', 'pip', '--version'], { label: 'check pip', allowFail: true });
-    } catch {
-      this.output.info('pip missing, running ensurepip');
-      await this.runProcess(pythonPath, ['-m', 'ensurepip', '--upgrade'], { label: 'ensurepip' });
-    }
+    await ensurePip(pythonPath, this.installDeps());
   }
 
   private async upgradePip(pythonPath: string): Promise<void> {
-    await this.runProcess(pythonPath, ['-m', 'pip', 'install', '--upgrade', 'pip'], { label: 'upgrade pip', allowFail: true });
+    await upgradePip(pythonPath, this.installDeps());
   }
 
   private async installWheel(pythonPath: string, wheelDir: string, version: string, force = false): Promise<void> {
-    // Let pip select the right platform/ABI-specific wheel from the directory.
-    const pipArgs = ['-m', 'pip', 'install', `dapper==${version}`, '--find-links', wheelDir, '--no-index', '--no-cache-dir'];
-    if (force) pipArgs.push('--force-reinstall');
-    const label = `install wheel ${version}${force ? ' (forced)' : ''}`;
-    try {
-      await this.runProcess(pythonPath, pipArgs, { label });
-    } catch (pipErr) {
-      const msg = pipErr instanceof Error ? pipErr.message : String(pipErr);
-      if (msg.includes('No module named pip')) {
-        // uv-managed venvs don't include pip — use uv pip install instead
-        this.output.info(`pip not available in venv, trying uv pip install...`);
-        const uvArgs = ['pip', 'install', `dapper==${version}`, '--find-links', wheelDir, '--no-index', '--python', pythonPath];
-        if (force) uvArgs.push('--reinstall');
-        await this.runProcess('uv', uvArgs, { label: `${label} (uv)` });
-      } else {
-        throw pipErr;
-      }
-    }
+    await installWheel(pythonPath, wheelDir, version, force, this.installDeps());
   }
 
   private async installFromPyPI(pythonPath: string, version: string, force = false): Promise<void> {
-    const args = ['-m', 'pip', 'install', `dapper==${version}`];
-    if (force) {
-      args.push('--force-reinstall');
-    }
-    await this.runProcess(pythonPath, args, { label: `install PyPI ${version}${force ? ' (forced)' : ''}` });
+    await installFromPyPI(pythonPath, version, force, this.installDeps());
   }
 
   private async checkDapperImportable(pythonPath: string): Promise<boolean> {
-    try {
-      await this.runProcess(pythonPath, ['-c', 'import dapper'], { label: 'check dapper importable', allowFail: false });
-      this.output.debug('  → importable: YES');
-      return true;
-    } catch {
-      this.output.debug('  → importable: NO');
-      return false;
-    }
+    return checkDapperImportable(pythonPath, this.installDeps());
   }
 
   private async checkModuleImportable(pythonPath: string, moduleName: string): Promise<boolean> {
-    // Use find_spec so __main__.py is located without being executed.
-    const code = `import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(${JSON.stringify(moduleName)}) else 1)`;
-    try {
-      await this.runProcess(pythonPath, ['-c', code], { label: `check ${moduleName}`, allowFail: false });
-      this.output.debug(`  → ${moduleName}: FOUND`);
-      return true;
-    } catch {
-      this.output.debug(`  → ${moduleName}: NOT FOUND`);
-      return false;
-    }
-  }
-
-  /**
-   * Probe a prioritised list of interpreter candidates and return the first one
-   * that can successfully `import dapper`, or undefined if none can.
-   */
-  private async findInterpreterWithDapper(
-    baseInterpreterSetting: string | undefined,
-    workspaceFolder?: vscode.WorkspaceFolder
-  ): Promise<string | undefined> {
-    const candidates: string[] = [];
-
-    this.output.info(
-      `findInterpreterWithDapper: sessionFolder=${workspaceFolder?.uri.fsPath ?? '(none)'} ` +
-      `vscodeWorkspaceFolders=[${(vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath).join(', ')}]`
-    );
-
-    // 1. Active interpreter from the ms-python extension (highest priority)
-    try {
-      const pyExt = vscode.extensions.getExtension('ms-python.python');
-      if (pyExt) {
-        if (!pyExt.isActive) {
-          this.output.debug('Activating ms-python extension...');
-          await pyExt.activate();
-        }
-        const api = pyExt.exports;
-        // ms-python v2022+ exposes environments.getActiveEnvironmentPath
-        const envPath = api?.environments?.getActiveEnvironmentPath?.(workspaceFolder?.uri);
-        const resolved = typeof envPath?.path === 'string' ? envPath.path
-          : typeof envPath === 'string' ? envPath : undefined;
-        this.output.debug(`ms-python getActiveEnvironmentPath returned: ${JSON.stringify(envPath)}`);
-        if (resolved) {
-          const exists = fs.existsSync(resolved);
-          this.output.debug(`ms-python resolved path: ${resolved} (exists on disk: ${exists})`);
-          if (exists) {
-            candidates.push(resolved);
-          }
-        } else {
-          this.output.debug('ms-python did not return a resolvable interpreter path.');
-        }
-      } else {
-        this.output.debug('ms-python extension (ms-python.python) is not installed.');
-      }
-    } catch (e) {
-      this.output.debug(`Could not query ms-python extension: ${e}`);
-    }
-
-    // 2. Workspace folder venvs (common patterns: .venv, venv, env).
-    // Always check ALL open VS Code workspace folders, plus the session folder if different.
-    const allWsFolders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
-    const sessionFolder = workspaceFolder?.uri.fsPath;
-    const folders = sessionFolder && !allWsFolders.includes(sessionFolder)
-      ? [sessionFolder, ...allWsFolders]
-      : allWsFolders;
-    const venvDirs = ['.venv', 'venv', 'env', '.env'];
-    const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
-    const pyExe = process.platform === 'win32' ? 'python.exe' : 'python';
-    this.output.debug(`Scanning ${folders.length} folder(s) for local venvs: [${folders.join(', ')}]`);
-    for (const folder of folders) {
-      for (const vd of venvDirs) {
-        const candidate = path.join(folder, vd, binDir, pyExe);
-        const exists = fs.existsSync(candidate);
-        this.output.debug(`  ${candidate} — ${exists ? 'FOUND' : 'not found'}`);
-        if (exists) {
-          candidates.push(candidate);
-        }
-      }
-    }
-
-    // 3. Explicit base interpreter setting / system PATH fallback
-    candidates.push(this.resolveBaseInterpreter(baseInterpreterSetting));
-    // Also try python3/python directly from PATH (covers active shell venvs)
-    if (process.platform !== 'win32') {
-      candidates.push('python3', 'python');
-    } else {
-      candidates.push('python');
-    }
-
-    // Deduplicate and probe
-    const seen = new Set<string>();
-    this.output.info(`Probing ${candidates.length} candidate interpreter(s)...`);
-    for (const candidate of candidates) {
-      if (seen.has(candidate)) continue;
-      seen.add(candidate);
-      this.output.debug(`Probing: ${candidate}`);
-      if (await this.checkDapperImportable(candidate)) {
-        this.output.info(`Found working interpreter: ${candidate}`);
-        return candidate;
-      }
-    }
-    this.output.warn('No candidate interpreter could import dapper.');
-    return undefined;
+    return checkModuleImportable(pythonPath, moduleName, this.installDeps());
   }
 
   private shouldReinstall(
@@ -773,81 +407,37 @@ export class EnvironmentManager {
   }
 
   private manifestPath(venvPath: string): string {
-    return path.join(venvPath, 'dapper-env.json');
+    return manifestPath(venvPath);
   }
 
   private readManifest(venvPath: string): EnvManifest | undefined {
-    const mp = this.manifestPath(venvPath);
-    if (!fs.existsSync(mp)) return undefined;
-    try {
-      return JSON.parse(fs.readFileSync(mp, 'utf8')) as EnvManifest;
-    } catch (err) {
-      this.output.warn(`Failed to read manifest: ${err}`);
-      return undefined;
-    }
+    return readManifest(venvPath, this.output);
   }
 
   private writeManifest(venvPath: string, manifest: EnvManifest): void {
-    try {
-      fs.writeFileSync(this.manifestPath(venvPath), JSON.stringify(manifest, null, 2), 'utf8');
-    } catch (err) {
-      this.output.warn(`Failed to write manifest: ${err}`);
-    }
+    writeManifest(venvPath, manifest, this.output);
   }
 
   private findBundledWheelDir(version: string): string | undefined {
-    const wheelDir = path.join(this.context.extensionPath, 'resources', 'python-wheels');
-    if (!fs.existsSync(wheelDir)) return undefined;
-    const files = fs.readdirSync(wheelDir).filter(f => f.startsWith(`dapper-${version}`) && f.endsWith('.whl'));
-    if (files.length === 0) return undefined;
-    this.output.debug(`findBundledWheelDir: found ${files.length} wheel(s) for v${version}: ${files.join(', ')}`);
-    return wheelDir;
+    return findBundledWheelDir(this.context.extensionPath, version, this.output);
   }
 
-  private async computeWheelHash(wheelDir: string): Promise<string> {
-    // compute SHA256 of concatenated wheel filenames and contents
-    const hash = await new Promise<string>((resolve, reject) => {
-      const crypto = require('crypto');
-      const h = crypto.createHash('sha256');
-      fs.readdirSync(wheelDir)
-        .filter(f => f.endsWith('.whl'))
-        .sort()
-        .forEach(fn => {
-          const p = path.join(wheelDir, fn);
-          h.update(fn);
-          const data = fs.readFileSync(p);
-          h.update(data);
-        });
-      resolve(h.digest('hex'));
-    });
-    return hash;
+  private computeWheelHash(wheelDir: string): string {
+    return computeWheelHash(wheelDir);
   }
 
-  /** Return the installed dapper.__version__ from the given interpreter, or undefined if import fails. */
   private async getDapperVersion(pythonPath: string): Promise<string | undefined> {
-    // spawnSync is used for simplicity since we just need the stdout result.
-    try {
-      const r = spawnSync(pythonPath, ['-c', 'import dapper; print(dapper.__version__)'], { encoding: 'utf8' });
-      if (r.status === 0) {
-        return (r.stdout || '').trim();
-      }
-    } catch {
-      // ignore
-    }
-    return undefined;
+    return getDapperVersion(pythonPath);
   }
 
-  /** Expose output channel for other components (e.g., descriptor factory) */
   getOutputChannel(): vscode.LogOutputChannel {
     return this.output;
   }
 
-  /** Reveal the output channel in the UI. */
   showOutputChannel(): void {
-    this.output.show(true /* preserveFocus */);
+    this.output.show(true);
   }
 
-  /** Reset environment (delete venv) so next prepare triggers full rebuild */
   async resetEnvironment(): Promise<void> {
     const venvPath = path.join(this.context.globalStorageUri.fsPath, 'python-env');
     try {
@@ -860,34 +450,11 @@ export class EnvironmentManager {
     }
   }
 
-  private runProcess(cmd: string, args: string[], opts: { label: string; allowFail?: boolean }): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.output.debug(`[run] ${opts.label}: ${cmd} ${args.join(' ')}`);
-      const child = spawn(cmd, args, { shell: process.platform === 'win32' });
-      const outputLines: string[] = [];
-      const onData = (d: Buffer) => {
-        const text = d.toString().trimEnd();
-        this.output.trace(text);
-        outputLines.push(text);
-      };
-      child.stdout.on('data', onData);
-      child.stderr.on('data', onData);
-      child.on('error', err => {
-        if (opts.allowFail) {
-          this.output.warn(`${opts.label} failed (allowFail): ${err.message}`);
-          resolve();
-        } else {
-          reject(err);
-        }
-      });
-      child.on('close', code => {
-        if (code === 0 || opts.allowFail) {
-          resolve();
-        } else {
-          const tail = outputLines.slice(-20).join('\n');
-          reject(new Error(`${opts.label} exited with code ${code}:\n${tail}`));
-        }
-      });
-    });
+  private runProcessResult(cmd: string, args: string[], opts: { label: string }): Promise<ProcessRunResult> {
+    return runLoggedProcessResult(this.output, cmd, args, opts);
+  }
+
+  private runProcess(cmd: string, args: string[], opts: { label: string }): Promise<void> {
+    return runLoggedProcess(this.output, cmd, args, opts);
   }
 }
