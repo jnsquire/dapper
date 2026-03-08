@@ -22,7 +22,6 @@ from dapper._frame_eval.tracing_backend import TracingBackend
 # Helpers
 # ---------------------------------------------------------------------------
 
-# ruff: noqa: PLC0415
 
 
 def _fresh_manager():

@@ -482,7 +482,7 @@ class TestAnnotateStackFrames:
 
 class TestHandleLoadedSourcesIncludesDynamic:
     def test_dynamic_source_appears_in_loaded_sources(self, session) -> None:
-        from dapper.shared.source_handlers import handle_loaded_sources  # noqa: PLC0415
+        from dapper.shared.source_handlers import handle_loaded_sources
 
         session.register_dynamic_source("<my-eval>", "result = 42\n", origin="eval")
 
@@ -502,7 +502,7 @@ class TestHandleLoadedSourcesIncludesDynamic:
         assert "<my-eval>" in dynamic_paths
 
     def test_dynamic_source_has_correct_ref_in_loaded_sources(self, session) -> None:
-        from dapper.shared.source_handlers import handle_loaded_sources  # noqa: PLC0415
+        from dapper.shared.source_handlers import handle_loaded_sources
 
         ref = session.register_dynamic_source("<check-ref>", "pass\n")
 

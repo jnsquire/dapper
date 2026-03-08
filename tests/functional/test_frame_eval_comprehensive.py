@@ -46,6 +46,7 @@ class TestFrameEvalConfig:
             "cache_enabled": True,
             "performance_monitoring": True,
             "fallback_on_error": True,
+            "eager_instrumentation": False,
         }
 
         # Assert
@@ -78,6 +79,7 @@ class TestFrameEvalConfig:
             "cache_enabled": True,
             "performance_monitoring": True,
             "fallback_on_error": True,
+            "eager_instrumentation": False,
         }
 
         for key, expected_value in expected_defaults.items():

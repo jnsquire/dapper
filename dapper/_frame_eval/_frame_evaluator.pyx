@@ -17,6 +17,9 @@ from typing import cast
 from dapper._frame_eval.cache_manager import get_breakpoints as _get_breakpoints
 from dapper._frame_eval.telemetry import telemetry
 
+# keep in sync with modify_bytecode.py
+_BYTECODE_META_VERSION = 1
+
 # exposing interpreter state structures needed for eval-frame hooking
 cdef extern from "internal/pycore_frame.h":
     ctypedef struct _PyInterpreterFrame:
@@ -61,6 +64,9 @@ cdef bint _should_trace_code_for_eval_frame_impl(
     cdef object decision
 
     try:
+        # ask the shared tracer for a decision; this call can raise if the
+        # tracer module isn't available (e.g. during early startup), hence the
+        # outer try/except.
         from dapper._frame_eval.selective_tracer import should_trace_code_location
 
         decision = should_trace_code_location(
@@ -69,7 +75,25 @@ cdef bint _should_trace_code_for_eval_frame_impl(
             cast(TypingAny, frame_obj),
             allow_current_eval_frame=bool(allow_current_eval_frame),
         )
-        return <bint>bool(decision.get("path") == "breakpointed")
+
+        if bool(decision.get("path") == "breakpointed"):
+            # lazy instrumentation: if we don't already have a modified variant,
+            # try to produce one now.  This step is cheap when the cache hits.
+            bp_lines = decision.get("breakpoint_lines") or set()
+            if bp_lines:
+                # attempt to retrieve existing code first
+                existing = _get_modified_code_for_evaluation(code_obj)
+                if existing is None:
+                    try:
+                        from dapper._frame_eval.modify_bytecode import inject_breakpoint_bytecode
+                        success, new_code = inject_breakpoint_bytecode(code_obj, bp_lines)
+                        if success and new_code is not code_obj:
+                            _store_modified_code_for_evaluation(code_obj, new_code, bp_lines)
+                    except Exception:
+                        # swallow errors; we will simply fallback to tracing later
+                        pass
+            return <bint>True
+        return <bint>False
     except Exception:
         pass
 
@@ -729,9 +753,19 @@ def _store_modified_code_for_evaluation(
     if not isinstance(modified_code, types.CodeType):
         raise TypeError("modified_code argument must be a code object")
 
+    # compute fingerprint so we can cheaply detect stale entries later
+    cdef int fp = 0
+    if breakpoint_lines is not None:
+        try:
+            fp = hash(tuple(sorted(cast(TypingAny, breakpoint_lines))))
+        except Exception:
+            fp = 0
+
     metadata = {
         "modified_code": modified_code,
         "breakpoint_lines": set(cast(TypingAny, breakpoint_lines or ())),
+        "breakpoint_fp": fp,
+        "version": _BYTECODE_META_VERSION,
     }
 
     from dapper._frame_eval.cache_manager import CacheManager
@@ -748,10 +782,14 @@ def _get_modified_code_for_evaluation(object code_obj):
     cdef object filename = getattr(code_obj, "co_filename", None)
 
     if isinstance(metadata, dict):
-        modified_code = metadata.get("modified_code")
-        if isinstance(modified_code, types.CodeType):
-            telemetry.record_cache_hit(source="code_extra", filename=filename)
-            return modified_code
+        # verify metadata version and fingerprint
+        if metadata.get("version") != _BYTECODE_META_VERSION:
+            telemetry.record_bytecode_cache_key_mismatch(filename=filename)
+        else:
+            modified_code = metadata.get("modified_code")
+            if isinstance(modified_code, types.CodeType):
+                telemetry.record_cache_hit(source="code_extra", filename=filename)
+                return modified_code
 
     from dapper._frame_eval.cache_manager import CacheManager
 

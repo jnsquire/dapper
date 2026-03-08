@@ -28,6 +28,7 @@ class TestFrameEvalConfig:
             "cache_enabled": True,
             "performance_monitoring": True,
             "fallback_on_error": True,
+            "eager_instrumentation": False,
         }
 
         assert isinstance(config["enabled"], bool)
@@ -54,6 +55,7 @@ class TestDebuggerFrameEvalBridge:
         assert self.bridge.config["cache_enabled"] is True
         assert self.bridge.config["performance_monitoring"] is True
         assert self.bridge.config["fallback_on_error"] is True
+        assert self.bridge.config["eager_instrumentation"] is False
 
         # Check integration stats
         assert self.bridge.integration_stats["integrations_enabled"] == 0
@@ -70,11 +72,14 @@ class TestDebuggerFrameEvalBridge:
     def test_update_config(self):
         """Test configuration updates."""
         # Update individual config values
-        self.bridge.update_config(enabled=False, selective_tracing=False)
+        self.bridge.update_config(
+            enabled=False, selective_tracing=False, eager_instrumentation=True
+        )
 
         assert self.bridge.config["enabled"] is False
         assert self.bridge.config["selective_tracing"] is False
         assert self.bridge.config["bytecode_optimization"] is True  # unchanged
+        assert self.bridge.config["eager_instrumentation"] is True
 
         # Test invalid config key (should be ignored)
         original_config = self.bridge.config.copy()

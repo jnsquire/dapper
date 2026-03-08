@@ -13,8 +13,11 @@ import pathlib
 import sys
 import threading
 import time
+from types import CodeType
 from typing import TYPE_CHECKING
 from typing import Any
+
+from dapper._frame_eval.modify_bytecode import _bytecode_modifier
 
 if TYPE_CHECKING:
     from typing_extensions import TypedDict
@@ -55,6 +58,8 @@ class FrameEvalConfigDict(TypedDict):
     cache_enabled: bool
     performance_monitoring: bool
     fallback_on_error: bool
+    # see :meth:`_apply_bytecode_optimizations` for eager vs lazy notes
+    eager_instrumentation: bool
 
 
 # Backward-compatibility alias for external imports/tests.
@@ -88,6 +93,10 @@ class DebuggerFrameEvalBridge:
             "cache_enabled": True,
             "performance_monitoring": True,
             "fallback_on_error": True,
+            # when True, the bridge will attempt to instrument live code objects
+            # every time breakpoints update; otherwise instrumentation is
+            # deferred until the eval-frame slow-path decision occurs.
+            "eager_instrumentation": False,
         }
 
         self.bytecode_modifier = BytecodeModifier()
@@ -348,7 +357,13 @@ class DebuggerFrameEvalBridge:
     def _apply_bytecode_optimizations(
         self, source: dict[str, Any], breakpoints: list[dict[str, Any]]
     ) -> None:
-        """Apply bytecode optimizations for breakpoints."""
+        """Apply bytecode optimizations for breakpoints.
+
+        Prefer to instrument code objects that are already loaded in the running
+        interpreter.  Only fall back to reading/compiling the source file if no
+        live object could be located.  This keeps the cached code consistent
+        with what the debugger is actually executing.
+        """
         if not self.config["bytecode_optimization"]:
             return
 
@@ -361,34 +376,71 @@ class DebuggerFrameEvalBridge:
             if not breakpoint_lines:
                 return
 
-            # Read the source file and compile it
+            # optionally attempt live-object instrumentation if configured
+            if self.config.get(
+                "eager_instrumentation"
+            ) and self._instrument_live_code_objects_for_file(filepath, breakpoint_lines):
+                self.integration_stats["bytecode_eager_instrumentation"] += 1
+                telemetry.record_bytecode_eager_instrumentation(filepath=filepath)
+                return
+
+            # Otherwise fall back to reading/compiling the file as before
             try:
                 with pathlib.Path(filepath).open(encoding="utf-8") as f:
                     source_code = f.read()
 
-                # Compile the source code
                 code_obj = compile(source_code, filepath, "exec")
-
-                # Apply bytecode modifications
                 modified_code = inject_breakpoint_bytecode(code_obj, breakpoint_lines)
                 if modified_code:
                     self.integration_stats["bytecode_injections"] += 1
-                    # Store the modified code object for future use
                     set_func_code_info(
                         code_obj, {"modified_code": modified_code, "breakpoints": breakpoint_lines}
                     )
 
             except Exception:
-                # If we can't read/compile the file, skip bytecode optimization
                 self.integration_stats["errors_handled"] += 1
                 telemetry.record_bytecode_optimization_file_read_failed(
                     filepath=filepath,
                 )
 
         except Exception:
-            # Silently fail if bytecode optimization fails
             self.integration_stats["errors_handled"] += 1
             telemetry.record_bytecode_optimization_failed()
+
+    def _instrument_live_code_objects_for_file(
+        self, _filepath: str, breakpoint_lines: set[int]
+    ) -> bool:
+        """Scan loaded modules for code objects originating from *_filepath*.
+
+        Returns True if at least one code object was successfully instrumented.
+        """
+        assert _filepath
+
+        modified_any = False
+        for module in list(sys.modules.values()):
+            if not hasattr(module, "__dict__"):
+                continue
+            for obj in module.__dict__.values():
+                code_obj = None
+                if hasattr(obj, "__code__"):
+                    code_obj = obj.__code__
+                elif isinstance(obj, CodeType):
+                    code_obj = obj
+                else:
+                    continue
+
+                if getattr(code_obj, "co_filename", "") != _filepath:
+                    continue
+
+                success, modified = _bytecode_modifier.inject_breakpoints(
+                    code_obj, breakpoint_lines
+                )
+                if success and modified is not code_obj:
+                    set_func_code_info(
+                        code_obj, {"modified_code": modified, "breakpoints": breakpoint_lines}
+                    )
+                    modified_any = True
+        return modified_any
 
     def remove_integration(self, debugger_instance) -> bool:
         """
@@ -477,6 +529,7 @@ class DebuggerFrameEvalBridge:
                 "cache_enabled": True,
                 "performance_monitoring": True,
                 "fallback_on_error": True,
+                "eager_instrumentation": False,
             }
             self.integration_stats = {
                 "integrations_enabled": 0,

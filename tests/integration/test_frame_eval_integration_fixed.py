@@ -43,6 +43,7 @@ class TestFrameEvalConfig:
             "cache_enabled": True,
             "performance_monitoring": True,
             "fallback_on_error": True,
+            "eager_instrumentation": False,
         }
 
         assert isinstance(config["enabled"], bool)
@@ -51,6 +52,7 @@ class TestFrameEvalConfig:
         assert isinstance(config["cache_enabled"], bool)
         assert isinstance(config["performance_monitoring"], bool)
         assert isinstance(config["fallback_on_error"], bool)
+        assert isinstance(config["eager_instrumentation"], bool)
 
 
 class TestDebuggerFrameEvalBridge:
@@ -77,6 +79,7 @@ class TestDebuggerFrameEvalBridge:
         assert self.bridge.config["selective_tracing"] is False
         # Other values should remain unchanged
         assert self.bridge.config["cache_enabled"] is True
+        assert self.bridge.config["eager_instrumentation"] is False
 
     def test_get_integration_statistics(self):
         """Test getting integration statistics."""

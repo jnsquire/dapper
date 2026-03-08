@@ -868,6 +868,12 @@ def get_cached_code(original_code: CodeType) -> CodeType | None:
     return CacheManager._get_cached_code(original_code)
 
 
+def remove_cached_code(original_code: CodeType) -> bool:
+    """Remove cached modified code entry for *original_code*. Returns True if
+    an entry was removed."""
+    return CacheManager._remove_cached_code(original_code)
+
+
 def invalidate_breakpoints(filepath: str, *, reason: str = "breakpoint_change") -> None:
     """Invalidate cached breakpoints and related modified-code caches for a file."""
     _caches.breakpoint.invalidate_file(filepath)

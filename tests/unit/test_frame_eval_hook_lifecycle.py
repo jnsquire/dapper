@@ -196,6 +196,45 @@ def test_eval_frame_decision_conservatively_traces_conditional_breakpoints_witho
         trace_manager.invalidate_file_cache(filename)
 
 
+def test_lazy_instrumentation_triggers_bytecode_injection(monkeypatch) -> None:
+    """The eval-frame decision path should lazily call the bytecode injector."""
+
+    # set up a simple function and determine a breakpoint line
+    def sample():
+        a = 1  # breakpoint
+        return a
+
+    code = sample.__code__
+    lineno = code.co_firstlineno + 1
+
+    # clear any existing metadata
+    from dapper._frame_eval._frame_evaluator import _clear_code_extra_metadata
+
+    _clear_code_extra_metadata(code)
+
+    # monkeypatch the public injector helper
+    calls = {"count": 0}
+
+    def fake_inject(co, lines):
+        calls["count"] += 1
+        return True, co
+
+    monkeypatch.setattr(
+        "dapper._frame_eval.modify_bytecode.inject_breakpoint_bytecode",
+        fake_inject,
+    )
+
+    from dapper._frame_eval.cache_manager import set_breakpoints
+
+    set_breakpoints(code.co_filename, {lineno})
+    try:
+        result = _should_trace_code_for_eval_frame(code, lineno)
+        assert result is True
+        assert calls["count"] == 1
+    finally:
+        set_breakpoints(code.co_filename, set())
+
+
 def test_dispatch_trace_callback_uses_registered_callback() -> None:
     calls = []
 

@@ -1,3 +1,4 @@
+import dis
 import types
 
 from dapper._frame_eval import modify_bytecode as mb
@@ -20,12 +21,22 @@ def test_is_breakpoint_sequence_and_length():
             is_jump_target=False,
         ),
         make_instruction(
+            opname="LOAD_GLOBAL",
+            opcode=dis.opmap.get("LOAD_GLOBAL", 116),
+            arg=0,
+            argval="_dapper_breakpoint",
+            argrepr="_dapper_breakpoint",
+            offset=2,
+            starts_line=None,
+            is_jump_target=False,
+        ),
+        make_instruction(
             opname="CALL_FUNCTION",
             opcode=CALL_FUNCTION,
             arg=1,
             argval=1,
             argrepr="",
-            offset=2,
+            offset=4,
             starts_line=None,
             is_jump_target=False,
         ),
@@ -35,14 +46,14 @@ def test_is_breakpoint_sequence_and_length():
             arg=None,
             argval=None,
             argrepr="",
-            offset=4,
+            offset=6,
             starts_line=None,
             is_jump_target=False,
         ),
     ]
 
     assert mb._bytecode_modifier._is_breakpoint_sequence(instrs, 0) is True
-    assert mb._bytecode_modifier._get_breakpoint_sequence_length(instrs, 0) == 3
+    assert mb._bytecode_modifier._get_breakpoint_sequence_length(instrs, 0) == 4
 
     # Non-matching sequence
     instrs2 = list(instrs)

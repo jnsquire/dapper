@@ -114,7 +114,7 @@ def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session
 
     # record info- and warning-level messages from the command_handlers logger
     # imports below are deliberately local to avoid polluting module namespace
-    from dapper.shared import command_handlers  # noqa: PLC0415
+    from dapper.shared import command_handlers
 
     info_logs: list[str] = []
 
@@ -138,8 +138,8 @@ def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session
     monkeypatch.setattr(transport, "send", broken_send.__get__(transport, type(transport)))
 
     # register temporary dummy handler
-    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
-    from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+    from dapper.shared.command_handlers import COMMAND_HANDLERS
+    from dapper.shared.command_handlers import handle_debug_command
 
     def dummy_handler(_args=None):
         session = _active_session()
@@ -182,7 +182,7 @@ def test_handle_debug_command_skips_ack_on_send_error(monkeypatch, debug_session
 
 
 def test_handle_debug_command_logs_full_trace_messages(monkeypatch, debug_session):
-    from dapper.shared import command_handlers  # noqa: PLC0415
+    from dapper.shared import command_handlers
 
     debug_session.ipc_enabled = True
     monkeypatch.setattr(debug_session.transport, "require_ipc", lambda: None)
@@ -210,8 +210,8 @@ def test_handle_debug_command_logs_full_trace_messages(monkeypatch, debug_sessio
     monkeypatch.setattr(command_handlers.logger, "isEnabledFor", lambda level: level >= TRACE)
     monkeypatch.setattr(command_handlers.logger, "log", _capture_trace)
 
-    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
-    from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+    from dapper.shared.command_handlers import COMMAND_HANDLERS
+    from dapper.shared.command_handlers import handle_debug_command
 
     def foo_handler(_args=None):
         session = _active_session()
@@ -234,9 +234,9 @@ def test_handle_debug_command_logs_full_trace_messages(monkeypatch, debug_sessio
 
 
 def test_handle_debug_command_trace_logging_suppresses_info_ack(monkeypatch, debug_session):
-    from dapper.shared import command_handlers  # noqa: PLC0415
-    from dapper.shared.command_handlers import COMMAND_HANDLERS  # noqa: PLC0415
-    from dapper.shared.command_handlers import handle_debug_command  # noqa: PLC0415
+    from dapper.shared import command_handlers
+    from dapper.shared.command_handlers import COMMAND_HANDLERS
+    from dapper.shared.command_handlers import handle_debug_command
 
     info_logs: list[str] = []
 
@@ -262,7 +262,7 @@ def test_handle_debug_command_trace_logging_suppresses_info_ack(monkeypatch, deb
 
 
 def test_agent_command_logs_are_condensed(monkeypatch, debug_session):
-    from dapper.shared import command_handlers  # noqa: PLC0415
+    from dapper.shared import command_handlers
 
     debug_logs: list[str] = []
     warning_logs: list[str] = []

@@ -496,7 +496,7 @@ class TestErrorPaths:
 
     def test_goto_targets_missing_params(self, harness: LauncherHarness):
         """gotoTargets with missing frameId/line returns error."""
-        from dapper.launcher import debug_launcher  # noqa: PLC0415
+        from dapper.launcher import debug_launcher
 
         debug_launcher.configure_debugger(False, session=harness.session)
 

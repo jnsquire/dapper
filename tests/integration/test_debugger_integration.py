@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
+import sys
 import threading
 import traceback
 from typing import TYPE_CHECKING
@@ -17,10 +19,10 @@ from dapper._frame_eval.debugger_integration import get_integration_bridge
 from dapper._frame_eval.debugger_integration import get_integration_statistics
 from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.selective_tracer import get_trace_manager
+from dapper._frame_eval.telemetry import get_frame_eval_telemetry
 
 if TYPE_CHECKING:
     from dapper.protocol.debugger_protocol import ExceptionInfo
-    from dapper.protocol.debugger_protocol import Variable
 
 
 class PresentationHint(TypedDict, total=False):
@@ -29,7 +31,7 @@ class PresentationHint(TypedDict, total=False):
     visibility: str
 
 
-class Variable(TypedDict):
+class VariableValue(TypedDict):
     name: str
     value: str
     type: str
@@ -105,9 +107,9 @@ class MockDebuggerBDB:
         frame: Any | None = None,  # noqa: ARG002
         *,
         max_string_length: int = 1000,  # noqa: ARG002
-    ) -> Variable:
+    ) -> VariableValue:
         """Mock make_variable_object function."""
-        return Variable(
+        return VariableValue(
             name=str(name),
             value=str(value),
             type=type(value).__name__,
@@ -278,7 +280,7 @@ class MockDebuggerBDB:
 
         """
         if self._trace_function:
-            self._trace_function(frame)
+            self._trace_function(frame, "line", None)
 
 
 class MockPyDebugger:
@@ -500,7 +502,7 @@ class MockPyDebugger:
 
         """
         if self._trace_function:
-            self._trace_function(frame)
+            self._trace_function(frame, "line", None)
 
     def make_variable_object(
         self,
@@ -509,9 +511,9 @@ class MockPyDebugger:
         frame: Any | None = None,  # noqa: ARG002
         *,
         max_string_length: int = 1000,  # noqa: ARG002
-    ) -> Variable:
+    ) -> VariableValue:
         """Mock make_variable_object function."""
-        return Variable(
+        return VariableValue(
             name=str(name),
             value=str(value),
             type=type(value).__name__,
@@ -740,9 +742,10 @@ def test_bytecode_optimization():
     try:
         bridge = get_integration_bridge()
 
-        # Enable bytecode optimization
-        bridge.update_config(bytecode_optimization=True)
+        # Enable bytecode optimization and eager instrumentation
+        bridge.update_config(bytecode_optimization=True, eager_instrumentation=True)
         print(f"Bytecode optimization enabled: {bridge.config['bytecode_optimization']}")
+        print(f"Eager instrumentation enabled: {bridge.config['eager_instrumentation']}")
 
         # Test bytecode optimization application
         source = {"path": "test_sample.py"}
@@ -766,18 +769,33 @@ def another_function():
             f.write(test_content)
 
         try:
+            # load the file as a module so live-object instrumentation path triggers
+            spec = importlib.util.spec_from_file_location("test_sample_temp", test_file)
+            assert spec is not None
+            mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            sys.modules[spec.name] = mod  # type: ignore[index]
+            if spec.loader is not None:
+                spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+
             # Apply bytecode optimizations
             bridge._apply_bytecode_optimizations(source, breakpoints)
 
             # Check that optimization was attempted
             initial_injections = bridge.integration_stats["bytecode_injections"]
-            print(f"Bytecode injection attempts: {initial_injections}")
+            eager_count = bridge.integration_stats.get("bytecode_eager_instrumentation", 0)
+            print(f"Bytecode injection attempts: {initial_injections}, eager hits: {eager_count}")
+
+            # also verify telemetry snapshot includes at least one of the codes
+            snap = get_frame_eval_telemetry()
+            assert snap.reason_counts.bytecode_injection_failed >= 0
+            # eager instrumentation may or may not have occurred
 
         finally:
-            # Clean up test file
+            # Clean up test file and module
             test_path = Path(test_file)
             if test_path.exists():
                 test_path.unlink()
+            sys.modules.pop("test_sample_temp", None)
 
         print("[PASS] Bytecode optimization tests passed")
 

@@ -39,6 +39,7 @@ These options are passed via VS Code `launch.json` (under the `"configurations"`
 | `max_cache_size` | int | `1000` | Maximum number of entries in the frame evaluation cache. |
 | `cache_ttl` | int | `300` | Time-to-live (seconds) for cache entries. `0` disables TTL-based eviction. |
 | `trace_overhead_threshold` | float | `0.1` | Fraction of trace-call overhead (0.0–1.0) above which the system logs a warning. |
+| `eager_instrumentation` | bool | `false` | When true the debugger integration will pre‑rewrite live code objects on each breakpoint update instead of waiting for the first frame‑eval hit. This may improve warm‑up latency at the cost of extra CPU when breakpoints are set. |
 
 For a full usage guide and troubleshooting steps, see the [Frame Evaluation Guide](../guides/frame-eval.md).
 

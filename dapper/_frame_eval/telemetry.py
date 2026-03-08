@@ -38,6 +38,10 @@ class FrameEvalReasonCounts:
     bytecode_injection_failed: int = 0
     bytecode_optimization_failed: int = 0
     bytecode_optimization_file_read_failed: int = 0
+    # new codes introduced in phase 5
+    bytecode_rollback: int = 0
+    bytecode_eager_instrumentation: int = 0
+    bytecode_cache_key_mismatch: int = 0
     integration_bdb_failed: int = 0
     integration_remove_failed: int = 0
     hot_reload_failed: int = 0
@@ -59,6 +63,9 @@ class FrameEvalReasonCounts:
             "BYTECODE_INJECTION_FAILED": self.bytecode_injection_failed,
             "BYTECODE_OPTIMIZATION_FAILED": self.bytecode_optimization_failed,
             "BYTECODE_OPTIMIZATION_FILE_READ_FAILED": self.bytecode_optimization_file_read_failed,
+            "BYTECODE_ROLLBACK": self.bytecode_rollback,
+            "BYTECODE_EAGER_INSTRUMENTATION": self.bytecode_eager_instrumentation,
+            "BYTECODE_CACHE_KEY_MISMATCH": self.bytecode_cache_key_mismatch,
             "HOT_RELOAD_FAILED": self.hot_reload_failed,
             "HOT_RELOAD_SUCCEEDED": self.hot_reload_succeeded,
             "INTEGRATION_BDB_FAILED": self.integration_bdb_failed,
@@ -159,6 +166,23 @@ class FrameEvalTelemetry:
 
     def record_bytecode_optimization_failed(self, **kwargs: Any) -> None:
         self._record("BYTECODE_OPTIMIZATION_FAILED", "bytecode_optimization_failed", **kwargs)
+
+    def record_bytecode_rollback(self, **kwargs: Any) -> None:
+        self._record("BYTECODE_ROLLBACK", "bytecode_rollback", **kwargs)
+
+    def record_bytecode_eager_instrumentation(self, **kwargs: Any) -> None:
+        self._record(
+            "BYTECODE_EAGER_INSTRUMENTATION",
+            "bytecode_eager_instrumentation",
+            **kwargs,
+        )
+
+    def record_bytecode_cache_key_mismatch(self, **kwargs: Any) -> None:
+        self._record(
+            "BYTECODE_CACHE_KEY_MISMATCH",
+            "bytecode_cache_key_mismatch",
+            **kwargs,
+        )
 
     def record_bytecode_optimization_file_read_failed(self, **kwargs: Any) -> None:
         self._record(

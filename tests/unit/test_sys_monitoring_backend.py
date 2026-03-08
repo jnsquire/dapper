@@ -1,4 +1,3 @@
-# ruff: noqa: PLC0415
 # pyright: reportAttributeAccessIssue=false
 """Phase 2.8 — integration tests for ``SysMonitoringBackend``.
 
@@ -18,7 +17,6 @@ All tests are skipped on Python < 3.12 because ``sys.monitoring`` is not
 available there; the companion ``SettraceBackend`` path is tested in
 ``tests/unit/test_tracing_backend_selection.py``.
 """
-# ruff: noqa: PLC0415
 
 from __future__ import annotations
 

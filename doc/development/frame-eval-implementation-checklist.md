@@ -112,12 +112,41 @@ This checklist turns the current frame-eval work into an execution plan that mat
 
 ## Phase 5: Integrate Bytecode Modification Safely
 
-- [ ] Use `modify_bytecode.py` to produce breakpoint-instrumented code only when needed.
-- [ ] Cache modified code objects by original code object and breakpoint set.
-- [ ] Ensure modified code preserves line mapping, exception behavior, and debuggability.
-- [ ] Define whether instrumentation happens eagerly on breakpoint updates or lazily on first frame hit.
-- [ ] Add a rollback path when bytecode injection fails so execution continues under tracing.
-- [ ] Verify that nested functions, generators, async functions, and module-level code behave correctly.
+- [x] Use `modify_bytecode.py` to produce breakpoint-instrumented code only when needed.
+- [x] Cache modified code objects by original code object and breakpoint set.
+- [x] Ensure modified code preserves line mapping, exception behavior, and debuggability.
+- [x] Define whether instrumentation happens eagerly on breakpoint updates or lazily on first frame hit.
+- [x] Add a rollback path when bytecode injection fails so execution continues under tracing.
+- [x] Verify that nested functions, generators, async functions, and module-level code behave correctly.
+
+### Phase 5 Plan
+
+- [ ] Lock the generation contract before changing the hook path.
+  - Treat instrumentation as lazy on the first `breakpointed` eval-frame decision by default; do not eagerly rebuild every file on breakpoint updates unless later measurements justify it.
+  - Build modified code from the live `CodeType` objects already flowing through `FuncCodeInfo` and eval-frame decisions instead of recompiling whole source files inside `DebuggerFrameEvalBridge`.
+  - Extend stored metadata to include the modified code object, the exact breakpoint line set, and a cheap breakpoint fingerprint/version so cache reuse can be validated quickly.
+- [ ] Tighten `modify_bytecode.py` so it emits one supported and testable instrumentation shape.
+  - Replace the current placeholder breakpoint sequence with a helper-call sequence that `rebuild_code_object()` and the safety layer can preserve across supported CPython versions.
+  - Preserve `co_lines()` / line-table data, exception behavior, flags, closure metadata, and other debuggability surfaces well enough that stepping and trace events stay aligned with source.
+  - Walk nested code objects recursively and instrument only child code objects whose executable lines intersect the active breakpoint set.
+- [ ] Unify caching and invalidation around original code identity.
+  - Key modified-code caches primarily by original `CodeType` identity plus breakpoint fingerprint; keep filename/name/first-line data only as diagnostics.
+  - Route cache writes through `_store_modified_code_for_evaluation()` and `CacheManager` so code-extra storage, fallback caches, and Python-side bytecode caches all invalidate together.
+  - Ensure breakpoint changes, file reloads, and config changes evict stale modified code without keeping dead code objects alive.
+- [ ] Add explicit rollback and fallback behavior.
+  - If instrumentation, rebuild, or validation fails, clear any partial cache entries, record telemetry, and leave the frame on the existing tracing path.
+  - Surface a distinct runtime/debug reason for "modified code unavailable" so later debugger-integration work can distinguish unsupported code from transient build failures.
+- [ ] Validate semantics before broad rollout.
+  - Add focused unit tests for cache keying, metadata versioning, invalidation, and rollback on injection failure.
+  - Add integration coverage for plain functions, nested functions, generators, async functions, and module-level code.
+  - Add regression checks that breakpointed execution, line mapping, and exception propagation still match tracing-path behavior.
+
+### Phase 5 Exit Criteria
+
+- [ ] Eval-frame can reuse a cached modified code object for a live `CodeType` without recompiling the source file.
+- [ ] Breakpoint changes replace stale modified code on the next eligible hit.
+- [ ] Injection failures fall back to tracing without leaving stale metadata behind.
+- [ ] Nested-function, generator, async, and module-level cases have focused coverage.
 
 ## Phase 6: Wire The Backend Into Manager And Runtime
 
