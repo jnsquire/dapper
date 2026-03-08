@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Logger } from '../src/utils/logger.js';
+import { Logger, logger } from '../src/utils/logger.js';
 
 // Access the vscode mock to customize behaviour per-test
 import * as vscode from 'vscode';
@@ -11,12 +11,6 @@ let debugSpy: ReturnType<typeof vi.fn>;
     let errorSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    // Reset the singleton so each test gets a fresh Logger
-    (Logger as any)['instance'] = undefined;
-    (Logger as any)['outputChannel'] = undefined;
-    (Logger as any)['logLevel'] = 'info';
-    (Logger as any)['logToConsole'] = false;
-
     // Patch createOutputChannel to return a fake LogOutputChannel with spies
     debugSpy = vi.fn();
     infoSpy = vi.fn();
@@ -30,24 +24,26 @@ let debugSpy: ReturnType<typeof vi.fn>;
       show: vi.fn(),
       dispose: vi.fn(),
     } as any);
+
+    // track the configuration listener so we can assert disposal
+    const listenerDisposable = { dispose: vi.fn() };
+    vi.spyOn(vscode.workspace, 'onDidChangeConfiguration').mockReturnValue(listenerDisposable as any);
   });
 
   it('should create an output channel', () => {
-    const logger = Logger.getInstance();
+    const l = new Logger();
     expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Dapper Debugger', { log: true });
-    expect((Logger as any)['outputChannel']).toBeDefined();
+    expect((l as any)['outputChannel']).toBeDefined();
   });
 
-  it('should be a singleton', () => {
-    const a = Logger.getInstance();
-    const b = Logger.getInstance();
-    expect(a).toBe(b);
+  it('exported logger instance is same each import', () => {
+    expect(logger).toBe(logger);
   });
 
   it('should respect log levels - debug level logs everything', () => {
-    const logger = Logger.getInstance();
+    const logger = new Logger();
     // Force debug level
-    (Logger as any)['logLevel'] = 'debug';
+    (logger as any)['logLevel'] = 'debug';
 
     logger.debug('d');
     logger.log('l');
@@ -67,8 +63,8 @@ let debugSpy: ReturnType<typeof vi.fn>;
   });
 
   it('should respect log levels - error level only logs errors', () => {
-    const logger = Logger.getInstance();
-    (Logger as any)['logLevel'] = 'error';
+    const logger = new Logger();
+    (logger as any)['logLevel'] = 'error';
 
     debugSpy.mockClear();
     infoSpy.mockClear();
@@ -89,8 +85,8 @@ let debugSpy: ReturnType<typeof vi.fn>;
   });
 
   it('should log error stack traces when Error is passed', () => {
-    const logger = Logger.getInstance();
-    (Logger as any)['logLevel'] = 'error';
+    const logger = new Logger();
+    (logger as any)['logLevel'] = 'error';
     errorSpy.mockClear();
 
     const err = new Error('boom');
@@ -102,8 +98,8 @@ let debugSpy: ReturnType<typeof vi.fn>;
   });
 
   it('should log objects as JSON', () => {
-    const logger = Logger.getInstance();
-    (Logger as any)['logLevel'] = 'debug';
+    const logger = new Logger();
+    (logger as any)['logLevel'] = 'debug';
     debugSpy.mockClear();
 
     const data = { key: 'value', nested: { a: 1 } };
@@ -115,8 +111,8 @@ let debugSpy: ReturnType<typeof vi.fn>;
   });
 
   it('should handle circular references gracefully in log data', () => {
-    const logger = Logger.getInstance();
-    (Logger as any)['logLevel'] = 'debug';
+    const logger = new Logger();
+    (logger as any)['logLevel'] = 'debug';
     debugSpy.mockClear();
 
     const circular: any = { a: 1 };
@@ -127,5 +123,18 @@ let debugSpy: ReturnType<typeof vi.fn>;
 
     // Should have logged something (falls back to String(data))
     expect(debugSpy).toHaveBeenCalled();
+  });
+
+  it('dispose should clean up channel and config listener', () => {
+    // recreate spies so we can capture listener disposable
+    const listenerDisposable = { dispose: vi.fn() };
+    // stub the config listener registration to return our disposable
+    (vscode.workspace.onDidChangeConfiguration as unknown as any).mockReturnValue(listenerDisposable as any);
+
+    const l = new Logger();
+    l.dispose();
+    expect(listenerDisposable.dispose).toHaveBeenCalled();
+    // outputChannel.dispose spy is on the fake channel
+    expect((l as any).outputChannel.dispose).toHaveBeenCalled();
   });
 });

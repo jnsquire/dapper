@@ -1017,8 +1017,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@vscode-elements/elements": "^2.5.1",
-    "jsonc-parser": "^3.3.1"
+    "@vscode-elements/elements": "^2.5.1"
   },
   "optionalDependencies": {
     "@vscode/debugadapter": "^1.54.0"

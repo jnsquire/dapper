@@ -1,78 +1,24 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
+// small helper to pull comments out of JSONC text. we don't need a full
+// parser here and the external `jsonc-parser` module caused bundle issues,
+// so keep it simple with a regex that matches single-line // comments.
+
 type JsonObject = Record<string, unknown>;
 
-function stripJsonComments(content: string): string {
-  let result = '';
-  let inString = false;
-  let isEscaped = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const current = content[index];
-    const next = content[index + 1];
-
-    if (inLineComment) {
-      if (current === '\n') {
-        inLineComment = false;
-        result += current;
-      }
-      continue;
-    }
-
-    if (inBlockComment) {
-      if (current === '*' && next === '/') {
-        inBlockComment = false;
-        index += 1;
-      } else if (current === '\n') {
-        result += current;
-      }
-      continue;
-    }
-
-    if (inString) {
-      result += current;
-      if (isEscaped) {
-        isEscaped = false;
-      } else if (current === '\\') {
-        isEscaped = true;
-      } else if (current === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (current === '/' && next === '/') {
-      inLineComment = true;
-      index += 1;
-      continue;
-    }
-
-    if (current === '/' && next === '*') {
-      inBlockComment = true;
-      index += 1;
-      continue;
-    }
-
-    if (current === '"') {
-      inString = true;
-    }
-
-    result += current;
-  }
-
-  return result;
+function stripJsoncComments(content: string): string {
+  return content.replace(/\/\/.*$/gm, '');
 }
 
 function parseJsoncObject(content: string): JsonObject | undefined {
   try {
-    const parsed = JSON.parse(stripJsonComments(content));
+    const text = stripJsoncComments(content);
+    const parsed = JSON.parse(text);
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
       return undefined;
     }
-    return parsed as JsonObject;
+    return parsed;
   } catch {
     return undefined;
   }
@@ -83,21 +29,17 @@ function parseJsoncObject(content: string): JsonObject | undefined {
  * If `launch.json` doesn't exist, it will be created. If multiple workspace folders exist, a prompt will be shown.
  */
 export async function insertLaunchConfiguration(config: any, folder?: vscode.WorkspaceFolder): Promise<boolean> {
-  // Choose workspace folder if necessary
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folder) {
+  // pick a folder when not supplied
+  folder ??= await (async () => {
+    const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
       vscode.window.showErrorMessage('No workspace folder is open');
-      return false;
+      return undefined;
     }
-    if (folders.length === 1) folder = folders[0];
-    else {
-      const picked = await vscode.window.showQuickPick(folders.map(f => f.name), { placeHolder: 'Select workspace folder for launch.json' });
-      if (!picked) return false;
-      folder = folders.find(f => f.name === picked);
-    }
-  }
-
+    if (folders.length === 1) return folders[0];
+    const picked = await vscode.window.showQuickPick(folders.map(f => f.name), { placeHolder: 'Select workspace folder for launch.json' });
+    return folders.find(f => f.name === picked);
+  })();
   if (!folder) {
     vscode.window.showErrorMessage('Workspace folder not selected');
     return false;
@@ -130,7 +72,6 @@ export async function insertLaunchConfiguration(config: any, folder?: vscode.Wor
   if (existingData) {
     const content = new TextDecoder('utf-8').decode(existingData);
     json = parseJsoncObject(content);
-
     if (!json) {
       const open = 'Open launch.json';
       const choice = await vscode.window.showWarningMessage(
@@ -143,16 +84,15 @@ export async function insertLaunchConfiguration(config: any, folder?: vscode.Wor
       }
       return false;
     }
-
-    if (!json.configurations || !Array.isArray(json.configurations)) {
+    if (!Array.isArray(json.configurations)) {
       json.configurations = [];
     }
 
-    // Check for duplicates by name and program (best-effort)
-    const isDuplicate = json.configurations.some(
+    // duplicate detection: compare name+program
+    const existingIdx = json.configurations.findIndex(
       (c: any) => c.name === config.name && c.program === config.program,
     );
-    if (isDuplicate) {
+    if (existingIdx !== -1) {
       const replace = 'Replace existing';
       const addAny = 'Add duplicate';
       const choice = await vscode.window.showInformationMessage(
@@ -161,13 +101,11 @@ export async function insertLaunchConfiguration(config: any, folder?: vscode.Wor
         addAny,
       );
       if (choice === replace) {
-        json.configurations = json.configurations.map((c: any) =>
-          c.name === config.name && c.program === config.program ? config : c,
-        );
+        json.configurations[existingIdx] = config;
       } else if (choice === addAny) {
         json.configurations.push(config);
       } else {
-        return false; // user cancelled
+        return false; // cancelled
       }
     } else {
       json.configurations.push(config);
