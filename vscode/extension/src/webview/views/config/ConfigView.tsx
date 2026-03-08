@@ -3,18 +3,19 @@ import { createRoot } from 'react-dom/client';
 import { ConfigProvider, useConfig } from '../../contexts/ConfigContext.js';
 import { DebugConfiguration } from '../../types/debug.js';
 import {
-  CheckboxField,
-  EditableKeyValueListField,
-  EditableStringListField,
-  Field,
   type KeyValueListItem,
-  SectionTitle,
   StepHeader,
   type StringListItem,
   WarningBanner,
   WizardFooter,
   WizardRail,
 } from './ConfigViewComponents.js';
+import {
+  BasicsStep,
+  DebugStep,
+  ReviewStep,
+  RuntimeStep,
+} from './ConfigViewSteps.js';
 // vscode-elements is loaded as a separate <script> tag in the webview HTML
 
 import { vscode } from '../../vscodeApi.js';
@@ -184,321 +185,29 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     updateConfig({ moduleSearchPaths: newList.map((entry) => entry.value).filter(Boolean) });
   };
 
-  const renderBasicsStep = () => (
-    <>
-      <SectionTitle>Identity</SectionTitle>
-
-      <Field
-        label="Configuration Name "
-        required
-        hint="Appears in the debug dropdown in the Run panel."
-      >
-        <vscode-textfield
-          style={{ width: '100%' }}
-          value={config?.name || ''}
-          onInput={(e: any) => updateField('name', (e.target as HTMLInputElement).value)}
-          placeholder="My Python App"
-        />
-      </Field>
-
-      <Field
-        label="Request"
-        hint={
-          config?.request === 'attach'
-            ? 'Attach either by PID or by connecting to an existing debug adapter host/port.'
-            : 'Start a new Python process and attach the debugger immediately.'
-        }
-      >
-        <vscode-radio-group
-          variant="vertical"
-          onChange={(e: any) => updateField('request', (e.target as HTMLInputElement).value as DebugConfiguration['request'])}
-        >
-          <vscode-radio
-            label="launch"
-            name="request"
-            value="launch"
-            checked={!config?.request || config.request === 'launch'}
-          />
-          <vscode-radio
-            label="attach"
-            name="request"
-            value="attach"
-            checked={config?.request === 'attach'}
-          />
-        </vscode-radio-group>
-      </Field>
-
-      <SectionTitle>Target</SectionTitle>
-
-        {config?.request !== 'attach' && !!(config?.program && config?.module) && (
-        <WarningBanner style={{ marginBottom: '10px' }}>
-            ⚠ Both <strong>Program</strong> and <strong>Module</strong> are set.
-            Choose exactly one launch target before saving or starting the session.
-        </WarningBanner>
-      )}
-
-        {config?.request === 'attach' && !!(config?.processId && config?.host && config?.port) && (
-          <WarningBanner style={{ marginBottom: '10px' }}>
-            ⚠ Both <strong>processId</strong> and <strong>host/port</strong> are set.
-            Choose exactly one attach target before saving or starting the session.
-          </WarningBanner>
-        )}
-
-        {config?.request !== 'attach' && (
-        <Field
-          label="Program path"
-          hint={
-            <>
-              Run a specific file. Absolute path or VS Code variable — e.g. <code>{'${file}'}</code> for the currently open file.
-              Leave <strong>Module</strong> blank when launching a file directly.
-            </>
-          }
-        >
-        <vscode-textfield
-          style={{ width: '100%' }}
-          value={config?.program || ''}
-          onInput={(e: any) => updateField('program', (e.target as HTMLInputElement).value)}
-          placeholder="${file}"
-        />
-      </Field>
-      )}
-
-      {config?.request !== 'attach' && (
-      <Field
-        label="Module name"
-        hint={
-          <>
-            Run as a module: equivalent to <code>python -m package.module</code>.
-            Leave <strong>Program path</strong> blank when launching a module.
-          </>
-        }
-      >
-        <vscode-textfield
-          style={{ width: '100%' }}
-          value={config?.module || ''}
-          onInput={(e: any) => updateField('module', (e.target as HTMLInputElement).value)}
-          placeholder="package.module"
-        />
-      </Field>
-      )}
-
-      {config?.request === 'attach' && (
-        <>
-          <Field
-            label="Process ID"
-            hint="Attach to a local process by PID. Leave host/port empty when using this mode."
-          >
-            <vscode-textfield
-              style={{ width: '100%' }}
-              value={config?.processId == null ? '' : String(config.processId)}
-              onInput={(e: any) => updateField('processId', (e.target as HTMLInputElement).value)}
-              placeholder="${command:pickProcess}"
-            />
-          </Field>
-
-          <Field
-            label="Host"
-            hint="Host name of an already-running DAP endpoint. Leave Process ID empty when using host/port."
-          >
-            <vscode-textfield
-              style={{ width: '100%' }}
-              value={config?.host || ''}
-              onInput={(e: any) => updateField('host', (e.target as HTMLInputElement).value)}
-              placeholder="localhost"
-            />
-          </Field>
-
-          <Field
-            label="Port"
-            hint="TCP port of the remote debug adapter. Requires Host when using host/port attach."
-          >
-            <vscode-textfield
-              style={{ width: '120px' }}
-              type="number"
-              value={config?.port == null ? '' : String(config.port)}
-              onInput={(e: any) => {
-                const value = (e.target as HTMLInputElement).value;
-                updateField('port', value === '' ? undefined : Number(value));
-              }}
-              placeholder="5678"
-            />
-          </Field>
-        </>
-      )}
-    </>
-  );
-
-  const renderRuntimeStep = () => (
-    <>
-      <SectionTitle>Paths</SectionTitle>
-
-      <Field
-        label="Working directory"
-        hint="Current directory when the process starts. Defaults to workspace root."
-      >
-        <vscode-textfield
-          style={{ width: '100%' }}
-          value={config?.cwd || ''}
-          onInput={(e: any) => updateField('cwd', (e.target as HTMLInputElement).value)}
-          placeholder="${workspaceFolder}"
-        />
-      </Field>
-
-      <Field
-        label="Virtual environment path"
-        hint="Relative or absolute path to a venv. Leave blank to use the workspace interpreter."
-      >
-        <vscode-textfield
-          style={{ width: '100%' }}
-          value={config?.venvPath || ''}
-          onInput={(e: any) => updateField('venvPath', (e.target as HTMLInputElement).value)}
-          placeholder=".venv"
-        />
-      </Field>
-
-      <SectionTitle>Arguments</SectionTitle>
-
-      <EditableStringListField
-        items={argsList}
-        emptyText="No arguments — click Add to append one."
-        addLabel="+ Add argument"
-        placeholder={(index: number) => `arg ${index + 1}`}
-        hint={<>Passed to the program as <code>sys.argv[1:]</code>.</>}
-        onChange={updateArgs}
-        createItem={() => createStringListItem()}
-      />
-
-      {config?.request !== 'attach' && !!(config?.module) && (
-        <>
-          <SectionTitle>Module search paths</SectionTitle>
-          <EditableStringListField
-            items={modulePathsList}
-            emptyText="No extra paths — click Add to append one."
-            addLabel="+ Add search path"
-            placeholder={() => '/path/to/dir'}
-            hint={<>Extra directories prepended to <code>sys.path</code> when resolving the module.</>}
-            onChange={updateModulePaths}
-            createItem={() => createStringListItem()}
-          />
-        </>
-      )}
-
-      <SectionTitle>Environment variables</SectionTitle>
-
-      <EditableKeyValueListField
-        items={envList}
-        emptyText="No environment overrides — click Add to define one."
-        addLabel="+ Add variable"
-        keyPlaceholder="NAME"
-        valuePlaceholder="value"
-        hint="Merged with the inherited environment of the VS Code process."
-        onChange={updateEnv}
-        createItem={() => createKeyValueListItem()}
-      />
-    </>
-  );
-
-  const renderDebugStep = () => (
-    <>
-      <SectionTitle>Transport</SectionTitle>
-
-      <Field
-        label="IPC transport"
-        hint={
-          <>
-            Communication channel between VS Code and the debug adapter.
-            <strong> pipe</strong> and <strong>unix</strong> use a local socket;
-            <strong> tcp</strong> requires a port number below.
-          </>
-        }
-      >
-        <vscode-single-select
-          style={{ width: '200px' }}
-          value={config?.ipcTransport || 'pipe'}
-          onChange={(e: any) => updateField('ipcTransport', (e.target as HTMLSelectElement).value as DebugConfiguration['ipcTransport'])}
-        >
-          <vscode-option value="pipe">pipe (recommended)</vscode-option>
-          <vscode-option value="tcp">tcp</vscode-option>
-          <vscode-option value="unix">unix socket</vscode-option>
-        </vscode-single-select>
-      </Field>
-
-      {config?.ipcTransport === 'tcp' && (
-        <Field
-          label="Debug server port"
-          hint="Port the debug adapter listens on when using TCP transport (default 4711)."
-        >
-          <vscode-textfield
-            style={{ width: '120px' }}
-            type="number"
-            value={String(config?.debugServer ?? 4711)}
-            onInput={(e: any) => updateField('debugServer', Number((e.target as HTMLInputElement).value || 4711))}
-          />
-        </Field>
-      )}
-
-      <SectionTitle>Execution behaviour</SectionTitle>
-
-      <div className="checkbox-group">
-        <CheckboxField
-          checked={Boolean(config?.frameEval)}
-          label="Enable frame evaluation"
-          hint="Dapper's low-overhead frame evaluator — improves performance during heavy stepping."
-          onChange={(checked: boolean) => updateField('frameEval', checked)}
-        />
-        <CheckboxField
-          checked={Boolean(config?.stopOnEntry)}
-          label="Stop on entry"
-          hint="Break on the very first statement before any user code runs."
-          onChange={(checked: boolean) => updateField('stopOnEntry', checked)}
-        />
-        <CheckboxField
-          checked={Boolean(config?.justMyCode)}
-          label="Just My Code"
-          hint="Skip stepping into standard library and third-party packages."
-          onChange={(checked: boolean) => updateField('justMyCode', checked)}
-        />
-      </div>
-
-      <SectionTitle>Subprocess debugging</SectionTitle>
-
-      <div className="checkbox-group">
-        <CheckboxField
-          checked={Boolean(config?.subprocessAutoAttach)}
-          label="Auto-attach to subprocesses"
-          hint="Automatically attach the debugger to any child processes spawned at runtime."
-          onChange={(checked: boolean) => updateField('subprocessAutoAttach', checked)}
-        />
-      </div>
-    </>
-  );
-
-  const renderReviewStep = () => {
-    const finalConfig = {
-      ...config,
-      type: 'dapper',
-      request: config?.request || 'launch',
-    };
-
-    return (
-      <vscode-form-group>
-        <pre className="review-json">
-          {JSON.stringify(finalConfig, null, 2)}
-        </pre>
-      </vscode-form-group>
-    );
-  };
-
   const renderCurrentStep = () => {
     switch (stepIndex) {
       case 0:
-        return renderBasicsStep();
+        return <BasicsStep config={config} updateField={updateField} />;
       case 1:
-        return renderRuntimeStep();
+        return (
+          <RuntimeStep
+            config={config}
+            updateField={updateField}
+            argsList={argsList}
+            envList={envList}
+            modulePathsList={modulePathsList}
+            updateArgs={updateArgs}
+            updateEnv={updateEnv}
+            updateModulePaths={updateModulePaths}
+            createStringListItem={createStringListItem}
+            createKeyValueListItem={createKeyValueListItem}
+          />
+        );
       case 2:
-        return renderDebugStep();
+        return <DebugStep config={config} updateField={updateField} />;
       default:
-        return renderReviewStep();
+        return <ReviewStep config={config} />;
     }
   };
 
