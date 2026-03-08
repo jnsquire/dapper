@@ -253,14 +253,14 @@ class TestFrameEvalCoreComponents:
         assert isinstance(thread_info, ThreadInfo)
         assert hasattr(thread_info, "inside_frame_eval")
         assert hasattr(thread_info, "fully_initialized")
-        assert hasattr(thread_info, "is_pydevd_thread")
+        assert hasattr(thread_info, "is_debugger_internal_thread")
         assert hasattr(thread_info, "skip_all_frames")
 
         # Check initial values
         assert thread_info.inside_frame_eval == 0
         # fully_initialized might be a boolean in some implementations
         assert thread_info.fully_initialized in (0, False, True)
-        assert thread_info.is_pydevd_thread in (0, False)
+        assert thread_info.is_debugger_internal_thread in (0, False)
         assert thread_info.skip_all_frames in (0, False)
 
     def test_thread_info_isolation(self):

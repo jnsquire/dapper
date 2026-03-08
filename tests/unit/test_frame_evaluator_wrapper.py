@@ -3,12 +3,12 @@
 These tests only run when the Cython module is available in the test env.
 """
 
-import importlib
-import importlib.util
-
 import pytest
 
-CYTHON_AVAILABLE = importlib.util.find_spec("dapper._frame_eval._frame_evaluator") is not None
+from tests._cython import assert_loaded_compiled_frame_evaluator
+from tests._cython import has_loaded_compiled_frame_evaluator
+
+CYTHON_AVAILABLE = has_loaded_compiled_frame_evaluator()
 
 
 @pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython module not available")
@@ -19,7 +19,7 @@ def test_pycodesetextra_raises_on_non_code():
     a non-code object instead of allowing the underlying C API to raise a
     confusing SystemError.
     """
-    m = importlib.import_module("dapper._frame_eval._frame_evaluator")
+    m = assert_loaded_compiled_frame_evaluator()
     if not hasattr(m, "_PyCode_SetExtra"):
         pytest.skip("_PyCode_SetExtra not exported by compiled Cython module in this build")
 

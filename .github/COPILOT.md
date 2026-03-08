@@ -40,6 +40,7 @@ uv run pytest tests/test_debugger_launch.py -q
 Testing guidance
 - Use small, focused unit tests and existing base test helpers.
 - Mock subprocess and IO; use `IsolatedAsyncioTestCase` for async code.
+- The suite contains `tests/test_cython_extension_presence.py`, which CI runs early to verify the Cython extension is built.  Developers can run it manually when working on the frame-eval subsystem.
 
 Type & API notes
 - Use type hints wherever the intended type is clear.

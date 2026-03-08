@@ -80,18 +80,28 @@ def test_runtime_status_shape() -> None:
     """Runtime status should include initialization, config, and tracing fields."""
     runtime = FrameEvalRuntime()
 
-    with patch("dapper._frame_eval.runtime.get_trace_manager") as mock_get_trace_manager:
+    with (
+        patch("dapper._frame_eval.runtime.get_trace_manager") as mock_get_trace_manager,
+        patch(
+            "dapper._frame_eval.runtime.get_eval_frame_hook_status",
+            return_value={"available": True, "installed": False, "error": None},
+        ),
+    ):
         mock_get_trace_manager.return_value.is_enabled.return_value = False
         status = runtime.status()
 
     assert status.initialized is False
     assert hasattr(status.config, "enabled")
     assert status.tracing_enabled is False
+    assert status.hook_available is True
+    assert status.hook_installed is False
 
     # Verify new serialization helper
     d = status.as_dict()
     assert isinstance(d, dict)
     assert d["config"]["enabled"] == status.config.enabled
+    assert d["hook_available"] is True
+    assert d["hook_installed"] is False
 
 
 def test_runtime_stats_include_telemetry() -> None:

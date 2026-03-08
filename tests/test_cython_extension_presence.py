@@ -10,36 +10,12 @@ on availability — but in CI we want an explicit failure to remind us to
 build the extension.
 """
 
-import importlib
-import importlib.util
+from tests._cython import assert_loaded_compiled_frame_evaluator
 
 
 def test_frame_eval_extension_importable():
-    """Assert that the compiled frame-eval extension module is present.
-
-    The test will print helpful diagnostics on failure so CI logs are
-    informative.
-    """
-    spec = importlib.util.find_spec("dapper._frame_eval._frame_evaluator")
-
-    # Provide a detailed failure message to help with CI debugging
-    if spec is None:
-        msg = (
-            "Cython frame-eval extension not found.\n"
-            "If you expect C extensions to be built, ensure the CI step builds "
-            "the 'frame-eval' extras.\n"
-            "Locally you can build with: python -m pip install -e '.[frame-eval]'\n"
-            "Spec lookup returned None and import failed for: "
-            "dapper._frame_eval._frame_evaluator"
-        )
-        raise AssertionError(msg)
-
-    # Try importing the module to assert it loads and inspect the origin
-    module = importlib.import_module("dapper._frame_eval._frame_evaluator")
+    """Assert that the loaded frame-eval module is the compiled extension."""
+    module = assert_loaded_compiled_frame_evaluator()
     origin = getattr(module, "__file__", None)
-    assert origin is not None, "Imported _frame_evaluator but __file__ is missing"
 
-    # Basic sanity: expect a compiled extension file (.pyd on Windows, .so on Linux/macOS)
-    assert origin.endswith((".pyd", ".so", ".dylib")) or "_frame_evaluator" in origin, (
-        f"Unexpected extension origin: {origin}"
-    )
+    assert origin is not None, "Imported _frame_evaluator but __file__ is missing"

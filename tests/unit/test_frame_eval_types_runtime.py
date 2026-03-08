@@ -18,17 +18,17 @@ def test_get_thread_info_returns_runtime_object() -> None:
 
     assert thread_info is not Ellipsis
     assert hasattr(thread_info, "inside_frame_eval")
-    assert hasattr(thread_info, "is_pydevd_thread")
+    assert hasattr(thread_info, "is_debugger_internal_thread")
 
 
 def test_mark_unmark_and_skip_all_flags() -> None:
     frame_types.clear_thread_local_info()
 
-    frame_types.mark_thread_as_pydevd()
-    assert frame_types.get_thread_info().is_pydevd_thread is True
+    frame_types.mark_thread_as_debugger_internal()
+    assert frame_types.get_thread_info().is_debugger_internal_thread is True
 
-    frame_types.unmark_thread_as_pydevd()
-    assert frame_types.get_thread_info().is_pydevd_thread is False
+    frame_types.unmark_thread_as_debugger_internal()
+    assert frame_types.get_thread_info().is_debugger_internal_thread is False
 
     frame_types.set_thread_skip_all(True)
     assert frame_types.get_thread_info().skip_all_frames is True

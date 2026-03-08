@@ -542,7 +542,7 @@ class ThreadInfo:
     def __init__(self):
         self.inside_frame_eval = 0
         self.fully_initialized = False
-        self.is_pydevd_thread = False
+        self.is_debugger_internal_thread = False
         self.thread_trace_func = None
         self.additional_info = {}
         self.recursion_depth = 0

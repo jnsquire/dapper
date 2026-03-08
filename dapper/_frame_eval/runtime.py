@@ -18,6 +18,7 @@ from dapper._frame_eval.selective_tracer import disable_selective_tracing
 from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.telemetry import FrameEvalTelemetrySnapshot
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+from dapper._frame_eval.types import get_eval_frame_hook_status
 
 
 @dataclass
@@ -62,6 +63,8 @@ class FrameEvalRuntimeStatus:
     initialized: bool
     config: FrameEvalRuntimeConfig
     tracing_enabled: bool
+    hook_available: bool
+    hook_installed: bool
 
     def as_dict(self) -> dict[str, Any]:
         """Return a primitive dict representation (suitable for JSON/UI)."""
@@ -69,6 +72,8 @@ class FrameEvalRuntimeStatus:
             "initialized": self.initialized,
             "config": asdict(self.config),
             "tracing_enabled": self.tracing_enabled,
+            "hook_available": self.hook_available,
+            "hook_installed": self.hook_installed,
         }
 
 
@@ -160,8 +165,11 @@ class FrameEvalRuntime:
         """Return high-level runtime status."""
         trace_manager = get_trace_manager()
         cfg = FrameEvalRuntimeConfig.from_frame_eval_config(self._config)
+        hook_status = get_eval_frame_hook_status()
         return FrameEvalRuntimeStatus(
             initialized=self._initialized,
             config=cfg,
             tracing_enabled=trace_manager.is_enabled(),
+            hook_available=bool(hook_status.get("available", False)),
+            hook_installed=bool(hook_status.get("installed", False)),
         )

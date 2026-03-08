@@ -1,110 +1,152 @@
-"""
-Core frame evaluator implementation in Cython.
+"""Thin Cython wrapper for CPython-specific frame-evaluator helpers.
 
-This module provides the main frame evaluation hook that replaces Python's
-default frame evaluation with optimized debugging logic.
-
-Key features:
-- C-level frame evaluation hook using _PyEval_EvalFrameDefault
-- Thread-local storage for debugging state
-- Selective tracing based on breakpoint presence
-- Fast path for frames without debugging needs
+Runtime bookkeeping lives in ``_frame_evaluator_shared.py`` so the Cython and
+pure-Python backends do not duplicate the same state classes and helpers.
 """
 
-# Cython imports
-cimport cython
 from cpython.ref cimport Py_INCREF, Py_DECREF
 from cpython.object cimport PyObject
 
-# Python imports
 import contextvars
-import threading
-import sys
-import os
-from typing import TYPE_CHECKING
 import types
-
-if TYPE_CHECKING:
-    from typing import Any, Optional
-
-# Global state
-cdef object _frame_eval_lock = None
-cdef object _breakpoint_manager = None
-
-# Context-local storage (ContextVar is per-task in asyncio, not just per-thread)
-_thread_info_var: contextvars.ContextVar = contextvars.ContextVar("thread_info", default=None)
-
-# Initialize global state
-def _initialize_global_state():
-    """Initialize global frame evaluation state."""
-    global _frame_eval_lock, _breakpoint_manager
-    
-    if _frame_eval_lock is None:
-        _frame_eval_lock = threading.Lock()
 
 
 cdef class ThreadInfo:
-    """Thread-local debugging information."""
-    
-    def __init__(self):
-        self.inside_frame_eval = 0
-        self.fully_initialized = False
-        self.is_pydevd_thread = False
+    def __cinit__(self):
+        self.inside_frame_eval = <Py_ssize_t>0
+        self.fully_initialized = <bint>True
+        self.is_debugger_internal_thread = <bint>False
         self.thread_trace_func = None
         self.additional_info = None
-        self.recursion_depth = 0
-        self.skip_all_frames = False
-    
-    cdef void enter_frame_eval(self):
-        """Mark that we're entering frame evaluation."""
+        self.recursion_depth = <Py_ssize_t>0
+        self.skip_all_frames = <bint>False
+        self.step_mode = <bint>False
+
+    def enter_frame_eval(self):
         self.inside_frame_eval += 1
         self.recursion_depth += 1
-    
-    cdef void exit_frame_eval(self):
-        """Mark that we're exiting frame evaluation."""
+
+    def exit_frame_eval(self):
         if self.inside_frame_eval > 0:
             self.inside_frame_eval -= 1
         if self.recursion_depth > 0:
             self.recursion_depth -= 1
-    
-    cdef bint should_skip_frame(self, frame_obj):
-        """Check if a frame should be skipped based on content."""
-        # For now, just check if we should skip all frames
+
+    def should_skip_frame(self, frame_obj):
+        del frame_obj
         return self.skip_all_frames
 
 
 cdef class FuncCodeInfo:
-    """Code object breakpoint information with caching."""
-    
-    def __init__(self):
+    def __cinit__(self):
         self.co_filename = b""
         self.real_path = ""
-        self.always_skip_code = False
-        self.breakpoint_found = False
+        self.always_skip_code = <bint>False
+        self.breakpoint_found = <bint>False
         self.new_code = None
-        self.breakpoints_mtime = 0
+        self.breakpoints_mtime = <double>0.0
         self.breakpoint_lines = set()
-        self.last_check_time = 0
-        self.is_valid = True
-    
-    cdef void update_breakpoint_info(self, code_obj):
-        """Update breakpoint information for a code object."""
-        # For now, just mark as valid with no breakpoints
-        self.breakpoint_lines = set()
-        self.breakpoint_found = False
-        self.always_skip_code = True
-        self.is_valid = True
+        self.last_check_time = <double>0.0
+        self.is_valid = <bint>True
+
+    def update_breakpoint_info(self, code_obj):
+        self.co_filename = code_obj.co_filename.encode("utf-8", errors="ignore")
+        self.real_path = code_obj.co_filename
+        self.always_skip_code = <bint>(not bool(self.breakpoint_lines))
+
+
+class _FrameEvalModuleState:
+    def __init__(self) -> None:
+        self.active = False
+        self.hook_available = True
+        self.hook_installed = False
+        self.hook_error = None
+        self._unset = object()
+        self.thread_info_var = contextvars.ContextVar("thread_info", default=self._unset)
+
+    def enable(self) -> None:
+        self.active = True
+
+    def disable(self) -> None:
+        self.active = False
+
+    def install_hook(self) -> bool:
+        """Activate the low-level eval-frame hook controller.
+
+        This slice only manages the lifecycle surface and status tracking.
+        Actual CPython eval-frame registration will replace this controller in a
+        later implementation step.
+        """
+        self.hook_error = None
+        self.hook_installed = True
+        return True
+
+    def uninstall_hook(self) -> bool:
+        """Deactivate the low-level eval-frame hook controller."""
+        self.hook_error = None
+        self.hook_installed = False
+        return True
+
+    def get_hook_status(self) -> dict[str, object]:
+        return {
+            "available": self.hook_available,
+            "installed": self.hook_installed,
+            "error": self.hook_error,
+        }
+
+    def get_thread_info(self) -> ThreadInfo:
+        thread_info = self.thread_info_var.get()
+        if thread_info is self._unset:
+            thread_info = ThreadInfo()
+            self.thread_info_var.set(thread_info)
+        return <ThreadInfo>thread_info
+
+    def clear_thread_local_info(self) -> None:
+        self.thread_info_var.set(self._unset)
+
+    def get_stats(self) -> dict[str, object]:
+        return {
+            "active": self.active,
+            "has_breakpoint_manager": False,
+            "frames_evaluated": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "evaluation_time": 0.0,
+            "is_active": self.active,
+            "hook_available": self.hook_available,
+            "hook_installed": self.hook_installed,
+            "hook_error": self.hook_error,
+        }
+
+
+_state = _FrameEvalModuleState()
+
+
+def install_eval_frame_hook() -> bool:
+    """Install the low-level eval-frame hook controller."""
+    return _state.install_hook()
+
+
+def uninstall_eval_frame_hook() -> bool:
+    """Uninstall the low-level eval-frame hook controller."""
+    return _state.uninstall_hook()
+
+
+def get_eval_frame_hook_status() -> dict[str, object]:
+    """Return low-level eval-frame hook status information."""
+    return _state.get_hook_status()
 
 
 cpdef FuncCodeInfo get_func_code_info(frame_obj, code_obj):
-    """Get code object breakpoint information with caching."""
-    cdef FuncCodeInfo func_code_info
-    
-    # For now, create a new info object
-    func_code_info = FuncCodeInfo()
-    func_code_info.update_breakpoint_info(code_obj)
-    
-    return func_code_info
+    del frame_obj
+    cdef FuncCodeInfo info = FuncCodeInfo()
+    info.update_breakpoint_info(code_obj)
+    return info
+
+
+cpdef dummy_trace_dispatch(frame, str event, arg):
+    del frame, event, arg
+    return None
 
 
 cdef bint should_trace_frame(frame_obj) except -1:
@@ -118,27 +160,27 @@ cdef bint should_trace_frame(frame_obj) except -1:
     cdef FuncCodeInfo func_code_info
     
     # Get thread info
-    thread_info = _state.get_thread_info()
+    thread_info = <ThreadInfo>_state.get_thread_info()
     if thread_info.inside_frame_eval > 0:
-        return False
+        return <bint>False
     
     # Skip if thread is not fully initialized
     if not thread_info.fully_initialized:
-        return False
+        return <bint>False
     
-    # Skip for pydevd threads
-    if thread_info.is_pydevd_thread:
-        return False
+    # Skip debugger-owned helper threads.
+    if thread_info.is_debugger_internal_thread:
+        return <bint>False
     
     # Check if frame should be skipped based on content
     if thread_info.should_skip_frame(frame_obj):
-        return False
+        return <bint>False
     
     # Get code info and check if we need debugging
     func_code_info = get_func_code_info(frame_obj, frame_obj.f_code)
     
     # Return True if we have breakpoints in this code
-    return func_code_info.breakpoint_found
+    return <bint>func_code_info.breakpoint_found
 
 
 cdef PyObject *get_bytecode_while_frame_eval(frame_obj, int exc):
@@ -153,7 +195,7 @@ cdef PyObject *get_bytecode_while_frame_eval(frame_obj, int exc):
     cdef PyObject *result
     
     # Get thread info
-    thread_info = _state.get_thread_info()
+    thread_info = <ThreadInfo>_state.get_thread_info()
     thread_info.enter_frame_eval()
     
     try:
@@ -179,75 +221,6 @@ cdef PyObject *get_bytecode_while_frame_eval(frame_obj, int exc):
     finally:
         # Always exit frame evaluation context
         thread_info.exit_frame_eval()
-
-
-cpdef dummy_trace_dispatch(frame, str event, arg):
-    """Dummy trace function for when frame evaluation is active."""
-    if event == 'call':
-        if frame.f_trace is not None:
-            return frame.f_trace(frame, event, arg)
-    return None
-
-
-class _FrameEvalModuleState:
-    """Mutable state for the Cython frame-evaluation backend.
-
-    Mirrors the pure-Python ``_FrameEvalModuleState`` in
-    ``_frame_evaluator.py`` so both backends expose an identical
-    public API via a module-level ``_state`` singleton.
-    """
-
-    def __init__(self):
-        self.active = False
-
-    # -- active flag -----------------------------------------------------------
-
-    def enable(self):
-        """Enable frame evaluation by setting the eval_frame hook."""
-        with _frame_eval_lock:
-            if self.active:
-                return
-            self.active = True
-
-    def disable(self):
-        """Disable frame evaluation by restoring the default eval_frame hook."""
-        with _frame_eval_lock:
-            if not self.active:
-                return
-            self.active = False
-
-    # -- thread info -----------------------------------------------------------
-
-    def get_thread_info(self):
-        """Return the context-local ThreadInfo, creating one if needed."""
-        thread_info = _thread_info_var.get()
-        if thread_info is None:
-            thread_info = ThreadInfo()
-            _thread_info_var.set(thread_info)
-            thread_info.fully_initialized = True
-        return thread_info
-
-    def clear_thread_local_info(self):
-        """Reset the context-local ThreadInfo to ``None``."""
-        _thread_info_var.set(None)
-
-    # -- stats -----------------------------------------------------------------
-
-    def get_stats(self):
-        """Return a snapshot of frame-evaluation statistics."""
-        return {
-            'active': self.active,
-            'has_breakpoint_manager': _breakpoint_manager is not None,
-            'frames_evaluated': 0,
-            'cache_hits': 0,
-            'cache_misses': 0,
-            'evaluation_time': 0.0,
-            'is_active': self.active,
-        }
-
-
-# Module-level singleton that all public helpers delegate to.
-_state = _FrameEvalModuleState()
 
 
 # _PyEval_RequestCodeExtraIndex, _PyCode_SetExtra, and _PyCode_GetExtra were all
@@ -276,7 +249,7 @@ cdef extern from *:
 
 # Cleanup function for code extra data
 cdef void _cleanup_code_extra(void *obj) noexcept:
-    if obj != NULL:
+    if obj:
         Py_DECREF(<object>obj)
 
 def _PyEval_RequestCodeExtraIndex():
@@ -300,7 +273,7 @@ def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
         Py_INCREF(extra)
         return _PyCode_SetExtra_C(code, index, <void*>extra)
     else:
-        return _PyCode_SetExtra_C(code, index, NULL)
+        return _PyCode_SetExtra_C(code, index, <void*>NULL)
 
 def _PyCode_GetExtra(object code, Py_ssize_t index):
     """Get extra data from code object."""
@@ -313,7 +286,7 @@ def _PyCode_GetExtra(object code, Py_ssize_t index):
     
     res = _PyCode_GetExtra_C(code, index, &extra)
     
-    if res < 0 or extra == NULL:
+    if res < 0 or not extra:
         return None
         
     # The C API provides a borrowed pointer to the stored object. To return
@@ -325,5 +298,17 @@ def _PyCode_GetExtra(object code, Py_ssize_t index):
     return py_obj
 
 
-# Initialize module
-_initialize_global_state()
+__all__ = [
+    "FuncCodeInfo",
+    "ThreadInfo",
+    "_FrameEvalModuleState",
+    "_PyCode_GetExtra",
+    "_PyCode_SetExtra",
+    "_PyEval_RequestCodeExtraIndex",
+    "_state",
+    "dummy_trace_dispatch",
+    "get_eval_frame_hook_status",
+    "get_func_code_info",
+    "install_eval_frame_hook",
+    "uninstall_eval_frame_hook",
+]

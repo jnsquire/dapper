@@ -28,10 +28,19 @@ _cython_state: Any | None = None
 # The pure-Python fallback always provides _state, so this import
 # only truly fails if _frame_evaluator itself is broken.
 try:
-    from dapper._frame_eval._frame_evaluator import _state as _cython_state
+    from dapper._frame_eval import _frame_evaluator as _cython_module
+
+    _cython_state = _cython_module._state  # noqa: SLF001
+    _install_eval_frame_hook = _cython_module.install_eval_frame_hook
+    _uninstall_eval_frame_hook = _cython_module.uninstall_eval_frame_hook
+    _get_eval_frame_hook_status = _cython_module.get_eval_frame_hook_status
 
     CYTHON_AVAILABLE = True
 except ImportError:
+    _cython_module = None
+    _install_eval_frame_hook = None
+    _uninstall_eval_frame_hook = None
+    _get_eval_frame_hook_status = None
     CYTHON_AVAILABLE = False
 
 
@@ -88,15 +97,34 @@ class FrameEvalState:
 
         return FrameEvalState._cython_state.get_stats()
 
-    def mark_thread_as_pydevd(self) -> None:
-        """Mark the current thread as a pydevd thread."""
-        if self._import_cython() and FrameEvalState._cython_state is not None:
-            FrameEvalState._cython_state.get_thread_info().is_pydevd_thread = True
+    def install_eval_frame_hook(self) -> bool:
+        if not self._import_cython() or _install_eval_frame_hook is None:
+            return False
+        return bool(_install_eval_frame_hook())
 
-    def unmark_thread_as_pydevd(self) -> None:
-        """Remove pydevd thread marking from current thread."""
+    def uninstall_eval_frame_hook(self) -> bool:
+        if not self._import_cython() or _uninstall_eval_frame_hook is None:
+            return False
+        return bool(_uninstall_eval_frame_hook())
+
+    def get_eval_frame_hook_status(self) -> dict[str, Any]:
+        if not self._import_cython() or _get_eval_frame_hook_status is None:
+            return {
+                "available": False,
+                "installed": False,
+                "error": "Cython wrapper not available",
+            }
+        return dict(_get_eval_frame_hook_status())
+
+    def mark_thread_as_debugger_internal(self) -> None:
+        """Mark the current thread as debugger-internal."""
         if self._import_cython() and FrameEvalState._cython_state is not None:
-            FrameEvalState._cython_state.get_thread_info().is_pydevd_thread = False
+            FrameEvalState._cython_state.get_thread_info().is_debugger_internal_thread = True
+
+    def unmark_thread_as_debugger_internal(self) -> None:
+        """Remove debugger-internal marking from the current thread."""
+        if self._import_cython() and FrameEvalState._cython_state is not None:
+            FrameEvalState._cython_state.get_thread_info().is_debugger_internal_thread = False
 
     def set_thread_skip_all(self, skip: bool) -> None:
         """Set whether current thread should skip all frames.
@@ -135,7 +163,9 @@ def enable_frame_eval() -> bool:
     if not _state.available:
         return False
 
-    if _state.setup_frame_eval({}):  # Pass empty config by default
+    if (
+        _state.setup_frame_eval({}) and _state.install_eval_frame_hook()
+    ):  # Pass empty config by default
         _state.enabled = True
         return True
 
@@ -153,6 +183,7 @@ def disable_frame_eval() -> bool:
         return True
 
     try:
+        _state.uninstall_eval_frame_hook()
         frame_eval_manager.shutdown_frame_eval()
     except Exception:  # pylint: disable=broad-except
         _state.enabled = False
@@ -172,6 +203,7 @@ def get_frame_eval_status() -> dict[str, Any]:
     return {
         "available": _state.available,
         "enabled": _state.enabled,
+        "hook": _state.get_eval_frame_hook_status(),
         "python_version": debug_info.get("python_version", "unknown"),
         "platform": debug_info.get("platform", "unknown"),
         "implementation": debug_info.get("implementation", "unknown"),
@@ -214,14 +246,29 @@ def get_frame_eval_stats() -> dict[str, Any]:
     return _state.get_frame_eval_stats()
 
 
-def mark_thread_as_pydevd() -> None:
-    """Mark the current thread as a pydevd thread that should be skipped."""
-    _state.mark_thread_as_pydevd()
+def install_eval_frame_hook() -> bool:
+    """Install the low-level eval-frame hook controller."""
+    return _state.install_eval_frame_hook()
 
 
-def unmark_thread_as_pydevd() -> None:
-    """Unmark the current thread as a pydevd thread."""
-    _state.unmark_thread_as_pydevd()
+def uninstall_eval_frame_hook() -> bool:
+    """Uninstall the low-level eval-frame hook controller."""
+    return _state.uninstall_eval_frame_hook()
+
+
+def get_eval_frame_hook_status() -> dict[str, Any]:
+    """Return low-level eval-frame hook status information."""
+    return _state.get_eval_frame_hook_status()
+
+
+def mark_thread_as_debugger_internal() -> None:
+    """Mark the current thread as debugger-internal so frame eval skips it."""
+    _state.mark_thread_as_debugger_internal()
+
+
+def unmark_thread_as_debugger_internal() -> None:
+    """Remove debugger-internal marking from the current thread."""
+    _state.unmark_thread_as_debugger_internal()
 
 
 def set_thread_skip_all(skip: bool) -> None:

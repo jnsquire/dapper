@@ -41,12 +41,24 @@ def get_frame_eval_stats() -> FrameStats:
     return _state.get_stats()
 
 
-def mark_thread_as_pydevd() -> None:
-    _state.get_thread_info().is_pydevd_thread = True
+def install_eval_frame_hook() -> bool:
+    return _state.install_hook()
 
 
-def unmark_thread_as_pydevd() -> None:
-    _state.get_thread_info().is_pydevd_thread = False
+def uninstall_eval_frame_hook() -> bool:
+    return _state.uninstall_hook()
+
+
+def get_eval_frame_hook_status() -> dict[str, str | bool | None]:
+    return _state.get_hook_status()
+
+
+def mark_thread_as_debugger_internal() -> None:
+    _state.get_thread_info().is_debugger_internal_thread = True
+
+
+def unmark_thread_as_debugger_internal() -> None:
+    _state.get_thread_info().is_debugger_internal_thread = False
 
 
 def set_thread_skip_all(skip: bool) -> None:
@@ -63,11 +75,14 @@ __all__ = [
     "_state",
     "clear_thread_local_info",
     "frame_eval_func",
+    "get_eval_frame_hook_status",
     "get_frame_eval_stats",
     "get_func_code_info",
     "get_thread_info",
-    "mark_thread_as_pydevd",
+    "install_eval_frame_hook",
+    "mark_thread_as_debugger_internal",
     "set_thread_skip_all",
     "stop_frame_eval",
-    "unmark_thread_as_pydevd",
+    "uninstall_eval_frame_hook",
+    "unmark_thread_as_debugger_internal",
 ]

@@ -19,18 +19,15 @@ from dapper._frame_eval.debugger_integration import get_integration_statistics
 from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.debugger_integration import integrate_py_debugger
 from dapper._frame_eval.debugger_integration import remove_integration
+from tests._cython import get_loaded_compiled_frame_evaluator
 
 # Import Cython modules for testing
 CYTHON_AVAILABLE = False
 _frame_eval_state: _FrameEvalModuleState | None = None
-try:
-    from dapper._frame_eval._frame_evaluator import (  # type: ignore[import-not-found]
-        _state as _frame_eval_state,
-    )
-
+compiled_frame_evaluator = get_loaded_compiled_frame_evaluator()
+if compiled_frame_evaluator is not None:
+    _frame_eval_state = compiled_frame_evaluator._state  # type: ignore[assignment]
     CYTHON_AVAILABLE = True
-except ImportError:
-    pass
 
 if TYPE_CHECKING:
     from dapper._frame_eval._frame_evaluator import _FrameEvalModuleState
@@ -115,7 +112,7 @@ def mock_cython_functions(monkeypatch):
                     self.skip_all_frames = False
                     self.inside_frame_eval = 0
                     self.fully_initialized = True
-                    self.is_pydevd_thread = False
+                    self.is_debugger_internal_thread = False
 
             return MockThreadInfo()
 

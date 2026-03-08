@@ -89,6 +89,8 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "**/*.pyx",
+    "**/*.pxd",
 ]
 
 line-length = 99

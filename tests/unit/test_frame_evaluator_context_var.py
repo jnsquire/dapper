@@ -16,20 +16,21 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-import importlib
-import importlib.util
 import threading
 
 import pytest
 
-CYTHON_AVAILABLE = importlib.util.find_spec("dapper._frame_eval._frame_evaluator") is not None
+from tests._cython import assert_loaded_compiled_frame_evaluator
+from tests._cython import has_loaded_compiled_frame_evaluator
+
+CYTHON_AVAILABLE = has_loaded_compiled_frame_evaluator()
 
 pytestmark = pytest.mark.skipif(not CYTHON_AVAILABLE, reason="Cython module not available")
 
 
 @pytest.fixture
 def evaluator():
-    m = importlib.import_module("dapper._frame_eval._frame_evaluator")
+    m = assert_loaded_compiled_frame_evaluator()
     if not hasattr(m, "_state"):
         pytest.skip("_state not exported by compiled Cython module in this build")
     state = m._state
@@ -118,7 +119,7 @@ def test_different_contexts_get_different_thread_infos(evaluator):
 
 
 def test_mutation_in_one_context_does_not_affect_sibling_context(evaluator):
-    """Setting is_pydevd_thread in one context must not touch another.
+    """Setting is_debugger_internal_thread in one context must not touch another.
 
     Two sibling contexts (both copied from a cleared state) lazily create
     independent ThreadInfo objects, so a mutation to one is invisible to the
@@ -130,14 +131,14 @@ def test_mutation_in_one_context_does_not_affect_sibling_context(evaluator):
         ctx1 = contextvars.copy_context()
         ctx2 = contextvars.copy_context()
 
-        def _set_pydevd():
-            evaluator.get_thread_info().is_pydevd_thread = True
+        def _set_debugger_internal():
+            evaluator.get_thread_info().is_debugger_internal_thread = True
 
-        def _get_pydevd():
-            return evaluator.get_thread_info().is_pydevd_thread
+        def _get_debugger_internal():
+            return evaluator.get_thread_info().is_debugger_internal_thread
 
-        ctx1.run(_set_pydevd)
-        return ctx2.run(_get_pydevd)
+        ctx1.run(_set_debugger_internal)
+        return ctx2.run(_get_debugger_internal)
 
     result = contextvars.copy_context().run(_run_isolated)
     assert result is False, (

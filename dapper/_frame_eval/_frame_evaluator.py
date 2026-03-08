@@ -1,173 +1,31 @@
 """Pure-Python fallback implementation of frame-evaluator extension API.
 
-This module mirrors the public symbols from the optional compiled
-`_frame_evaluator` extension so import sites can operate in environments
-where C extensions are not built.
+This module now re-exports the shared runtime logic used by both backends. The
+only backend-specific code lives in the optional Cython extension wrapper.
 """
 
 from __future__ import annotations
 
-import contextvars
-from typing import TYPE_CHECKING
-from typing import Any
-from typing import Union
-
-if TYPE_CHECKING:
-    from types import CodeType
-    from types import FrameType
-
-BreakpointLines = set[int]
-FrameStats = dict[str, Union[int, float, bool]]
+from dapper._frame_eval._frame_evaluator_shared import BreakpointLines
+from dapper._frame_eval._frame_evaluator_shared import FrameStats
+from dapper._frame_eval._frame_evaluator_shared import FuncCodeInfo
+from dapper._frame_eval._frame_evaluator_shared import ThreadInfo
+from dapper._frame_eval._frame_evaluator_shared import _FrameEvalModuleState
+from dapper._frame_eval._frame_evaluator_shared import _state
+from dapper._frame_eval._frame_evaluator_shared import dummy_trace_dispatch
+from dapper._frame_eval._frame_evaluator_shared import get_func_code_info
 
 
-class _FrameEvalModuleState:
-    """Mutable state for the pure-Python frame-evaluation fallback.
-
-    Collects the module-level state that the Cython backend keeps as
-    ``cdef`` globals into a single object, making it easier to reset in
-    tests and avoiding the ``global`` statement.
-    """
-
-    __slots__ = ("active", "thread_info_var")
-
-    def __init__(self) -> None:
-        self.active: bool = False
-        #: Context-local storage — mirrors the Cython ContextVar so that
-        #: ``Context.run()`` gives each context its own ThreadInfo.
-        self.thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
-            "thread_info", default=None
-        )
-
-    # -- active flag -----------------------------------------------------------
-
-    def enable(self) -> None:
-        """Mark frame evaluation as active."""
-        self.active = True
-
-    def disable(self) -> None:
-        """Mark frame evaluation as inactive."""
-        self.active = False
-
-    # -- thread info -----------------------------------------------------------
-
-    def get_thread_info(self) -> ThreadInfo:
-        """Return the context-local ThreadInfo, creating one if needed."""
-        thread_info = self.thread_info_var.get()
-        if thread_info is None:
-            thread_info = ThreadInfo()
-            self.thread_info_var.set(thread_info)
-        return thread_info
-
-    def clear_thread_local_info(self) -> None:
-        """Reset the context-local ThreadInfo to ``None``."""
-        self.thread_info_var.set(None)
-
-    # -- stats -----------------------------------------------------------------
-
-    def get_stats(self) -> FrameStats:
-        """Return a snapshot of frame-evaluation statistics."""
-        return {
-            "active": self.active,
-            "has_breakpoint_manager": False,
-            "frames_evaluated": 0,
-            "cache_hits": 0,
-            "cache_misses": 0,
-            "evaluation_time": 0.0,
-            "is_active": self.active,
-        }
+def install_eval_frame_hook() -> bool:
+    return _state.install_hook()
 
 
-# Module-level singleton that all public helpers delegate to.
-_state = _FrameEvalModuleState()
+def uninstall_eval_frame_hook() -> bool:
+    return _state.uninstall_hook()
 
 
-class ThreadInfo:
-    """Thread-local debugging information for frame evaluation."""
-
-    inside_frame_eval: int
-    fully_initialized: bool
-    is_pydevd_thread: bool
-    thread_trace_func: Any | None
-    additional_info: Any | None
-    recursion_depth: int
-    skip_all_frames: bool
-    step_mode: bool
-
-    def __init__(self) -> None:
-        self.inside_frame_eval = 0
-        self.fully_initialized = True
-        self.is_pydevd_thread = False
-        self.thread_trace_func = None
-        self.additional_info = None
-        self.recursion_depth = 0
-        self.skip_all_frames = False
-        self.step_mode = False
-
-    def enter_frame_eval(self) -> None:
-        self.inside_frame_eval += 1
-        self.recursion_depth += 1
-
-    def exit_frame_eval(self) -> None:
-        if self.inside_frame_eval > 0:
-            self.inside_frame_eval -= 1
-        if self.recursion_depth > 0:
-            self.recursion_depth -= 1
-
-    def should_skip_frame(self, frame: FrameType) -> bool:
-        del frame
-        return self.skip_all_frames
-
-
-class FuncCodeInfo:
-    """Code object breakpoint information with caching metadata."""
-
-    co_filename: bytes
-    real_path: str
-    always_skip_code: bool
-    breakpoint_found: bool
-    new_code: CodeType | None
-    breakpoints_mtime: float
-    breakpoint_lines: BreakpointLines
-    last_check_time: float
-    is_valid: bool
-
-    def __init__(self) -> None:
-        self.co_filename = b""
-        self.real_path = ""
-        self.always_skip_code = False
-        self.breakpoint_found = False
-        self.new_code = None
-        self.breakpoints_mtime = 0.0
-        self.breakpoint_lines = set()
-        self.last_check_time = 0.0
-        self.is_valid = True
-
-    def update_breakpoint_info(self, code_obj: CodeType) -> None:
-        self.co_filename = code_obj.co_filename.encode("utf-8", errors="ignore")
-        self.real_path = code_obj.co_filename
-        self.always_skip_code = not bool(self.breakpoint_lines)
-
-
-def get_func_code_info(frame_obj: FrameType, code_obj: CodeType) -> FuncCodeInfo:
-    del frame_obj
-    info = FuncCodeInfo()
-    info.update_breakpoint_info(code_obj)
-    return info
-
-
-def dummy_trace_dispatch(frame: FrameType, event: str, arg: Any) -> Any:
-    """Fallback dummy trace dispatch function.
-
-    Args:
-        frame: The frame object.
-        event: The event name (e.g. 'call', 'line', 'return').
-        arg: The event argument.
-
-    Returns:
-        The trace function itself or None.
-    """
-    del frame, event, arg
-    return None
+def get_eval_frame_hook_status() -> dict[str, str | bool | None]:
+    return _state.get_hook_status()
 
 
 __all__ = [
@@ -178,5 +36,8 @@ __all__ = [
     "_FrameEvalModuleState",
     "_state",
     "dummy_trace_dispatch",
+    "get_eval_frame_hook_status",
     "get_func_code_info",
+    "install_eval_frame_hook",
+    "uninstall_eval_frame_hook",
 ]

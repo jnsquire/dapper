@@ -86,6 +86,11 @@ jobs:
           python -m pip install -e ".[frame-eval]"
           pip install pyright "ruff==0.12.12" pytest pytest-asyncio pytest-cov pytest-xdist mkdocs mkdocs-material mkdocs-mermaid2-plugin
 
+      - name: Smoke-check compiled extension
+        run: |
+          # run just the presence test before doing heavy lint/typecheck steps
+          pytest tests/test_cython_extension_presence.py -q
+
       - name: Lint (ruff)
         run: |
           ruff check .

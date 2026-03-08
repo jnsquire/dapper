@@ -15,15 +15,12 @@ cdef extern from *:
 cdef class ThreadInfo:
     cdef public Py_ssize_t inside_frame_eval
     cdef public bint fully_initialized
-    cdef public bint is_pydevd_thread
+    cdef public bint is_debugger_internal_thread
     cdef public object thread_trace_func
     cdef public object additional_info
     cdef public Py_ssize_t recursion_depth
     cdef public bint skip_all_frames
-    
-    cdef void enter_frame_eval(self)
-    cdef void exit_frame_eval(self)
-    cdef bint should_skip_frame(self, frame_obj)
+    cdef public bint step_mode
 
 cdef class FuncCodeInfo:
     cdef public bytes co_filename
@@ -31,12 +28,10 @@ cdef class FuncCodeInfo:
     cdef public bint always_skip_code
     cdef public bint breakpoint_found
     cdef public object new_code
-    cdef public Py_ssize_t breakpoints_mtime
+    cdef public double breakpoints_mtime
     cdef public set breakpoint_lines
-    cdef public Py_ssize_t last_check_time
+    cdef public double last_check_time
     cdef public bint is_valid
-    
-    cdef void update_breakpoint_info(self, code_obj)
 
 # Function declarations
 

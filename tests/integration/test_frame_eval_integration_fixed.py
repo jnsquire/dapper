@@ -17,14 +17,15 @@ from dapper._frame_eval.debugger_integration import get_integration_statistics
 from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.debugger_integration import integrate_py_debugger
 from dapper._frame_eval.debugger_integration import remove_integration
+from tests._cython import get_loaded_compiled_frame_evaluator
 
 # Import Cython modules for testing
-try:
-    from dapper._frame_eval._frame_evaluator import ThreadInfo
-    from dapper._frame_eval._frame_evaluator import _state as _frame_eval_state
-
+compiled_frame_evaluator = get_loaded_compiled_frame_evaluator()
+if compiled_frame_evaluator is not None:
+    ThreadInfo = compiled_frame_evaluator.ThreadInfo
+    _frame_eval_state = compiled_frame_evaluator._state
     CYTHON_AVAILABLE = True
-except ImportError:
+else:
     CYTHON_AVAILABLE = False
     ThreadInfo: Any = None
     _frame_eval_state: Any = None
@@ -382,7 +383,7 @@ class TestCythonIntegration:
         assert isinstance(thread_info, ThreadInfo)
         assert hasattr(thread_info, "inside_frame_eval")
         assert hasattr(thread_info, "fully_initialized")
-        assert hasattr(thread_info, "is_pydevd_thread")
+        assert hasattr(thread_info, "is_debugger_internal_thread")
         assert hasattr(thread_info, "skip_all_frames")
 
     def test_frame_eval_stats(self):

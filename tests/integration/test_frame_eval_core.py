@@ -19,6 +19,7 @@ from dapper._frame_eval.cache_manager import set_func_code_info
 
 # Import core components
 from dapper._frame_eval.debugger_integration import DebuggerFrameEvalBridge
+from tests._cython import get_loaded_compiled_frame_evaluator
 
 # Import Cython modules for testing
 CYTHON_AVAILABLE = False
@@ -30,7 +31,7 @@ class ThreadInfoProtocol:
 
     inside_frame_eval: bool
     fully_initialized: bool
-    is_pydevd_thread: bool
+    is_debugger_internal_thread: bool
     skip_all_frames: bool
     step_mode: bool
 
@@ -42,7 +43,7 @@ class DefaultThreadInfo(ThreadInfoProtocol):
     def __init__(self):
         self.inside_frame_eval = False
         self.fully_initialized = False
-        self.is_pydevd_thread = False
+        self.is_debugger_internal_thread = False
         self.skip_all_frames = False
         self.step_mode = False
 
@@ -77,22 +78,19 @@ class _DefaultFrameEvalState:
 ThreadInfo: type = DefaultThreadInfo  # type: ignore[assignment]
 _frame_eval_state = _DefaultFrameEvalState()
 
-try:
-    from dapper._frame_eval._frame_evaluator import ThreadInfo as CythonThreadInfo
-    from dapper._frame_eval._frame_evaluator import _state as cy_frame_eval_state
-
-    # Only set these if the imports succeed
-    ThreadInfo = CythonThreadInfo  # type: ignore[assignment]
-    _frame_eval_state = cy_frame_eval_state
+compiled_frame_evaluator = get_loaded_compiled_frame_evaluator()
+if compiled_frame_evaluator is not None:
+    ThreadInfo = compiled_frame_evaluator.ThreadInfo  # type: ignore[assignment]
+    _frame_eval_state = compiled_frame_evaluator._state
     CYTHON_AVAILABLE = True
-except ImportError:
-    # Fallback implementations for testing when Cython is not available
+else:
+    # Fallback implementations for testing when the compiled extension is not available
     class ThreadInfo:  # type: ignore[misc]
         """Mock ThreadInfo class for testing when Cython is not available."""
 
         inside_frame_eval: bool = False
         fully_initialized: bool = False
-        is_pydevd_thread: bool = False
+        is_debugger_internal_thread: bool = False
         skip_all_frames: bool = False
         step_mode: bool = False
 
@@ -312,13 +310,13 @@ class TestCoreCythonFunctions:
         # Test that it has expected attributes
         assert hasattr(thread_info, "inside_frame_eval")
         assert hasattr(thread_info, "fully_initialized")
-        assert hasattr(thread_info, "is_pydevd_thread")
+        assert hasattr(thread_info, "is_debugger_internal_thread")
         assert hasattr(thread_info, "skip_all_frames")
 
         # Test that attributes are accessible (even if not the expected values)
         _ = thread_info.inside_frame_eval
         _ = thread_info.fully_initialized
-        _ = thread_info.is_pydevd_thread
+        _ = thread_info.is_debugger_internal_thread
         _ = thread_info.skip_all_frames
 
     def test_frame_eval_stats_structure(self):
