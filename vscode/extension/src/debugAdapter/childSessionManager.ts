@@ -1,27 +1,18 @@
 import * as vscode from 'vscode';
 import * as Net from 'net';
-import * as os from 'os';
-import * as fs from 'fs';
-import { join as pathJoin } from 'path';
 import {
   type InternalChildLaunchConfiguration,
   type PendingChildSession,
 } from './debugAdapterTypes.js';
 import { DapperDebugSession, PythonDebugAdapterTransport } from './dapperDebugSession.js';
 
-const CHILD_ATTACH_TRACE_PATH = pathJoin(os.tmpdir(), 'dapper-child-attach.log');
-
-function traceChildAttach(message: string, data?: unknown): void {
-  try {
-    const payload = data === undefined ? '' : ` ${JSON.stringify(data)}`;
-    fs.appendFileSync(
-      CHILD_ATTACH_TRACE_PATH,
-      `${new Date().toISOString()} ${message}${payload}\n`,
-      'utf8',
-    );
-  } catch {
-    // Best-effort debug tracing only.
-  }
+interface ChildProcessEventDetails {
+  launcherSessionId: string;
+  pid: number;
+  ipcPort: number;
+  name: string;
+  cwd?: string;
+  command?: string[];
 }
 
 export class ChildSessionManager {
@@ -30,6 +21,7 @@ export class ChildSessionManager {
 
   public constructor(
     private readonly _getOutputChannel: () => vscode.LogOutputChannel,
+    private readonly _createServer: typeof Net.createServer = Net.createServer,
   ) {}
 
   public get childSessions(): Map<string, PendingChildSession> {
@@ -44,29 +36,24 @@ export class ChildSessionManager {
     parentSession: vscode.DebugSession,
     body: Record<string, unknown>,
   ): Promise<void> {
-    const launcherSessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined;
-    const pid = typeof body.pid === 'number' ? body.pid : undefined;
-    const ipcPort = typeof body.ipcPort === 'number' ? body.ipcPort : undefined;
-    const name = typeof body.name === 'string' && body.name.length > 0 ? body.name : 'child';
-    const cwd = typeof body.cwd === 'string' ? body.cwd : undefined;
-    const command = Array.isArray(body.command)
-      ? body.command.filter((value): value is string => typeof value === 'string')
-      : undefined;
+    const details = this._parseChildProcessEvent(body);
     const outChannel = this._getOutputChannel();
 
-    if (!launcherSessionId || pid == null || ipcPort == null) {
-      traceChildAttach('child-event-malformed', body);
+    if (!details) {
+      this._trace('child-event-malformed', body);
       outChannel.warn(`Ignoring malformed dapper/childProcess event: ${JSON.stringify(body)}`);
       return;
     }
 
+    const { launcherSessionId, pid, ipcPort, cwd, command } = details;
+
     if (this._childSessions.has(launcherSessionId)) {
-      traceChildAttach('child-event-duplicate', { launcherSessionId, pid, ipcPort });
+      this._trace('child-event-duplicate', { launcherSessionId, pid, ipcPort });
       outChannel.info(`Child session ${launcherSessionId} is already being tracked`);
       return;
     }
 
-    traceChildAttach('child-event-accepted', {
+    this._trace('child-event-accepted', {
       launcherSessionId,
       pid,
       ipcPort,
@@ -76,82 +63,39 @@ export class ChildSessionManager {
     });
 
     const pending: PendingChildSession = {
-      launcherSessionId,
-      pid,
-      name,
-      ipcPort,
+      ...details,
       parentDebugSessionId: parentSession.id,
       parentSession,
       workspaceFolder: parentSession.workspaceFolder,
-      cwd,
-      command,
+      listener: this._createChildListener(launcherSessionId),
     };
     this._childSessions.set(launcherSessionId, pending);
     this._childSessionIdsByPid.set(pid, launcherSessionId);
 
-    const listener = Net.createServer((socket) => {
-      const current = this._childSessions.get(launcherSessionId);
-      if (!current || current.terminated) {
-        traceChildAttach('child-socket-rejected', { launcherSessionId, reason: 'terminated-or-missing' });
-        socket.destroy();
-        return;
-      }
+    const listener = pending.listener;
+    if (!listener) {
+      throw new Error(`Child session ${launcherSessionId} listener was not initialized`);
+    }
 
-      if (current.socket) {
-        traceChildAttach('child-socket-rejected', { launcherSessionId, reason: 'duplicate-connection' });
-        outChannel.warn(`Child session ${launcherSessionId} received an unexpected extra IPC connection`);
-        socket.destroy();
-        return;
-      }
-
-      current.socket = socket;
-      if (current.listener) {
-        current.listener.close();
-        current.listener = undefined;
-      }
-
-      outChannel.info(`Child process ${current.pid} connected on 127.0.0.1:${current.ipcPort}`);
-      traceChildAttach('child-socket-connected', {
-        launcherSessionId,
-        pid: current.pid,
-        ipcPort: current.ipcPort,
-      });
-      void this._startChildDebugSession(current).catch((error) => {
-        traceChildAttach('child-launch-failed', {
-          launcherSessionId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        outChannel.error(
-          `Failed to start child debug session for ${launcherSessionId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        this.disposePendingChildSession(launcherSessionId, { destroySocket: true });
-      });
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        listener.off('listening', onListening);
-        reject(error);
-      };
-      const onListening = () => {
-        listener.off('error', onError);
-        resolve();
-      };
-
-      listener.once('error', onError);
-      listener.once('listening', onListening);
-      listener.listen(ipcPort, '127.0.0.1');
-    }).catch((error) => {
-      traceChildAttach('child-listener-listen-failed', {
+    try {
+      await this._listenOnLoopback(listener, ipcPort);
+    } catch (error) {
+      this._trace('child-listener-listen-failed', {
         launcherSessionId,
         error: error instanceof Error ? error.message : String(error),
       });
       this.disposePendingChildSession(launcherSessionId, { destroySocket: true });
       throw error;
-    });
+    }
+
+    if (this._childSessions.get(launcherSessionId) !== pending || pending.terminated) {
+      listener.close();
+      pending.listener = undefined;
+      return;
+    }
 
     listener.on('error', (error) => {
-      traceChildAttach('child-listener-runtime-error', {
+      this._trace('child-listener-runtime-error', {
         launcherSessionId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -161,8 +105,7 @@ export class ChildSessionManager {
       this.disposePendingChildSession(launcherSessionId, { destroySocket: true });
     });
 
-    pending.listener = listener;
-    traceChildAttach('child-listener-ready', { launcherSessionId, pid, ipcPort });
+    this._trace('child-listener-ready', { launcherSessionId, pid, ipcPort });
     outChannel.info(`Listening for child process ${pid} on 127.0.0.1:${ipcPort}`);
   }
 
@@ -183,7 +126,7 @@ export class ChildSessionManager {
     }
 
     pending.terminated = true;
-    traceChildAttach('child-exited-event', { launcherSessionId, pid: pid ?? pending.pid });
+    this._trace('child-exited-event', { launcherSessionId, pid: pid ?? pending.pid });
     if (!pending.vscodeSessionId) {
       this.disposePendingChildSession(launcherSessionId, { destroySocket: true });
     }
@@ -241,40 +184,44 @@ export class ChildSessionManager {
   ): Promise<vscode.DebugAdapterDescriptor> {
     const pending = this._childSessions.get(config.__dapperChildSessionId);
     if (!pending || !pending.socket) {
-      traceChildAttach('child-descriptor-missing-socket', {
+      this._trace('child-descriptor-missing-socket', {
         launcherSessionId: config.__dapperChildSessionId,
       });
       throw new Error(`Child debug session ${config.__dapperChildSessionId} has no pending IPC socket`);
     }
 
-    pending.vscodeSessionId = session.id;
-    traceChildAttach('child-descriptor-start', {
+    this._trace('child-descriptor-start', {
       launcherSessionId: config.__dapperChildSessionId,
       vscodeSessionId: session.id,
     });
 
-    const adapterServer = Net.createServer((vscodeSocket) => {
+    const adapterServer = this._createServer((vscodeSocket) => {
       adapterServer.close();
       pending.adapterServer = undefined;
       const sessionImpl = new DapperDebugSession(new PythonDebugAdapterTransport(pending.socket));
       sessionImpl.setRunAsServer(true);
       sessionImpl.start(vscodeSocket, vscodeSocket);
     });
+    pending.adapterServer = adapterServer;
 
-    const port = await new Promise<number>((resolve, reject) => {
-      const onError = (error: Error) => {
-        adapterServer.off('listening', onListening);
-        reject(error);
-      };
-      const onListening = () => {
-        adapterServer.off('error', onError);
-        resolve((adapterServer.address() as Net.AddressInfo).port);
-      };
+    let port: number;
+    try {
+      port = await this._listenOnLoopback(adapterServer, 0);
+    } catch (error) {
+      this._trace('child-descriptor-listen-failed', {
+        launcherSessionId: config.__dapperChildSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.disposePendingChildSession(config.__dapperChildSessionId, { destroySocket: true });
+      throw error;
+    }
 
-      adapterServer.once('error', onError);
-      adapterServer.once('listening', onListening);
-      adapterServer.listen(0, '127.0.0.1');
-    });
+    if (this._childSessions.get(config.__dapperChildSessionId) !== pending || pending.terminated) {
+      this.disposePendingChildSession(config.__dapperChildSessionId, { destroySocket: true });
+      throw new Error(`Child debug session ${config.__dapperChildSessionId} terminated before adapter startup completed`);
+    }
+
+    pending.vscodeSessionId = session.id;
 
     adapterServer.on('error', (error) => {
       this._getOutputChannel().error(
@@ -283,8 +230,7 @@ export class ChildSessionManager {
       this.disposePendingChildSession(config.__dapperChildSessionId, { destroySocket: true });
     });
 
-    pending.adapterServer = adapterServer;
-    traceChildAttach('child-descriptor-ready', {
+    this._trace('child-descriptor-ready', {
       launcherSessionId: config.__dapperChildSessionId,
       vscodeSessionId: session.id,
       port,
@@ -300,7 +246,7 @@ export class ChildSessionManager {
 
   private async _startChildDebugSession(pending: PendingChildSession): Promise<void> {
     if (pending.launchRequested || pending.terminated || !pending.socket) {
-      traceChildAttach('child-launch-skipped', {
+      this._trace('child-launch-skipped', {
         launcherSessionId: pending.launcherSessionId,
         launchRequested: pending.launchRequested,
         terminated: pending.terminated,
@@ -310,7 +256,7 @@ export class ChildSessionManager {
     }
 
     pending.launchRequested = true;
-    traceChildAttach('child-launch-start', {
+    this._trace('child-launch-start', {
       launcherSessionId: pending.launcherSessionId,
       pid: pending.pid,
       parentDebugSessionId: pending.parentDebugSessionId,
@@ -340,7 +286,7 @@ export class ChildSessionManager {
       : await vscode.debug.startDebugging(pending.workspaceFolder, config);
 
     if (!started) {
-      traceChildAttach('child-launch-declined', {
+      this._trace('child-launch-declined', {
         launcherSessionId: pending.launcherSessionId,
         pid: pending.pid,
       });
@@ -349,10 +295,99 @@ export class ChildSessionManager {
       );
       this.disposePendingChildSession(pending.launcherSessionId, { destroySocket: true });
     } else {
-      traceChildAttach('child-launch-requested', {
+      this._trace('child-launch-requested', {
         launcherSessionId: pending.launcherSessionId,
         pid: pending.pid,
       });
     }
+  }
+
+  private _parseChildProcessEvent(body: Record<string, unknown>): ChildProcessEventDetails | undefined {
+    const launcherSessionId = typeof body.sessionId === 'string' ? body.sessionId : undefined;
+    const pid = typeof body.pid === 'number' ? body.pid : undefined;
+    const ipcPort = typeof body.ipcPort === 'number' ? body.ipcPort : undefined;
+    if (!launcherSessionId || pid == null || ipcPort == null) {
+      return undefined;
+    }
+
+    return {
+      launcherSessionId,
+      pid,
+      ipcPort,
+      name: typeof body.name === 'string' && body.name.length > 0 ? body.name : 'child',
+      cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
+      command: Array.isArray(body.command)
+        ? body.command.filter((value): value is string => typeof value === 'string')
+        : undefined,
+    };
+  }
+
+  private _createChildListener(launcherSessionId: string): Net.Server {
+    const outChannel = this._getOutputChannel();
+    return this._createServer((socket) => {
+      const current = this._childSessions.get(launcherSessionId);
+      if (!current || current.terminated) {
+        this._trace('child-socket-rejected', { launcherSessionId, reason: 'terminated-or-missing' });
+        socket.destroy();
+        return;
+      }
+
+      if (current.socket) {
+        this._trace('child-socket-rejected', { launcherSessionId, reason: 'duplicate-connection' });
+        outChannel.warn(`Child session ${launcherSessionId} received an unexpected extra IPC connection`);
+        socket.destroy();
+        return;
+      }
+
+      current.socket = socket;
+      if (current.listener) {
+        current.listener.close();
+        current.listener = undefined;
+      }
+
+      outChannel.info(`Child process ${current.pid} connected on 127.0.0.1:${current.ipcPort}`);
+      this._trace('child-socket-connected', {
+        launcherSessionId,
+        pid: current.pid,
+        ipcPort: current.ipcPort,
+      });
+      void this._startChildDebugSession(current).catch((error) => {
+        this._trace('child-launch-failed', {
+          launcherSessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        outChannel.error(
+          `Failed to start child debug session for ${launcherSessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        this.disposePendingChildSession(launcherSessionId, { destroySocket: true });
+      });
+    });
+  }
+
+  private async _listenOnLoopback(server: Net.Server, port: number): Promise<number> {
+    return await new Promise<number>((resolve, reject) => {
+      const onError = (error: Error) => {
+        server.off('listening', onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        server.off('error', onError);
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          reject(new Error('Failed to resolve loopback listener port'));
+          return;
+        }
+        resolve(address.port);
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(port, '127.0.0.1');
+    });
+  }
+
+  private _trace(message: string, data?: unknown): void {
+    const suffix = data === undefined ? '' : ` ${JSON.stringify(data)}`;
+    this._getOutputChannel().debug(`[child-session] ${message}${suffix}`);
   }
 }
