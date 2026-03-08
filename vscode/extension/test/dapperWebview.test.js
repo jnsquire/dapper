@@ -62,7 +62,7 @@ describe('DapperWebview message handlers', () => {
     expect(updateMock).toHaveBeenCalled();
 
     // Should have posted status update confirming insert
-    expect(webview.postMessage).toHaveBeenCalledWith({ command: 'updateStatus', text: 'Configuration inserted into launch.json' });
+    expect(webview.postMessage).toHaveBeenCalledWith({ command: 'updateStatus', text: 'Saved as the default Dapper configuration and inserted into .vscode/launch.json.' });
   });
 
   it('should call startDebugging on startDebug message', async () => {
