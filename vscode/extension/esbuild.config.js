@@ -92,6 +92,8 @@ const buildWebview = async () => {
     banner: {},
     entryPoints: {
       'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
+      'webview/pages/index': './src/webview/pages/index.tsx',
+      'webview/pages/DebugConfigWebview': './src/webview/pages/DebugConfigWebview.tsx',
     },
     platform: 'browser',
     format: 'esm',

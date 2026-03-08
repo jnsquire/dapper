@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { VariableInspector } from '../ui/components/VariableInspector.js';
-import { vscode } from './vscodeApi.js';
+import { VariableInspector } from '../../ui/components/VariableInspector.js';
+import { vscode } from '../vscodeApi.js';
 
 // Get initial state from the HTML
 const initialState = (window as any).initialProps || { variables: [] };

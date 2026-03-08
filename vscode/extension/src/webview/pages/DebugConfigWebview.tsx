@@ -1,8 +1,8 @@
 // NOTE: Always use @vscode-elements/elements for UI components in webviews
 // instead of @vscode/webview-ui-toolkit
-import React, { useState, useEffect } from 'react';
-import { vscode } from './vscodeApi.js';
-import { DebugConfiguration } from './types/debug.js';
+import React, { useState } from 'react';
+import { vscode } from '../vscodeApi.js';
+import { DebugConfiguration } from '../types/debug.js';
 
 export const DebugConfigWebview: React.FC = () => {
   const [config, setConfig] = useState<DebugConfiguration>({
