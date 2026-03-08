@@ -15,7 +15,7 @@ const isWatch = process.argv.includes('--watch');
 const commonConfig = {
   entryPoints: {
     'extension': './src/extension.ts', // Extension entry point
-    'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
+    'webview/pages/ConfigView': './src/webview/pages/ConfigView.tsx',
   },
   bundle: true,
   minify: isProduction,
@@ -91,7 +91,7 @@ const buildWebview = async () => {
     // Clear the Node.js banner — browser ESM cannot resolve 'module' or 'path' built-ins
     banner: {},
     entryPoints: {
-      'webview/views/config/ConfigView': './src/webview/views/config/ConfigView.tsx',
+      'webview/pages/ConfigView': './src/webview/pages/ConfigView.tsx',
       'webview/pages/index': './src/webview/pages/index.tsx',
       'webview/pages/DebugConfigWebview': './src/webview/pages/DebugConfigWebview.tsx',
     },

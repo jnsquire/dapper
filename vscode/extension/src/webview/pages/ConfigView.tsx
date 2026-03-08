@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ConfigProvider, useConfig } from '../../contexts/ConfigContext.js';
-import { DebugConfiguration } from '../../types/debug.js';
+import { ConfigProvider, useConfig } from '../contexts/ConfigContext.js';
+import { DebugConfiguration } from '../types/debug.js';
 import {
   type KeyValueListItem,
   StepHeader,
@@ -9,7 +9,7 @@ import {
   WarningBanner,
   WizardFooter,
   WizardRail,
-} from '../../components/ConfigViewComponents.js';
+} from '../components/ConfigViewComponents.js';
 import {
   BasicsStep,
   DebugStep,
@@ -18,7 +18,7 @@ import {
 } from './ConfigViewSteps.js';
 // vscode-elements is loaded as a separate <script> tag in the webview HTML
 
-import { vscode } from '../../vscodeApi.js';
+import { vscode } from '../vscodeApi.js';
 
 interface ConfigViewProps {
   initialConfig?: Partial<DebugConfiguration>;
@@ -64,7 +64,7 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     const currentConfigArgs = config?.args || [];
     const currentLocalArgs = argsList.map(a => a.value);
     if (JSON.stringify(currentConfigArgs) !== JSON.stringify(currentLocalArgs)) {
-      setArgsList(currentConfigArgs.map(a => ({ id: generateId(), value: a })));
+      setArgsList(currentConfigArgs.map((a: string) => ({ id: generateId(), value: a })));
     }
   }, [config?.args]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -91,14 +91,14 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     // Ignore blank in-progress rows when comparing
     const committedLocalPaths = modulePathsList.map(p => p.value).filter(Boolean);
     if (JSON.stringify(currentPaths) !== JSON.stringify(committedLocalPaths)) {
-      setModulePathsList(currentPaths.map((value) => ({ id: generateId(), value })));
+      setModulePathsList(currentPaths.map((value: string) => ({ id: generateId(), value })));
     }
   }, [config?.moduleSearchPaths]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const { valid, errors } = validate();
     if (!valid && errors) {
-      const grouped = errors.reduce<Record<string, string[]>>((acc, e) => {
+      const grouped = errors.reduce<Record<string, string[]>>((acc: Record<string,string[]>, e: any) => {
         const s = String(e);
         const match = s.match(/^([^:]+):/);
         const key = match ? match[1].trim() : 'general';

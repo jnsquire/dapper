@@ -1,5 +1,5 @@
 import React from 'react';
-import { DebugConfiguration } from '../../types/debug.js';
+import { DebugConfiguration } from '../types/debug.js';
 import {
   CheckboxField,
   EditableKeyValueListField,
@@ -12,7 +12,7 @@ import {
   TextInputField,
   WarningBanner,
   type StringListItem,
-} from '../../components/ConfigViewComponents.js';
+} from '../components/ConfigViewComponents.js';
 
 interface SharedStepProps {
   config?: Partial<DebugConfiguration>;

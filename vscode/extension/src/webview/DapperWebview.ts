@@ -143,7 +143,7 @@ export class DapperWebview {
   private async createConfigView(): Promise<IViewComponent> {
     // In a real implementation, you would import the actual component
     const nonce = String(Date.now());
-    const configScriptUri = this.getWebviewUri('webview/views/config/ConfigView.js');
+    const configScriptUri = this.getWebviewUri('webview/pages/ConfigView.js');
     const stylesUri = this.getWebviewUri('styles/webview/styles.css');
     const elementsUri = this.getWebviewUri('vendor/bundled.js');
     return {

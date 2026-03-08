@@ -1,5 +1,4 @@
 import React from 'react';
-import { Field } from './FieldComponents.js';
 
 export interface StringListItem {
   id: string;
