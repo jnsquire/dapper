@@ -73,6 +73,11 @@ class FrameEvalState:
         self.cython_stats_func = None
         self.thread_local = threading.local()
         self._cython_imported = False
+        # these two mirrors attributes defined on the Cython/Python
+        # ``_FrameEvalModuleState``; keeping them here for type checking
+        # makes assignments below error-free.
+        self.hook_reason: str | None = None
+        self.hook_error: str | None = None
 
     def _import_cython(self) -> bool:
         """Check if Cython imports are available.
