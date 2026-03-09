@@ -231,5 +231,7 @@ install-dev = "dapper.utils.dev_tools:install_dev"
 # `uv run build-dev -- --install` or `uv run install-dev` directly.
 frame-eval-clean = "dapper.utils.dev_tools:clean_frame_eval"
 frame-eval-test = "dapper.utils.dev_tools:test_frame_eval"
+act-test = "dapper.utils.dev_tools:act_test"
+act-ci = "dapper.utils.dev_tools:act_ci"
 
 

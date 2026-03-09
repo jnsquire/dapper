@@ -21,6 +21,7 @@ from typing import Any
 
 # Local application imports
 from dapper._frame_eval.frame_eval_main import frame_eval_manager
+from dapper._frame_eval.types import get_frame_eval_capabilities
 
 # Initialize Cython functions with type hints
 _cython_state: Any | None = None
@@ -155,7 +156,31 @@ _state = FrameEvalState()
 
 
 def is_frame_eval_available() -> bool:
-    """Check if frame evaluation is available in the current Python environment."""
+    """Check if frame evaluation is available in the current Python environment.
+
+    ``FrameEvalState`` caches the availability flag at import time, which
+    normally mirrors the runtime capabilities extracted by
+    ``get_frame_eval_capabilities``.  in CI we hit a subtle problem where the
+    plugin runner (```uv run```) keeps Python processes alive across separate
+    steps; the experimental 3.11 smoke check imports the module with the
+    override enabled, setting ``_state.available`` to ``True``.  later the
+    full-suite step runs with the override cleared, but the cached value stays
+    ``True`` and ``enable_frame_eval`` subsequently reports success even though
+    capabilities no longer permit the hook.  the result was the mysterious
+    failing integration tests.
+
+    to avoid this class of bug we always recompute the capability surface on
+    each call, updating ``_state`` accordingly.  callers should therefore use
+    this helper rather than trusting ``_state.available`` directly.
+    """
+    # recompute from the public helper so that the value is always in sync
+    # with the current environment.  this mirrors what the Cython extension
+    # would do at import-time, but we do it lazily so callers don't have to
+    # worry about import-order or uv process reuse.
+    caps = get_frame_eval_capabilities()
+    _state.available = bool(caps.get("supports_eval_frame_hook", False))
+    reason = caps.get("reason")
+    _state.hook_reason = reason if isinstance(reason, str) and reason else None
     return _state.available
 
 
@@ -173,7 +198,9 @@ def enable_frame_eval() -> bool:
     if _state.enabled:
         return True
 
-    if not _state.available:
+    # make sure ``available`` is up-to-date in case the environment changed
+    # since the module was imported (see ``is_frame_eval_available`` docstring)
+    if not is_frame_eval_available():
         return False
 
     if (

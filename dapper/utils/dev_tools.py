@@ -238,6 +238,46 @@ def install_dev() -> None:
         raise SystemExit(result.returncode)
 
 
+def act(job: str | None = None, extra_args: list[str] | None = None) -> None:
+    """Run `act` locally against the repository.
+
+    ``job`` may be a specific job name (e.g. ``"Tests"``) to pass via
+    ``-j``; if omitted the entire workflow is executed.  ``extra_args``
+    allows callers to append arbitrary command-line flags (for example,
+    ``["-P", "ubuntu-latest=nektos/act-environments-ubuntu:18.04"]`` to
+    pin the runner image).
+
+    Entry points:
+    * ``uv run act-test`` -> ``act(job="Tests")``
+    * ``uv run act-ci`` -> ``act()``
+
+    Requires the external ``act`` binary to be installed and available on
+    ``$PATH``; see https://github.com/nektos/act for installation
+    instructions.
+    """
+    cmd = ["act"]
+    if job:
+        cmd += ["-j", job]
+    if extra_args:
+        cmd += extra_args
+    # subprocess.run will raise CalledProcessError if ``check=True`` and
+    # the command exits non-zero; propagate that as a SystemExit so the uv
+    # wrapper sees the failure.
+    result = subprocess.run(cmd, check=False)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+
+
+def act_test() -> None:
+    """Wrapper for ``uv run act-test``; runs the ``Tests`` job only."""
+    act(job="Tests")
+
+
+def act_ci() -> None:
+    """Wrapper for ``uv run act-ci``; runs the full workflow."""
+    act()
+
+
 if __name__ == "__main__":
     update_docs()
 

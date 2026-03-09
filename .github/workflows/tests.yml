@@ -41,8 +41,10 @@ jobs:
         if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
         env:
           DAPPER_EXPERIMENTAL_FRAME_EVAL_311: ${{ matrix.python-version == '3.11' && '1' || '0' }}
-        # run just the presence test so we fail fast if the C extension didn't build
-        run: uv run pytest tests/test_cython_extension_presence.py -q
+        # run just the presence test in a fresh interpreter so we don't pollute
+        # uv's worker pool; regression in #... was caused by the state carrying
+        # over into the later full-suite step.
+        run: python -m pytest tests/test_cython_extension_presence.py -q
 
       - name: Run experimental 3.11 compiled eval-frame checks
         if: matrix.python-version == '3.11'

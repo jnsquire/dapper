@@ -94,7 +94,9 @@ jobs:
           DAPPER_EXPERIMENTAL_FRAME_EVAL_311: ${{ matrix.python-version == '3.11' && '1' || '0' }}
         run: |
           # run just the presence test before doing heavy lint/typecheck steps
-          pytest tests/test_cython_extension_presence.py -q
+          # do not use uv here so that any state set by the extension import does
+          # not survive into the later "Run tests" step.
+          python -m pytest tests/test_cython_extension_presence.py -q
 
       - name: Run experimental 3.11 compiled eval-frame checks
         if: matrix.python-version == '3.11'

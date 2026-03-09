@@ -116,6 +116,50 @@ def test_update_docs_success(tmp_path: Path) -> None:
         mock_run_path.assert_called_once_with(str(script_path), run_name="__main__")
 
 
+def test_act_runs_specific_job(monkeypatch) -> None:
+    """`act_test` should invoke `act -j Tests` and respect the return code."""
+    called: list[list[str]] = []
+
+    def fake_run(cmd, check):
+        called.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(dev_tools, "subprocess", subprocess)
+    monkeypatch.setattr(dev_tools.subprocess, "run", fake_run)
+
+    dev_tools.act_test()
+    assert called == [["act", "-j", "Tests"]]
+
+
+def test_act_runs_full(monkeypatch) -> None:
+    """`act_ci` should run `act` with no job name."""
+    called: list[list[str]] = []
+
+    def fake_run(cmd, check):
+        called.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(dev_tools, "subprocess", subprocess)
+    monkeypatch.setattr(dev_tools.subprocess, "run", fake_run)
+
+    dev_tools.act_ci()
+    assert called == [["act"]]
+
+
+def test_act_failure_propagates(monkeypatch) -> None:
+    """If act exits nonzero the helper should raise SystemExit."""
+
+    def fake_run(cmd, check):
+        return subprocess.CompletedProcess(cmd, 3)
+
+    monkeypatch.setattr(dev_tools, "subprocess", subprocess)
+    monkeypatch.setattr(dev_tools.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        dev_tools.act_ci()
+    assert exc.value.code == 3
+
+
 def test_update_docs_missing_script() -> None:
     """Test that update_docs raises SystemExit when script is missing."""
     from dapper.utils.dev_tools import update_docs

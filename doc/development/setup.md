@@ -69,6 +69,21 @@ uv run ruff check .
 # Format (and verify no further edits are needed)
 uv run ruff format
 
+# Local CI emulation
+
+Several new helper commands are available to exercise our GitHub Actions
+workflows locally using [nektos/act](https://github.com/nektos/act):
+
+```sh
+uv run act-test   # run just the `Tests` job
+uv run act-ci      # run the entire CI workflow (all jobs)
+```
+
+These wrappers simply invoke the `act` binary; you’ll need to install that
+on your machine (Docker is required).  Running the smoke-check step followed
+by the full suite via `act` replicates the sequence that previously triggered
+leaked state bugs.
+
 # Type checking
 uv run pyright dapper tests
 ```

@@ -56,6 +56,8 @@ Extract helper functions for module source collection to eliminate
 4. **Run tests and quality checks before committing:**
    ```bash
    uv run pytest               # run all tests
+   uv run act-test             # simulate the GitHub Actions `Tests` job locally
+   uv run act-ci               # run the full CI workflow via act
    uv run ruff check .         # lint code
    uv run ruff format          # format code and ensure no changes remain
    ```
