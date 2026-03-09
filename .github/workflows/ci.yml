@@ -143,6 +143,8 @@ jobs:
           mkdocs build --clean --site-dir site
 
       - name: Run tests
+        env:
+          DAPPER_EXPERIMENTAL_FRAME_EVAL_311: '0'
         run: |
           pytest -q
 

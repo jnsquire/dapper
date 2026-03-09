@@ -2,6 +2,7 @@
 
 import inspect
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -91,7 +92,15 @@ def test_frame_eval_capabilities_report_current_support_surface() -> None:
 
 
 def test_frame_eval_capabilities_keep_3_11_line_access_visible() -> None:
-    with patch.object(sys, "version_info", (3, 11, 0)):
+    # simulate a 3.11 runtime while ensuring the experimental override flag is
+    # *not* active.  our CI matrix sets DAPPER_EXPERIMENTAL_FRAME_EVAL_311 for
+    # the dedicated 3.11 validation step, and the variable can leak into the
+    # subsequent full-suite run.  in that case the hook would be reported as
+    # available, which would otherwise make the assertion below brittle.
+    with (
+        patch.object(sys, "version_info", (3, 11, 0)),
+        patch.dict(os.environ, {"DAPPER_EXPERIMENTAL_FRAME_EVAL_311": ""}),
+    ):
         capabilities = get_frame_eval_capabilities()
 
     assert capabilities["supports_eval_frame_hook"] is False

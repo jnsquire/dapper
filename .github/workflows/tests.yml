@@ -59,7 +59,12 @@ jobs:
             -q
 
       - name: Run tests
+        # make absolutely sure the experimental override isn't visible when
+        # running the complete test suite; some earlier CI jobs leaked the
+        # variable and caused a spurious failure in
+        # test_frame_eval_capabilities_keep_3_11_line_access_visible.
         env:
+          DAPPER_EXPERIMENTAL_FRAME_EVAL_311: '0'
           DAPPER_PYTEST_FORCE_OS_EXIT: ${{ startsWith(matrix.os, 'windows') && '1' || '0' }}
           DAPPER_FORCE_THREAD_SHUTDOWN: ${{ startsWith(matrix.os, 'windows') && '1' || '0' }}
         run: uv run pytest -q
