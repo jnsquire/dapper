@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from importlib import import_module
 from types import CodeType
+import weakref
 
 from dapper._frame_eval._frame_evaluator_shared import BreakpointLines
 from dapper._frame_eval._frame_evaluator_shared import FrameStats
@@ -23,7 +24,7 @@ from dapper._frame_eval.cache_manager import get_cached_code
 from dapper._frame_eval.cache_manager import set_cached_code
 from dapper._frame_eval.telemetry import telemetry
 
-_code_extra_fallback: dict[CodeType, object] = {}
+_code_extra_fallback: weakref.WeakKeyDictionary[CodeType, object] = weakref.WeakKeyDictionary()
 
 
 def install_eval_frame_hook() -> bool:

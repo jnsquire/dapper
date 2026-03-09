@@ -78,6 +78,7 @@ nav:
       - Errors: architecture/error-handling.md
       - Frame Eval Build: architecture/frame-eval/build-guide.md
       - Frame Eval Backend: architecture/frame-eval/backend-architecture.md
+      - Frame Eval Notes: architecture/frame-eval/developer-notes.md
       - sys.monitoring: architecture/sys-monitoring.md
       - Analysis: architecture/current-analysis.md
   - Roadmap:

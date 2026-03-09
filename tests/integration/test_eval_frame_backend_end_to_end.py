@@ -7,6 +7,14 @@ import sys
 import tempfile
 import textwrap
 
+import pytest
+
+
+def _skip_if_unavailable(payload: dict[str, object]) -> None:
+    skipped = payload.get("skipped")
+    if isinstance(skipped, str):
+        pytest.skip(skipped)
+
 
 def test_eval_frame_backend_breakpoint_dispatches_stopped_event_end_to_end() -> None:
     repo_root = Path(__file__).resolve().parents[2]
@@ -64,6 +72,19 @@ def test_eval_frame_backend_breakpoint_dispatches_stopped_event_end_to_end() -> 
                 {"enabled": True, "backend": "EVAL_FRAME"}
             )
             backend = frame_eval_manager.active_backend
+            runtime_status = frame_eval_manager.get_debug_info()["runtime_status"]
+
+            if runtime_status.backend_type != "EvalFrameBackend":
+                print(
+                    json.dumps(
+                        {
+                            "backend_type": runtime_status.backend_type,
+                            "skipped": f"eval-frame backend unavailable in this runtime (selected {runtime_status.backend_type})",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                raise SystemExit(0)
 
             debugger = DebuggerBDB(send_message=send_message)
             debugger.reset()
@@ -125,8 +146,7 @@ def test_eval_frame_backend_breakpoint_dispatches_stopped_event_end_to_end() -> 
     assert stdout_lines, result.stderr
 
     payload = json.loads(stdout_lines[-1])
-    if payload.get("skipped") == "cython unavailable":
-        return
+    _skip_if_unavailable(payload)
 
     assert payload["setup_ok"] is True
     assert payload["integrated"] is True
@@ -203,6 +223,19 @@ def test_eval_frame_backend_non_breakpointed_function_stays_on_fast_path() -> No
                 {"enabled": True, "backend": "EVAL_FRAME"}
             )
             backend = frame_eval_manager.active_backend
+            runtime_status = frame_eval_manager.get_debug_info()["runtime_status"]
+
+            if runtime_status.backend_type != "EvalFrameBackend":
+                print(
+                    json.dumps(
+                        {
+                            "backend_type": runtime_status.backend_type,
+                            "skipped": f"eval-frame backend unavailable in this runtime (selected {runtime_status.backend_type})",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                raise SystemExit(0)
 
             debugger = DebuggerBDB(send_message=send_message)
             debugger.reset()
@@ -260,8 +293,7 @@ def test_eval_frame_backend_non_breakpointed_function_stays_on_fast_path() -> No
     assert stdout_lines, result.stderr
 
     payload = json.loads(stdout_lines[-1])
-    if payload.get("skipped") == "cython unavailable":
-        return
+    _skip_if_unavailable(payload)
 
     assert payload["setup_ok"] is True
     assert payload["integrated"] is True

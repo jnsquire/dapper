@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Any
 
+from dapper._frame_eval._frame_evaluator import _get_code_extra_metadata
 from dapper._frame_eval._frame_evaluator import _get_modified_code_for_evaluation
 from dapper._frame_eval._frame_evaluator import _store_modified_code_for_evaluation
 from dapper._frame_eval._frame_evaluator import get_func_code_info as get_eval_func_code_info
@@ -260,6 +261,7 @@ def test_breakpoint_invalidation_clears_modified_code_cache() -> None:
     )
     assert get_cached_code(original_code) is modified_code
     assert _get_modified_code_for_evaluation(original_code) is modified_code
+    assert _get_code_extra_metadata(original_code) is not None
 
     info = get_eval_func_code_info(None, original_code)
     assert info.new_code is modified_code
@@ -268,3 +270,25 @@ def test_breakpoint_invalidation_clears_modified_code_cache() -> None:
 
     assert get_cached_code(original_code) is None
     assert _get_modified_code_for_evaluation(original_code) is None
+    assert _get_code_extra_metadata(original_code) is None
+
+
+def test_clear_all_caches_clears_code_extra_metadata() -> None:
+    """Global cache clearing should also clear code-extra metadata."""
+    clear_all_caches()
+    original_code = sample_function.__code__
+    modified_code = another_function.__code__
+
+    _store_modified_code_for_evaluation(
+        original_code, modified_code, {original_code.co_firstlineno}
+    )
+
+    assert get_cached_code(original_code) is modified_code
+    assert _get_modified_code_for_evaluation(original_code) is modified_code
+    assert _get_code_extra_metadata(original_code) is not None
+
+    clear_all_caches()
+
+    assert get_cached_code(original_code) is None
+    assert _get_modified_code_for_evaluation(original_code) is None
+    assert _get_code_extra_metadata(original_code) is None
