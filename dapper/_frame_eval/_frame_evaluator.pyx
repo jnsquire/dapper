@@ -20,7 +20,24 @@ from dapper._frame_eval.telemetry import telemetry
 # keep in sync with modify_bytecode.py
 _BYTECODE_META_VERSION = 1
 
-# exposing interpreter state structures needed for eval-frame hooking
+
+# Keep these declarations inline for now because the VS Code Cython extension
+# diagnostics do not currently resolve local shared declaration files in this
+# repo, even though the actual Cython build does. The compatibility-shim plan
+# still lives in doc/architecture/frame-eval/compatibility-shim-plan.md.
+cdef extern from "Python.h":
+    ctypedef Py_ssize_t Py_ssize_t
+    ctypedef struct PyInterpreterState:
+        pass
+    ctypedef struct PyThreadState:
+        pass
+    ctypedef struct PyCodeObject:
+        pass
+    ctypedef struct PyFrameObject:
+        pass
+    ctypedef void (*freefunc)(void *)
+
+
 cdef extern from "internal/pycore_frame.h":
     ctypedef struct _PyInterpreterFrame:
         PyCodeObject *f_code
@@ -33,25 +50,43 @@ cdef extern from "internal/pycore_frame.h":
 
 
 cdef extern from "Python.h":
-    ctypedef struct PyInterpreterState:
-        pass
-    ctypedef struct PyThreadState:
-        pass
-    ctypedef struct PyCodeObject:
-        pass
-    ctypedef struct PyFrameObject:
-        pass
     ctypedef PyObject *(*_PyFrameEvalFunction)(PyThreadState *, _PyInterpreterFrame *, int) noexcept
-    PyInterpreterState *PyInterpreterState_Get()
-    _PyFrameEvalFunction _PyInterpreterState_GetEvalFrameFunc(PyInterpreterState *interp)
-    void _PyInterpreterState_SetEvalFrameFunc(
+    PyObject *_PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int exc)
+
+
+cdef extern from *:
+    """
+    #define _dapper_GetInterpreterState() PyInterpreterState_Get()
+    #define _dapper_GetEvalFrameFunc(interp) _PyInterpreterState_GetEvalFrameFunc(interp)
+    #define _dapper_SetEvalFrameFunc(interp, func) _PyInterpreterState_SetEvalFrameFunc(interp, func)
+    #define _dapper_InterpreterFrame_GetCode(frame) PyUnstable_InterpreterFrame_GetCode(frame)
+    #define _dapper_InterpreterFrame_GetLine(frame) PyUnstable_InterpreterFrame_GetLine(frame)
+    #define _dapper_InterpreterFrame_GetFrameObject(frame) ((frame)->frame_obj)
+
+    #if PY_VERSION_HEX >= 0x030c0000
+    #  define _dapper_RequestCodeExtraIndex PyUnstable_Eval_RequestCodeExtraIndex
+    #  define _dapper_Code_GetExtra         PyUnstable_Code_GetExtra
+    #  define _dapper_Code_SetExtra         PyUnstable_Code_SetExtra
+    #else
+    #  define _dapper_RequestCodeExtraIndex _PyEval_RequestCodeExtraIndex
+    #  define _dapper_Code_GetExtra         _PyCode_GetExtra
+    #  define _dapper_Code_SetExtra         _PyCode_SetExtra
+    #endif
+    """
+    PyInterpreterState *_dapper_GetInterpreterState_C "_dapper_GetInterpreterState"()
+    _PyFrameEvalFunction _dapper_GetEvalFrameFunc_C "_dapper_GetEvalFrameFunc"(PyInterpreterState *interp)
+    void _dapper_SetEvalFrameFunc_C "_dapper_SetEvalFrameFunc"(
         PyInterpreterState *interp,
         _PyFrameEvalFunction eval_frame,
     )
-    PyObject *_PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int exc)
-    object PyUnstable_InterpreterFrame_GetCode(_PyInterpreterFrame *frame)
-    int PyUnstable_InterpreterFrame_GetLine(_PyInterpreterFrame *frame)
-
+    object _dapper_InterpreterFrame_GetCode_C "_dapper_InterpreterFrame_GetCode"(_PyInterpreterFrame *frame)
+    int _dapper_InterpreterFrame_GetLine_C "_dapper_InterpreterFrame_GetLine"(_PyInterpreterFrame *frame)
+    PyFrameObject *_dapper_InterpreterFrame_GetFrameObject_C "_dapper_InterpreterFrame_GetFrameObject"(
+        _PyInterpreterFrame *frame,
+    )
+    Py_ssize_t _dapper_RequestCodeExtraIndex_C "_dapper_RequestCodeExtraIndex"(freefunc)
+    int _dapper_Code_SetExtra_C "_dapper_Code_SetExtra"(object code, Py_ssize_t index, void *extra)
+    int _dapper_Code_GetExtra_C "_dapper_Code_GetExtra"(object code, Py_ssize_t index, void **extra)
 
 cdef bint _should_trace_code_for_eval_frame_impl(
     ThreadInfo thread_info,
@@ -134,12 +169,12 @@ cdef bint _should_trace_code_for_eval_frame_impl(
 
 cdef class ThreadInfo:
     def __cinit__(self):
-        self.inside_frame_eval = <Py_ssize_t>0
+        self.inside_frame_eval = <long>0
         self.fully_initialized = <bint>True
         self.is_debugger_internal_thread = <bint>False
         self.thread_trace_func = None
         self.additional_info = None
-        self.recursion_depth = <Py_ssize_t>0
+        self.recursion_depth = <long>0
         self.skip_all_frames = <bint>False
         self.step_mode = <bint>False
 
@@ -434,9 +469,9 @@ def install_eval_frame_hook() -> bool:
         global _old_eval_frame, _eval_frame_hook_installed
         if _eval_frame_hook_installed:
             return _state.install_hook()
-        interp = PyInterpreterState_Get()
-        _old_eval_frame = _PyInterpreterState_GetEvalFrameFunc(interp)
-        _PyInterpreterState_SetEvalFrameFunc(interp, get_bytecode_while_frame_eval)
+        interp = _dapper_GetInterpreterState_C()
+        _old_eval_frame = _dapper_GetEvalFrameFunc_C(interp)
+        _dapper_SetEvalFrameFunc_C(interp, get_bytecode_while_frame_eval)
         _eval_frame_hook_installed = <bint>True
     except Exception:
         # fall back to no-op controller
@@ -455,8 +490,8 @@ def uninstall_eval_frame_hook() -> bool:
     try:
         global _old_eval_frame, _eval_frame_hook_installed
         if _eval_frame_hook_installed:
-            interp = PyInterpreterState_Get()
-            _PyInterpreterState_SetEvalFrameFunc(interp, _old_eval_frame)
+            interp = _dapper_GetInterpreterState_C()
+            _dapper_SetEvalFrameFunc_C(interp, _old_eval_frame)
             _old_eval_frame = NULL
             _eval_frame_hook_installed = <bint>False
     except Exception:
@@ -480,8 +515,8 @@ cpdef unsigned long _get_current_eval_frame_address():
     cdef PyInterpreterState *interp
     cdef void *addr
     try:
-        interp = PyInterpreterState_Get()
-        addr = <void *>_PyInterpreterState_GetEvalFrameFunc(interp)
+        interp = _dapper_GetInterpreterState_C()
+        addr = <void *>_dapper_GetEvalFrameFunc_C(interp)
         return <unsigned long>addr
     except Exception:
         return <unsigned long>0
@@ -568,6 +603,7 @@ cdef PyObject *get_bytecode_while_frame_eval(
     cdef PyObject *exc_type = NULL
     cdef PyObject *exc_value = NULL
     cdef PyObject *exc_tb = NULL
+    cdef PyFrameObject *frame_obj_ptr = NULL
     cdef int lineno
     cdef bint trace_installed = <bint>False
     cdef bint restore_exception = <bint>False
@@ -582,11 +618,12 @@ cdef PyObject *get_bytecode_while_frame_eval(
 
     thread_info.enter_frame_eval()
     try:
-        code_obj = PyUnstable_InterpreterFrame_GetCode(frame)
-        lineno = PyUnstable_InterpreterFrame_GetLine(frame)
+        code_obj = _dapper_InterpreterFrame_GetCode_C(frame)
+        lineno = _dapper_InterpreterFrame_GetLine_C(frame)
 
-        if frame.frame_obj:
-            frame_obj = <object>frame.frame_obj
+        frame_obj_ptr = _dapper_InterpreterFrame_GetFrameObject_C(frame)
+        if frame_obj_ptr:
+            frame_obj = <object>frame_obj_ptr
 
         if not _should_trace_code_for_eval_frame_impl(
             thread_info,
@@ -611,8 +648,10 @@ cdef PyObject *get_bytecode_while_frame_eval(
             PyErr_NormalizeException(&exc_type, &exc_value, &exc_tb)
             restore_exception = <bint>True
 
-            if trace_installed and frame.frame_obj:
-                frame_obj = <object>frame.frame_obj
+            if trace_installed:
+                frame_obj_ptr = _dapper_InterpreterFrame_GetFrameObject_C(frame)
+                if frame_obj_ptr:
+                    frame_obj = <object>frame_obj_ptr
             if frame_obj is not None and getattr(frame_obj, "f_trace", None) is not None:
                 exception_arg = (
                     <object>exc_type if exc_type else None,
@@ -623,8 +662,9 @@ cdef PyObject *get_bytecode_while_frame_eval(
             return result_obj
 
         if trace_installed:
-            if frame.frame_obj:
-                frame_obj = <object>frame.frame_obj
+            frame_obj_ptr = _dapper_InterpreterFrame_GetFrameObject_C(frame)
+            if frame_obj_ptr:
+                frame_obj = <object>frame_obj_ptr
         if frame_obj is not None and result_obj:
             result_value = <object>result_obj
             if getattr(frame_obj, "f_trace", None) is not None:
@@ -643,27 +683,9 @@ cdef PyObject *get_bytecode_while_frame_eval(
 
 # _PyEval_RequestCodeExtraIndex, _PyCode_SetExtra, and _PyCode_GetExtra were all
 # deprecated in Python 3.12 in favour of PyUnstable_Eval_RequestCodeExtraIndex,
-# PyUnstable_Code_SetExtra, and PyUnstable_Code_GetExtra respectively.  Use the
-# new names on 3.12+ so the build is warning-free; fall back to the old names on
-# earlier versions.
-cdef extern from "Python.h":
-    ctypedef void (*freefunc)(void *)
-
-cdef extern from *:
-    """
-    #if PY_VERSION_HEX >= 0x030c0000
-    #  define _dapper_RequestCodeExtraIndex PyUnstable_Eval_RequestCodeExtraIndex
-    #  define _dapper_Code_GetExtra         PyUnstable_Code_GetExtra
-    #  define _dapper_Code_SetExtra         PyUnstable_Code_SetExtra
-    #else
-    #  define _dapper_RequestCodeExtraIndex _PyEval_RequestCodeExtraIndex
-    #  define _dapper_Code_GetExtra         _PyCode_GetExtra
-    #  define _dapper_Code_SetExtra         _PyCode_SetExtra
-    #endif
-    """
-    Py_ssize_t _dapper_RequestCodeExtraIndex_C "_dapper_RequestCodeExtraIndex"(freefunc)
-    int _PyCode_SetExtra_C "_dapper_Code_SetExtra"(object code, Py_ssize_t index, void *extra)
-    int _PyCode_GetExtra_C "_dapper_Code_GetExtra"(object code, Py_ssize_t index, void **extra)
+# PyUnstable_Code_SetExtra, and PyUnstable_Code_GetExtra respectively. Keep the
+# version-dependent symbol mapping in cpython_compat.pxd so the rest of this
+# module can stay focused on eval-frame behavior.
 
 # Cleanup function for code extra data
 cdef void _cleanup_code_extra(void *obj) noexcept:
@@ -689,9 +711,9 @@ def _PyCode_SetExtra(object code, Py_ssize_t index, object extra):
         # object takes ownership of a new reference. This prevents the value
         # from being collected unexpectedly and avoids use-after-free.
         Py_INCREF(extra)
-        return _PyCode_SetExtra_C(code, index, <void*>extra)
+        return _dapper_Code_SetExtra_C(code, index, <void*>extra)
     else:
-        return _PyCode_SetExtra_C(code, index, <void*>NULL)
+        return _dapper_Code_SetExtra_C(code, index, <void*>NULL)
 
 def _PyCode_GetExtra(object code, Py_ssize_t index):
     """Get extra data from code object."""
@@ -702,7 +724,7 @@ def _PyCode_GetExtra(object code, Py_ssize_t index):
     cdef void *extra = NULL
     cdef int res
     
-    res = _PyCode_GetExtra_C(code, index, &extra)
+    res = _dapper_Code_GetExtra_C(code, index, &extra)
     
     if res < 0 or not extra:
         return None
@@ -729,7 +751,7 @@ cdef bint _ensure_code_extra_index() except -1:
     except Exception:
         _code_extra_index = -1
 
-    return <bint>(_code_extra_index >= 0)
+    return <bint>(int(cast(TypingAny, _code_extra_index)) >= 0)
 
 
 def _get_code_extra_metadata(object code):

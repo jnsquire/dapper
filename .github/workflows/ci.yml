@@ -87,6 +87,7 @@ jobs:
           pip install pyright "ruff==0.12.12" pytest pytest-asyncio pytest-cov pytest-xdist mkdocs mkdocs-material mkdocs-mermaid2-plugin
 
       - name: Smoke-check compiled extension
+        if: matrix.python-version == '3.12'
         run: |
           # run just the presence test before doing heavy lint/typecheck steps
           pytest tests/test_cython_extension_presence.py -q

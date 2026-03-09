@@ -4,7 +4,6 @@ Cython definition file for frame evaluator.
 This file declares the public API that can be imported from other Cython modules.
 """
 
-# Standard Cython types
 cdef extern from *:
     ctypedef struct PyFrameObject:
         pass
@@ -13,12 +12,12 @@ cdef extern from *:
 
 # Class declarations
 cdef class ThreadInfo:
-    cdef public Py_ssize_t inside_frame_eval
+    cdef public long inside_frame_eval
     cdef public bint fully_initialized
     cdef public bint is_debugger_internal_thread
     cdef public object thread_trace_func
     cdef public object additional_info
-    cdef public Py_ssize_t recursion_depth
+    cdef public long recursion_depth
     cdef public bint skip_all_frames
     cdef public bint step_mode
 

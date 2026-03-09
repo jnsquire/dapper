@@ -8,8 +8,12 @@ import weakref
 
 
 def _load_python_fallback_module():
-    module_path = Path(__file__).resolve().parents[2] / "dapper" / "_frame_eval" / "_frame_evaluator.py"
-    spec = importlib.util.spec_from_file_location("dapper_frame_evaluator_python_fallback_test", module_path)
+    module_path = (
+        Path(__file__).resolve().parents[2] / "dapper" / "_frame_eval" / "_frame_evaluator.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "dapper_frame_evaluator_python_fallback_test", module_path
+    )
     assert spec is not None
     assert spec.loader is not None
 

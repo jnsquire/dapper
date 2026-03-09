@@ -19,6 +19,11 @@ except ImportError:
     cython_build_ext = None
 
 
+def _supports_frame_eval_extension() -> bool:
+    """Return whether this interpreter can currently build the frame-eval extension."""
+    return sys.version_info[:2] == (3, 12)
+
+
 class BuildExt(build_ext):
     """Custom build_ext to handle optional Cython compilation."""
 
@@ -37,8 +42,8 @@ class BuildExt(build_ext):
 
 
 def get_frame_eval_extensions():
-    """Get Cython extensions for frame evaluation if available."""
-    if not CYTHON_AVAILABLE:
+    """Get Cython extensions for frame evaluation if supported."""
+    if not CYTHON_AVAILABLE or not _supports_frame_eval_extension():
         return []
 
     # Get the base directory
@@ -93,10 +98,9 @@ def get_extensions():
 
 
 # Determine if we should include frame evaluation extensions.
-# Include them whenever Cython is available in the build environment. This
-# ensures `uv build` (which installs build-time requirements) will compile
-# the Cython components.
-include_frame_eval = CYTHON_AVAILABLE
+# The current implementation depends on CPython internals that are only wired
+# up for Python 3.12 in this package build.
+include_frame_eval = CYTHON_AVAILABLE and _supports_frame_eval_extension()
 
 
 # Custom Distribution class to force platform-specific wheels
