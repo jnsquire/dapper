@@ -46,7 +46,7 @@ export async function createWorkspaceVenvOrAbort(
 
   const venvPath = path.join(targetWorkspaceFolder.uri.fsPath, '.venv');
   const pythonPath = deps.getVenvPythonPath(venvPath);
-  const baseInterpreter = deps.resolveWorkspacePython(
+  const baseInterpreter = preferredPythonPath ?? deps.resolveWorkspacePython(
     baseInterpreterSetting,
     preferredPythonPath,
     preferredVenvPath,

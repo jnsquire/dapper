@@ -106,6 +106,7 @@ class SettraceBackend(TracingBackend):
                     "cache_enabled": False,
                     "performance_monitoring": False,
                     "fallback_on_error": False,
+                    "eager_instrumentation": False,
                 },
                 integration_stats={},
                 performance_data={},

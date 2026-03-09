@@ -328,6 +328,7 @@ class FrameTraceAnalyzer:
                         path="breakpointed",
                     )
                 elif condition is not None:
+                    assert frame is not None
                     result = get_condition_evaluator().evaluate(condition, frame)
                     if not result["passed"] and not result["fallback"]:
                         decision = self._create_trace_decision(

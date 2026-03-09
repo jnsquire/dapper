@@ -39,7 +39,7 @@ class _FrameEvalModuleState:
 
     def __init__(self) -> None:
         self.active: bool = False
-        self.hook_available: bool = True
+        self.hook_available: bool = False
         self.hook_installed: bool = False
         self.hook_error: str | None = None
         self.thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(

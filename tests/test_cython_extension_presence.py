@@ -10,11 +10,17 @@ on availability — but in CI we want an explicit failure to remind us to
 build the extension.
 """
 
+import pytest
+
 from tests._cython import assert_loaded_compiled_frame_evaluator
+from tests._cython import compiled_frame_evaluator_expected
 
 
 def test_frame_eval_extension_importable():
     """Assert that the loaded frame-eval module is the compiled extension."""
+    if not compiled_frame_evaluator_expected():
+        pytest.skip("Compiled frame-eval extension is only built in CI on Python 3.12")
+
     module = assert_loaded_compiled_frame_evaluator()
     origin = getattr(module, "__file__", None)
 

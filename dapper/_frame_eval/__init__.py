@@ -15,6 +15,7 @@ provides significant performance improvements for debugging scenarios.
 from __future__ import annotations
 
 # Standard library imports
+import importlib.machinery
 import threading
 from typing import Any
 
@@ -23,6 +24,18 @@ from dapper._frame_eval.frame_eval_main import frame_eval_manager
 
 # Initialize Cython functions with type hints
 _cython_state: Any | None = None
+_EXTENSION_SUFFIXES = tuple(importlib.machinery.EXTENSION_SUFFIXES)
+
+
+def _is_compiled_frame_evaluator(module: Any) -> bool:
+    spec = getattr(module, "__spec__", None)
+    loader = getattr(spec, "loader", None)
+    origin = getattr(module, "__file__", None) or getattr(spec, "origin", None)
+
+    if isinstance(loader, importlib.machinery.ExtensionFileLoader):
+        return True
+    return bool(origin and origin.endswith(_EXTENSION_SUFFIXES))
+
 
 # Try to import the _state singleton from the extension module.
 # The pure-Python fallback always provides _state, so this import
@@ -35,7 +48,7 @@ try:
     _uninstall_eval_frame_hook = _cython_module.uninstall_eval_frame_hook
     _get_eval_frame_hook_status = _cython_module.get_eval_frame_hook_status
 
-    CYTHON_AVAILABLE = True
+    CYTHON_AVAILABLE = _is_compiled_frame_evaluator(_cython_module)
 except ImportError:
     _cython_module = None
     _install_eval_frame_hook = None

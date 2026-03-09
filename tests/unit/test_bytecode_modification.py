@@ -27,6 +27,7 @@ from dapper._frame_eval.modify_bytecode import optimize_bytecode
 from dapper._frame_eval.modify_bytecode import remove_breakpoint_bytecode
 from dapper._frame_eval.modify_bytecode import set_optimization_enabled
 from dapper._frame_eval.modify_bytecode import validate_bytecode
+from tests._cython import compiled_frame_evaluator_expected
 
 
 # Sample functions for testing
@@ -397,6 +398,9 @@ def test_rollback_on_rebuild_failure(
 
 def test_metadata_version_mismatch(original_code: types.CodeType) -> None:
     """Stale code-extra metadata should be ignored and emit mismatch telemetry."""
+    if not compiled_frame_evaluator_expected():
+        pytest.skip("Compiled frame-eval metadata behavior is only expected on Python 3.12")
+
     from dapper._frame_eval import _frame_evaluator
     from dapper._frame_eval.telemetry import get_frame_eval_telemetry
     from dapper._frame_eval.telemetry import reset_frame_eval_telemetry

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.machinery
+import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -34,6 +35,10 @@ def get_loaded_compiled_frame_evaluator() -> ModuleType | None:
 
 def has_loaded_compiled_frame_evaluator() -> bool:
     return get_loaded_compiled_frame_evaluator() is not None
+
+
+def compiled_frame_evaluator_expected() -> bool:
+    return sys.version_info[:2] == (3, 12)
 
 
 def assert_loaded_compiled_frame_evaluator() -> ModuleType:

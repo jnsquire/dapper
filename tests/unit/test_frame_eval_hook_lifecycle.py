@@ -10,6 +10,8 @@ import threading
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+
 from dapper._frame_eval import get_eval_frame_hook_status
 from dapper._frame_eval import install_eval_frame_hook
 from dapper._frame_eval import types as frame_types
@@ -31,7 +33,13 @@ from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
 from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
 from dapper.core.debugger_bdb import DebuggerBDB
+from tests._cython import compiled_frame_evaluator_expected
 from tests.mocks import make_real_frame
+
+pytestmark = pytest.mark.skipif(
+    not compiled_frame_evaluator_expected(),
+    reason="Compiled frame-eval extension is only expected on Python 3.12",
+)
 
 
 def _diff_stats(before: dict[str, object], after: dict[str, object]) -> dict[str, int]:

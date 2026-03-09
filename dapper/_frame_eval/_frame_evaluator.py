@@ -187,9 +187,21 @@ def _get_modified_code_for_evaluation(code_obj: CodeType) -> CodeType | None:
 
 
 def get_func_code_info(frame_obj, code_obj: CodeType | object) -> FuncCodeInfo:
-    info = _shared_get_func_code_info(frame_obj, code_obj)
-    if isinstance(code_obj, CodeType):
-        info.new_code = _get_modified_code_for_evaluation(code_obj)
+    resolved_code_obj = code_obj
+    if not isinstance(resolved_code_obj, CodeType):
+        frame_code = getattr(frame_obj, "f_code", None)
+        if isinstance(frame_code, CodeType):
+            resolved_code_obj = frame_code
+        else:
+            info = FuncCodeInfo()
+            filename = getattr(code_obj, "co_filename", None)
+            if isinstance(filename, str):
+                info.co_filename = filename.encode("utf-8", errors="ignore")
+                info.real_path = filename
+            return info
+
+    info = _shared_get_func_code_info(frame_obj, resolved_code_obj)
+    info.new_code = _get_modified_code_for_evaluation(resolved_code_obj)
     return info
 
 
