@@ -30,7 +30,12 @@ if (useFreshInstall || !fs.existsSync(nodeModulesPath)) {
 
 // Build the extension so out/ contains compiled artifacts
 console.log('Building extension for packaging...');
-const buildRes = spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: true });
+// Forward any CLI args passed to this script through to `npm run build`.
+// This lets callers pass flags like `--download-missing` to the underlying
+// build steps (e.g. `prepare-python` -> `copy-wheel.cjs`).
+const extraBuildArgs = process.argv.slice(2);
+const buildCmdArgs = extraBuildArgs.length ? ['run', 'build', '--', ...extraBuildArgs] : ['run', 'build'];
+const buildRes = spawnSync('npm', buildCmdArgs, { cwd: root, stdio: 'inherit', shell: true });
 if (buildRes.error || buildRes.status !== 0) {
   console.error('Build failed before packaging');
   process.exit(buildRes.status || 1);

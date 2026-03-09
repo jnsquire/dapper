@@ -25,7 +25,23 @@ export async function createVenv(
   venvPath: string,
   deps: EnvironmentInstallDeps,
 ): Promise<void> {
-  await deps.runProcess(baseInterpreter, ['-m', 'venv', venvPath], { label: 'create venv' });
+  try {
+    await deps.runProcess(baseInterpreter, ['-m', 'venv', venvPath], { label: 'create venv' });
+  } catch (err) {
+    // On Windows the user may not have `python` on PATH but have the `py`
+    // launcher available. If creation with the resolved interpreter fails,
+    // attempt to create the venv with `py -3` as a fallback before bailing.
+    if (process.platform === 'win32') {
+      deps.output.info('create venv failed with resolved interpreter; trying Windows `py -3` fallback');
+      try {
+        await deps.runProcess('py', ['-3', '-m', 'venv', venvPath], { label: 'create venv (py -3)' });
+        return;
+      } catch (err2) {
+        deps.output.warn('Fallback `py -3` venv creation also failed');
+      }
+    }
+    throw err;
+  }
 }
 
 export async function ensurePip(pythonPath: string, deps: EnvironmentInstallDeps): Promise<void> {

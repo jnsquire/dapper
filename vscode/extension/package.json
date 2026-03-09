@@ -1003,7 +1003,7 @@
     "vscode:prepublish": "node ./scripts/prepublish.cjs",
     "prepare-python": "node scripts/copy-wheel.cjs",
     "prepare-python:download": "node scripts/copy-wheel.cjs --download-missing",
-    "build": "npm run prepare-python && npm run compile && npm run bundle:extension",
+    "build": "node ./scripts/build.cjs",
     "bundle:extension": "node esbuild.config.js --production",
     "package": "node ./scripts/package.cjs",
     "package:fresh": "node ./scripts/package.cjs --fresh",
