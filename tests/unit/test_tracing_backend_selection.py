@@ -8,6 +8,7 @@ requiring SysMonitoringBackend (Phase 2) to exist yet.
 from __future__ import annotations
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -195,21 +196,51 @@ class TestSupportsSysMonitoring:
 
         # when module exists but reports available=False
         class Dummy:
-            pass
+            @staticmethod
+            def get_frame_eval_capabilities():
+                return {"supports_eval_frame_hook": False, "reason": "unsupported"}
 
         dummy_mod = Dummy()
-
-        def fake_status():
-            return {"available": False}
-
-        dummy_mod.get_eval_frame_hook_status = fake_status
         with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": dummy_mod}):
             assert policy.supports_eval_frame() is False
 
         # available=True case
-        dummy_mod.get_eval_frame_hook_status = lambda: {"available": True}
+        class AvailableDummy:
+            @staticmethod
+            def get_frame_eval_capabilities():
+                return {"supports_eval_frame_hook": True}
+
         with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": dummy_mod}):
+            assert policy.supports_eval_frame() is False
+        with patch.dict(
+            "sys.modules",
+            {"dapper._frame_eval._frame_evaluator": AvailableDummy()},
+        ):
             assert policy.supports_eval_frame() is True
+
+    def test_eval_frame_unavailable_reason_comes_from_capabilities(self):
+        policy = FrameEvalCompatibilityPolicy()
+
+        class Dummy:
+            @staticmethod
+            def get_frame_eval_capabilities():
+                return {
+                    "supports_eval_frame_hook": False,
+                    "reason": "3.11 needs dedicated frame/line compatibility",
+                }
+
+        with patch.dict("sys.modules", {"dapper._frame_eval._frame_evaluator": Dummy()}):
+            result, reason = policy.can_use_eval_frame(
+                version_info=SimpleNamespace(major=3, minor=11, micro=0),
+                platform_system="Linux",
+                architecture="64bit",
+                implementation="CPython",
+                modules={},
+                environ={},
+            )
+
+        assert result is False
+        assert reason == "3.11 needs dedicated frame/line compatibility"
 
     def test_returns_true_on_3_12_with_monitoring_attr(self):
         policy = FrameEvalCompatibilityPolicy()

@@ -8,16 +8,29 @@ Typing-only declarations live in ``types.pyi``.
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import Union
 
-from dapper._frame_eval._frame_evaluator import FuncCodeInfo
-from dapper._frame_eval._frame_evaluator import ThreadInfo
-from dapper._frame_eval._frame_evaluator import _FrameEvalModuleState
-from dapper._frame_eval._frame_evaluator import _state
-from dapper._frame_eval._frame_evaluator import get_func_code_info
+_frame_evaluator = import_module("dapper._frame_eval._frame_evaluator")
+
+FuncCodeInfo = _frame_evaluator.FuncCodeInfo
+ThreadInfo = _frame_evaluator.ThreadInfo
+_FrameEvalModuleState = _frame_evaluator._FrameEvalModuleState  # noqa: SLF001
+_state = _frame_evaluator._state  # noqa: SLF001
+get_func_code_info = _frame_evaluator.get_func_code_info
 
 FrameStats = dict[str, Union[int, float, bool]]
 BreakpointLines = set[int]
+
+
+def _default_capabilities() -> dict[str, object]:
+    return {
+        "supports_eval_frame_hook": False,
+        "supports_frame_code_access": False,
+        "supports_frame_line_access": False,
+        "supports_frame_object_extraction": False,
+        "reason": "Compiled frame-eval capability surface not exported by this runtime",
+    }
 
 
 # Convenience aliases kept for backward compatibility — thin delegates to _state.
@@ -53,6 +66,13 @@ def get_eval_frame_hook_status() -> dict[str, str | bool | None]:
     return _state.get_hook_status()
 
 
+def get_frame_eval_capabilities() -> dict[str, object]:
+    capability_func = getattr(_frame_evaluator, "get_frame_eval_capabilities", None)
+    if capability_func is None:
+        return _default_capabilities()
+    return dict(capability_func())
+
+
 def mark_thread_as_debugger_internal() -> None:
     _state.get_thread_info().is_debugger_internal_thread = True
 
@@ -76,6 +96,7 @@ __all__ = [
     "clear_thread_local_info",
     "frame_eval_func",
     "get_eval_frame_hook_status",
+    "get_frame_eval_capabilities",
     "get_frame_eval_stats",
     "get_func_code_info",
     "get_thread_info",

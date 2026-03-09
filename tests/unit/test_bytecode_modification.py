@@ -399,7 +399,9 @@ def test_rollback_on_rebuild_failure(
 def test_metadata_version_mismatch(original_code: types.CodeType) -> None:
     """Stale code-extra metadata should be ignored and emit mismatch telemetry."""
     if not compiled_frame_evaluator_expected():
-        pytest.skip("Compiled frame-eval metadata behavior is only expected on Python 3.12")
+        pytest.skip(
+            "Compiled frame-eval metadata behavior is only expected on the default 3.12 path or the experimental 3.11 validation path"
+        )
 
     from dapper._frame_eval import _frame_evaluator
     from dapper._frame_eval.telemetry import get_frame_eval_telemetry

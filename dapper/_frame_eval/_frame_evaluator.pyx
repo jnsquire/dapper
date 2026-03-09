@@ -9,6 +9,7 @@ from cpython.object cimport PyObject
 from cpython.exc cimport PyErr_Fetch, PyErr_NormalizeException, PyErr_Restore
 
 import contextvars
+import os
 import sys
 import types
 from typing import Any as TypingAny
@@ -21,72 +22,12 @@ from dapper._frame_eval.telemetry import telemetry
 _BYTECODE_META_VERSION = 1
 
 
-# Keep these declarations inline for now because the VS Code Cython extension
-# diagnostics do not currently resolve local shared declaration files in this
-# repo, even though the actual Cython build does. The compatibility-shim plan
-# still lives in doc/architecture/frame-eval/compatibility-shim-plan.md.
-cdef extern from "Python.h":
-    ctypedef Py_ssize_t Py_ssize_t
-    ctypedef struct PyInterpreterState:
-        pass
-    ctypedef struct PyThreadState:
-        pass
-    ctypedef struct PyCodeObject:
-        pass
-    ctypedef struct PyFrameObject:
-        pass
-    ctypedef void (*freefunc)(void *)
-
-
-cdef extern from "internal/pycore_frame.h":
-    ctypedef struct _PyInterpreterFrame:
-        PyCodeObject *f_code
-        _PyInterpreterFrame *previous
-        PyObject *f_funcobj
-        PyObject *f_globals
-        PyObject *f_builtins
-        PyObject *f_locals
-        PyFrameObject *frame_obj
-
-
-cdef extern from "Python.h":
-    ctypedef PyObject *(*_PyFrameEvalFunction)(PyThreadState *, _PyInterpreterFrame *, int) noexcept
-    PyObject *_PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int exc)
-
-
-cdef extern from *:
-    """
-    #define _dapper_GetInterpreterState() PyInterpreterState_Get()
-    #define _dapper_GetEvalFrameFunc(interp) _PyInterpreterState_GetEvalFrameFunc(interp)
-    #define _dapper_SetEvalFrameFunc(interp, func) _PyInterpreterState_SetEvalFrameFunc(interp, func)
-    #define _dapper_InterpreterFrame_GetCode(frame) PyUnstable_InterpreterFrame_GetCode(frame)
-    #define _dapper_InterpreterFrame_GetLine(frame) PyUnstable_InterpreterFrame_GetLine(frame)
-    #define _dapper_InterpreterFrame_GetFrameObject(frame) ((frame)->frame_obj)
-
-    #if PY_VERSION_HEX >= 0x030c0000
-    #  define _dapper_RequestCodeExtraIndex PyUnstable_Eval_RequestCodeExtraIndex
-    #  define _dapper_Code_GetExtra         PyUnstable_Code_GetExtra
-    #  define _dapper_Code_SetExtra         PyUnstable_Code_SetExtra
-    #else
-    #  define _dapper_RequestCodeExtraIndex _PyEval_RequestCodeExtraIndex
-    #  define _dapper_Code_GetExtra         _PyCode_GetExtra
-    #  define _dapper_Code_SetExtra         _PyCode_SetExtra
-    #endif
-    """
-    PyInterpreterState *_dapper_GetInterpreterState_C "_dapper_GetInterpreterState"()
-    _PyFrameEvalFunction _dapper_GetEvalFrameFunc_C "_dapper_GetEvalFrameFunc"(PyInterpreterState *interp)
-    void _dapper_SetEvalFrameFunc_C "_dapper_SetEvalFrameFunc"(
-        PyInterpreterState *interp,
-        _PyFrameEvalFunction eval_frame,
-    )
-    object _dapper_InterpreterFrame_GetCode_C "_dapper_InterpreterFrame_GetCode"(_PyInterpreterFrame *frame)
-    int _dapper_InterpreterFrame_GetLine_C "_dapper_InterpreterFrame_GetLine"(_PyInterpreterFrame *frame)
-    PyFrameObject *_dapper_InterpreterFrame_GetFrameObject_C "_dapper_InterpreterFrame_GetFrameObject"(
-        _PyInterpreterFrame *frame,
-    )
-    Py_ssize_t _dapper_RequestCodeExtraIndex_C "_dapper_RequestCodeExtraIndex"(freefunc)
-    int _dapper_Code_SetExtra_C "_dapper_Code_SetExtra"(object code, Py_ssize_t index, void *extra)
-    int _dapper_Code_GetExtra_C "_dapper_Code_GetExtra"(object code, Py_ssize_t index, void **extra)
+# Keep the backend itself free of Python-minor branching, but include the
+# compatibility declarations via .pxi because the VS Code Cython extension does
+# not reliably resolve local .pxd cimports in this repo even when the build
+# does. The matching .pxd remains the shared declaration surface for future
+# Cython consumers.
+include "./cpython_compat.pxi"
 
 cdef bint _should_trace_code_for_eval_frame_impl(
     ThreadInfo thread_info,
@@ -356,9 +297,11 @@ def _dispatch_eval_frame_return_trace(frame_obj, arg=None) -> bool:
 class _FrameEvalModuleState:
     def __init__(self) -> None:
         self.active = False
-        self.hook_available = True
+        self.hook_available = False
+        self.hook_capabilities = {}
         self.hook_installed = False
         self.hook_error = None
+        self.hook_reason = None
         self._unset = object()
         self.thread_info_var = contextvars.ContextVar("thread_info", default=self._unset)
         self.slow_path_attempts = 0
@@ -373,6 +316,14 @@ class _FrameEvalModuleState:
     def disable(self) -> None:
         self.active = False
 
+    def configure_hook_capabilities(self, capabilities) -> None:
+        self.hook_capabilities = dict(capabilities)
+        self.hook_available = bool(capabilities.get("supports_eval_frame_hook", False))
+        reason = capabilities.get("reason")
+        self.hook_reason = reason if isinstance(reason, str) and reason else None
+        if not self.hook_available:
+            self.hook_installed = False
+
     def install_hook(self) -> bool:
         """Activate the low-level eval-frame hook controller.
 
@@ -380,12 +331,20 @@ class _FrameEvalModuleState:
         Actual CPython eval-frame registration will replace this controller in a
         later implementation step.
         """
+        if not self.hook_available:
+            self.hook_error = self.hook_reason or "Eval-frame hook API not available in this runtime"
+            self.hook_installed = False
+            return False
         self.hook_error = None
         self.hook_installed = True
         return True
 
     def uninstall_hook(self) -> bool:
         """Deactivate the low-level eval-frame hook controller."""
+        if not self.hook_available:
+            self.hook_error = self.hook_reason or "Eval-frame hook API not available in this runtime"
+            self.hook_installed = False
+            return False
         self.hook_error = None
         self.hook_installed = False
         return True
@@ -393,8 +352,10 @@ class _FrameEvalModuleState:
     def get_hook_status(self) -> dict[str, object]:
         return {
             "available": self.hook_available,
+            "capabilities": dict(self.hook_capabilities),
+            "reason": self.hook_reason,
             "installed": self.hook_installed,
-            "error": self.hook_error,
+            "error": self.hook_error or self.hook_reason,
         }
 
     def get_thread_info(self) -> ThreadInfo:
@@ -431,6 +392,7 @@ class _FrameEvalModuleState:
             "is_active": self.active,
             "hook_available": self.hook_available,
             "hook_installed": self.hook_installed,
+            "hook_reason": self.hook_reason,
             "hook_error": self.hook_error,
             "slow_path_attempts": self.slow_path_attempts,
             "slow_path_activations": self.slow_path_activations,
@@ -451,6 +413,49 @@ cdef object _code_extra_index
 _old_eval_frame = NULL
 _eval_frame_hook_installed = <bint>False
 _code_extra_index = -2
+
+
+def get_frame_eval_capabilities() -> dict[str, object]:
+    """Report the low-level eval-frame capability surface for this runtime."""
+    cdef tuple version_tuple = sys.version_info[:2]
+    supports_eval_frame_hook = version_tuple >= (3, 12)
+    if version_tuple == (3, 11) and os.environ.get("DAPPER_EXPERIMENTAL_FRAME_EVAL_311") == "1":
+        supports_eval_frame_hook = True
+    supports_frame_code_access = version_tuple >= (3, 11)
+    supports_frame_line_access = version_tuple >= (3, 11)
+    supports_frame_object_extraction = version_tuple >= (3, 11)
+    cdef object reason = None
+
+    if not supports_eval_frame_hook:
+        if version_tuple == (3, 11):
+            reason = (
+                "CPython 3.11 still requires hook-installation and event-dispatch "
+                "validation before the eval-frame hook can be enabled"
+            )
+        else:
+            reason = (
+                f"Eval-frame hook support is currently implemented only for CPython 3.12+ "
+                f"(running {sys.version_info.major}.{sys.version_info.minor})"
+            )
+
+    return {
+        "supports_eval_frame_hook": bool(supports_eval_frame_hook),
+        "supports_frame_code_access": bool(supports_frame_code_access),
+        "supports_frame_line_access": bool(supports_frame_line_access),
+        "supports_frame_object_extraction": bool(supports_frame_object_extraction),
+        "reason": reason,
+    }
+
+
+cdef object _initial_hook_capabilities
+
+
+def _initialize_hook_capabilities() -> dict[str, object]:
+    capabilities = get_frame_eval_capabilities()
+    cast(TypingAny, _state).configure_hook_capabilities(capabilities)
+    return capabilities
+
+_initial_hook_capabilities = _initialize_hook_capabilities()
 
 
 def install_eval_frame_hook() -> bool:
@@ -604,6 +609,7 @@ cdef PyObject *get_bytecode_while_frame_eval(
     cdef PyObject *exc_value = NULL
     cdef PyObject *exc_tb = NULL
     cdef PyFrameObject *frame_obj_ptr = NULL
+    cdef long return_events_before = <long>-1
     cdef int lineno
     cdef bint trace_installed = <bint>False
     cdef bint restore_exception = <bint>False
@@ -639,6 +645,7 @@ cdef PyObject *get_bytecode_while_frame_eval(
         if thread_info.thread_trace_func is not None:
             previous_trace = sys.gettrace()
             scoped_trace_func = _make_eval_frame_trace_func(code_obj, thread_info.thread_trace_func)
+            return_events_before = <long>_state.return_events
             sys.settrace(scoped_trace_func)
             trace_installed = <bint>True
 
@@ -667,7 +674,10 @@ cdef PyObject *get_bytecode_while_frame_eval(
                 frame_obj = <object>frame_obj_ptr
         if frame_obj is not None and result_obj:
             result_value = <object>result_obj
-            if getattr(frame_obj, "f_trace", None) is not None:
+            if (
+                getattr(frame_obj, "f_trace", None) is not None
+                and (not trace_installed or <long>_state.return_events == return_events_before)
+            ):
                 _dispatch_eval_frame_return_trace_impl(frame_obj, result_value)
 
         return result_obj
@@ -860,6 +870,7 @@ __all__ = [
     "_clear_code_extra_metadata",
     "_state",
     "dummy_trace_dispatch",
+    "get_frame_eval_capabilities",
     "get_eval_frame_hook_status",
     "get_func_code_info",
     "install_eval_frame_hook",

@@ -28,8 +28,10 @@ class _FrameEvalModuleState:
         "active",
         "exception_events",
         "hook_available",
+        "hook_capabilities",
         "hook_error",
         "hook_installed",
+        "hook_reason",
         "return_events",
         "scoped_trace_installs",
         "slow_path_activations",
@@ -40,8 +42,10 @@ class _FrameEvalModuleState:
     def __init__(self) -> None:
         self.active: bool = False
         self.hook_available: bool = False
+        self.hook_capabilities: dict[str, Any] = {}
         self.hook_installed: bool = False
         self.hook_error: str | None = None
+        self.hook_reason: str | None = None
         self.thread_info_var: contextvars.ContextVar[ThreadInfo | None] = contextvars.ContextVar(
             "thread_info", default=None
         )
@@ -57,21 +61,43 @@ class _FrameEvalModuleState:
     def disable(self) -> None:
         self.active = False
 
+    def configure_hook_capabilities(self, capabilities: dict[str, Any]) -> None:
+        self.hook_capabilities = dict(capabilities)
+        self.hook_available = bool(capabilities.get("supports_eval_frame_hook", False))
+        reason = capabilities.get("reason")
+        self.hook_reason = reason if isinstance(reason, str) and reason else None
+        if not self.hook_available:
+            self.hook_installed = False
+
     def install_hook(self) -> bool:
+        if not self.hook_available:
+            self.hook_error = (
+                self.hook_reason or "Eval-frame hook API not available in this runtime"
+            )
+            self.hook_installed = False
+            return False
         self.hook_error = None
         self.hook_installed = True
         return True
 
     def uninstall_hook(self) -> bool:
+        if not self.hook_available:
+            self.hook_error = (
+                self.hook_reason or "Eval-frame hook API not available in this runtime"
+            )
+            self.hook_installed = False
+            return False
         self.hook_error = None
         self.hook_installed = False
         return True
 
-    def get_hook_status(self) -> dict[str, str | bool | None]:
+    def get_hook_status(self) -> dict[str, Any]:
         return {
             "available": self.hook_available,
+            "capabilities": dict(self.hook_capabilities),
+            "reason": self.hook_reason,
             "installed": self.hook_installed,
-            "error": self.hook_error,
+            "error": self.hook_error or self.hook_reason,
         }
 
     def get_thread_info(self) -> ThreadInfo:

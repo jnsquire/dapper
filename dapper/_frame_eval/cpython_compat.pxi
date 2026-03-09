@@ -28,6 +28,7 @@ cdef extern from "internal/pycore_frame.h":
         PyObject *f_builtins
         PyObject *f_locals
         PyFrameObject *frame_obj
+        void *prev_instr
 
 
 cdef extern from "Python.h":
@@ -37,12 +38,36 @@ cdef extern from "Python.h":
 
 cdef extern from *:
     """
+    #include "cpython/code.h"
+
     #define _dapper_GetInterpreterState() PyInterpreterState_Get()
     #define _dapper_GetEvalFrameFunc(interp) _PyInterpreterState_GetEvalFrameFunc(interp)
     #define _dapper_SetEvalFrameFunc(interp, func) _PyInterpreterState_SetEvalFrameFunc(interp, func)
-    #define _dapper_InterpreterFrame_GetCode(frame) PyUnstable_InterpreterFrame_GetCode(frame)
-    #define _dapper_InterpreterFrame_GetLine(frame) PyUnstable_InterpreterFrame_GetLine(frame)
-    #define _dapper_InterpreterFrame_GetFrameObject(frame) ((frame)->frame_obj)
+
+    static inline PyObject *_dapper_InterpreterFrame_GetCode(_PyInterpreterFrame *frame) {
+    #if PY_VERSION_HEX >= 0x030c0000
+        return PyUnstable_InterpreterFrame_GetCode(frame);
+    #else
+        Py_INCREF(frame->f_code);
+        return (PyObject *)frame->f_code;
+    #endif
+    }
+
+    static inline int _dapper_InterpreterFrame_GetLine(_PyInterpreterFrame *frame) {
+    #if PY_VERSION_HEX >= 0x030c0000
+        return PyUnstable_InterpreterFrame_GetLine(frame);
+    #else
+        int lasti = _PyInterpreterFrame_LASTI(frame);
+        if (lasti < 0) {
+            lasti = 0;
+        }
+        return PyCode_Addr2Line((PyCodeObject *)frame->f_code, lasti);
+    #endif
+    }
+
+    static inline PyFrameObject *_dapper_InterpreterFrame_GetFrameObject(_PyInterpreterFrame *frame) {
+        return frame->frame_obj;
+    }
 
     #if PY_VERSION_HEX >= 0x030c0000
     #  define _dapper_RequestCodeExtraIndex PyUnstable_Eval_RequestCodeExtraIndex

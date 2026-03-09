@@ -140,10 +140,10 @@ class FrameEvalCompatibilityPolicy:
         filters if desired.
         """
         try:
-            from dapper._frame_eval._frame_evaluator import get_eval_frame_hook_status
+            from dapper._frame_eval._frame_evaluator import get_frame_eval_capabilities
 
-            status = get_eval_frame_hook_status()
-            return bool(status.get("available", False))
+            capabilities = get_frame_eval_capabilities()
+            return bool(capabilities.get("supports_eval_frame_hook", False))
         except ImportError:
             return False
         except Exception:  # pragma: no cover - be conservative on unexpected errors
@@ -160,25 +160,41 @@ class FrameEvalCompatibilityPolicy:
         environ: Mapping[str, str],
     ) -> tuple[bool, str]:
         """Return whether eval-frame can be used and the blocking reason if not."""
+        reason = ""
+
         python_supported, reason = self.is_supported_python(version_info)
-        if not python_supported:
+        if python_supported:
+            if not self.is_supported_platform(platform_system, architecture):
+                reason = f"Platform {platform_system} / {architecture} not supported"
+            else:
+                implementation_supported, implementation_reason = self.is_supported_implementation(
+                    implementation
+                )
+                if not implementation_supported:
+                    reason = implementation_reason
+                else:
+                    environment_reason = self.get_incompatible_environment_reason(modules, environ)
+                    if environment_reason:
+                        reason = environment_reason
+                    elif not self.supports_eval_frame():
+                        reason = self._get_eval_frame_unavailable_reason()
+
+        if reason:
             return False, reason
-
-        if not self.is_supported_platform(platform_system, architecture):
-            return False, f"Platform {platform_system} / {architecture} not supported"
-
-        implementation_supported, reason = self.is_supported_implementation(implementation)
-        if not implementation_supported:
-            return False, reason
-
-        environment_reason = self.get_incompatible_environment_reason(modules, environ)
-        if environment_reason:
-            return False, environment_reason
-
-        if not self.supports_eval_frame():
-            return False, "Eval-frame hook API not available in this runtime"
-
         return True, ""
+
+    @staticmethod
+    def _get_eval_frame_unavailable_reason() -> str:
+        try:
+            from dapper._frame_eval._frame_evaluator import get_frame_eval_capabilities
+
+            capabilities = get_frame_eval_capabilities()
+            capability_reason = capabilities.get("reason")
+            if isinstance(capability_reason, str) and capability_reason:
+                return capability_reason
+        except Exception:
+            pass
+        return "Eval-frame hook API not available in this runtime"
 
     def evaluate_environment(
         self,

@@ -21,7 +21,10 @@ except ImportError:
 
 def _supports_frame_eval_extension() -> bool:
     """Return whether this interpreter can currently build the frame-eval extension."""
-    return sys.version_info[:2] == (3, 12)
+    version_tuple = sys.version_info[:2]
+    if version_tuple == (3, 12):
+        return True
+    return version_tuple == (3, 11) and os.environ.get("DAPPER_EXPERIMENTAL_FRAME_EVAL_311") == "1"
 
 
 class BuildExt(build_ext):

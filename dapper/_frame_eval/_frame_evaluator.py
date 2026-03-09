@@ -27,6 +27,19 @@ from dapper._frame_eval.telemetry import telemetry
 _code_extra_fallback: weakref.WeakKeyDictionary[CodeType, object] = weakref.WeakKeyDictionary()
 
 
+def get_frame_eval_capabilities() -> dict[str, bool | str | None]:
+    return {
+        "supports_eval_frame_hook": False,
+        "supports_frame_code_access": False,
+        "supports_frame_line_access": False,
+        "supports_frame_object_extraction": False,
+        "reason": "Compiled frame-eval extension not available in this runtime",
+    }
+
+
+_state.configure_hook_capabilities(get_frame_eval_capabilities())
+
+
 def install_eval_frame_hook() -> bool:
     return _state.install_hook()
 
@@ -228,6 +241,7 @@ __all__ = [
     "_store_modified_code_for_evaluation",
     "dummy_trace_dispatch",
     "get_eval_frame_hook_status",
+    "get_frame_eval_capabilities",
     "get_func_code_info",
     "install_eval_frame_hook",
     "uninstall_eval_frame_hook",

@@ -32,13 +32,14 @@ from dapper._frame_eval.eval_frame_backend import EvalFrameBackend
 from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
 from dapper._frame_eval.telemetry import reset_frame_eval_telemetry
+from dapper._frame_eval.types import get_frame_eval_capabilities
 from dapper.core.debugger_bdb import DebuggerBDB
 from tests._cython import compiled_frame_evaluator_expected
 from tests.mocks import make_real_frame
 
 pytestmark = pytest.mark.skipif(
     not compiled_frame_evaluator_expected(),
-    reason="Compiled frame-eval extension is only expected on Python 3.12",
+    reason="Compiled frame-eval extension is only expected on the default 3.12 path or the experimental 3.11 validation path",
 )
 
 
@@ -77,6 +78,30 @@ def test_low_level_hook_install_uninstall_is_idempotent() -> None:
     status = get_eval_frame_hook_status()
     assert status["available"] is True
     assert status["installed"] is False
+
+
+def test_frame_eval_capabilities_report_current_support_surface() -> None:
+    capabilities = get_frame_eval_capabilities()
+
+    assert capabilities["supports_eval_frame_hook"] is True
+    assert capabilities["supports_frame_code_access"] is True
+    assert capabilities["supports_frame_line_access"] is True
+    assert capabilities["supports_frame_object_extraction"] is True
+    assert capabilities["reason"] is None
+
+
+def test_frame_eval_capabilities_keep_3_11_line_access_visible() -> None:
+    with patch.object(sys, "version_info", (3, 11, 0)):
+        capabilities = get_frame_eval_capabilities()
+
+    assert capabilities["supports_eval_frame_hook"] is False
+    assert capabilities["supports_frame_code_access"] is True
+    assert capabilities["supports_frame_line_access"] is True
+    assert capabilities["supports_frame_object_extraction"] is True
+    assert capabilities["reason"] == (
+        "CPython 3.11 still requires hook-installation and event-dispatch "
+        "validation before the eval-frame hook can be enabled"
+    )
 
 
 def test_types_surface_exposes_hook_status() -> None:
