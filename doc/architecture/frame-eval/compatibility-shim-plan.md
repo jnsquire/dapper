@@ -14,7 +14,7 @@ artifacts even when the source stays unified.
 
 ## Current State
 
-- The extension currently builds only for Python 3.12 in package builds.
+- The extension currently builds for Python 3.11 and 3.12 in package builds.
 - The main Cython module still depends on CPython internal frame APIs, but the
   declarations and symbol selection are now concentrated in
   `dapper/_frame_eval/cpython_compat.pxd`.
@@ -28,8 +28,8 @@ artifacts even when the source stays unified.
 Treat CPython support as version families rather than one undifferentiated
 "all supported versions" target.
 
-- CPython 3.12-3.14: primary shim family
-- CPython 3.11: secondary family, likely needs custom frame/line access
+- CPython 3.11-3.12: currently implemented compiled-backend families
+- CPython 3.13-3.14: follow-on shim family for Phase 4
 - CPython 3.9-3.10: legacy family, may remain tracing-only unless a separate
   implementation is justified
 
@@ -85,7 +85,7 @@ Status: completed for the current 3.12 path
 ### Phase 4: 3.12-3.14 Support Matrix
 
 - Make the compiled extension work across 3.12, 3.13, and 3.14
-- Replace the current 3.12-only package-build gate with a capability function
+- Replace the current 3.11-3.12 package-build gate with a capability function
   that reflects implemented support
 - Run compiled-extension smoke checks on every supported minor in CI
 
