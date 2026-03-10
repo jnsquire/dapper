@@ -325,31 +325,59 @@ class TestLifecycleAutoTransition:
 
 
 class TestTransportFactoryResourceRetention:
-    """Factory methods retain resource references on the returned connection."""
+    """Factory-created client connections become usable asyncio transports."""
 
-    def test_unix_connection_retains_socket(self, monkeypatch):
-        """_create_unix_connection attaches the socket to the connection."""
+    def test_unix_connection_initializes_streams_from_socket(self, monkeypatch):
+        """_create_unix_connection can lazily build streams from the socket."""
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)
-        monkeypatch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)
-        monkeypatch.setattr("dapper.ipc.transport_factory._socket.AF_UNIX", 1, raising=False)
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+
+        async def fake_open_connection(*, sock):
+            assert sock is mock_sock
+            return mock_reader, mock_writer
+
+        monkeypatch.setattr(
+            "dapper.ipc.connections.tcp.asyncio.open_connection", fake_open_connection
+        )
 
         config = TransportConfig(path="/tmp/test.sock")
-        conn = TransportFactory._create_unix_connection(config)
+        with monkeypatch.context() as scoped_patch:
+            scoped_patch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)
+            scoped_patch.setattr("dapper.ipc.transport_factory._socket.AF_UNIX", 1, raising=False)
+            conn = TransportFactory._create_unix_connection(config)
+        asyncio.run(conn._ensure_connected_streams())
 
-        # The socket should be stored on the connection
+        assert conn.reader is mock_reader
+        assert conn.writer is mock_writer
+        assert conn.is_connected
         assert conn.socket is mock_sock
         mock_sock.connect.assert_called_once_with("/tmp/test.sock")
 
-    def test_tcp_connection_retains_socket(self, monkeypatch):
-        """_create_tcp_connection attaches the socket to the connection."""
+    def test_tcp_connection_initializes_streams_from_socket(self, monkeypatch):
+        """_create_tcp_connection can lazily build streams from the socket."""
         mock_sock = MagicMock()
         mock_sock_class = MagicMock(return_value=mock_sock)
-        monkeypatch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+
+        async def fake_open_connection(*, sock):
+            assert sock is mock_sock
+            return mock_reader, mock_writer
+
+        monkeypatch.setattr(
+            "dapper.ipc.connections.tcp.asyncio.open_connection", fake_open_connection
+        )
 
         config = TransportConfig(host="127.0.0.1", port=9999)
-        conn = TransportFactory._create_tcp_connection(config)
+        with monkeypatch.context() as scoped_patch:
+            scoped_patch.setattr("dapper.ipc.transport_factory._socket.socket", mock_sock_class)
+            conn = TransportFactory._create_tcp_connection(config)
+        asyncio.run(conn._ensure_connected_streams())
 
-        # The socket should be stored on the connection
+        assert conn.reader is mock_reader
+        assert conn.writer is mock_writer
+        assert conn.is_connected
         assert conn.socket is mock_sock
         mock_sock.connect.assert_called_once()

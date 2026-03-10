@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import json
 import logging
@@ -150,6 +151,9 @@ class TCPServerConnection(ConnectionBase):
 
         """
         logger.debug("wait_for_client() called, _client_connected=%s", self._client_connected)
+        if self._is_connected:
+            return
+
         if self._client_connected is None:
             raise RuntimeError("wait_for_client called before start_listening")
 
@@ -178,36 +182,64 @@ class TCPServerConnection(ConnectionBase):
         self._is_connected = True
 
         # Signal that client is connected
-        if self._client_connected:
+        if self._client_connected and not self._client_connected.done():
             self._client_connected.set_result(True)
-            self._client_connected = None
 
     async def close(self) -> None:
-        if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
+        writer = self.writer
+        if writer is not None:
+            with contextlib.suppress(Exception):
+                writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+            self.writer = None
 
-        if self.server:
-            self.server.close()
-            await self.server.wait_closed()
+        elif self.socket is not None:
+            with contextlib.suppress(Exception):
+                self.socket.close()
+            self.socket = None
+
+        server = self.server
+        if server is not None:
+            with contextlib.suppress(Exception):
+                server.close()
+            with contextlib.suppress(Exception):
+                await server.wait_closed()
+            self.server = None
 
         self._is_connected = False
+        self._client_connected = None
         logger.info("TCP connection closed")
 
     async def read_message(self) -> dict[str, Any] | None:
         """Read a binary DAP message from the TCP connection."""
+        await self._ensure_connected_streams()
         if not self.reader:
             msg = "No active connection"
             raise RuntimeError(msg)
 
         return await self._read_binary_message()
 
+    async def _ensure_connected_streams(self) -> None:
+        """Wrap a pre-connected client socket in asyncio streams on demand."""
+        if self.reader is not None and self.writer is not None:
+            return
+
+        if self.server is not None or self.socket is None:
+            return
+
+        reader, writer = await asyncio.open_connection(sock=self.socket)
+        self.reader = reader
+        self.writer = writer
+        self._is_connected = True
+
     async def _read_binary_message(self) -> dict[str, Any] | None:
         """Read a binary frame message."""
         # Read header first
-        header_data = await self.reader.readexactly(8)
-        if not header_data:
-            return None  # Connection closed
+        try:
+            header_data = await self.reader.readexactly(8)
+        except asyncio.IncompleteReadError:
+            return None
 
         try:
             _kind, length = unpack_header(header_data)
@@ -219,8 +251,9 @@ class TCPServerConnection(ConnectionBase):
         if length == 0:
             payload = b""
         else:
-            payload = await self.reader.readexactly(length)
-            if not payload:
+            try:
+                payload = await self.reader.readexactly(length)
+            except asyncio.IncompleteReadError:
                 return None
 
         # Parse JSON payload
@@ -235,6 +268,7 @@ class TCPServerConnection(ConnectionBase):
 
     async def write_message(self, message: dict[str, Any]) -> None:
         """Write a binary DAP message to the TCP connection."""
+        await self._ensure_connected_streams()
         if not self.writer:
             msg = "No active connection"
             raise RuntimeError(msg)
