@@ -13,6 +13,7 @@ import threading
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
+from typing import cast
 
 from dapper.ipc.transport_factory import TransportConfig
 from dapper.ipc.transport_factory import TransportFactory
@@ -34,6 +35,10 @@ def _is_expected_loop_shutdown_error(exc: BaseException) -> bool:
         return False
     message = str(exc)
     return "Event loop stopped before Future completed" in message
+
+
+async def _await_close_result(close_result: object) -> None:
+    await cast("Any", close_result)
 
 
 class IPCManager:
@@ -151,7 +156,8 @@ class IPCManager:
             # Handle both sync and async close methods
             close_method = getattr(self._connection, "close", None)
             if close_method:
-                if inspect.iscoroutinefunction(close_method):
+                close_result = close_method()
+                if inspect.isawaitable(close_result):
                     try:
                         loop = asyncio.get_running_loop()
                     except RuntimeError:
@@ -160,7 +166,9 @@ class IPCManager:
                     if loop is not None and loop.is_running():
                         # Schedule on the running loop and wait for completion
                         # (with a timeout to avoid deadlocking shutdown).
-                        future = asyncio.run_coroutine_threadsafe(close_method(), loop)
+                        future = asyncio.run_coroutine_threadsafe(
+                            _await_close_result(close_result), loop
+                        )
                         try:
                             future.result(timeout=5.0)
                         except Exception:
@@ -169,9 +177,7 @@ class IPCManager:
                             )
                     else:
                         # No running loop — safe to create a throwaway one.
-                        asyncio.run(close_method())
-                else:
-                    close_method()
+                        asyncio.run(_await_close_result(close_result))
             self._connection = None
 
         # Reset state
@@ -191,10 +197,9 @@ class IPCManager:
             # Handle both sync and async close methods
             close_method = getattr(self._connection, "close", None)
             if close_method:
-                if inspect.iscoroutinefunction(close_method):
-                    await close_method()
-                else:
-                    close_method()
+                close_result = close_method()
+                if inspect.isawaitable(close_result):
+                    await close_result
             self._connection = None
 
         # Reset state
@@ -211,8 +216,12 @@ class IPCManager:
         asyncio.set_event_loop(loop)
 
         try:
-            # Accept connection if needed (for listeners)
-            if self._should_accept and hasattr(self._connection, "accept"):
+            # Accept connection if needed (for listeners).
+            # ``ConnectionBase`` guarantees an ``accept()`` method, so we
+            # no longer need to guard with ``hasattr``.  The flag comes from
+            # ``start_reader(accept=True)``, which is the normal path for a
+            # listener; clients pass ``accept=False`` and the call is skipped.
+            if self._should_accept:
                 # Always call accept() - it will handle start_listening() if needed
                 logger.debug("Accepting connection...")
                 try:

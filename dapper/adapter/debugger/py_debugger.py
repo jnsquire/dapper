@@ -1031,7 +1031,7 @@ class PyDebugger(_PyDebuggerSessionCompatMixin):
                 if stream is not None:
                     stream.close()
 
-            self.ipc.cleanup()
+        await self.ipc.acleanup()
 
         # Clear state
         self.clear_runtime_state()

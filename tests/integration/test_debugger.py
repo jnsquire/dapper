@@ -189,6 +189,22 @@ async def test_shutdown_fails_pending_commands(debugger):
         fut.result()
 
 
+@pytest.mark.asyncio
+async def test_shutdown_awaits_async_ipc_close(debugger):
+    """Shutdown should await async IPC connection cleanup."""
+    debugger.process = MagicMock()
+    debugger.ipc._enabled = True
+
+    connection = MagicMock()
+    connection.close = AsyncMock()
+    debugger.ipc._connection = connection
+
+    await debugger.shutdown()
+
+    connection.close.assert_awaited_once()
+    assert debugger.ipc.connection is None
+
+
 # ---------------------------------------------------------------------------
 # Launch and Process Management Tests
 # ---------------------------------------------------------------------------
