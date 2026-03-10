@@ -377,14 +377,26 @@ __dapper_breakpoint_wrapper_{line}()
         Returns a dict mapping line numbers to instruction indices.
         """
         injection_points = {}
+        current_line: int | None = None
 
         for i, instr in enumerate(instructions):
-            if instr.starts_line is not None and instr.starts_line in breakpoint_lines:
+            # Python 3.13+ exposes the actual source line in ``line_number`` and
+            # uses ``starts_line`` as a boolean marker. Older versions store the
+            # line number directly in ``starts_line``. Track the active line so
+            # callers can pass values discovered via ``co_lines()`` across both
+            # metadata layouts.
+            line_number = getattr(instr, "line_number", None)
+            if isinstance(line_number, int):
+                current_line = line_number
+            elif isinstance(instr.starts_line, int):
+                current_line = instr.starts_line
+
+            if current_line is not None and current_line in breakpoint_lines:
                 # Prefer to inject after certain instruction types
                 if instr.opname in ("LOAD_CONST", "LOAD_FAST", "LOAD_GLOBAL", "STORE_FAST"):
-                    injection_points[instr.starts_line] = i + 1
+                    injection_points.setdefault(current_line, i + 1)
                 else:
-                    injection_points[instr.starts_line] = i
+                    injection_points.setdefault(current_line, i)
 
         return injection_points
 

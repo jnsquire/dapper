@@ -2,7 +2,6 @@
 
 import inspect
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -40,7 +39,7 @@ from tests.mocks import make_real_frame
 
 pytestmark = pytest.mark.skipif(
     not compiled_frame_evaluator_expected(),
-    reason="Compiled frame-eval extension is only expected on the default 3.12 path or the experimental 3.11 validation path",
+    reason="Compiled frame-eval extension is only expected on the supported 3.11-3.12 paths",
 )
 
 
@@ -91,26 +90,15 @@ def test_frame_eval_capabilities_report_current_support_surface() -> None:
     assert capabilities["reason"] is None
 
 
-def test_frame_eval_capabilities_keep_3_11_line_access_visible() -> None:
-    # simulate a 3.11 runtime while ensuring the experimental override flag is
-    # *not* active.  our CI matrix sets DAPPER_EXPERIMENTAL_FRAME_EVAL_311 for
-    # the dedicated 3.11 validation step, and the variable can leak into the
-    # subsequent full-suite run.  in that case the hook would be reported as
-    # available, which would otherwise make the assertion below brittle.
-    with (
-        patch.object(sys, "version_info", (3, 11, 0)),
-        patch.dict(os.environ, {"DAPPER_EXPERIMENTAL_FRAME_EVAL_311": ""}),
-    ):
-        capabilities = get_frame_eval_capabilities()
+def test_compiled_frame_evaluator_expected_includes_3_11_and_3_12() -> None:
+    with patch.object(sys, "version_info", (3, 11, 0)):
+        assert compiled_frame_evaluator_expected() is True
 
-    assert capabilities["supports_eval_frame_hook"] is False
-    assert capabilities["supports_frame_code_access"] is True
-    assert capabilities["supports_frame_line_access"] is True
-    assert capabilities["supports_frame_object_extraction"] is True
-    assert capabilities["reason"] == (
-        "CPython 3.11 still requires hook-installation and event-dispatch "
-        "validation before the eval-frame hook can be enabled"
-    )
+    with patch.object(sys, "version_info", (3, 12, 0)):
+        assert compiled_frame_evaluator_expected() is True
+
+    with patch.object(sys, "version_info", (3, 10, 0)):
+        assert compiled_frame_evaluator_expected() is False
 
 
 def test_types_surface_exposes_hook_status() -> None:

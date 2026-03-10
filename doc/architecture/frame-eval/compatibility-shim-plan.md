@@ -138,7 +138,7 @@ Do not merge 3.11 into the main support claim without completing the dedicated
 #### Phase 5C: 3.11 Hook Installation Validation
 
 - [x] Verify that the eval-frame get/set path used on 3.12+ is valid on 3.11.
-- [ ] If 3.11 requires different symbol resolution or header visibility,
+- [x] If 3.11 requires different symbol resolution or header visibility,
   isolate that difference in the compatibility layer instead of changing the
   backend logic.
 - [x] Restore the low-level install/uninstall tests for 3.11 only after the
@@ -146,8 +146,6 @@ Do not merge 3.11 into the main support claim without completing the dedicated
 
 Local validation note:
 
-- Use `DAPPER_EXPERIMENTAL_FRAME_EVAL_311=1` to force a local compiled 3.11
-  build and runtime hook-capability exposure during Phase 5C validation only.
 - Verified locally with a compiled `.venv311` editable install plus the core
   hook lifecycle tests: idempotent install/uninstall and pointer-change
   restoration both passed under CPython 3.11.
@@ -179,7 +177,7 @@ Validation note:
 - [x] Add compiled-backend tests proving that metadata storage,
   modified-code lookup, and lazy instrumentation all behave correctly under a
   real 3.11 extension build.
-- [ ] Treat any 3.11-only bytecode mismatch as a blocker even if the hook
+- [x] Treat any 3.11-only bytecode mismatch as a blocker even if the hook
   itself installs successfully.
 
 Validation note:
@@ -191,7 +189,7 @@ Validation note:
 
 #### Phase 5F: Build and CI Rollout
 
-- [ ] Expand `_supports_frame_eval_extension()` only after Phases 5A-5E pass.
+- [x] Expand `_supports_frame_eval_extension()` only after Phases 5A-5E pass.
 - [x] Add a dedicated compiled-extension smoke check on Python 3.11 in both CI
   workflows before enabling broader 3.11 eval-frame assertions.
 - [x] Re-enable the 3.11 extension import smoke test in CI.
@@ -201,11 +199,9 @@ Validation note:
 
 Rollout note:
 
-- CI now builds the compiled frame-eval extension on Python 3.11 behind the
-  `DAPPER_EXPERIMENTAL_FRAME_EVAL_311=1` override and runs the validated smoke,
-  hook lifecycle, metadata mismatch, and end-to-end breakpoint dispatch tests.
-- The default build gate remains unchanged; 3.11 is still experimental until
-  the remaining rollout and user-facing policy steps are completed.
+- CI now builds the compiled frame-eval extension on Python 3.11 and runs the
+  validated smoke, hook lifecycle, metadata mismatch, and end-to-end
+  breakpoint dispatch tests as part of the standard compiled-backend rollout.
 
 #### Phase 5G: User-Facing Policy Update
 
@@ -218,13 +214,13 @@ Rollout note:
 
 #### Phase 5 Exit Criteria
 
-- [ ] The compiled extension builds and imports on CPython 3.11 in CI.
-- [ ] `install_eval_frame_hook()` and `uninstall_eval_frame_hook()` change and
+- [x] The compiled extension builds and imports on CPython 3.11 in CI.
+- [x] `install_eval_frame_hook()` and `uninstall_eval_frame_hook()` change and
   restore the interpreter eval-frame pointer on 3.11.
-- [ ] Eval-frame end-to-end breakpoint dispatch passes on 3.11 without
+- [x] Eval-frame end-to-end breakpoint dispatch passes on 3.11 without
   synthetic event misrouting.
-- [ ] Metadata and lazy bytecode instrumentation tests pass on 3.11.
-- [ ] `setup.py`, runtime capability checks, and docs all agree that 3.11 is
+- [x] Metadata and lazy bytecode instrumentation tests pass on 3.11.
+- [x] `setup.py`, runtime capability checks, and docs all agree that 3.11 is
   now a supported compiled eval-frame target.
 
 #### Fallback Rule
@@ -232,11 +228,11 @@ Rollout note:
 If any of the following remain unresolved, keep 3.11 tracing-only and document
 that as the intended behavior rather than shipping partial support:
 
-- [ ] no stable 3.11 line-access path
-- [ ] hook installation works but event dispatch misroutes frames
-- [ ] compiled import succeeds but modified-code / metadata handling is
+- [x] no stable 3.11 line-access path
+- [x] hook installation works but event dispatch misroutes frames
+- [x] compiled import succeeds but modified-code / metadata handling is
   unreliable
-- [ ] CI requires per-test skips that indicate the backend is not
+- [x] CI requires per-test skips that indicate the backend is not
   operationally equivalent to the 3.12 path
 
 ### Phase 6: 3.9-3.10 Decision Point

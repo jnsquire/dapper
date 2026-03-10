@@ -418,25 +418,17 @@ _code_extra_index = -2
 def get_frame_eval_capabilities() -> dict[str, object]:
     """Report the low-level eval-frame capability surface for this runtime."""
     cdef tuple version_tuple = sys.version_info[:2]
-    supports_eval_frame_hook = version_tuple >= (3, 12)
-    if version_tuple == (3, 11) and os.environ.get("DAPPER_EXPERIMENTAL_FRAME_EVAL_311") == "1":
-        supports_eval_frame_hook = True
+    supports_eval_frame_hook = version_tuple in ((3, 11), (3, 12))
     supports_frame_code_access = version_tuple >= (3, 11)
     supports_frame_line_access = version_tuple >= (3, 11)
     supports_frame_object_extraction = version_tuple >= (3, 11)
     cdef object reason = None
 
     if not supports_eval_frame_hook:
-        if version_tuple == (3, 11):
-            reason = (
-                "CPython 3.11 still requires hook-installation and event-dispatch "
-                "validation before the eval-frame hook can be enabled"
-            )
-        else:
-            reason = (
-                f"Eval-frame hook support is currently implemented only for CPython 3.12+ "
-                f"(running {sys.version_info.major}.{sys.version_info.minor})"
-            )
+        reason = (
+            f"Eval-frame hook support is currently implemented only for CPython 3.11-3.12 "
+            f"(running {sys.version_info.major}.{sys.version_info.minor})"
+        )
 
     return {
         "supports_eval_frame_hook": bool(supports_eval_frame_hook),

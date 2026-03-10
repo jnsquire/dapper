@@ -2,15 +2,17 @@ import os
 from pathlib import Path
 import sys
 
-from setuptools import Extension
-from setuptools import setup
-from setuptools.command.build_ext import build_ext
-from setuptools.dist import Distribution
+from setuptools import Extension  # pyright: ignore[reportMissingModuleSource]
+from setuptools import setup  # pyright: ignore[reportMissingModuleSource]
+from setuptools.command.build_ext import build_ext  # pyright: ignore[reportMissingModuleSource]
+from setuptools.dist import Distribution  # pyright: ignore[reportMissingModuleSource]
 
 # Try to import Cython, but make it optional
 try:
-    from Cython.Build import cythonize
-    from Cython.Distutils.build_ext import build_ext as cython_build_ext
+    from Cython.Build import cythonize  # pyright: ignore[reportMissingImports]
+    from Cython.Distutils.build_ext import (
+        build_ext as cython_build_ext,  # pyright: ignore[reportMissingImports]
+    )
 
     CYTHON_AVAILABLE = True
 except ImportError:
@@ -22,9 +24,7 @@ except ImportError:
 def _supports_frame_eval_extension() -> bool:
     """Return whether this interpreter can currently build the frame-eval extension."""
     version_tuple = sys.version_info[:2]
-    if version_tuple == (3, 12):
-        return True
-    return version_tuple == (3, 11) and os.environ.get("DAPPER_EXPERIMENTAL_FRAME_EVAL_311") == "1"
+    return version_tuple in {(3, 11), (3, 12)}
 
 
 class BuildExt(build_ext):
@@ -101,8 +101,8 @@ def get_extensions():
 
 
 # Determine if we should include frame evaluation extensions.
-# The current implementation depends on CPython internals that are only wired
-# up for Python 3.12 in this package build.
+# The current implementation depends on CPython internals and currently builds
+# the compiled backend for the supported 3.11-3.12 package targets.
 include_frame_eval = CYTHON_AVAILABLE and _supports_frame_eval_extension()
 
 

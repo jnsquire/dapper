@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import logging
 from typing import Any
 
 import pytest
 
+from dapper.errors import error_patterns as error_patterns_mod
 from dapper.errors.dapper_errors import BackendError
 from dapper.errors.dapper_errors import ConfigurationError
 from dapper.errors.dapper_errors import DapperError
@@ -25,6 +27,18 @@ from dapper.errors.error_patterns import handle_adapter_errors
 from dapper.errors.error_patterns import handle_backend_errors
 from dapper.errors.error_patterns import handle_debugger_errors
 from dapper.errors.error_patterns import handle_protocol_errors
+
+
+@contextmanager
+def _capture_error_patterns_logs(caplog: Any, level: int):
+    logger = error_patterns_mod.logger
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(level, logger=logger.name):
+            yield
+    finally:
+        logger.removeHandler(caplog.handler)
+
 
 # ---------------------------------------------------------------------------
 # _classify_adapter_error
@@ -135,7 +149,7 @@ class TestHandleAdapterErrors:
         def my_function() -> None:
             raise RuntimeError("err")
 
-        with caplog.at_level(logging.ERROR):
+        with _capture_error_patterns_logs(caplog, logging.ERROR):
             my_function()
 
         assert "my_function" in caplog.text
@@ -145,7 +159,7 @@ class TestHandleAdapterErrors:
         def fn() -> None:
             raise RuntimeError("dbg")
 
-        with caplog.at_level(logging.DEBUG):
+        with _capture_error_patterns_logs(caplog, logging.DEBUG):
             fn()
 
         assert "dbg" in caplog.text

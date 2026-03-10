@@ -18,9 +18,8 @@ The frame-eval subsystem now has a real `eval_frame` backend on supported CPytho
 
 Current rollout status:
 
-- CPython 3.12 is the default compiled `eval_frame` path today.
-- CPython 3.11 has a validated experimental path used for targeted local and CI verification behind `DAPPER_EXPERIMENTAL_FRAME_EVAL_311=1`.
-- Until the remaining rollout steps are complete, prefer `backend: "auto"` on 3.11 so Dapper can conservatively fall back to tracing when the compiled path is not explicitly enabled.
+- CPython 3.11 and 3.12 both support the compiled `eval_frame` backend.
+- `backend: "auto"` remains the recommended first rollout mode on 3.11 so Dapper can conservatively fall back to tracing in incompatible environments.
 
 Current limitation: the eval-frame backend still relies on scoped tracing for debugger event delivery once a frame is selected. It does not yet switch between original and modified code objects at frame-entry time.
 
@@ -96,9 +95,8 @@ The frame evaluation subsystem currently supports two backend families:
   interpreters.
 * **eval_frame** — a CPython eval-frame hook that selects frames at entry and
     installs a scoped trace function only for the matching code object. This
-    backend is available only on supported CPython builds. In the current
-    rollout, that means the default compiled path on CPython 3.12 and an
-    experimental opt-in path on CPython 3.11.
+        backend is available only on supported CPython builds. Today that means
+        the compiled path on CPython 3.11 and 3.12.
 
 Backend configuration is controlled with two keys in the config object:
 
@@ -113,9 +111,6 @@ The `auto` backend mode prefers `eval_frame` when the compatibility policy
 reports the interpreter has the necessary support; otherwise it falls back to
 the tracing family. The tracing backend key still controls which tracing
 implementation is chosen when `backend` is `auto` or `tracing`.
-
-For CPython 3.11 specifically, `auto` is still the recommended mode while the
-compiled `eval_frame` path remains behind the explicit experimental override.
 
 #### Why Choose `eval_frame` Over `sys.monitoring`
 
@@ -175,7 +170,7 @@ The `eval_frame` backend is intentionally conservative.
 
 - Non-CPython interpreters are supported only through the tracing backends.
 - Python versions or platform/architecture combinations outside the compatibility policy stay on tracing.
-- CPython 3.11 remains an explicit rollout case: targeted compiled validation exists, but the default build/install path is still conservative unless the experimental override is enabled.
+- CPython 3.11 and 3.12 can use the compiled eval-frame backend when the extension is present; `auto` still falls back to tracing for incompatible environments.
 - If another debugger (`pydevd`, `pdb`, `ipdb`), coverage tooling (`coverage`, `pytest_cov`), or known conflicting environment markers are already active, `auto` falls back to tracing.
 - If the compiled eval-frame hook is missing or backend installation fails, `auto` falls back to tracing and the manager logs one concise reason for that selection instead of repeating the same message on every setup attempt.
 - If you explicitly request `backend: "eval_frame"` and set `fallback_to_tracing: false`, setup fails fast instead of silently switching to tracing.

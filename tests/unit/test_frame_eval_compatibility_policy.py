@@ -90,7 +90,12 @@ def test_policy_reports_eval_frame_specific_fallback_reason() -> None:
     """Eval-frame compatibility details should point callers at tracing when unavailable."""
     policy = FrameEvalCompatibilityPolicy()
 
-    with patch.object(policy, "supports_eval_frame", return_value=False):
+    expected_reason = "Compiled frame-eval extension not available in this runtime"
+
+    with (
+        patch.object(policy, "supports_eval_frame", return_value=False),
+        patch.object(policy, "_get_eval_frame_unavailable_reason", return_value=expected_reason),
+    ):
         result = policy.evaluate_environment(
             version_info=VersionInfo(3, 11, 4),
             platform_name="Linux-6.8",
@@ -103,7 +108,7 @@ def test_policy_reports_eval_frame_specific_fallback_reason() -> None:
 
     assert result["compatible"] is True
     assert result["eval_frame_supported"] is False
-    assert result["eval_frame_reason"] == "Eval-frame hook API not available in this runtime"
+    assert result["eval_frame_reason"] == expected_reason
     assert result["recommended_backend"] == "tracing"
 
 

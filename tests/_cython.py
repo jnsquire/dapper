@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.machinery
-import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -40,9 +39,7 @@ def has_loaded_compiled_frame_evaluator() -> bool:
 
 def compiled_frame_evaluator_expected() -> bool:
     version_tuple = sys.version_info[:2]
-    if version_tuple == (3, 12):
-        return True
-    return version_tuple == (3, 11) and os.environ.get("DAPPER_EXPERIMENTAL_FRAME_EVAL_311") == "1"
+    return version_tuple in {(3, 11), (3, 12)}
 
 
 def assert_loaded_compiled_frame_evaluator() -> ModuleType:

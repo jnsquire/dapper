@@ -19,9 +19,7 @@ from tests._cython import compiled_frame_evaluator_expected
 def test_frame_eval_extension_importable():
     """Assert that the loaded frame-eval module is the compiled extension."""
     if not compiled_frame_evaluator_expected():
-        pytest.skip(
-            "Compiled frame-eval extension is only built on the default 3.12 path or the experimental 3.11 validation path"
-        )
+        pytest.skip("Compiled frame-eval extension is only built on the supported 3.11-3.12 paths")
 
     module = assert_loaded_compiled_frame_evaluator()
     origin = getattr(module, "__file__", None)

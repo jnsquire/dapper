@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import argparse
 import atexit
-from datetime import UTC
 from datetime import datetime
+from datetime import timezone
 import json
 import logging
 from multiprocessing import connection as _mpc
@@ -43,6 +43,7 @@ Debug launcher entry point. Delegates to split modules.
 logger = logging.getLogger(DAPPER_LOGGER_LAUNCHER)
 
 KIND_COMMAND = 2
+UTC = timezone.utc
 
 
 def _format_log_timestamp(now: datetime) -> str:

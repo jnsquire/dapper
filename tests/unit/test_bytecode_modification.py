@@ -4,11 +4,12 @@
 import dis
 import sys
 import types
+from types import SimpleNamespace
 from typing import cast
 import warnings
 
 # Third-party imports
-import pytest
+import pytest  # pyright: ignore[reportMissingImports]
 
 # Disable import order warnings for this test file
 pytestmark = pytest.mark.filterwarnings(
@@ -400,7 +401,7 @@ def test_metadata_version_mismatch(original_code: types.CodeType) -> None:
     """Stale code-extra metadata should be ignored and emit mismatch telemetry."""
     if not compiled_frame_evaluator_expected():
         pytest.skip(
-            "Compiled frame-eval metadata behavior is only expected on the default 3.12 path or the experimental 3.11 validation path"
+            "Compiled frame-eval metadata behavior is only expected on the supported 3.11-3.12 paths"
         )
 
     from dapper._frame_eval import _frame_evaluator
@@ -470,7 +471,7 @@ def test_live_object_instrumentation_and_telemetry(monkeypatch):
         x = 1  # breakpoint line
         return x
 
-    mod.foo = foo
+    setattr(mod, "foo", foo)
     sys.modules[module_name] = mod
 
     reset_frame_eval_telemetry()
@@ -593,6 +594,30 @@ def test_injection_point_finding(
     breakpoint_lines = {3, 5}
     injection_points = bytecode_modifier._find_injection_points(instructions, breakpoint_lines)
     assert isinstance(injection_points, dict)
+
+
+def test_injection_point_finding_uses_line_number_metadata(
+    bytecode_modifier: BytecodeModifier,
+) -> None:
+    instructions = cast(
+        "list[dis.Instruction]",
+        [
+            SimpleNamespace(
+                opname="LOAD_CONST",
+                starts_line=True,
+                line_number=101,
+            ),
+            SimpleNamespace(
+                opname="STORE_FAST",
+                starts_line=False,
+                line_number=101,
+            ),
+        ],
+    )
+
+    injection_points = bytecode_modifier._find_injection_points(instructions, {101})
+
+    assert injection_points == {101: 1}
 
 
 def test_insert_code_invalid_line_returns_failure(original_code: types.CodeType) -> None:
