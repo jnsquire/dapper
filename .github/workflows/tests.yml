@@ -47,6 +47,7 @@ jobs:
 
       - name: Run 3.11 compiled eval-frame checks
         if: matrix.python-version == '3.11'
+        shell: bash
         run: |
           uv run pytest \
             tests/unit/test_frame_eval_hook_lifecycle.py::test_low_level_hook_install_uninstall_is_idempotent \
