@@ -250,6 +250,9 @@ export function findBundledWheelDir(
   version: string,
   output: vscode.LogOutputChannel,
 ): string | undefined {
+  if (!extensionPath) {
+    return undefined;
+  }
   const wheelDir = path.join(extensionPath, 'resources', 'python-wheels');
   if (!fs.existsSync(wheelDir)) {
     return undefined;
@@ -260,6 +263,26 @@ export function findBundledWheelDir(
   }
   output.debug(`findBundledWheelDir: found ${files.length} wheel(s) for v${version}: ${files.join(', ')}`);
   return wheelDir;
+}
+
+export function findBundledWheelVersions(extensionPath: string): string[] {
+  if (!extensionPath) {
+    return [];
+  }
+  const wheelDir = path.join(extensionPath, 'resources', 'python-wheels');
+  if (!fs.existsSync(wheelDir)) {
+    return [];
+  }
+
+  const versions = new Set<string>();
+  for (const fileName of fs.readdirSync(wheelDir)) {
+    const match = /^dapper-([^-]+)-.+\.whl$/.exec(fileName);
+    if (match) {
+      versions.add(match[1]);
+    }
+  }
+
+  return [...versions].sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
 }
 
 export function computeWheelHash(wheelDir: string): string {

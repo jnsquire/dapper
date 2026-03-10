@@ -86,6 +86,8 @@ Notes:
 3. Start debugging with **F5** or the `Dapper: Debug This` command.
 4. Use `Dapper: Run This` when you want the same interpreter and environment selection logic without attaching the debugger.
 
+In the editor title run actions, hold `Alt` while clicking `Debug This` or `Run This` to pick the Python environment for that launch explicitly.
+
 ### How Debug This Works
 
 `Dapper: Debug This` does not require an existing `launch.json` entry. It builds a temporary Dapper launch configuration for the active Python file, starts that file in an integrated terminal, and names the session from the file name.
@@ -168,7 +170,9 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 
 - `Dapper: Open Launch Configuration Wizard` - Open the step-by-step launch configuration wizard.
 - `Dapper: Debug This` - Start debugging the active Python file without first creating a `launch.json` entry.
+- `Dapper: Debug This (Pick Environment)` - Start debugging the active Python file after choosing the interpreter from a quick pick.
 - `Dapper: Run This` - Run the active Python file with Dapper's interpreter-selection logic but without attaching the debugger.
+- `Dapper: Run This (Pick Environment)` - Run the active Python file after choosing the interpreter from a quick pick.
 - `Dapper: Toggle Breakpoint` - Toggles a breakpoint at the current cursor.
 - `Dapper: Show Variable Inspector` - Opens the variable inspector view for the active debug session.
 - `Dapper: Configure Settings` - Legacy alias for opening the launch configuration wizard.

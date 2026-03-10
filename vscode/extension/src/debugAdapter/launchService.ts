@@ -29,6 +29,7 @@ export interface LaunchOptions {
   pythonPath?: string;
   stopOnEntry?: boolean;
   noDebug?: boolean;
+  pickEnvironment?: boolean;
   justMyCode?: boolean;
   subprocessAutoAttach?: boolean;
   waitForStop?: boolean;
@@ -234,6 +235,9 @@ export class LaunchService {
     workspaceFolder: vscode.WorkspaceFolder | undefined,
     target: { program?: string; module?: string },
   ): vscode.DebugConfiguration & LaunchRequestArguments {
+    const environmentSearchRoot = target.program
+      ? path.dirname(target.program)
+      : (options.cwd ? path.resolve(options.cwd) : workspaceFolder?.uri.fsPath);
     const config: vscode.DebugConfiguration & LaunchRequestArguments = {
       type: 'dapper',
       request: 'launch',
@@ -249,6 +253,8 @@ export class LaunchService {
       moduleSearchPaths: options.moduleSearchPaths,
       pythonPath: options.pythonPath,
       venvPath: options.venvPath,
+      __dapperExplicitEnvironmentSelection: options.pickEnvironment ?? false,
+      __dapperEnvironmentSearchRoot: environmentSearchRoot,
       ...target,
     };
     return config;
@@ -307,6 +313,9 @@ export class LaunchService {
     if (options.moduleSearchPaths) merged.moduleSearchPaths = options.moduleSearchPaths;
     if (options.pythonPath) merged.pythonPath = options.pythonPath;
     if (options.venvPath) merged.venvPath = options.venvPath;
+    merged.__dapperEnvironmentSearchRoot = typeof merged.program === 'string'
+      ? path.dirname(merged.program)
+      : (typeof merged.cwd === 'string' ? path.resolve(merged.cwd) : undefined);
     if (options.stopOnEntry !== undefined) merged.stopOnEntry = options.stopOnEntry;
     if (options.noDebug !== undefined) merged.noDebug = options.noDebug;
     if (options.justMyCode !== undefined) merged.justMyCode = options.justMyCode;
@@ -321,6 +330,20 @@ export class LaunchService {
     options: LaunchOptions,
   ): Promise<void> {
     if (config.pythonPath || config.venvPath || options.pythonPath || options.venvPath) {
+      return;
+    }
+    if (options.pickEnvironment) {
+      const selection = await PythonEnvironmentManager.pickPythonEnvironment(
+        workspaceFolder,
+        config.__dapperEnvironmentSearchRoot,
+      );
+      if (!selection) {
+        throw new Error('Launch cancelled because no Python environment was selected.');
+      }
+      config.pythonPath = selection.pythonPath;
+      if (selection.venvPath) {
+        config.venvPath = selection.venvPath;
+      }
       return;
     }
     try {

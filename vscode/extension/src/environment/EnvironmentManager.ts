@@ -11,6 +11,7 @@ import {
   ensureDapperLib,
   ensurePip,
   findBundledWheelDir,
+  findBundledWheelVersions,
   getDapperVersion,
   installFromPyPI,
   installToTargetDir,
@@ -78,7 +79,7 @@ export class EnvironmentManager {
     const config = vscode.workspace.getConfiguration('dapper.python');
     const baseInterpreterSetting = config.get<string>('baseInterpreter');
     const expectedVersionSetting = config.get<string>('expectedVersion');
-    const effectiveDesiredVersion = expectedVersionSetting || desiredVersion;
+    const effectiveDesiredVersion = this.resolveDesiredVersion(desiredVersion, expectedVersionSetting);
     const workspaceFolder = options.workspaceFolder;
 
     this.output.info(
@@ -106,13 +107,20 @@ export class EnvironmentManager {
       options.preferredPythonPath,
       options.preferredVenvPath,
       forceReinstall,
+      options.allowInstallToPreferredInterpreter ?? false,
     );
     if (preferred) {
       return preferred;
     }
 
     if (mode === 'auto') {
-      const wsResult = await this.tryWorkspaceVenv(effectiveDesiredVersion, wheelDir, workspaceFolder, forceReinstall);
+      const wsResult = await this.tryWorkspaceVenv(
+        effectiveDesiredVersion,
+        wheelDir,
+        workspaceFolder,
+        options.searchRootPath,
+        forceReinstall,
+      );
       if (wsResult) {
         return wsResult;
       }
@@ -281,9 +289,10 @@ export class EnvironmentManager {
     version: string,
     wheelDir: string | undefined,
     workspaceFolder?: vscode.WorkspaceFolder,
+    searchRootPath?: string,
     forceReinstall = false
   ): Promise<PythonEnvInfo | undefined> {
-    return tryWorkspaceVenvHelper(version, wheelDir, workspaceFolder, forceReinstall, this.selectionDeps());
+    return tryWorkspaceVenvHelper(version, wheelDir, workspaceFolder, searchRootPath, forceReinstall, this.selectionDeps());
   }
 
   private async tryPreferredInterpreter(
@@ -292,6 +301,7 @@ export class EnvironmentManager {
     preferredPythonPath: string | undefined,
     preferredVenvPath: string | undefined,
     forceReinstall: boolean,
+    allowInstallToPreferredInterpreter: boolean,
   ): Promise<PythonEnvInfo | undefined> {
     return tryPreferredInterpreterHelper(
       version,
@@ -299,6 +309,7 @@ export class EnvironmentManager {
       preferredPythonPath,
       preferredVenvPath,
       forceReinstall,
+      allowInstallToPreferredInterpreter,
       this.selectionDeps(),
     );
   }
@@ -402,6 +413,34 @@ export class EnvironmentManager {
 
   private findBundledWheelDir(version: string): string | undefined {
     return findBundledWheelDir(this.context.extensionPath, version, this.output);
+  }
+
+  private findBundledWheelVersions(): string[] {
+    return findBundledWheelVersions(this.context.extensionPath);
+  }
+
+  private resolveDesiredVersion(desiredVersion: string, expectedVersionSetting?: string): string {
+    if (expectedVersionSetting) {
+      return expectedVersionSetting;
+    }
+
+    if (this.findBundledWheelDir(desiredVersion)) {
+      return desiredVersion;
+    }
+
+    const bundledVersions = this.findBundledWheelVersions();
+    if (bundledVersions.length === 0) {
+      return desiredVersion;
+    }
+
+    const bundledVersion = bundledVersions[0];
+    if (bundledVersion !== desiredVersion) {
+      this.output.warn(
+        `No bundled wheel matches requested dapper ${desiredVersion}; using bundled dapper ${bundledVersion} instead. ` +
+        'Set dapper.python.expectedVersion to override this fallback.',
+      );
+    }
+    return bundledVersion;
   }
 
   private computeWheelHash(wheelDir: string): string {

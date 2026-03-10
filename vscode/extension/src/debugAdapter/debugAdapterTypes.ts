@@ -7,6 +7,8 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
   moduleSearchPaths?: string[];
   venvPath?: string;
   pythonPath?: string;
+  __dapperExplicitEnvironmentSelection?: boolean;
+  __dapperEnvironmentSearchRoot?: string;
   subprocessAutoAttach?: boolean;
   args?: string[];
   stopOnEntry?: boolean;

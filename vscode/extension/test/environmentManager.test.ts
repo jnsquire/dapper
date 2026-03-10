@@ -122,6 +122,22 @@ describe('EnvironmentManager helpers', () => {
     await expect(secondCall).resolves.toEqual({ pythonPath: '/python', needsInstall: false });
   });
 
+  it('falls back to the bundled wheel version when the extension version has no matching wheel', async () => {
+    vi.spyOn(envMgr as any, 'findBundledWheelDir').mockImplementation((version: unknown) => version === '0.9.1' ? '/wheel' : undefined);
+    vi.spyOn(envMgr as any, 'findBundledWheelVersions').mockReturnValue(['0.9.1']);
+    const prepareSpy = vi.spyOn(envMgr as any, 'tryPreferredInterpreter').mockResolvedValue({
+      pythonPath: '/python',
+      needsInstall: false,
+    });
+
+    const result = await envMgr.prepareEnvironment('0.9.2', 'auto', false, {
+      preferredPythonPath: '/python',
+    });
+
+    expect(prepareSpy).toHaveBeenCalledWith('0.9.1', '/wheel', '/python', undefined, false, false);
+    expect(result).toEqual({ pythonPath: '/python', needsInstall: false });
+  });
+
   describe('workspace venv handling', () => {
     let tmpRoot: string | undefined;
     const binDir = process.platform === 'win32' ? 'Scripts' : 'bin';
@@ -148,7 +164,7 @@ describe('EnvironmentManager helpers', () => {
       // stub ensureDapperLib to return a fake path instead of extracting
       (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
 
-      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, undefined, false);
       expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
       // No pip install into the workspace venv should have occurred
       expect(runCalls.length).toBe(0);
@@ -163,7 +179,7 @@ describe('EnvironmentManager helpers', () => {
       (envMgr as any).getDapperVersion = async () => '1.2.3';
       (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
 
-      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, true);
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, undefined, true);
       expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
       // forceReinstall should NOT result in pip install into workspace venv
       expect(runCalls.length).toBe(0);
@@ -176,7 +192,7 @@ describe('EnvironmentManager helpers', () => {
       (envMgr as any).checkDapperImportable = async () => true;
       (envMgr as any).getDapperVersion = async () => '1.2.3';
 
-      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, undefined, false);
       expect(res).toEqual({ pythonPath: candidate, needsInstall: false });
       expect(runCalls.length).toBe(0);
     });
@@ -188,7 +204,7 @@ describe('EnvironmentManager helpers', () => {
       (envMgr as any).checkDapperImportable = async () => false;
       (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
 
-      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, false);
+      const res = await (envMgr as any).tryWorkspaceVenv('1.2.3', '/wheel', undefined, undefined, false);
       expect(res).toEqual({ pythonPath: candidate, needsInstall: false, dapperLibPath: '/tmp/dapper-lib/1.2.3' });
       expect(runCalls.length).toBe(0);
     });
@@ -236,6 +252,57 @@ describe('EnvironmentManager helpers', () => {
       )).rejects.toThrow('Launch cancelled because Dapper requires a workspace virtual environment for this debug session.');
 
       expect(runCalls.length).toBe(0);
+    });
+
+    it('installs into an explicitly selected interpreter instead of falling back to workspace venv creation', async () => {
+      const candidate = path.join(tmpRoot!, '.venv', binDir, pyExe);
+      fs.mkdirSync(path.dirname(candidate), { recursive: true });
+      fs.writeFileSync(candidate, '');
+      (envMgr as any).checkDapperImportable = async () => false;
+      const installFromPyPISpy = vi.spyOn(envMgr as any, 'installFromPyPI').mockResolvedValue(undefined);
+      const ensurePipSpy = vi.spyOn(envMgr as any, 'ensurePip').mockResolvedValue(undefined);
+      const upgradePipSpy = vi.spyOn(envMgr as any, 'upgradePip').mockResolvedValue(undefined);
+      const createWorkspaceVenvSpy = vi.spyOn(envMgr as any, 'createWorkspaceVenvOrAbort');
+      vi.spyOn(envMgr as any, 'findBundledWheelDir').mockReturnValue(undefined);
+      vi.spyOn(envMgr as any, 'findBundledWheelVersions').mockReturnValue([]);
+
+      const res = await envMgr.prepareEnvironment('1.2.3', 'auto', false, {
+        workspaceFolder: { uri: { fsPath: tmpRoot! } } as vscode.WorkspaceFolder,
+        preferredPythonPath: candidate,
+        allowInstallToPreferredInterpreter: true,
+      });
+
+      expect(ensurePipSpy).toHaveBeenCalledWith(candidate);
+      expect(upgradePipSpy).toHaveBeenCalledWith(candidate);
+      expect(installFromPyPISpy).toHaveBeenCalledWith(candidate, '1.2.3', false);
+      expect(createWorkspaceVenvSpy).not.toHaveBeenCalled();
+      expect(res).toEqual({
+        pythonPath: candidate,
+        needsInstall: true,
+        dapperVersionInstalled: '1.2.3',
+        venvPath: undefined,
+      });
+    });
+
+    it('finds a nested project venv by searching upward from the launch target', async () => {
+      const nestedRoot = path.join(tmpRoot!, 'packages', 'agent_debug_workspace');
+      const candidate = path.join(nestedRoot, '.venv', binDir, pyExe);
+      fs.mkdirSync(path.dirname(candidate), { recursive: true });
+      fs.writeFileSync(candidate, '');
+      (envMgr as any).checkDapperImportable = async () => false;
+      (envMgr as any).ensureDapperLib = async () => '/tmp/dapper-lib/1.2.3';
+      vi.spyOn(envMgr as any, 'findBundledWheelDir').mockReturnValue('/wheel');
+
+      const res = await envMgr.prepareEnvironment('1.2.3', 'auto', false, {
+        workspaceFolder: { uri: { fsPath: tmpRoot! } } as vscode.WorkspaceFolder,
+        searchRootPath: nestedRoot,
+      });
+
+      expect(res).toEqual({
+        pythonPath: candidate,
+        needsInstall: false,
+        dapperLibPath: '/tmp/dapper-lib/1.2.3',
+      });
     });
   });
 

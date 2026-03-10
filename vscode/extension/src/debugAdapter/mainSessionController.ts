@@ -305,6 +305,10 @@ export class MainSessionController {
       workspaceFolder: session.workspaceFolder,
       preferredPythonPath: typeof config.pythonPath === 'string' ? config.pythonPath : undefined,
       preferredVenvPath: typeof config.venvPath === 'string' ? config.venvPath : undefined,
+      allowInstallToPreferredInterpreter: (config as LaunchRequestArguments).__dapperExplicitEnvironmentSelection === true,
+      searchRootPath: typeof (config as LaunchRequestArguments).__dapperEnvironmentSearchRoot === 'string'
+        ? (config as LaunchRequestArguments).__dapperEnvironmentSearchRoot
+        : undefined,
     });
     const cwd = (config.cwd as string | undefined) || session.workspaceFolder?.uri.fsPath || process.cwd();
     const { terminalEnv, logFile } = buildProcessEnv(

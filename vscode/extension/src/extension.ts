@@ -43,6 +43,7 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   const pendingReloads = new Set<string>();
   const autoReloadStatusThrottleMs = 1500;
   let lastAutoReloadStatusAt = 0;
+  const environmentPickCancelledMessage = 'Launch cancelled because no Python environment was selected.';
 
   const hasSavedDebugConfiguration = (): boolean => {
     const saved = vscode.workspace.getConfiguration('dapper').get<unknown>('debug');
@@ -165,7 +166,7 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     vscode.window.showInformationMessage('Variable inspector is now active');
   });
 
-  const startCurrentFile = async (options: { stopOnEntry: boolean; noDebug: boolean }) => {
+  const startCurrentFile = async (options: { stopOnEntry: boolean; noDebug: boolean; pickEnvironment?: boolean }) => {
     try {
       const fileBasename = currentPythonFileBasename();
       const sessionName = options.noDebug
@@ -179,14 +180,22 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
         target: { currentFile: true },
         stopOnEntry: options.stopOnEntry,
         noDebug: options.noDebug,
+        pickEnvironment: options.pickEnvironment,
         waitForStop: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message === environmentPickCancelledMessage) {
+        return;
+      }
       const action = options.noDebug
-        ? 'run the current file'
+        ? options.pickEnvironment
+          ? 'run the current file with a selected environment'
+          : 'run the current file'
         : options.stopOnEntry
           ? 'start debugging current file with stop on entry'
+          : options.pickEnvironment
+            ? 'start debugging current file with a selected environment'
           : 'start debugging current file';
       vscode.window.showErrorMessage(`Dapper: Failed to ${action}: ${message}`);
     }
@@ -197,6 +206,10 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
     await startCurrentFile({ stopOnEntry: false, noDebug: false });
   });
 
+  yield vscode.commands.registerCommand('dapper.startDebuggingPickEnvironment', async () => {
+    await startCurrentFile({ stopOnEntry: false, noDebug: false, pickEnvironment: true });
+  });
+
   // Start Debugging With Stop On Entry Command
   yield vscode.commands.registerCommand('dapper.startDebuggingStopOnEntry', async () => {
     await startCurrentFile({ stopOnEntry: true, noDebug: false });
@@ -205,6 +218,10 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   // Run This Command
   yield vscode.commands.registerCommand('dapper.runCurrentFile', async () => {
     await startCurrentFile({ stopOnEntry: false, noDebug: true });
+  });
+
+  yield vscode.commands.registerCommand('dapper.runCurrentFilePickEnvironment', async () => {
+    await startCurrentFile({ stopOnEntry: false, noDebug: true, pickEnvironment: true });
   });
 
   // Public launch API commands

@@ -7,6 +7,7 @@ import { JournalRegistry } from '../src/agent/stateJournal.js';
 import { LaunchService } from '../src/debugAdapter/launchService.js';
 import { LaunchTool } from '../src/agent/tools/launch.js';
 import type { NoDebugLaunchHandler } from '../src/debugAdapter/noDebugLauncher.js';
+import { PythonEnvironmentManager } from '../src/python/environment.js';
 import { createLaunchHarness, type LaunchHarness } from './__harness__/launchHarness.js';
 
 const vscodeMock = await import('./__mocks__/vscode.mjs');
@@ -204,6 +205,57 @@ describe('LaunchTool extension-host harness', () => {
 
     expect(result.venvPath).toBe(venvPath);
     expect(result.pythonPath).toBeUndefined();
+  });
+
+  it('uses the interpreter selected from the environment quick pick', async () => {
+    const filePath = path.join(tmpRoot, 'picked_env.py');
+    const venvPath = path.join(tmpRoot, 'env');
+    const pythonPath = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(filePath, 'print("picked")\n');
+    fs.writeFileSync(pythonPath, '');
+    harness.setActivePythonFile(filePath);
+
+    vi.spyOn(vscode.window, 'showQuickPick').mockImplementation(async (items) => {
+      const quickPickItems = await Promise.resolve(items) as ReadonlyArray<{ pythonPath?: string }>;
+      return quickPickItems.find(item => item.pythonPath === pythonPath) as any;
+    });
+
+    const result = await launchService.launch({
+      target: { currentFile: true },
+      pickEnvironment: true,
+    });
+
+    expect(vscode.window.showQuickPick).toHaveBeenCalledTimes(1);
+    expect(result.configuration.pythonPath).toBe(pythonPath);
+    expect(result.configuration.venvPath).toBe(venvPath);
+    expect(result.pythonPath).toBe(pythonPath);
+  });
+
+  it('offers a nested project venv in the environment quick pick when no active interpreter is available', async () => {
+    const nestedRoot = path.join(tmpRoot, 'packages', 'agent_debug_workspace');
+    const filePath = path.join(nestedRoot, 'app.py');
+    const venvPath = path.join(nestedRoot, '.venv');
+    const pythonPath = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(filePath, 'print("nested")\n');
+    fs.writeFileSync(pythonPath, '');
+    harness.setActivePythonFile(filePath);
+    vi.spyOn(PythonEnvironmentManager, 'getPythonEnvironment').mockRejectedValue(new Error('No Python interpreter found'));
+
+    vi.spyOn(vscode.window, 'showQuickPick').mockImplementation(async (items) => {
+      const quickPickItems = await Promise.resolve(items) as ReadonlyArray<{ pythonPath?: string }>;
+      return quickPickItems.find(item => item.pythonPath === pythonPath) as any;
+    });
+
+    const result = await launchService.launch({
+      target: { currentFile: true },
+      pickEnvironment: true,
+    });
+
+    expect(vscode.window.showQuickPick).toHaveBeenCalledTimes(1);
+    expect(result.configuration.pythonPath).toBe(pythonPath);
+    expect(result.configuration.venvPath).toBe(venvPath);
   });
 
   it('waits for the first stop and returns a snapshot when requested', async () => {

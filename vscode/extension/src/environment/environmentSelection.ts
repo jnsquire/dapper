@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import * as vscode from 'vscode';
 
+import { collectEnvironmentSearchRoots } from './paths.js';
 import type { PythonEnvInfo } from './types.js';
 
 export interface EnvironmentSelectionDeps {
@@ -89,6 +90,7 @@ export async function tryWorkspaceVenv(
   version: string,
   wheelDir: string | undefined,
   workspaceFolder: vscode.WorkspaceFolder | undefined,
+  searchRootPath: string | undefined,
   forceReinstall: boolean,
   deps: EnvironmentSelectionDeps,
 ): Promise<PythonEnvInfo | undefined> {
@@ -96,11 +98,7 @@ export async function tryWorkspaceVenv(
   const pyExe = process.platform === 'win32' ? 'python.exe' : 'python';
   const venvDirs = ['.venv', 'venv', 'env', '.env'];
 
-  const allWorkspaceFolders = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
-  const sessionFolder = workspaceFolder?.uri.fsPath;
-  const folders = sessionFolder && !allWorkspaceFolders.includes(sessionFolder)
-    ? [sessionFolder, ...allWorkspaceFolders]
-    : (sessionFolder ? [sessionFolder, ...allWorkspaceFolders.filter(folder => folder !== sessionFolder)] : allWorkspaceFolders);
+  const folders = collectEnvironmentSearchRoots(searchRootPath, workspaceFolder);
 
   deps.output.info(`tryWorkspaceVenv: scanning folders [${folders.join(', ')}]`);
 
@@ -149,6 +147,7 @@ export async function tryPreferredInterpreter(
   preferredPythonPath: string | undefined,
   preferredVenvPath: string | undefined,
   forceReinstall: boolean,
+  allowInstallToPreferredInterpreter: boolean,
   deps: EnvironmentSelectionDeps,
 ): Promise<PythonEnvInfo | undefined> {
   const candidate = preferredPythonPath
@@ -188,5 +187,26 @@ export async function tryPreferredInterpreter(
     return { pythonPath: candidate, venvPath: preferredVenvPath, needsInstall: false };
   }
 
-  return undefined;
+  if (!allowInstallToPreferredInterpreter) {
+    return undefined;
+  }
+
+  deps.output.info(
+    `Preferred interpreter ${candidate} was explicitly selected; installing dapper directly into it.`,
+  );
+  await deps.ensurePip(candidate);
+  await deps.upgradePip(candidate);
+  if (wheelDir) {
+    await deps.installWheel(candidate, wheelDir, version, forceReinstall);
+  } else {
+    await deps.installFromPyPI(candidate, version, forceReinstall);
+  }
+
+  return {
+    pythonPath: candidate,
+    venvPath: preferredVenvPath,
+    dapperVersionInstalled: version,
+    needsInstall: true,
+  };
+
 }

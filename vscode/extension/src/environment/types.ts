@@ -22,4 +22,6 @@ export interface PrepareEnvironmentOptions {
   workspaceFolder?: vscode.WorkspaceFolder;
   preferredPythonPath?: string;
   preferredVenvPath?: string;
+  allowInstallToPreferredInterpreter?: boolean;
+  searchRootPath?: string;
 }

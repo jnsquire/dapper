@@ -726,6 +726,12 @@
         "icon": "$(debug)"
       },
       {
+        "command": "dapper.startDebuggingPickEnvironment",
+        "title": "Dapper: Debug This (Pick Environment)",
+        "category": "Dapper",
+        "icon": "$(debug)"
+      },
+      {
         "command": "dapper.startDebuggingStopOnEntry",
         "title": "Dapper: Debug This (Stop on Entry)",
         "category": "Dapper",
@@ -734,6 +740,12 @@
       {
         "command": "dapper.runCurrentFile",
         "title": "Dapper: Run This",
+        "category": "Dapper",
+        "icon": "$(play)"
+      },
+      {
+        "command": "dapper.runCurrentFilePickEnvironment",
+        "title": "Dapper: Run This (Pick Environment)",
         "category": "Dapper",
         "icon": "$(play)"
       },
@@ -887,11 +899,19 @@
           "when": "resourceLangId == python"
         },
         {
+          "command": "dapper.startDebuggingPickEnvironment",
+          "when": "resourceLangId == python"
+        },
+        {
           "command": "dapper.startDebuggingStopOnEntry",
           "when": "resourceLangId == python"
         },
         {
           "command": "dapper.runCurrentFile",
+          "when": "resourceLangId == python"
+        },
+        {
+          "command": "dapper.runCurrentFilePickEnvironment",
           "when": "resourceLangId == python"
         },
         {
@@ -906,12 +926,13 @@
       "editor/title/run": [
         {
           "command": "dapper.runCurrentFile",
+          "alt": "dapper.runCurrentFilePickEnvironment",
           "when": "resourceLangId == python",
           "group": "1_dapper@1"
         },
         {
           "command": "dapper.startDebugging",
-          "alt": "dapper.startDebuggingStopOnEntry",
+          "alt": "dapper.startDebuggingPickEnvironment",
           "when": "resourceLangId == python",
           "group": "1_dapper@2"
         },

@@ -70,6 +70,8 @@ export class DapperNoDebugLauncher implements NoDebugLaunchHandler {
       workspaceFolder,
       preferredPythonPath: typeof configuration.pythonPath === 'string' ? configuration.pythonPath : undefined,
       preferredVenvPath: typeof configuration.venvPath === 'string' ? configuration.venvPath : undefined,
+      allowInstallToPreferredInterpreter: configuration.__dapperExplicitEnvironmentSelection === true,
+      searchRootPath: typeof configuration.__dapperEnvironmentSearchRoot === 'string' ? configuration.__dapperEnvironmentSearchRoot : undefined,
     });
 
     const pythonPath = envInfo.pythonPath;
