@@ -5,6 +5,7 @@ import dis
 import sys
 import types
 from types import SimpleNamespace
+from typing import Any
 from typing import cast
 import warnings
 
@@ -471,7 +472,7 @@ def test_live_object_instrumentation_and_telemetry(monkeypatch):
         x = 1  # breakpoint line
         return x
 
-    setattr(mod, "foo", foo)
+    cast("Any", mod).foo = foo
     sys.modules[module_name] = mod
 
     reset_frame_eval_telemetry()
