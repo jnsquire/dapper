@@ -121,11 +121,16 @@ def _build_code_args(code_attrs: dict) -> list:
 
 def _first_executable_line(code_obj: types.CodeType) -> int:
     """Return the first source line after the function definition line."""
-    return next(
-        line
-        for _, _, line in code_obj.co_lines()
-        if line is not None and line > code_obj.co_firstlineno
-    )
+    line_numbers = _iter_code_lines(code_obj)
+    return next(line for line in line_numbers if line > code_obj.co_firstlineno)
+
+
+def _iter_code_lines(code_obj: types.CodeType) -> list[int]:
+    """Return executable source lines across Python minor versions."""
+    co_lines = getattr(code_obj, "co_lines", None)
+    if callable(co_lines):
+        return [line for _, _, line in cast("Any", co_lines)() if line is not None]
+    return [line for _, line in dis.findlinestarts(code_obj)]
 
 
 def test_validate_bytecode(original_code: types.CodeType) -> None:
@@ -448,7 +453,7 @@ def test_module_level_instrumentation(bytecode_modifier: BytecodeModifier) -> No
     """Instrument a module-level code object."""
     src = "x = 1\nx = 2\n"
     code = compile(src, "<mod_test>", "exec")
-    lines = {line for _, _, line in code.co_lines() if line is not None}
+    lines = set(_iter_code_lines(code))
     assert lines
     success, modified = bytecode_modifier.inject_breakpoints(code, lines)
     assert success
@@ -510,7 +515,7 @@ def test_recursive_instrumentation(bytecode_modifier: BytecodeModifier) -> None:
         None,
     )
     assert inner_code is not None
-    lines = {line for _, _, line in inner_code.co_lines() if line is not None}
+    lines = set(_iter_code_lines(inner_code))
     # there should be at least one line to target
     if not lines:
         pytest.skip("no inner lines discovered")
