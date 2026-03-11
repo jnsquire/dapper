@@ -22,7 +22,7 @@ These are two separate processes with different responsibilities:
 from dapper.adapter.adapter import main as _adapter_main
 
 __all__ = ["__version__", "main"]
-__version__ = "0.9.1"
+__version__ = "0.9.3"
 
 
 def main() -> None:

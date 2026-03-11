@@ -37,7 +37,7 @@ npm run package
 reload the VS Code window:
 
 ```powershell
-code --install-extension dist/dapper-debugger-0.9.1.vsix --force
+code --install-extension dist/dapper-debugger-0.9.3.vsix --force
 ```
 
 Notes:

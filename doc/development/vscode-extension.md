@@ -27,7 +27,7 @@ The VS Code extension source code is located in `vscode/extension`. It is a sepa
 4. **Package and reinstall the VSIX when testing the installed extension:**
    ```bash
    npm run package
-  code --install-extension dist/dapper-debugger-0.9.1.vsix --force
+  code --install-extension dist/dapper-debugger-0.9.3.vsix --force
    ```
 
    Notes:
