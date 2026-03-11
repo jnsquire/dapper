@@ -336,8 +336,10 @@ class TestDebugLauncherBasic:
             returned_path = Path(dl.setup_session_log_file("session-123"))
 
             assert returned_path.parent == tmp_path
+            # new filename should include pid between timestamp and
+            # session token; pid is one or more digits.
             assert re.fullmatch(
-                r"dapper-debug-\d{8}-\d{6}-\d{3}-session-123\.log",
+                r"dapper-debug-\d{8}-\d{6}-\d{3}-\d+-session-123\.log",
                 returned_path.name,
             )
         finally:

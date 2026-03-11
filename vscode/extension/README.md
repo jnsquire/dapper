@@ -306,7 +306,7 @@ The extension exposes the following settings under `dapper`:
 
 - `dapper.logLevel` (debug|info|warn|error) - Logging verbosity.
 - `dapper.logToConsole` (boolean) - Also write logs to the dev tools console.
-- `dapper.debugger.logFile` (string) - Persistent log file path for the Python debug session. Supports `${workspaceFolder}`.
+- `dapper.debugger.logFile` (string) - Persistent log file path for the Python debug session. Supports `${workspaceFolder}`.  By default the extension will pick a file in the system temporary directory with a timestamp, the debugger process ID, and the session token so that repeated launches write to different files.
 - `dapper.debugger.logLevel` (TRACE|DEBUG|INFO|WARNING|ERROR) - Log level for the Python debug session log file. This is passed to the launcher as `DAPPER_LOG_LEVEL`.
 - `dapper.python.installMode` (auto|wheel|pypi|workspace) - How the Python package is installed.
 - `dapper.python.baseInterpreter` (string) - Absolute path to a base Python interpreter.

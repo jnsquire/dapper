@@ -80,7 +80,13 @@ def _setup_session_log_file(
     else:
         sid = session_id or uuid.uuid4().hex
         timestamp = _format_log_timestamp(datetime.now(UTC).astimezone())
-        log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{timestamp}-{sid}.log")
+        # include process id in the basename so that two launches from the same
+        # working directory but different Python processes (e.g. repeated
+        # adapter restarts during extension development) produce distinct
+        # filenames.  We already include a timestamp and session id but the pid
+        # gives an extra safety margin and fulfills the user's request.
+        pid = os.getpid()
+        log_path = str(Path(tempfile.gettempdir()) / f"dapper-debug-{timestamp}-{pid}-{sid}.log")
     # Truncate once up front, then keep the live handler in append mode.
     # Other diagnostic paths also open the same file in append mode, and
     # mixing those writers with a long-lived handler opened in write mode can

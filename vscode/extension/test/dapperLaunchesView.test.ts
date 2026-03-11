@@ -110,11 +110,12 @@ describe('DapperLaunchesView', () => {
       targetLabel: 'app.py',
       noDebug: false,
     });
-    history.updateLogFile('launch-1', '/tmp/dapper-debug-20260307-184527-012-session-123.log');
+    // include a dummy pid portion so the tooltip tests still match
+    history.updateLogFile('launch-1', '/tmp/dapper-debug-20260307-184527-012-99999-session-123.log');
 
     const item = (view as any)._provider.getTreeItem({ kind: 'launch', launchToken: 'launch-1' });
 
-    expect(item.tooltip).toContain('Log name: dapper-debug-20260307-184527-012-session-123.log');
-    expect(item.tooltip).toContain('Log file: /tmp/dapper-debug-20260307-184527-012-session-123.log');
+    expect(item.tooltip).toContain('Log name: dapper-debug-20260307-184527-012-99999-session-123.log');
+    expect(item.tooltip).toContain('Log file: /tmp/dapper-debug-20260307-184527-012-99999-session-123.log');
   });
 });
