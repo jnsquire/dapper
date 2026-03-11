@@ -2,7 +2,9 @@ import { EventEmitter } from 'events';
 import * as Net from 'net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as vscode from 'vscode';
+import * as vscodeModule from 'vscode';
 import { ChildSessionManager } from '../src/debugAdapter/childSessionManager.js';
+import { writeIpcMessage } from '../src/debugAdapter/ipcMessageFraming.js';
 
 function makeOutputChannel(): vscode.LogOutputChannel {
   return {
@@ -39,64 +41,79 @@ async function listenOnLoopback(server: Net.Server, port: number): Promise<void>
   });
 }
 
+async function closeServer(server: Net.Server): Promise<void> {
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
+}
+
+
+async function connectToLoopback(port: number): Promise<Net.Socket> {
+  return await new Promise<Net.Socket>((resolve, reject) => {
+    const socket = Net.createConnection({ host: '127.0.0.1', port }, () => resolve(socket));
+    socket.once('error', reject);
+  });
+}
+
+function writeSessionHello(socket: Net.Socket, sessionId: string): void {
+  writeIpcMessage(socket, {
+    event: 'dapper/sessionHello',
+    body: { sessionId },
+  });
+}
+
 describe('ChildSessionManager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('cleans up pending state when the child listener cannot bind', async () => {
-    const blocker = Net.createServer();
-    await listenOnLoopback(blocker, 0);
-    const address = blocker.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('failed to bind blocker server');
-    }
-
+  it('ignores child events that do not advertise the shared listener port', async () => {
     const manager = new ChildSessionManager(() => makeOutputChannel());
+    const sharedPort = await manager.ensureSharedListenerPort();
 
-    await expect(manager.handleChildProcessEvent(makeParentSession(), {
+    await manager.handleChildProcessEvent(makeParentSession(), {
       sessionId: 'child-launcher-session',
       pid: 4242,
-      ipcPort: address.port,
+      ipcPort: sharedPort + 1,
       name: 'subprocess_child.py',
-    })).rejects.toThrow();
+    });
 
-    expect(manager.childSessions.has('child-launcher-session')).toBe(false);
-    expect(manager.childSessionIdsByPid.has(4242)).toBe(false);
-
-    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    expect(manager.hasPendingChildSession('child-launcher-session')).toBe(false);
+    expect(manager.getPendingChildSessionIdForPid(4242)).toBeUndefined();
   });
 
-  it('drops a child session that exits while its listener is still binding', async () => {
-    const fakeServer = new EventEmitter() as Net.Server & EventEmitter;
-    fakeServer.listen = vi.fn((_port: number, _host: string) => {
-      queueMicrotask(() => {
-        fakeServer.emit('listening');
-      });
-      return fakeServer;
-    }) as unknown as Net.Server['listen'];
-    fakeServer.close = vi.fn();
-    fakeServer.address = vi.fn(() => ({ port: 9001, address: '127.0.0.1', family: 'IPv4' }));
+  it('reuses one shared listener across multiple child sessions', async () => {
+    let serverCreationCount = 0;
+    const createServer: typeof Net.createServer = ((
+      optionsOrListener?: Net.ServerOpts | ((socket: Net.Socket) => void),
+      maybeListener?: (socket: Net.Socket) => void,
+    ) => {
+      serverCreationCount += 1;
+      return typeof optionsOrListener === 'function'
+        ? Net.createServer(optionsOrListener)
+        : Net.createServer(optionsOrListener, maybeListener);
+    }) as typeof Net.createServer;
 
-    const manager = new ChildSessionManager(() => makeOutputChannel(), () => fakeServer);
+    const manager = new ChildSessionManager(() => makeOutputChannel(), createServer);
+    const sharedPort = await manager.ensureSharedListenerPort();
     const parentSession = makeParentSession();
-    const promise = manager.handleChildProcessEvent(parentSession, {
+
+    await manager.handleChildProcessEvent(parentSession, {
       sessionId: 'child-launcher-session',
       pid: 4242,
-      ipcPort: 9001,
+      ipcPort: sharedPort,
       name: 'subprocess_child.py',
     });
-
-    manager.handleChildProcessExitedEvent({
-      sessionId: 'child-launcher-session',
-      pid: 4242,
+    await manager.handleChildProcessEvent(parentSession, {
+      sessionId: 'child-launcher-session-2',
+      pid: 4343,
+      ipcPort: sharedPort,
+      name: 'subprocess_child_2.py',
     });
 
-    await promise;
-
-    expect(manager.childSessions.has('child-launcher-session')).toBe(false);
-    expect(manager.childSessionIdsByPid.has(4242)).toBe(false);
-    expect(fakeServer.close).toHaveBeenCalled();
+    expect(serverCreationCount).toBe(1);
+    expect(manager.hasPendingChildSession('child-launcher-session')).toBe(true);
+    expect(manager.hasPendingChildSession('child-launcher-session-2')).toBe(true);
   });
 
   it('cleans up pending state when adapter-server startup fails', async () => {
@@ -111,18 +128,36 @@ describe('ChildSessionManager', () => {
     fakeServer.close = vi.fn();
     fakeServer.address = vi.fn(() => ({ port: 0, address: '127.0.0.1', family: 'IPv4' }));
 
-    const manager = new ChildSessionManager(() => outputChannel, () => fakeServer);
+    let serverCreationCount = 0;
+    const createServer: typeof Net.createServer = ((
+      optionsOrListener?: Net.ServerOpts | ((socket: Net.Socket) => void),
+      maybeListener?: (socket: Net.Socket) => void,
+    ) => {
+      serverCreationCount += 1;
+      if (serverCreationCount === 1) {
+        return typeof optionsOrListener === 'function'
+          ? Net.createServer(optionsOrListener)
+          : Net.createServer(optionsOrListener, maybeListener);
+      }
+      return fakeServer as unknown as Net.Server;
+    }) as typeof Net.createServer;
 
-    manager.childSessions.set('child-launcher-session', {
-      launcherSessionId: 'child-launcher-session',
+    const manager = new ChildSessionManager(() => outputChannel, createServer);
+    const startDebugging = vi.spyOn(vscodeModule.debug, 'startDebugging').mockResolvedValue(true);
+    const sharedPort = await manager.ensureSharedListenerPort();
+
+    await manager.handleChildProcessEvent(makeParentSession(), {
+      sessionId: 'child-launcher-session',
       pid: 4242,
+      ipcPort: sharedPort,
       name: 'subprocess_child.py',
-      ipcPort: 9001,
-      parentDebugSessionId: 'parent-session',
-      parentSession: makeParentSession(),
-      socket: { destroy: vi.fn(), destroyed: false } as unknown as Net.Socket,
     });
-    manager.childSessionIdsByPid.set(4242, 'child-launcher-session');
+
+    const socket = await connectToLoopback(sharedPort);
+    writeSessionHello(socket, 'child-launcher-session');
+    await vi.waitFor(() => {
+      expect(startDebugging).toHaveBeenCalled();
+    });
 
     await expect(manager.createChildDebugAdapterDescriptor({
       id: 'child-vscode-session',
@@ -137,7 +172,7 @@ describe('ChildSessionManager', () => {
         __dapperChildPid: 4242,
         __dapperChildName: 'subprocess_child.py',
         __dapperParentDebugSessionId: 'parent-session',
-        __dapperChildIpcPort: 9001,
+        __dapperChildIpcPort: sharedPort,
       },
     } as unknown as vscode.DebugSession, {
       type: 'dapper',
@@ -148,11 +183,13 @@ describe('ChildSessionManager', () => {
       __dapperChildPid: 4242,
       __dapperChildName: 'subprocess_child.py',
       __dapperParentDebugSessionId: 'parent-session',
-      __dapperChildIpcPort: 9001,
+      __dapperChildIpcPort: sharedPort,
     })).rejects.toThrow(/adapter bind failed/i);
 
-    expect(manager.childSessions.has('child-launcher-session')).toBe(false);
-    expect(manager.childSessionIdsByPid.has(4242)).toBe(false);
+    socket.destroy();
+
+    expect(manager.hasPendingChildSession('child-launcher-session')).toBe(false);
+    expect(manager.getPendingChildSessionIdForPid(4242)).toBeUndefined();
     expect(outputChannel.debug).toHaveBeenCalled();
   });
 });

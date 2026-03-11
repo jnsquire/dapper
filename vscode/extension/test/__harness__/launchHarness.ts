@@ -1,3 +1,60 @@
+/*
+Extension Host Launch Harness
+
+This mock harness exercises the `dapper_launch` tool interface through the
+extension's Vitest suite.  It lives under `vscode/extension/test`, and the
+accompanying Markdown page in `doc/development/extension-launch-harness.md`
+contains the same information in a more permanent, searchable location.
+
+Key points:
+  * Completely fake: no real adapter, Python process, or VS Code window is
+    ever spawned.  All interactions happen via the mocked `vscode` layer.
+  * Designed for agent-driven coverage of launch scenarios.
+  * Primary entry points for tests are `createLaunchHarness` and
+    `LaunchTool.invoke(...)`.
+
+What the harness covers:
+  - active Python editor launch
+  - workspace-relative file launch
+  - module launch
+  - named Dapper config from `launch.json`
+  - named saved Dapper config from `dapper.debug`
+  - explicit `pythonPath` or `venvPath`
+  - wait-for-stop flow via fake debug events
+
+Recommended pattern for new cases:
+
+  const harness = createLaunchHarness({ workspaceRoot: tmpRoot });
+  const registry = new JournalRegistry();
+  const launchService = new LaunchService(registry);
+  const launchTool = new LaunchTool(registry, launchService);
+
+  harness.setActivePythonFile(path.join(tmpRoot, 'app.py'));
+  const result = await invokeLaunchTool(launchTool, { target: { currentFile: true } });
+  expect(result.configuration.program).toContain('app.py');
+
+Harness controls (methods exported by `LaunchHarness`):
+  - setActivePythonFile(filePath)
+  - setSavedDapperConfig(config)
+  - setLaunchConfigurations(configs)
+  - setPythonInterpreter(pythonPath)
+  - fireStopped(body)
+  - fireTerminated(body)
+  - createCancellationToken()
+
+Quick debugging tips:
+  * If a test hangs, check whether `waitForStop: true` needs `fireStopped(...)` to receive
+  * Named config failures usually stem from launch or dapper configuration stubs
+  * Interpreter issues can be traced via `setPythonInterpreter(...)`
+  * If a test hangs, check whether `waitForStop: true` needs `fireStopped(...)
+  * Named config failures usually stem from launch or dapper configuration stubs
+  * Interpreter issues can be traced via `setPythonInterpreter(...)`
+
+Related agent-layer acceptance assets (for higher‑level, end‑to‑end workflows):
+  - `vscode/extension/test/AGENT_LAYER_DEBUG_SCRIPT.md`
+  - `vscode/extension/test/fixtures/agent_debug_workspace/README.md`
+*/
+
 import { vi } from 'vitest';
 import { fireDebugEvent } from '../__mocks__/vscode.mjs';
 

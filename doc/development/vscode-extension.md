@@ -116,6 +116,19 @@ the runtime behavior that is easy to miss.
 - This avoids noisy schema diagnostics in the repo workspace for custom Dapper-only fields such as
   `moduleSearchPaths` or for the unregistered debug type outside the extension host.
 
+### Child Auto-Attach Transport
+
+- `subprocessAutoAttach: true` allocates one shared child IPC listener per parent debug session in
+  the extension rather than one listener per child.
+- Rewritten child launchers inherit that shared port with `--subprocess-ipc-port` and connect back
+  to it after startup.
+- The first child-side frame on that socket is an internal `dapper/sessionHello` message carrying
+  the logical child `sessionId`.
+- `ChildSessionManager` correlates the socket with the pending `dapper/childProcess` event by that
+  `sessionId` before constructing the child `DapperDebugSession`.
+- The `ipcPort` field exposed in `dapper/childProcess` is therefore the shared listener port for the
+  parent session, not a child-unique port.
+
 ## See Also
 
 - [Setup](setup.md)

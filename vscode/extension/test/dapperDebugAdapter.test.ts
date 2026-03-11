@@ -1,6 +1,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DapperDebugSession } from '../src/debugAdapter/dapperDebugSession.js';
+import { createIpcMessageFrame } from '../src/debugAdapter/ipcMessageFraming.js';
 import * as Net from 'net';
 import { EventEmitter } from 'events';
 import { DebugProtocol } from '@vscode/debugprotocol';
@@ -28,14 +29,7 @@ class MockSocket extends EventEmitter {
 }
 
 function createFrame(payload: any): Buffer {
-    const json = JSON.stringify(payload);
-    const len = Buffer.byteLength(json, 'utf8');
-    const header = Buffer.alloc(8);
-    header.write('DP', 0);
-    header.writeUInt8(1, 2); // VER
-    header.writeUInt8(1, 3); // KIND (1 = Event/Response)
-    header.writeUInt32BE(len, 4);
-    return Buffer.concat([header, Buffer.from(json, 'utf8')]);
+    return createIpcMessageFrame(payload);
 }
 
 describe('DapperDebugSession', () => {

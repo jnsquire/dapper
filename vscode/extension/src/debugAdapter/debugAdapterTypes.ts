@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { PendingChildConnection } from './pendingChildConnection.js';
 
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program?: string;
@@ -50,12 +51,8 @@ export interface PendingChildSession {
   workspaceFolder?: vscode.WorkspaceFolder;
   cwd?: string;
   command?: string[];
-  listener?: import('net').Server;
-  socket?: import('net').Socket;
-  adapterServer?: import('net').Server;
+  connection: PendingChildConnection;
   vscodeSessionId?: string;
-  launchRequested?: boolean;
-  terminated?: boolean;
 }
 
 export interface AttachByPidDiagnostic {

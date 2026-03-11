@@ -282,6 +282,11 @@ def parse_args():
         help="Enable automatic debugger injection for Python subprocess children.",
     )
     parser.add_argument(
+        "--subprocess-ipc-port",
+        type=int,
+        help="Shared IPC TCP port used by auto-attached Python subprocesses.",
+    )
+    parser.add_argument(
         "--session-id",
         type=str,
         help="Logical session identifier for this launcher process.",
@@ -605,6 +610,7 @@ def main():  # noqa: PLR0912, PLR0915
                 enabled=True,
                 auto_attach=True,
                 ipc_host=args.ipc_host or "127.0.0.1",
+                shared_ipc_port=getattr(args, "subprocess_ipc_port", None),
                 session_id=session.session_id,
                 parent_session_id=session.parent_session_id,
             ),
@@ -615,6 +621,14 @@ def main():  # noqa: PLR0912, PLR0915
         # Establish IPC connection if requested
         setup_ipc_from_args(args, session=session)
         logger.info("IPC connection established")
+
+        if getattr(args, "subprocess", False):
+            send_debug_message(
+                "dapper/sessionHello",
+                sessionId=session.session_id,
+                parentSessionId=session.parent_session_id,
+                pid=os.getpid(),
+            )
 
         # Start command listener thread (from IPC or stdin depending on state)
         start_command_listener(session=session)

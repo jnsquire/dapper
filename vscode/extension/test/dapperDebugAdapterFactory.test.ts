@@ -16,6 +16,7 @@ vi.mock('child_process', async () => {
 });
 
 import { DapperDebugAdapterDescriptorFactory } from '../src/debugAdapter/dapperDebugAdapter.js';
+import { writeIpcMessage } from '../src/debugAdapter/ipcMessageFraming.js';
 import { fireDebugEvent, resetDebugListeners } from './__mocks__/vscode.mjs';
 
 vi.mock('@vscode/debugadapter', () => {
@@ -59,6 +60,13 @@ async function allocatePort(): Promise<number> {
   return port;
 }
 
+function writeSessionHello(socket: Net.Socket, sessionId: string): void {
+  writeIpcMessage(socket, {
+    event: 'dapper/sessionHello',
+    body: { sessionId },
+  });
+}
+
 describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
   let factory: DapperDebugAdapterDescriptorFactory;
 
@@ -82,7 +90,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     const startDebugging = vi.fn(async () => true);
     (vscode.debug.startDebugging as unknown) = startDebugging;
 
-    const port = await allocatePort();
+    const port = await (factory as any).childSessionManager.ensureSharedListenerPort();
     const parentSession = {
       id: 'parent-session',
       type: 'dapper',
@@ -105,11 +113,12 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any).childSessionManager.childSessions.get('child-launcher-session')?.listener).toBeDefined();
+      expect((factory as any).childSessionManager.hasPendingChildSession('child-launcher-session')).toBe(true);
     });
 
     const childSocket = Net.createConnection({ host: '127.0.0.1', port });
     await once(childSocket, 'connect');
+    writeSessionHello(childSocket, 'child-launcher-session');
 
     await vi.waitFor(() => {
       expect(startDebugging).toHaveBeenCalledTimes(1);
@@ -150,13 +159,12 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     } as unknown as vscode.DebugSession, undefined);
 
     expect((descriptor as vscode.DebugAdapterServer).port).toBeGreaterThan(0);
-    expect((factory as any).childSessionManager.childSessions.get('child-launcher-session')?.vscodeSessionId).toBe('child-vscode-session');
 
     childSocket.destroy();
   });
 
   it('cleans up a pending child session when a child exits before VS Code attaches', async () => {
-    const port = await allocatePort();
+    const port = await (factory as any).childSessionManager.ensureSharedListenerPort();
     const parentSession = {
       id: 'parent-session',
       type: 'dapper',
@@ -177,7 +185,7 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any).childSessionManager.childSessions.has('child-launcher-session')).toBe(true);
+      expect((factory as any).childSessionManager.hasPendingChildSession('child-launcher-session')).toBe(true);
     });
 
     fireDebugEvent('onDidReceiveDebugSessionCustomEvent', {
@@ -191,8 +199,8 @@ describe('DapperDebugAdapterDescriptorFactory child attach flow', () => {
     });
 
     await vi.waitFor(() => {
-      expect((factory as any).childSessionManager.childSessions.has('child-launcher-session')).toBe(false);
-      expect((factory as any).childSessionManager.childSessionIdsByPid.has(4242)).toBe(false);
+      expect((factory as any).childSessionManager.hasPendingChildSession('child-launcher-session')).toBe(false);
+      expect((factory as any).childSessionManager.getPendingChildSessionIdForPid(4242)).toBeUndefined();
     });
   });
 

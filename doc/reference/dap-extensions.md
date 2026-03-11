@@ -8,7 +8,8 @@ All custom message types use the `dapper/` namespace prefix to avoid collisions 
 
 ### `dapper/childProcess`
 
-Emitted when a child process is detected and automatically attached (requires `autoAttachChildProcesses: true` in the launch configuration).
+Emitted when a Python child process is detected and rewritten for Dapper
+auto-attach (requires `subprocessAutoAttach: true` in the launch configuration).
 
 **Body fields:**
 
@@ -16,30 +17,46 @@ Emitted when a child process is detected and automatically attached (requires `a
 |-------|------|-------------|
 | `pid` | int | Process ID of the child process. |
 | `parentPid` | int | Process ID of the parent that spawned it. |
-| `command` | string | Command line used to start the child process. |
-| `ipcEndpoint` | string | IPC endpoint address the child's adapter is listening on. |
+| `name` | string | Best-effort child display name. |
+| `command` | string[] | Original child command line arguments before launcher rewrite. |
+| `cwd` | string | Child working directory when known. |
+| `isPython` | bool | Whether the intercepted child command was recognized as Python. |
+| `ipcPort` | int | Shared extension-side TCP port used for child IPC under the current parent debug session. |
+| `sessionId` | string | Logical child session identifier used to correlate the child socket. |
+| `parentSessionId` | string | Logical parent session identifier when known. |
 
-### `dapper/processStarted`
+The extension allocates one shared child IPC listener per parent debug session.
+Each rewritten child process connects to that port and sends an internal
+`dapper/sessionHello` handshake carrying its `sessionId`. That handshake is
+transport-internal and is not forwarded as a public DAP event.
 
-Emitted when a debugged child process has started and the adapter has successfully connected to it.
+### `dapper/childProcessExited`
+
+Emitted when a tracked child process exits.
 
 **Body fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `pid` | int | Process ID of the newly started process. |
-| `ipcEndpoint` | string | IPC endpoint for this process's adapter connection. |
+| `pid` | int | Process ID of the exited child process. |
+| `name` | string | Best-effort child display name. |
 
-### `dapper/processExited`
+### `dapper/childProcessCandidate`
 
-Emitted when a debugged child process has exited.
+Emitted when Dapper detects a potential child-process source in an API path that
+is not yet fully auto-attached.
 
 **Body fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `pid` | int | Process ID of the exited process. |
-| `exitCode` | int | Exit code returned by the process. |
+| `source` | string | Detector source, for example `multiprocessing.Process`. |
+| `name` | string | Best-effort display name for the candidate child source. |
+| `target` | string | Best-effort callable or target name when known. |
+| `parentPid` | int | Process ID of the parent that detected the candidate. |
+| `sessionId` | string | Logical current session identifier when known. |
+| `parentSessionId` | string | Logical parent session identifier when known. |
+| `autoAttachImplemented` | bool | Whether full auto-attach is implemented for that source path. |
 
 ## Custom Requests
 
@@ -51,7 +68,7 @@ Dapper advertises non-standard capabilities in the `initialize` response body al
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `supportsChildProcessDebugging` | bool | `true` when the adapter can automatically attach to child processes spawned by the debugged program. Clients should show the `autoAttachChildProcesses` option in their UI when this is `true`. |
+| `supportsChildProcessDebugging` | bool | `true` when the adapter can automatically attach to supported child processes spawned by the debugged program. Clients should expose the `subprocessAutoAttach` option in their UI when this is `true`. |
 
 Capability flags that are experimental, internal, or still evolving are intentionally omitted from this page until their external contract is stable.
 

@@ -234,6 +234,16 @@ def test_session_id_propagates_to_child_args_and_event(monkeypatch) -> None:
     assert isinstance(payload["sessionId"], str)
 
 
+def test_shared_ipc_port_is_reused_for_all_children() -> None:
+    manager = SubprocessManager(
+        send_event=lambda _event, _payload: None,
+        config=SubprocessConfig(enabled=True, auto_attach=True, shared_ipc_port=6123),
+    )
+
+    assert manager.allocate_port() == 6123
+    assert manager.allocate_port() == 6123
+
+
 def test_multiprocessing_scaffold_emits_candidate_event(monkeypatch) -> None:
     recorder = _Recorder()
     manager = SubprocessManager(

@@ -119,6 +119,7 @@ export function buildProcessEnv(
 export function buildLauncherArgs(
   config: vscode.DebugConfiguration,
   pythonIpcPort: number,
+  childIpcPort: number | undefined,
   onMissingTarget: () => void,
 ): string[] {
   const args: string[] = ['-m', 'dapper.launcher'];
@@ -148,6 +149,12 @@ export function buildLauncherArgs(
   }
   if (config.noDebug) {
     args.push('--no-debug');
+  }
+  if (config.subprocessAutoAttach) {
+    args.push('--subprocess-auto-attach');
+    if (childIpcPort != null) {
+      args.push('--subprocess-ipc-port', childIpcPort.toString());
+    }
   }
 
   args.push('--ipc', 'tcp', '--ipc-port', pythonIpcPort.toString());

@@ -75,6 +75,7 @@ class SubprocessConfig:
     max_children: int = 10
     ipc_host: str = "localhost"
     ipc_port_range: tuple[int, int] = (5700, 5799)
+    shared_ipc_port: int | None = None
     debug_options: list[str] = field(default_factory=list)
     session_id: str | None = None
     parent_session_id: str | None = None
@@ -282,6 +283,9 @@ class SubprocessManager:
 
     def _allocate_port(self) -> int:
         """Allocate the next available IPC port for a child process."""
+        if self._config.shared_ipc_port is not None:
+            return self._config.shared_ipc_port
+
         with self._lock:
             port = self._next_port
             self._next_port += 1

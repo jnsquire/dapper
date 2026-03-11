@@ -18,7 +18,7 @@ These options are passed via VS Code `launch.json` (under the `"configurations"`
 | `justMyCode` | bool | `true` | Skip frames inside `site-packages` and the standard library when stepping and displaying the call stack. |
 | `redirectOutput` | bool | `true` | Capture stdout/stderr from the debugged process and display them in the Debug Console. |
 | `logToFile` | bool | `false` | Write the adapter log to a file for troubleshooting. The log path is printed to stderr on startup. |
-| `autoAttachChildProcesses` | bool | `false` | Automatically attach to child processes spawned by the debugged program. See `dapper/childProcess` in the [DAP extensions reference](dap-extensions.md). |
+| `subprocessAutoAttach` | bool | `false` | Automatically attach to supported Python child processes spawned by the debugged program. Child sessions reuse one shared extension-side IPC listener per parent debug session. See `dapper/childProcess` in the [DAP extensions reference](dap-extensions.md). |
 
 ## Frame Evaluation Options
 

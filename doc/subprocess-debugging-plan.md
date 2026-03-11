@@ -50,15 +50,17 @@ direct connection strategy.
   implement in the existing codebase.
 - **Direct Connection Architecture**: Instead of maintaining intermediate relay
   threads in the `SubprocessManager`, child processes connect directly to the
-  extension's existing IPC server. This avoids the complexity of framing relays
-  and ensures lower latency child attachment without compounding resource costs.
+  extension through a shared child-session listener owned by the extension.
+  This avoids per-child listener churn, keeps framing logic centralized, and
+  ensures lower latency child attachment without compounding resource costs.
 
 ## Recommended end-to-end flow (high-level)
 
 Below is the simplified message flow after adopting the *direct connection*
-architecture.  The adapter (the TypeScript extension) plays two roles: it runs
-one `pythonIpcServer` listener and it spawns a new `DapperDebugSession` each
-time a new child connects.
+architecture. The adapter (the TypeScript extension) runs one root
+`pythonIpcServer` listener plus one shared child-session listener per parent
+debug session. It spawns a new `DapperDebugSession` each time a child socket is
+correlated through the shared listener.
 
 ```mermaid
 sequenceDiagram
@@ -68,16 +70,17 @@ sequenceDiagram
     participant Child as launcher (child)
 
     IDE->>Adapter: launch request
-    Adapter->>Root: spawn and pass --ipc-port=PORT
-    Root-->>Adapter: connect to PORT (root)
+    Adapter->>Root: spawn and pass --ipc-port=ROOT_PORT
+    Root-->>Adapter: connect to ROOT_PORT (root)
     Adapter-->>IDE: initialized, process event
 
     note right of Root: user code spawns child
-    Root->>Child: Popen modified with --ipc-port=PORT --child-id=UUID
-    Child-->>Adapter: connect to PORT
-    Adapter-->>Adapter: handshake {childId: UUID}
-    Adapter->>IDE: emit dapper/childProcess {childId, pid}
-    IDE->>Adapter: startDebugging (attach, __childId=UUID)
+    Adapter->>Root: provide --subprocess-ipc-port=CHILD_PORT
+    Root->>Child: Popen modified with --ipc-port=CHILD_PORT --session-id=UUID
+    Adapter->>IDE: emit dapper/childProcess {sessionId, pid, ipcPort=CHILD_PORT}
+    Child-->>Adapter: connect to CHILD_PORT
+    Child-->>Adapter: first frame dapper/sessionHello {sessionId}
+    IDE->>Adapter: startDebugging (attach child)
     Adapter->>Child: DAP initialization/attach
     loop
         IDE<->>Child: propagate DAP messages
@@ -86,18 +89,19 @@ sequenceDiagram
 
 1. `SubprocessManager` intercepts `Popen` for a Python child invocation.
 2. It generates a unique identifier (UUID) for the new child process.
-3. The child command line is rewritten to inherit the extension's IPC communication
-   port (`--ipc tcp --ipc-port <root-port>`) and is given its unique identifier
-   via a new parameter `--child-id <uuid>`.
+3. The child command line is rewritten to inherit the extension's shared child
+   IPC port (`--ipc tcp --ipc-port <child-port>`) and is given its logical
+   session identifier via `--session-id <uuid>`.
 4. `SubprocessManager` emits a `dapper/childProcess` event to the extension over
-   the parent's DAP stream, including the child's UUID, command line, and process ID.
-5. The child begins execution and connects directly to the extension's `pythonIpcServer`.
-   As its first IPC communication, it sends an initial handshake payload containing its UUID.
-6. The extension dynamically accepts the connection, parses the handshake UUID, correlates
+   the parent's DAP stream, including the child session id, command line, and process ID.
+5. The child begins execution and connects directly to the extension's shared child listener.
+   As its first IPC communication, it sends an initial `dapper/sessionHello`
+   payload containing its logical session id.
+6. The extension dynamically accepts the connection, parses the handshake session id, correlates
    the socket to the pending `dapper/childProcess` event, and invokes
-   `vscode.debug.startDebugging()` with an attach configuration carrying the UUID marker.
+   `vscode.debug.startDebugging()` with an internal child launch configuration carrying the session marker.
 7. A new `DapperDebugSession` is initialized for the child process. It locates the
-   dynamically queued direct IPC socket using the UUID, establishing a full DAP debug
+   dynamically queued direct IPC socket using the session id, establishing a full DAP debug
    flow without any proxy relay.
 
 This approach keeps the child process fully debugged via the normal DAP mechanisms
@@ -107,41 +111,41 @@ while keeping connection logic strictly unified at the VS Code extension tier.
 
 Phase 1 — Protocol Handshake & Direct Link Routing
 - Overhaul `ipc_binary.py` (or related connection bootstrapper) to prepend
-  a structured `ChildID` handshake when transitioning an IPC stream if `--child-id`
-  is active.
+  a structured `dapper/sessionHello` handshake when a child launcher connects to
+  the shared child-session listener.
 - Modify `patched_popen_init()` in `dapper/adapter/subprocess_manager.py` to:
-  - reuse the existing root `--ipc-port`,
-  - generate a UUID and append `--child-id <uuid>`.
+  - reuse the existing shared `--subprocess-ipc-port`,
+  - generate a UUID-backed logical session id and append `--session-id <uuid>`.
 - Expand `pythonIpcServer` logic in `dapperDebugAdapter.ts` to accept multi-session
-  socket connections, read the handshake UUID, and queue sockets structurally.
+  socket connections, read the handshake session id, and queue sockets structurally.
 
 Phase 2 — Extension: Handle `dapper/childProcess` Event & Session Mapping
 - Propagate `dapper/childProcess` events from `SubprocessManager` injecting the
   child's identifier.
 - Add event processing inside `DapperDebugSession.handleGeneralEvent()` to respond
   by calling `vscode.debug.startDebugging()` matching an internal `attach` configuration
-  with the `__childId: <uuid>` marker.
+  with the child `sessionId` marker.
 - Track resulting child sessions securely for synchronized teardown.
 
 Phase 3 — Child-Aware Adapter Creation
 - Through `DapperDebugAdapterDescriptorFactory.createDebugAdapterDescriptor()`:
-  - Validate the `__childId` marker.
+  - Validate the child session marker.
   - Subvert invoking a redundant process terminal; instead, extract the fully setup socket
-    from the pending socket queue mapping the UUID.
+    from the pending socket queue mapping the session id.
   - Return the respective `DebugAdapterServer` assigning the captured child connection directly.
 
 Phase 4 — Lifecycle and Error Handling
 - Guard network queues cleanly. If a `dapper/childProcess` is terminated before
-  association concludes, discard pending stale UUID sockets to prevent resource leaks.
+  association concludes, discard pending stale session sockets to prevent resource leaks.
 - Retain `SubprocessManager` `on_child_exited` bounds to dispatch cleanup validations locally.
 
 Phase 5 — Recursive Subprocesses
 - Support nested debugging (`--subprocess-auto-attach`) so child launchers cascade the extension's
-  IPC port securely while generating their own grandchildren process UUID configurations natively.
+  shared child IPC port securely while generating their own grandchildren logical session ids natively.
 - Apply equivalent adaptations to standard multiprocessing or ProcessPool implementations.
 
 Phase 6 — Tests, Docs, and UX
-- Solidify automated test loops around UUID multi-socket handshake bindings.
+- Solidify automated test loops around shared-listener multi-socket handshake bindings.
 - Expose configurations and visibility for overarching auto-attach parameters enabling recursive hooks.
 
 Phase 7 — Attach by PID for live Python 3.14 interpreters
@@ -166,24 +170,23 @@ Phase 7 — Attach by PID for live Python 3.14 interpreters
 
 ## Files likely to change
 
-re-DAP handshake bytes.
-- `dapper/launcher/debug_launcher.py`: ingest the `--child-id` mapping constraint mapping initialization hooks.
-- `dapper/adapter/subprocess_manager.py`: orchestrate `childProcess` events carrying explicit UUID links alongside shared connection ports.
-- `vscode/extension/src/debugAdapter/dapperDebugAdapter.ts`: transition the singleton root `pythonIpcServer` socket processor into a multi-socket handshaking queue structure mapping direct Dapper sessions efficiently.
+- `dapper/launcher/debug_launcher.py`: ingest the shared child port and emit the `dapper/sessionHello` mapping handshake.
+- `dapper/adapter/subprocess_manager.py`: orchestrate `childProcess` events carrying explicit session ids alongside shared connection ports.
+- `vscode/extension/src/debugAdapter/dapperDebugAdapter.ts`: manage the root adapter session and provision the shared child listener used by `ChildSessionManager`.
 
 ## Risks & open questions
 
 - **Protocol Handshake Design**: Implementing the bridging handshake correctly
   within standard Dapper binary IPC boundaries ensuring clear packet demarcations.
 - **Race conditions**: It's possible the child process successfully connects before
-  the parent DAP event fires. By relying on the UUID handshake queueing on the extension tier,
+  the parent DAP event fires. By relying on the session-id handshake queueing on the extension tier,
   order sensitivity remains strictly disjointed effectively preventing data races.
 - **Security Context**: Children will span directly exposing equivalent `localhost` TCP connections; security topology mirrors general debug adapter standards natively.
 
 ## Next steps
 
-1. Define and implement the pre-DAP UUID connection handshake protocol.
-2. Advance Python-side `SubprocessManager` capabilities configuring the explicit target routing payload.
+1. Continue hardening the shared-listener `dapper/sessionHello` handshake path across more runtime matrices.
+2. Advance Python-side `SubprocessManager` capabilities for multiprocessing and pool entry points that do not already flow through rewritten Python subprocess launches.
 3. Migrate VS Code's IPC architecture accepting multiple buffered connections correlated dynamically into VS Code APIs invoking `startDebugging`.
 4. Add the Python 3.14 attach-by-PID bootstrap and extension-side `processId`
   attach handshake as the next phase after the child-session tree work.

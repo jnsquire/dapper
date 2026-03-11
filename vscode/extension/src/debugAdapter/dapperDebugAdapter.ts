@@ -22,8 +22,13 @@ export class DapperDebugAdapterDescriptorFactory implements vscode.DebugAdapterD
   ) {
     this.envManager = new EnvironmentManager(context, logger.getChannel());
     this.extensionVersion = context.extension.packageJSON.version || '0.0.0';
-    this._mainSessionController = new MainSessionController(this.envManager, this.extensionVersion, launchHistory);
     this._childSessionManager = new ChildSessionManager(() => this.envManager.getOutputChannel());
+    this._mainSessionController = new MainSessionController(
+      this.envManager,
+      this.extensionVersion,
+      launchHistory,
+      () => this._childSessionManager.ensureSharedListenerPort(),
+    );
 
     // `Disposable.from` bundles multiple disposables for easier cleanup
     this._disposables = vscode.Disposable.from(

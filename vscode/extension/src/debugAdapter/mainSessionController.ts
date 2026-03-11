@@ -65,6 +65,7 @@ export class MainSessionController {
     private readonly _envManager: EnvironmentManager,
     private readonly _extensionVersion: string,
     private readonly _launchHistory?: DapperLaunchHistoryService,
+    private readonly _getChildIpcPort?: () => Promise<number>,
   ) {}
 
   public get serverPort(): number | undefined {
@@ -409,20 +410,25 @@ export class MainSessionController {
     });
   }
 
-  private _initializeLauncherSession(
+  private async _initializeLauncherSession(
     context: MainSessionBootstrapContext,
     pythonIpcPort: number,
     session: vscode.DebugSession,
-  ): void {
+  ): Promise<void> {
     assertSingleLaunchTarget(
       context.config.program as string | undefined || '',
       context.config.module as string | undefined || '',
       'Provide exactly one launch target: program or module.',
     );
 
+    const childIpcPort = context.config.subprocessAutoAttach && this._getChildIpcPort
+      ? await this._getChildIpcPort()
+      : undefined;
+
     const args = buildLauncherArgs(
       context.config,
       pythonIpcPort,
+      childIpcPort,
       () => {
         vscode.window.showWarningMessage('Dapper: neither launch.program nor launch.module is set; debug launcher expects one launch target.');
       },
@@ -445,7 +451,7 @@ export class MainSessionController {
       return;
     }
 
-    this._initializeLauncherSession(context, pythonIpcPort, session);
+    await this._initializeLauncherSession(context, pythonIpcPort, session);
   }
 
   private async _spawnAttachByPidHelper(

@@ -258,6 +258,57 @@ graph LR
     UnixClient --> Launcher
 ```
 
+---
+
+## 5. Subprocess Auto-Attach
+
+### Launch option
+
+- `subprocessAutoAttach` (`boolean`, default `false`)
+
+When enabled, the root launcher asks the extension to provision one shared child
+IPC listener for that parent debug session. Rewritten Python child launches
+inherit that shared port through `--subprocess-ipc-port`.
+
+Each child connects to the shared listener and sends an internal
+`dapper/sessionHello` frame containing its logical `sessionId`. The extension
+uses that handshake to match the socket to the pending `dapper/childProcess`
+event before it creates the child VS Code debug session.
+
+### Custom events emitted to the DAP client
+
+#### `dapper/childProcess`
+
+- Emitted when a Python child process is detected and rewritten for auto-attach.
+- Event body fields:
+    - `pid` (`number`) child process id
+    - `name` (`string`) inferred child program name
+    - `ipcPort` (`number`) shared TCP port for child IPC under the current parent session
+    - `command` (`string[]`) original child command args
+    - `cwd` (`string | null`) child working directory if provided
+    - `isPython` (`boolean`) whether child command was Python
+    - `parentPid` (`number`) parent process id
+    - `sessionId` (`string | null`) logical child session identifier when available
+    - `parentSessionId` (`string | null`) logical parent session identifier when available
+
+#### `dapper/childProcessExited`
+
+- Emitted when a tracked child process exits.
+- Event body fields:
+    - `pid` (`number`) exited child process id
+    - `name` (`string`) best-effort child display name
+
+#### `dapper/childProcessCandidate`
+
+- Emitted for not-yet-implemented child-process entry points where Dapper can
+    report a likely future child source but cannot yet auto-attach it directly.
+
+### Notes
+
+- The extension no longer binds one listener per child. All children under the same parent debug
+    session reuse one shared listener and are routed by the internal handshake session id.
+- `dapper/sessionHello` is transport-internal. DAP clients do not receive it as a public event.
+
 ### TCP Sockets
 
 ```mermaid
@@ -276,65 +327,6 @@ graph LR
     TCPListener -.->|TCP Connection| TCPClient
     TCPClient --> Launcher
 ```
-
----
-
-## 5. Child Process Auto-Attach (Phase 1)
-
-When launch config includes `subprocessAutoAttach: true`, the launcher enables
-child process interception for Python `subprocess.Popen(...)` calls.
-
-### Launch argument
-
-- `subprocessAutoAttach` (`boolean`, default `false`)
-
-### Custom events emitted to DAP client
-
-`dapper/childProcess`
-
-- Emitted when a Python child process is detected and rewritten for Dapper launch.
-- Event body fields:
-    - `pid` (`number`) child process id
-    - `name` (`string`) inferred child program name
-    - `ipcPort` (`number`) allocated TCP port for child IPC
-    - `command` (`string[]`) original child command args
-    - `cwd` (`string | null`) child working directory if provided
-    - `isPython` (`boolean`) whether child command was Python
-    - `parentPid` (`number`) parent process id
-    - `sessionId` (`string | null`) optional logical session identifier
-    - `parentSessionId` (`string | null`) optional parent session identifier
-
-`dapper/childProcessExited`
-
-- Emitted when a tracked child exits.
-- Event body fields:
-    - `pid` (`number`) child process id
-    - `name` (`string`) child process name
-
-`dapper/childProcessCandidate` (Phase 2 scaffold)
-
-- Emitted when a potential child-process source is detected in APIs not yet
-    fully auto-attached.
-- Event body fields:
-    - `source` (`string`) detector source (for example,
-        `multiprocessing.Process` or `concurrent.futures.ProcessPoolExecutor`)
-    - `name` (`string`) process/executor display name
-    - `target` (`string | null`) best-effort target callable name
-    - `parentPid` (`number`) parent process id
-    - `sessionId` (`string | null`) current logical session identifier
-    - `parentSessionId` (`string | null`) parent logical session identifier
-    - `autoAttachImplemented` (`boolean`) whether full auto-attach is currently implemented
-
-### Notes
-
-- Current implementation scope is `subprocess.Popen` interception for Python commands.
-- Python script/module/code child invocations (`python script.py`, `python -m ...`, `python -c ...`) are rewritten to Dapper launcher form for auto-attach.
-- `multiprocessing.Process` and `ProcessPoolExecutor` currently emit
-    `dapper/childProcessCandidate` scaffold events only; full launcher injection is pending.
-- In many runtimes, `multiprocessing` / `ProcessPoolExecutor` worker launches pass through `subprocess.Popen` and are auto-attached via the Python `-c` rewrite path.
-- Non-Python children are not auto-attached.
-- `shell=True` and stdin-script (`python -`) invocation forms are still passed through.
-- Event forwarding is adapter-specific (`dapper/*` namespace) and follows DAP custom event semantics.
 
 ---
 

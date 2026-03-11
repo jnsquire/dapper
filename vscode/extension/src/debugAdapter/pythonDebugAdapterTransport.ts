@@ -1,4 +1,5 @@
 import * as Net from 'net';
+import { IPC_MESSAGE_KIND_COMMAND, writeIpcMessage } from './ipcMessageFraming.js';
 import { logger } from '../utils/logger.js';
 
 export interface TransportSession {
@@ -23,7 +24,7 @@ export class PythonDebugAdapterTransport {
   private readonly _sessions = new Set<TransportSession>();
   private _closed = false;
 
-  public constructor(socket?: Net.Socket) {
+  public constructor(socket?: Net.Socket, initialData?: Buffer) {
     this._socketReady = new Promise<Net.Socket>((resolve, reject) => {
       this._resolveSocket = resolve;
       this._rejectSocket = reject;
@@ -31,7 +32,7 @@ export class PythonDebugAdapterTransport {
     this._socketReady.catch(() => {});
 
     if (socket) {
-      this.setPythonSocket(socket);
+      this.setPythonSocket(socket, initialData);
     }
   }
 
@@ -47,7 +48,7 @@ export class PythonDebugAdapterTransport {
     return this._sessions.size > 0;
   }
 
-  public setPythonSocket(socket: Net.Socket): void {
+  public setPythonSocket(socket: Net.Socket, initialData?: Buffer): void {
     if (this._pythonSocket && this._pythonSocket !== socket) {
       this._pythonSocket.removeAllListeners('data');
       this._pythonSocket.removeAllListeners('close');
@@ -66,6 +67,9 @@ export class PythonDebugAdapterTransport {
     socket.on('error', (error: Error) => {
       logger.error('Python IPC socket error', error);
     });
+    if (initialData && initialData.length > 0) {
+      this._handlePythonMessage(initialData);
+    }
     this._resolveSocket(socket);
   }
 
@@ -105,13 +109,7 @@ export class PythonDebugAdapterTransport {
       this._pendingRequests.set(requestId, { resolve, reject, timer });
 
       const payloadObj: any = { command, arguments: args, id: requestId };
-      const payload = Buffer.from(JSON.stringify(payloadObj), 'utf8');
-      const header = Buffer.alloc(8);
-      header.write('DP', 0);
-      header.writeUInt8(1, 2);
-      header.writeUInt8(2, 3);
-      header.writeUInt32BE(payload.length, 4);
-      socket.write(Buffer.concat([header, payload]));
+      writeIpcMessage(socket, payloadObj, IPC_MESSAGE_KIND_COMMAND);
     });
   }
 

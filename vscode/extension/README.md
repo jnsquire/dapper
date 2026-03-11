@@ -164,7 +164,13 @@ The legacy command **Dapper: Configure Settings** is still available as an alias
 | `module` | string | Python module name (like `python -m`). Mutually exclusive with `program`. |
 | `moduleSearchPaths` | string[] | Optional extra import search paths. |
 | `venvPath` | string | Optional virtual environment path used for interpreter selection. |
-| `subprocessAutoAttach` | boolean | Auto-attach supported Python child processes. |
+| `subprocessAutoAttach` | boolean | Auto-attach supported Python child processes through one shared child IPC listener per parent debug session. |
+
+When `subprocessAutoAttach` is enabled, Dapper allocates one shared child IPC
+listener for the parent debug session and passes that port into rewritten Python
+subprocess launches. Each child connects back to that shared listener and sends
+an internal `dapper/sessionHello` handshake with its logical `sessionId` before
+the extension starts the child VS Code debug session.
 
 ## Commands
 
