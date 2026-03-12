@@ -6,11 +6,14 @@ import { DebugView } from './pages/DebugView.js';
 
 // Type for view components
 type ViewType = 'debug' | 'config';
+type WizardStateStore = Pick<vscode.Memento, 'get' | 'update'>;
 
 export class DapperWebview {
   public static currentPanel: DapperWebview | undefined;
+  private static readonly _wizardDraftKey = 'dapper.launchWizardDraft';
   /** Resolve callback set when the wizard is opened via the Dynamic debug config provider. */
   private static _dynamicProviderResolve: ((config: vscode.DebugConfiguration | undefined) => void) | undefined;
+  private static _wizardState: WizardStateStore | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
   private _extensionUri: vscode.Uri;
@@ -21,6 +24,39 @@ export class DapperWebview {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+  }
+
+  public static initialize(state?: WizardStateStore): void {
+    DapperWebview._wizardState = state;
+  }
+
+  private static _cloneConfig<T>(config: T): T {
+    return JSON.parse(JSON.stringify(config)) as T;
+  }
+
+  private static getStoredWizardDraft(): vscode.DebugConfiguration | undefined {
+    try {
+      const draft = DapperWebview._wizardState?.get<vscode.DebugConfiguration>(DapperWebview._wizardDraftKey);
+      return draft ? DapperWebview._cloneConfig(draft) : undefined;
+    } catch (error) {
+      logger.warn('Failed to read wizard draft', error);
+      return undefined;
+    }
+  }
+
+  private static async persistWizardDraft(config: vscode.DebugConfiguration): Promise<void> {
+    if (!DapperWebview._wizardState) {
+      return;
+    }
+
+    try {
+      await DapperWebview._wizardState.update(
+        DapperWebview._wizardDraftKey,
+        DapperWebview._cloneConfig(config),
+      );
+    } catch (error) {
+      logger.warn('Failed to persist wizard draft', error);
+    }
   }
 
   /**
@@ -170,6 +206,7 @@ export class DapperWebview {
             switch (message.command) {
               case 'saveConfig':
                 try {
+                  await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
                   await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
                   vscode.window.showInformationMessage('Default Dapper configuration saved');
                   panel.webview.postMessage({
@@ -191,10 +228,11 @@ export class DapperWebview {
                 // Dynamic debug-config provider (reliable: sent in response to the
                 // webview's own mount-time message, so the listener is always ready).
                 try {
+                  const draft = DapperWebview.getStoredWizardDraft();
                   const saved = vscode.workspace.getConfiguration('dapper').get('debug');
                   panel.webview.postMessage({
                     command: 'updateConfig',
-                    config: saved || {},
+                    config: draft || saved || {},
                     providerMode: DapperWebview._dynamicProviderResolve !== undefined,
                   });
                 } catch (err) {
@@ -206,8 +244,12 @@ export class DapperWebview {
                   });
                 }
                 break;
+              case 'draftConfigChanged':
+                await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
+                break;
               case 'saveAndInsert':
                 try {
+                  await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
                   await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
                   // Insert into launch.json
                   const ok = await insertLaunchConfiguration(message.config as any);
@@ -226,8 +268,52 @@ export class DapperWebview {
                   panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
                 }
                 break;
+              case 'saveAndLaunch':
+                try {
+                  await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
+                  await vscode.workspace.getConfiguration('dapper').update('debug', message.config, true);
+                  const ok = await insertLaunchConfiguration(message.config as any);
+                  if (!ok) {
+                    panel.webview.postMessage({ command: 'updateStatus', text: 'Failed to insert configuration into launch.json' });
+                    break;
+                  }
+
+                  if (DapperWebview._dynamicProviderResolve) {
+                    panel.webview.postMessage({
+                      command: 'updateStatus',
+                      text: 'Saved as the default Dapper configuration, inserted into .vscode/launch.json, and launching.',
+                    });
+                    DapperWebview._dynamicProviderResolve(message.config as vscode.DebugConfiguration);
+                    DapperWebview._dynamicProviderResolve = undefined;
+                    panel.dispose();
+                    break;
+                  }
+
+                  const started = await vscode.debug.startDebugging(undefined, message.config);
+                  if (started) {
+                    panel.webview.postMessage({
+                      command: 'updateStatus',
+                      text: 'Saved as the default Dapper configuration, inserted into .vscode/launch.json, and launched.',
+                    });
+                  } else {
+                    vscode.window.showErrorMessage('Failed to start debugging');
+                    panel.webview.postMessage({
+                      command: 'updateStatus',
+                      text: 'Saved to .vscode/launch.json, but VS Code did not start the debug session.',
+                    });
+                  }
+                } catch (err) {
+                  logger.error('Failed to save, insert, and launch configuration', err as Error);
+                  vscode.window.showErrorMessage('Failed to save and launch configuration');
+                  panel.webview.postMessage({
+                    command: 'updateStatus',
+                    text: 'Failed to save, insert, and launch configuration.',
+                  });
+                }
+                break;
               case 'startDebug':
                 try {
+                  await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
                   await vscode.debug.startDebugging(undefined, message.config);
                 } catch (err) {
                   logger.error('Failed to start debug session from webview', err as Error);
@@ -237,6 +323,7 @@ export class DapperWebview {
               case 'confirmConfig':
                 // Sent by the wizard when invoked from the Dynamic debug config provider.
                 // Resolve the waiting provideDebugConfigurations promise, then close the panel.
+                await DapperWebview.persistWizardDraft(message.config as vscode.DebugConfiguration);
                 if (DapperWebview._dynamicProviderResolve) {
                   DapperWebview._dynamicProviderResolve(message.config as vscode.DebugConfiguration);
                   DapperWebview._dynamicProviderResolve = undefined;

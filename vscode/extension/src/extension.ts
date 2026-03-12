@@ -548,6 +548,7 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
 
 export function activate(context: vscode.ExtensionContext) {
   logger.log('Dapper Debugger extension is activating...');
+  DapperWebview.initialize(context.workspaceState);
   logger.log(`Extension version: ${context.extension.packageJSON.version}`);
   logger.log(`VS Code version: ${vscode.version}`);
   logger.log(`Node.js version: ${process.version}`);

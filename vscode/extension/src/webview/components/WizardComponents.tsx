@@ -46,6 +46,7 @@ interface WizardFooterProps {
   onUseConfiguration: (event: React.MouseEvent) => void;
   onSaveDefault: (event: React.MouseEvent) => void;
   onStartDebugging: (event: React.MouseEvent) => void;
+  onSaveAndLaunch: (event: React.MouseEvent) => void;
   onSaveToLaunchJson: (event: React.MouseEvent) => void;
   onCancel: (event: React.MouseEvent) => void;
 }
@@ -59,6 +60,7 @@ export const WizardFooter: React.FC<WizardFooterProps> = ({
   onUseConfiguration,
   onSaveDefault,
   onStartDebugging,
+  onSaveAndLaunch,
   onSaveToLaunchJson,
   onCancel,
 }) => (
@@ -73,7 +75,15 @@ export const WizardFooter: React.FC<WizardFooterProps> = ({
       {!isLastStep ? (
         <vscode-button onClick={onNext}>Next →</vscode-button>
       ) : providerMode ? (
-        <vscode-button onClick={onUseConfiguration}>✓ Use this configuration</vscode-button>
+        <>
+          <vscode-button secondary onClick={onSaveToLaunchJson}>
+            Save to launch.json
+          </vscode-button>
+          <vscode-button secondary onClick={onSaveAndLaunch}>
+            Save and Launch
+          </vscode-button>
+          <vscode-button onClick={onUseConfiguration}>✓ Use this configuration</vscode-button>
+        </>
       ) : (
         <>
           <vscode-button secondary onClick={onSaveDefault}>
@@ -81,6 +91,9 @@ export const WizardFooter: React.FC<WizardFooterProps> = ({
           </vscode-button>
           <vscode-button secondary onClick={onStartDebugging}>
             ▶ Start Debugging
+          </vscode-button>
+          <vscode-button secondary onClick={onSaveAndLaunch}>
+            Save and Launch
           </vscode-button>
           <vscode-button onClick={onSaveToLaunchJson}>Save to launch.json</vscode-button>
         </>
