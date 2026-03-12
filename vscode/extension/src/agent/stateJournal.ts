@@ -195,6 +195,10 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     return this._session.id;
   }
 
+  get session(): vscode.DebugSession {
+    return this._session;
+  }
+
   getBreakpointVerification(file: string, line: number): BreakpointVerificationRecord | undefined {
     return this._breakpointVerification.get(this._breakpointKey(file, line));
   }

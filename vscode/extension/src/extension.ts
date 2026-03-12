@@ -572,7 +572,7 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   allDisposables.push(
     vscode.debug.registerDebugAdapterTrackerFactory('dapper', new DapperTrackerFactory(journalRegistry)),
   );
-  const agentToolDisposables = registerAgentTools(journalRegistry, launchService);
+  const agentToolDisposables = registerAgentTools(journalRegistry, launchService, context.extension.packageJSON);
   allDisposables.push(...agentToolDisposables);
 
   // Webview serializers / handlers

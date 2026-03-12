@@ -123,6 +123,39 @@ describe('BreakpointsTool', () => {
     result = JSON.parse(raw);
     expect(result.breakpoints).toEqual([]);
   });
+
+  it('disables and re-enables breakpoints while keeping the adapter in sync', async () => {
+    const session = {
+      id: 'session-4',
+      type: 'dapper',
+      name: 'Dapper Test',
+      configuration: {},
+      customRequest: vi.fn(async (_command: string, args?: Record<string, unknown>) => ({
+        breakpoints: Array.isArray(args?.breakpoints)
+          ? (args?.breakpoints as Array<{ line: number }>).map(bp => ({ verified: true, line: bp.line }))
+          : [],
+      })),
+    } as any;
+    vscode.debug.activeDebugSession = session;
+    registry.getOrCreate(session);
+
+    await invokeBreakpointsTool(tool, { action: 'add', file: sourceFile, lines: [30] });
+    expect(vscode.debug.breakpoints[0]).toMatchObject({ enabled: true });
+
+    await invokeBreakpointsTool(tool, { action: 'disable', file: sourceFile, lines: [30] });
+    expect(vscode.debug.breakpoints[0]).toMatchObject({ enabled: false });
+    expect(session.customRequest).toHaveBeenLastCalledWith('setBreakpoints', {
+      source: { path: sourceFile },
+      breakpoints: [],
+    });
+
+    await invokeBreakpointsTool(tool, { action: 'enable', file: sourceFile, lines: [30] });
+    expect(vscode.debug.breakpoints[0]).toMatchObject({ enabled: true });
+    expect(session.customRequest).toHaveBeenLastCalledWith('setBreakpoints', {
+      source: { path: sourceFile },
+      breakpoints: [{ line: 30, condition: undefined, hitCondition: undefined, logMessage: undefined }],
+    });
+  });
 });
 
 async function invokeBreakpointsTool(tool: BreakpointsTool, input: Record<string, unknown>): Promise<string> {

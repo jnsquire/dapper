@@ -19,6 +19,7 @@
     "onCommand:dapper.showLogs",
     "onCommand:dapper.api.debugLaunch",
     "onCommand:dapper.api.runLaunch",
+    "onLanguageModelTool:dapper_cli",
     "onLanguageModelTool:dapper_launch",
     "onLanguageModelTool:dapper_state",
     "onLanguageModelTool:dapper_execution",
@@ -34,6 +35,34 @@
   "main": "./out/extension.js",
   "contributes": {
     "languageModelTools": [
+      {
+        "name": "dapper_cli",
+        "displayName": "Dapper Agent CLI",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapper",
+        "userDescription": "Run one Dapper debugger command in a pdb-like style.",
+        "modelDescription": "Run Dapper debugger commands in a pdb-like style. Start with `help` to see supported commands plus the underlying Dapper tools and their arguments. Commands can be chained with `;` and run sequentially.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "One or more pdb-like debugger commands. Phase 1 supports help/h, run, continue/c, next/n, step/s, finish, quit/q, break/b, clear, disable, enable, print/p, where/bt, locals, globals, list/l, up, down, and frame. `break` accepts file paths, unique Python filename stems like `main:65`, and current-stack function names like `handler:42`. Separate sequential commands with ';'."
+            },
+            "sessionId": {
+              "type": "string",
+              "description": "Debug session ID. Required when more than one Dapper session is active."
+            },
+            "threadId": {
+              "type": "number",
+              "description": "Thread to target for execution or inspection commands. Omit to reuse the selected thread when possible."
+            }
+          }
+        }
+      },
       {
         "name": "dapper_launch",
         "displayName": "Dapper: Launch Python Debug Session",
@@ -241,7 +270,7 @@
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "dapperBreakpoints",
         "userDescription": "List or manage breakpoints for Python debugging, including adapter verification when available.",
-        "modelDescription": "List Python debug breakpoints or add, remove, or clear them. `action=list` returns the current VS Code breakpoint set and merges adapter verification into `verified` when a Dapper Python debug session is active.",
+        "modelDescription": "List Python debug breakpoints or add, remove, clear, disable, or enable them. `action=list` returns the current VS Code breakpoint set and merges adapter verification into `verified` when a Dapper Python debug session is active.",
         "inputSchema": {
           "type": "object",
           "required": [
@@ -258,9 +287,11 @@
                 "list",
                 "add",
                 "remove",
-                "clear"
+                "clear",
+                "disable",
+                "enable"
               ],
-              "description": "Use `list` to inspect breakpoints or `add`/`remove`/`clear` to modify them."
+              "description": "Use `list` to inspect breakpoints or `add`/`remove`/`clear`/`disable`/`enable` to modify them."
             },
             "file": {
               "type": "string",

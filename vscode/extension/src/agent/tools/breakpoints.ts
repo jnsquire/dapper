@@ -9,7 +9,7 @@ import { resolveSession, jsonResult, errorResult } from '../toolUtils.js';
 
 interface BreakpointsToolInput {
   sessionId?: string;
-  action: 'list' | 'add' | 'remove' | 'clear';
+  action: 'list' | 'add' | 'remove' | 'clear' | 'disable' | 'enable';
   file?: string;
   lines?: number[];
   condition?: string;
@@ -54,9 +54,13 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
       case 'add':
         return this._addBreakpoints(sessionId, uri, lines ?? [], condition, logMessage);
       case 'remove':
-        return this._removeBreakpoints(sessionId, uri, lines ?? []);
+        return await this._removeBreakpoints(sessionId, uri, lines ?? []);
       case 'clear':
-        return this._clearBreakpoints(sessionId, uri);
+        return await this._clearBreakpoints(sessionId, uri);
+      case 'disable':
+        return await this._toggleBreakpoints(sessionId, uri, lines ?? [], false);
+      case 'enable':
+        return await this._toggleBreakpoints(sessionId, uri, lines ?? [], true);
       default:
         return errorResult(`Unknown action: ${action}`);
     }
@@ -139,40 +143,7 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
     vscode.debug.addBreakpoints(newBps);
 
     const resolved = resolveSession(this.registry, sessionId);
-    if (resolved) {
-      const uriStr = uri.toString();
-      const allBps = vscode.debug.breakpoints
-        .filter((bp): bp is vscode.SourceBreakpoint =>
-          bp instanceof vscode.SourceBreakpoint && bp.location.uri.toString() === uriStr,
-        )
-        .map(bp => ({
-          line: bp.location.range.start.line + 1,
-          condition: bp.condition,
-          logMessage: bp.logMessage,
-        }));
-      try {
-        const result = await resolved.session.customRequest('setBreakpoints', {
-          source: { path: uri.fsPath },
-          breakpoints: allBps,
-        });
-        const adapterBreakpoints: Array<Record<string, unknown>> = Array.isArray(result?.breakpoints)
-          ? result.breakpoints
-          : [];
-        adapterBreakpoints.forEach((bp: Record<string, unknown>, index: number) => {
-          const line = typeof bp?.line === 'number' ? bp.line : allBps[index]?.line;
-          if (typeof line !== 'number') {
-            return;
-          }
-          const message = typeof bp?.message === 'string' ? bp.message : undefined;
-          const record = toBreakpointVerificationRecord(bp?.verified, message);
-          if (record) {
-            resolved.journal.updateBreakpointVerification(uri.fsPath, line, record);
-          }
-        });
-      } catch {
-        // Session may not be paused or adapter may be unavailable; ignore.
-      }
-    }
+    await this._syncBreakpoints(resolved, uri);
 
     return jsonResult({
       action: 'add',
@@ -184,11 +155,11 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
     });
   }
 
-  private _removeBreakpoints(
+  private async _removeBreakpoints(
     sessionId: string | undefined,
     uri: vscode.Uri,
     lines: number[],
-  ): vscode.LanguageModelToolResult {
+  ): Promise<vscode.LanguageModelToolResult> {
     const uriStr = uri.toString();
     const lineSet = new Set(lines.map(line => line - 1));
     const toRemove = vscode.debug.breakpoints.filter((bp): bp is vscode.SourceBreakpoint => {
@@ -212,6 +183,7 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
           resolved.journal.deleteBreakpointVerification(uri.fsPath, line);
         }
       }
+      await this._syncBreakpoints(resolved, uri);
     }
 
     return jsonResult({
@@ -222,10 +194,10 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
     });
   }
 
-  private _clearBreakpoints(
+  private async _clearBreakpoints(
     sessionId: string | undefined,
     uri: vscode.Uri,
-  ): vscode.LanguageModelToolResult {
+  ): Promise<vscode.LanguageModelToolResult> {
     const uriStr = uri.toString();
     const toRemove = vscode.debug.breakpoints.filter((bp): bp is vscode.SourceBreakpoint =>
       bp instanceof vscode.SourceBreakpoint && bp.location.uri.toString() === uriStr,
@@ -237,11 +209,97 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
 
     const resolved = resolveSession(this.registry, sessionId);
     resolved?.journal.clearBreakpointVerifications(uri.fsPath);
+    if (resolved) {
+      await this._syncBreakpoints(resolved, uri);
+    }
 
     return jsonResult({
       action: 'clear',
       file: uri.fsPath,
       removed: toRemove.length,
     });
+  }
+
+  private async _toggleBreakpoints(
+    sessionId: string | undefined,
+    uri: vscode.Uri,
+    lines: number[],
+    enabled: boolean,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const existing = this._sourceBreakpointsForUri(uri);
+    const lineSet = new Set(lines.map(line => line - 1));
+    const matches = existing.filter(bp => lines.length === 0 || lineSet.has(bp.location.range.start.line));
+
+    if (matches.length > 0) {
+      const replacements = matches.map(bp => new vscode.SourceBreakpoint(
+        bp.location,
+        enabled,
+        bp.condition,
+        bp.hitCondition,
+        bp.logMessage,
+      ));
+      vscode.debug.removeBreakpoints(matches);
+      vscode.debug.addBreakpoints(replacements);
+    }
+
+    const resolved = resolveSession(this.registry, sessionId);
+    if (resolved) {
+      await this._syncBreakpoints(resolved, uri);
+    }
+
+    return jsonResult({
+      action: enabled ? 'enable' : 'disable',
+      file: uri.fsPath,
+      lines,
+      updated: matches.length,
+    });
+  }
+
+  private _sourceBreakpointsForUri(uri: vscode.Uri): vscode.SourceBreakpoint[] {
+    const uriStr = uri.toString();
+    return vscode.debug.breakpoints.filter((bp): bp is vscode.SourceBreakpoint =>
+      bp instanceof vscode.SourceBreakpoint && bp.location.uri.toString() === uriStr,
+    );
+  }
+
+  private async _syncBreakpoints(
+    resolved: NonNullable<ReturnType<typeof resolveSession>> | undefined,
+    uri: vscode.Uri,
+  ): Promise<void> {
+    if (!resolved) {
+      return;
+    }
+
+    const activeBreakpoints = this._sourceBreakpointsForUri(uri)
+      .filter(bp => bp.enabled)
+      .map(bp => ({
+        line: bp.location.range.start.line + 1,
+        condition: bp.condition,
+        hitCondition: bp.hitCondition,
+        logMessage: bp.logMessage,
+      }));
+
+    try {
+      const result = await resolved.session.customRequest('setBreakpoints', {
+        source: { path: uri.fsPath },
+        breakpoints: activeBreakpoints,
+      });
+      const adapterBreakpoints: Array<Record<string, unknown>> = Array.isArray(result?.breakpoints)
+        ? result.breakpoints
+        : [];
+      adapterBreakpoints.forEach((bp: Record<string, unknown>, index: number) => {
+        const line = typeof bp?.line === 'number' ? bp.line : activeBreakpoints[index]?.line;
+        if (typeof line !== 'number') {
+          return;
+        }
+        const message = typeof bp?.message === 'string' ? bp.message : undefined;
+        const record = toBreakpointVerificationRecord(bp?.verified, message);
+        if (record) {
+          resolved.journal.updateBreakpointVerification(uri.fsPath, line, record);
+        }
+      });
+    } catch {
+      // Session may not be paused or adapter may be unavailable; ignore.
+    }
   }
 }

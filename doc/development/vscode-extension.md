@@ -57,6 +57,26 @@ Dapper's LM tools are declared in `vscode/extension/package.json` and implemente
 `vscode/extension/src/agent/tools/`. The schema is intentionally compact; the notes below capture
 the runtime behavior that is easy to miss.
 
+The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dapper_state`,
+`dapper_execution`, `dapper_evaluate`, `dapper_breakpoints`, `dapper_variable`, and
+`dapper_session_info`.
+
+### CLI Wrapper
+
+- `dapper_cli` is the Phase 1 command-style wrapper over the existing tool set.
+- Phase 1 supports semicolon-separated command chaining in a single request.
+- Supported commands are `help`/`h`, `run`, `continue`/`c`, `next`/`n`, `step`/`s`, `finish`,
+  `quit`/`q`, `break`/`b`, `clear`, `disable`, `enable`, `print`/`p`, `where`/`bt`, `locals`,
+  `globals`, `list`/`l`, `up`, `down`, and `frame`.
+- `help` returns a pdb-style quick-start plus a full summary of the public Dapper LM tools and their top-level arguments.
+- Chained command execution stops on the first parse or runtime error and returns partial results for commands that already completed.
+- When more than one Dapper session is active, `dapper_cli` requires an explicit `sessionId`
+  rather than silently picking one.
+- Frame navigation updates the wrapper-managed `frameIndex`, and later `print`, `locals`, and
+  `globals` calls use that selected frame.
+- `break` first resolves explicit file paths, then unique Python filename stems in the workspace,
+  then function names found in the selected session's current call stack.
+
 ### Session Resolution
 
 - Most tools accept an optional `sessionId`.
@@ -92,9 +112,11 @@ the runtime behavior that is easy to miss.
 
 ### Breakpoint Tools
 
-- `dapper_breakpoints` accepts `list`, `add`, `remove`, and `clear`.
+- `dapper_breakpoints` accepts `list`, `add`, `remove`, `clear`, `disable`, and `enable`.
 - On `add`, the extension updates the VS Code breakpoint registry and also sends a direct
   `setBreakpoints` request to the adapter so verification and registration happen immediately.
+- `remove`, `clear`, `disable`, and `enable` now also resync the adapter with the enabled source
+  breakpoint set for the affected file.
 - On `list`, it always reports the VS Code breakpoint list. If a Dapper session is active, it also
   re-queries adapter verification state and merges a `verified` field into the result when the
   adapter state is definitive.

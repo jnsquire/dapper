@@ -83,5 +83,6 @@ nav:
       - Analysis: architecture/current-analysis.md
   - Roadmap:
     - Feature Ideas: roadmap/feature-ideas.md
+    - CLI Agent Tool Checklist: roadmap/cli-agent-tool-checklist.md
     - "Hot Reload DEP": roadmap/dep-001-hot-reload.md
     - Hot Reload Plan: roadmap/hot-reload-plan.md

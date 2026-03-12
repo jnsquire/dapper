@@ -14,13 +14,21 @@ import { BreakpointsTool } from './breakpoints.js';
 import { InspectVariableTool } from './inspectVariable.js';
 import { GetSessionInfoTool } from './getSessionInfo.js';
 import { LaunchTool } from './launch.js';
+import { DapperCliTool } from './cli.js';
 
 /**
  * Register all agent tools and return an array of disposables.
  */
-export function registerAgentTools(registry: JournalRegistry, launchService: LaunchService): vscode.Disposable[] {
+export function registerAgentTools(
+  registry: JournalRegistry,
+  launchService: LaunchService,
+  packageManifest: unknown,
+): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
 
+  disposables.push(
+    vscode.lm.registerTool('dapper_cli', new DapperCliTool(registry, launchService, packageManifest as { contributes?: { languageModelTools?: unknown[] } })),
+  );
   disposables.push(
     vscode.lm.registerTool('dapper_launch', new LaunchTool(registry, launchService)),
   );
