@@ -729,7 +729,7 @@
         "command": "dapper.startDebuggingPickEnvironment",
         "title": "Dapper: Debug This (Pick Environment)",
         "category": "Dapper",
-        "icon": "$(debug)"
+        "icon": "$(gear)"
       },
       {
         "command": "dapper.startDebuggingStopOnEntry",
@@ -747,7 +747,7 @@
         "command": "dapper.runCurrentFilePickEnvironment",
         "title": "Dapper: Run This (Pick Environment)",
         "category": "Dapper",
-        "icon": "$(play)"
+        "icon": "$(gear)"
       },
       {
         "command": "dapper.toggleBreakpoint",
@@ -927,19 +927,62 @@
         {
           "command": "dapper.runCurrentFile",
           "alt": "dapper.runCurrentFilePickEnvironment",
-          "when": "resourceLangId == python",
+          "when": "resourceLangId == python && dapper.runStickyIsRun",
+          "group": "1_dapper@1"
+        },
+        {
+          "command": "dapper.runCurrentFilePickEnvironment",
+          "alt": "dapper.runCurrentFile",
+          "when": "resourceLangId == python && dapper.runStickyIsRunPickEnvironment",
           "group": "1_dapper@1"
         },
         {
           "command": "dapper.startDebugging",
           "alt": "dapper.startDebuggingPickEnvironment",
-          "when": "resourceLangId == python",
+          "when": "resourceLangId == python && dapper.debugStickyIsDebug",
           "group": "1_dapper@2"
+        },
+        {
+          "command": "dapper.startDebuggingPickEnvironment",
+          "alt": "dapper.startDebugging",
+          "when": "resourceLangId == python && dapper.debugStickyIsDebugPickEnvironment",
+          "group": "1_dapper@2"
+        },
+        {
+          "command": "dapper.startDebuggingStopOnEntry",
+          "alt": "dapper.startDebugging",
+          "when": "resourceLangId == python && dapper.debugStickyIsDebugStopOnEntry",
+          "group": "1_dapper@2"
+        },
+        {
+          "command": "dapper.runCurrentFile",
+          "when": "resourceLangId == python && !dapper.runStickyIsRun",
+          "group": "2_dapper_run_variants@1"
+        },
+        {
+          "command": "dapper.runCurrentFilePickEnvironment",
+          "when": "resourceLangId == python && !dapper.runStickyIsRunPickEnvironment",
+          "group": "2_dapper_run_variants@2"
+        },
+        {
+          "command": "dapper.startDebugging",
+          "when": "resourceLangId == python && !dapper.debugStickyIsDebug",
+          "group": "2_dapper_debug_variants@1"
+        },
+        {
+          "command": "dapper.startDebuggingPickEnvironment",
+          "when": "resourceLangId == python && !dapper.debugStickyIsDebugPickEnvironment",
+          "group": "2_dapper_debug_variants@2"
+        },
+        {
+          "command": "dapper.startDebuggingStopOnEntry",
+          "when": "resourceLangId == python && !dapper.debugStickyIsDebugStopOnEntry",
+          "group": "2_dapper_debug_variants@3"
         },
         {
           "command": "dapper.startDebugWithSavedConfig",
           "when": "resourceLangId == python && workspaceFolderCount > 0 && dapper.hasSavedDebugConfiguration",
-          "group": "1_dapper@3"
+          "group": "3_dapper@1"
         }
       ],
       "view/title": [

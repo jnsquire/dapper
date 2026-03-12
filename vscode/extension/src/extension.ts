@@ -37,6 +37,23 @@ function normalizeLaunchCommandOptions(value: unknown): LaunchOptions {
   return { ...(value as LaunchOptions) };
 }
 
+type RunStickyAction = 'run' | 'runPickEnvironment';
+type DebugStickyAction = 'debug' | 'debugPickEnvironment' | 'debugStopOnEntry';
+
+const runStickyActionStorageKey = 'dapper.runStickyAction';
+const debugStickyActionStorageKey = 'dapper.debugStickyAction';
+
+function normalizeRunStickyAction(value: unknown): RunStickyAction {
+  return value === 'runPickEnvironment' ? value : 'run';
+}
+
+function normalizeDebugStickyAction(value: unknown): DebugStickyAction {
+  if (value === 'debugPickEnvironment' || value === 'debugStopOnEntry') {
+    return value;
+  }
+  return 'debug';
+}
+
 function* registerCommands(context: vscode.ExtensionContext, launchService: LaunchService): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
   const stoppedSessions = new Set<string>();
@@ -59,6 +76,43 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   };
 
   void updateSavedDebugConfigurationContext();
+
+  const getRunStickyAction = (): RunStickyAction => normalizeRunStickyAction(
+    context.workspaceState.get(runStickyActionStorageKey),
+  );
+
+  const getDebugStickyAction = (): DebugStickyAction => normalizeDebugStickyAction(
+    context.workspaceState.get(debugStickyActionStorageKey),
+  );
+
+  const updateStickyActionContexts = async (
+    runAction: RunStickyAction,
+    debugAction: DebugStickyAction,
+  ): Promise<void> => {
+    await Promise.all([
+      vscode.commands.executeCommand('setContext', 'dapper.runStickyIsRun', runAction === 'run'),
+      vscode.commands.executeCommand('setContext', 'dapper.runStickyIsRunPickEnvironment', runAction === 'runPickEnvironment'),
+      vscode.commands.executeCommand('setContext', 'dapper.debugStickyIsDebug', debugAction === 'debug'),
+      vscode.commands.executeCommand('setContext', 'dapper.debugStickyIsDebugPickEnvironment', debugAction === 'debugPickEnvironment'),
+      vscode.commands.executeCommand('setContext', 'dapper.debugStickyIsDebugStopOnEntry', debugAction === 'debugStopOnEntry'),
+    ]);
+  };
+
+  const refreshStickyActionContexts = async (): Promise<void> => {
+    await updateStickyActionContexts(getRunStickyAction(), getDebugStickyAction());
+  };
+
+  const setRunStickyAction = async (action: RunStickyAction): Promise<void> => {
+    await context.workspaceState.update(runStickyActionStorageKey, action);
+    await updateStickyActionContexts(action, getDebugStickyAction());
+  };
+
+  const setDebugStickyAction = async (action: DebugStickyAction): Promise<void> => {
+    await context.workspaceState.update(debugStickyActionStorageKey, action);
+    await updateStickyActionContexts(getRunStickyAction(), action);
+  };
+
+  void refreshStickyActionContexts();
 
   const showAutoReloadStatus = (document: vscode.TextDocument): void => {
     const now = Date.now();
@@ -203,24 +257,29 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
 
   // Start Debugging Command
   yield vscode.commands.registerCommand('dapper.startDebugging', async () => {
+    await setDebugStickyAction('debug');
     await startCurrentFile({ stopOnEntry: false, noDebug: false });
   });
 
   yield vscode.commands.registerCommand('dapper.startDebuggingPickEnvironment', async () => {
+    await setDebugStickyAction('debugPickEnvironment');
     await startCurrentFile({ stopOnEntry: false, noDebug: false, pickEnvironment: true });
   });
 
   // Start Debugging With Stop On Entry Command
   yield vscode.commands.registerCommand('dapper.startDebuggingStopOnEntry', async () => {
+    await setDebugStickyAction('debugStopOnEntry');
     await startCurrentFile({ stopOnEntry: true, noDebug: false });
   });
 
   // Run This Command
   yield vscode.commands.registerCommand('dapper.runCurrentFile', async () => {
+    await setRunStickyAction('run');
     await startCurrentFile({ stopOnEntry: false, noDebug: true });
   });
 
   yield vscode.commands.registerCommand('dapper.runCurrentFilePickEnvironment', async () => {
+    await setRunStickyAction('runPickEnvironment');
     await startCurrentFile({ stopOnEntry: false, noDebug: true, pickEnvironment: true });
   });
 
