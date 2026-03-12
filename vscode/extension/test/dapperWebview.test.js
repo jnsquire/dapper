@@ -28,7 +28,7 @@ describe('DapperWebview message handlers', () => {
     });
     vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => saved });
 
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panels = vscode.panelsList;
     expect(panels.length).toBeGreaterThan(0);
     const panel = panels[panels.length - 1];
@@ -49,7 +49,7 @@ describe('DapperWebview message handlers', () => {
     const saved = { type: 'dapper', request: 'launch', name: 'Saved Config' };
     vscode.workspace.getConfiguration = vi.fn().mockReturnValue({ get: () => saved });
 
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panels = vscode.panelsList;
     expect(panels.length).toBeGreaterThan(0);
     const panel = panels[panels.length - 1];
@@ -75,7 +75,7 @@ describe('DapperWebview message handlers', () => {
     vscode.workspace.fs.readFile = vi.fn().mockRejectedValueOnce(new Error('FileNotFound'));
     vscode.workspace.fs.writeFile = vi.fn().mockResolvedValueOnce(undefined);
 
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panels = vscode.panelsList;
     expect(panels.length).toBeGreaterThan(0);
     const panel = panels[panels.length - 1];
@@ -94,7 +94,7 @@ describe('DapperWebview message handlers', () => {
 
   it('should call startDebugging on startDebug message', async () => {
     const cfg = { type: 'dapper', request: 'launch', name: 'Run Now', program: '${file}' };
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panel = vscode.panelsList[vscode.panelsList.length - 1];
     expect(panel).toBeDefined();
     const webview = panel.webview;
@@ -114,7 +114,7 @@ describe('DapperWebview message handlers', () => {
     vscode.workspace.fs.writeFile = vi.fn().mockResolvedValueOnce(undefined);
     vscode.debug.startDebugging = vi.fn().mockResolvedValue(true);
 
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panel = vscode.panelsList[vscode.panelsList.length - 1];
     expect(panel).toBeDefined();
     const webview = panel.webview;
@@ -138,7 +138,7 @@ describe('DapperWebview message handlers', () => {
     });
     const cfg = { type: 'dapper', request: 'launch', name: 'Draft Config', program: '${file}' };
 
-    await DapperWebview.createOrShow(vscode.Uri.file('/dummy'), 'config');
+    await DapperWebview.show(vscode.Uri.file('/dummy'));
     const panel = vscode.panelsList[vscode.panelsList.length - 1];
     expect(panel).toBeDefined();
     const webview = panel.webview;

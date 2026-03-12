@@ -87,6 +87,12 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
     updateConfig({ [field]: value } as Partial<DebugConfiguration>);
   };
 
+  // helper factory so we don't repeat e.preventDefault()+postMessage
+  const makeSender = (cmd: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (vscode) vscode.postMessage({ command: cmd, config });
+  };
+
   const nextStep = () => {
     setStepIndex((current) => Math.min(current + 1, WIZARD_STEPS.length - 1) as StepIndex);
   };
@@ -141,32 +147,18 @@ const ConfigViewContent: React.FC<ConfigViewProps> = ({ initialConfig = {}, onSa
         {status && <div className="wizard-status">{status}</div>}
       </form>
 
+      {/* helper to send a command with current config */}
       <WizardFooter
         canGoBack={stepIndex > 0}
         isLastStep={stepIndex === WIZARD_STEPS.length - 1}
         providerMode={providerMode}
         onBack={(e: React.MouseEvent) => { e.preventDefault(); previousStep(); }}
         onNext={(e: React.MouseEvent) => { e.preventDefault(); nextStep(); }}
-        onUseConfiguration={(e: React.MouseEvent) => {
-          e.preventDefault();
-          if (vscode) vscode.postMessage({ command: 'confirmConfig', config });
-        }}
-        onSaveDefault={(e: React.MouseEvent) => {
-          e.preventDefault();
-          if (vscode) vscode.postMessage({ command: 'saveConfig', config });
-        }}
-        onStartDebugging={(e: React.MouseEvent) => {
-          e.preventDefault();
-          if (vscode) vscode.postMessage({ command: 'startDebug', config });
-        }}
-        onSaveAndLaunch={(e: React.MouseEvent) => {
-          e.preventDefault();
-          if (vscode) vscode.postMessage({ command: 'saveAndLaunch', config });
-        }}
-        onSaveToLaunchJson={(e: React.MouseEvent) => {
-          e.preventDefault();
-          if (vscode) vscode.postMessage({ command: 'saveAndInsert', config });
-        }}
+        onUseConfiguration={makeSender('confirmConfig')}
+        onSaveDefault={makeSender('saveConfig')}
+        onStartDebugging={makeSender('startDebug')}
+        onSaveAndLaunch={makeSender('saveAndLaunch')}
+        onSaveToLaunchJson={makeSender('saveAndInsert')}
         onCancel={(e: React.MouseEvent) => { e.preventDefault(); handleCancel(e); }}
       />
     </div>

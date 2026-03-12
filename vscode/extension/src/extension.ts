@@ -206,18 +206,12 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
   yield vscode.commands.registerCommand('dapper.showDebugPanel', async () => {
     logger.log('Executing command: dapper.showDebugPanel');
     try {
-      await DapperWebview.createOrShow(context.extensionUri);
+      await DapperWebview.show(context.extensionUri);
       logger.log('Debug panel opened successfully');
     } catch (error) {
       logger.error('Failed to open debug panel', error as Error);
       vscode.window.showErrorMessage('Failed to open debug panel. Check the Dapper Debugger output for details.');
     }
-  });
-
-  // Show Variable Inspector Command
-  yield vscode.commands.registerCommand('dapper.showVariableInspector', async () => {
-    await DapperWebview.createOrShow(context.extensionUri);
-    vscode.window.showInformationMessage('Variable inspector is now active');
   });
 
   const startCurrentFile = async (options: { stopOnEntry: boolean; noDebug: boolean; pickEnvironment?: boolean }) => {
@@ -312,7 +306,7 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
       }
 
       // Create or show the webview with configuration wizard
-      await DapperWebview.createOrShow(context.extensionUri, 'config');
+      await DapperWebview.show(context.extensionUri);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to open launch configuration wizard: ${error}`);
     }
@@ -481,12 +475,9 @@ function* registerDebugAdapters(
 }
 
 function* registerWebview(context: vscode.ExtensionContext): Iterable<vscode.Disposable> {
-  if (vscode.window.registerWebviewPanelSerializer) {
-    yield vscode.window.registerWebviewPanelSerializer('dapperWebview', {
-      async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel) {
-        DapperWebview.revive(webviewPanel, context.extensionUri);
-      }
-    });
+  const serializer = DapperWebview.registerSerializer(context.extensionUri);
+  if (serializer) {
+    yield serializer;
   }
 }
 

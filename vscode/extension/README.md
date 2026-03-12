@@ -5,7 +5,6 @@ Enhance your Python debugging experience with the Dapper debug adapter and React
 ## Features
 
 - Fast, binary IPC between the VS Code extension and Python debug adapter.
-- Improved variable inspector with nested view and lazy evaluation.
 - Frame evaluation support for fast and safe expression evaluation while paused.
 - Quick launch configurations for Python files and saved configurations.
 - Optional in-process or out-of-process debug adapter modes.
@@ -180,7 +179,6 @@ the extension starts the child VS Code debug session.
 - `Dapper: Run This` - Run the active Python file with Dapper's interpreter-selection logic but without attaching the debugger.
 - `Dapper: Run This (Pick Environment)` - Run the active Python file after choosing the interpreter from a quick pick.
 - `Dapper: Toggle Breakpoint` - Toggles a breakpoint at the current cursor.
-- `Dapper: Show Variable Inspector` - Opens the variable inspector view for the active debug session.
 - `Dapper: Configure Settings` - Legacy alias for opening the launch configuration wizard.
 - `Dapper: Add Saved Debug Configuration to launch.json` - Save and insert a configuration.
 - `Dapper: Start Debugging with Saved Config` - Start debugging using a saved configuration.
@@ -316,7 +314,6 @@ The extension exposes the following settings under `dapper`:
 ## Troubleshooting
 
 - If the extension fails to start or debug sessions do not initialize, check the Developer Tools console (Help → Toggle Developer Tools). Set `dapper.logLevel` to `debug` and `dapper.logToConsole` to `true` to get additional details.
-- Use the `Dapper: Show Variable Inspector` to view variable data; sometimes frame eval may fail if the target process is in a restricted state (e.g., in C extensions).
 
 ## Contributing
 

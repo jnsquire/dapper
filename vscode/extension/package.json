@@ -755,11 +755,6 @@
         "category": "Dapper"
       },
       {
-        "command": "dapper.showVariableInspector",
-        "title": "Dapper: Show Variable Inspector",
-        "category": "Dapper"
-      },
-      {
         "command": "dapper.configureSettings",
         "title": "Dapper: Configure Settings (Legacy)",
         "category": "Dapper"
@@ -885,10 +880,6 @@
         {
           "command": "dapper.openLaunchWizard",
           "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "dapper.showVariableInspector",
-          "when": "debuggersAvailable == true"
         },
         {
           "command": "dapper.addDebugConfiguration",
@@ -1052,11 +1043,6 @@
       "debug/toolbar": [
         {
           "command": "dapper.openLaunchWizard",
-          "group": "dapper_debug",
-          "when": "debugType == 'dapper'"
-        },
-        {
-          "command": "dapper.showVariableInspector",
           "group": "dapper_debug",
           "when": "debugType == 'dapper'"
         }

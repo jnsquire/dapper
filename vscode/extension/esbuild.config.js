@@ -66,7 +66,6 @@ async function buildExtension() {
       'extension': './src/extension.ts',
       'debugAdapter/dapperDebugAdapter': './src/debugAdapter/dapperDebugAdapter.ts',
       'debugAdapter/configurationProvider': './src/debugAdapter/configurationProvider.ts',
-      'webview/reactSSRProvider': './src/webview/reactSSRProvider.ts',
     },
     // Keep only vscode external (provided by VS Code runtime)
     external: ['vscode'],
@@ -92,7 +91,6 @@ const buildWebview = async () => {
     banner: {},
     entryPoints: {
       'webview/pages/ConfigView': './src/webview/pages/ConfigView.tsx',
-      'webview/pages/index': './src/webview/pages/index.tsx',
       'webview/pages/DebugConfigWebview': './src/webview/pages/DebugConfigWebview.tsx',
     },
     platform: 'browser',
