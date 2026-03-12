@@ -28,6 +28,15 @@ export const defaultConfig: Omit<DebugConfiguration, 'name'> = {
   subProcess: false
 };
 
+function omitDebugServerUnlessTcp<T extends Partial<DebugConfiguration>>(config: T): T {
+  if (config.ipcTransport === 'tcp') {
+    return config;
+  }
+
+  const { debugServer: _debugServer, ...rest } = config;
+  return rest as T;
+}
+
 export function validateConfig(config: Partial<DebugConfiguration>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -92,40 +101,38 @@ export function sanitizeConfig(config: DebugConfiguration): DebugConfiguration {
   // already-running adapter instead of launching one.  See the bug where the
   // wizard was returning a default config containing debugServer even though
   // the transport was pipe.
-  if (sanitized.ipcTransport !== 'tcp') {
-    delete sanitized.debugServer;
-  }
+  const normalized = omitDebugServerUnlessTcp(sanitized);
 
-  if (!sanitized.program?.trim()) {
-    delete sanitized.program;
+  if (!normalized.program?.trim()) {
+    delete normalized.program;
   }
-  if (!sanitized.module?.trim()) {
-    delete sanitized.module;
+  if (!normalized.module?.trim()) {
+    delete normalized.module;
   }
-  if (typeof sanitized.host !== 'string' || !sanitized.host.trim()) {
-    delete sanitized.host;
+  if (typeof normalized.host !== 'string' || !normalized.host.trim()) {
+    delete normalized.host;
   }
-  if (sanitized.port === '' || sanitized.port === null || sanitized.port === undefined) {
-    delete sanitized.port;
+  if (normalized.port === '' || normalized.port === null || normalized.port === undefined) {
+    delete normalized.port;
   }
-  if (sanitized.processId === '' || sanitized.processId === null || sanitized.processId === undefined) {
-    delete sanitized.processId;
+  if (normalized.processId === '' || normalized.processId === null || normalized.processId === undefined) {
+    delete normalized.processId;
   }
 
   // Ensure arrays are properly initialized
-  if (!Array.isArray(sanitized.args)) sanitized.args = [];
-  if (!Array.isArray(sanitized.debugOptions)) sanitized.debugOptions = [];
+  if (!Array.isArray(normalized.args)) normalized.args = [];
+  if (!Array.isArray(normalized.debugOptions)) normalized.debugOptions = [];
   
   // Ensure subprocess arrays are properly initialized
-  if (sanitized.subProcess) {
-    if (!Array.isArray(sanitized.subProcessArgs)) sanitized.subProcessArgs = [];
-    if (!Array.isArray(sanitized.subProcessDebugOptions)) sanitized.subProcessDebugOptions = [];
+  if (normalized.subProcess) {
+    if (!Array.isArray(normalized.subProcessArgs)) normalized.subProcessArgs = [];
+    if (!Array.isArray(normalized.subProcessDebugOptions)) normalized.subProcessDebugOptions = [];
   }
 
   // Ensure type is always 'dapper'
-  sanitized.type = 'dapper';
+  normalized.type = 'dapper';
 
-  return sanitized;
+  return normalized;
 }
 
 export function mergeWithDefaults(config: Partial<DebugConfiguration>): DebugConfiguration {
@@ -140,31 +147,23 @@ export function mergeWithDefaults(config: Partial<DebugConfiguration>): DebugCon
     env: { ...(defaultConfig.env || {}), ...(config.env || {}) },
     debugOptions: [...(defaultConfig.debugOptions || []), ...(config.debugOptions || [])].filter(Boolean),
   };
-
-  // strip debugServer unless tcp transport is chosen; defaults above always
-  // include a value so this handles the initial-configuration case as well.
-  if (merged.ipcTransport !== 'tcp') {
-    // ``debugServer`` is not a required field on the wider configuration type, but
-    // TS still complains when using ``delete`` against a typed object.  use an
-    // escape hatch so we can remove it cleanly when the transport isn't TCP.
-    delete (merged as any).debugServer;
-  }
+  const normalized = omitDebugServerUnlessTcp(merged);
   
   // Handle subprocess defaults if needed
   if (config.subProcess) {
-    merged.subProcessEnv = { 
+    normalized.subProcessEnv = { 
       ...(defaultConfig.subProcessEnv || {}), 
       ...(config.subProcessEnv || {}) 
     };
-    merged.subProcessArgs = [
+    normalized.subProcessArgs = [
       ...(defaultConfig.subProcessArgs || []), 
       ...(config.subProcessArgs || [])
     ].filter(Boolean);
-    merged.subProcessDebugOptions = [
+    normalized.subProcessDebugOptions = [
       ...(defaultConfig.subProcessDebugOptions || []), 
       ...(config.subProcessDebugOptions || [])
     ].filter(Boolean);
   }
   
-  return merged;
+  return normalized;
 }

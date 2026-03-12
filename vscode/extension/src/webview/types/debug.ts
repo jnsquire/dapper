@@ -17,7 +17,7 @@ export interface DebugConfiguration {
   cwd: string;
   
   // Debug server settings
-  debugServer: number;
+  debugServer?: number;
   useIpc: boolean;
   ipcTransport: IPCMethod;
   

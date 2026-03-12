@@ -70,7 +70,7 @@ export const DebugConfigWebview: React.FC = () => {
         <label style={{ display: 'block', marginBottom: '5px' }}>Debug Server Port</label>
         <vscode-textfield 
           type="number"
-          value={config.debugServer.toString()}
+          value={(config.debugServer ?? 4711).toString()}
           onInput={(e: any) => handleChange('debugServer', parseInt(e.target.value, 10))}
           style={{ width: '100%' }}
         />
