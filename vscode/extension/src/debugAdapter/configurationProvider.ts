@@ -162,6 +162,18 @@ export class DapperConfigurationProvider implements vscode.DebugConfigurationPro
       }
     }
 
+    // When the user selects the wizard entry we expect the configuration to
+    // consist only of the magic ``__dapperUseWizard`` flag.  The normal target
+    // validation below would reject such a config and short-circuit the
+    // process, preventing the wizard from ever opening and producing the
+    // confusing "Provide exactly one launch target" message that the user saw.
+    // So skip validation in that case and just return the placeholder as-is;
+    // it will be handled later in
+    // ``resolveDebugConfigurationWithSubstitutedVariables``.
+    if ((config as { __dapperUseWizard?: boolean }).__dapperUseWizard) {
+      return config;
+    }
+
     if (config.request === 'launch' && !DapperConfigurationProvider.hasLaunchTarget(config)) {
       vscode.window.showInformationMessage('Provide exactly one launch target: program or module.');
       return undefined;

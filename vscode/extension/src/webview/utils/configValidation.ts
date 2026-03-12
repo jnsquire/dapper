@@ -6,6 +6,8 @@ export const defaultConfig: Omit<DebugConfiguration, 'name'> = {
   program: '${file}',
   args: [],
   cwd: '${workspaceFolder}',
+  // debugServer default is defined here for completeness but is stripped
+  // by mergeWithDefaults/sanitizeConfig unless the transport is TCP.
   debugServer: 4711,
   useIpc: true,
   ipcTransport: 'pipe',
@@ -85,6 +87,15 @@ export function sanitizeConfig(config: DebugConfiguration): DebugConfiguration {
   // Derive useIpc from transport: pipe and unix are IPC, tcp is not
   sanitized.useIpc = sanitized.ipcTransport !== 'tcp';
 
+  // When the transport isn't TCP we don't want a debugServer field at all;
+  // VS Code interprets its presence as an instruction to connect to an
+  // already-running adapter instead of launching one.  See the bug where the
+  // wizard was returning a default config containing debugServer even though
+  // the transport was pipe.
+  if (sanitized.ipcTransport !== 'tcp') {
+    delete sanitized.debugServer;
+  }
+
   if (!sanitized.program?.trim()) {
     delete sanitized.program;
   }
@@ -129,6 +140,15 @@ export function mergeWithDefaults(config: Partial<DebugConfiguration>): DebugCon
     env: { ...(defaultConfig.env || {}), ...(config.env || {}) },
     debugOptions: [...(defaultConfig.debugOptions || []), ...(config.debugOptions || [])].filter(Boolean),
   };
+
+  // strip debugServer unless tcp transport is chosen; defaults above always
+  // include a value so this handles the initial-configuration case as well.
+  if (merged.ipcTransport !== 'tcp') {
+    // ``debugServer`` is not a required field on the wider configuration type, but
+    // TS still complains when using ``delete`` against a typed object.  use an
+    // escape hatch so we can remove it cleanly when the transport isn't TCP.
+    delete (merged as any).debugServer;
+  }
   
   // Handle subprocess defaults if needed
   if (config.subProcess) {

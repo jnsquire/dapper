@@ -3,14 +3,13 @@ import { validateConfig, sanitizeConfig, mergeWithDefaults, defaultConfig } from
 import type { DebugConfiguration } from '../src/webview/types/debug.js';
 
 function makeValidConfig(overrides: Partial<DebugConfiguration> = {}): DebugConfiguration {
-  return {
+  const base: any = {
     name: 'Test Config',
     type: 'dapper',
     request: 'launch',
     program: 'main.py',
     args: [],
     cwd: '/workspace',
-    debugServer: 4711,
     useIpc: true,
     ipcTransport: 'pipe',
     frameEval: true,
@@ -18,7 +17,12 @@ function makeValidConfig(overrides: Partial<DebugConfiguration> = {}): DebugConf
     stopOnEntry: true,
     justMyCode: true,
     ...overrides,
-  } as DebugConfiguration;
+  };
+  // include debugServer only when tcp transport or explicitly overridden
+  if (base.ipcTransport === 'tcp' || overrides.debugServer !== undefined) {
+    base.debugServer = overrides.debugServer ?? 4711;
+  }
+  return base as DebugConfiguration;
 }
 
 describe('validateConfig', () => {
@@ -185,13 +189,19 @@ describe('sanitizeConfig', () => {
   });
 
   it('should derive useIpc=true for pipe and unix transport', () => {
-    expect(sanitizeConfig(makeValidConfig({ ipcTransport: 'pipe' })).useIpc).toBe(true);
-    expect(sanitizeConfig(makeValidConfig({ ipcTransport: 'unix' })).useIpc).toBe(true);
+    const result1 = sanitizeConfig(makeValidConfig({ ipcTransport: 'pipe', debugServer: 4711 }));
+    expect(result1.useIpc).toBe(true);
+    expect(result1).not.toHaveProperty('debugServer');
+
+    const result2 = sanitizeConfig(makeValidConfig({ ipcTransport: 'unix', debugServer: 4711 }));
+    expect(result2.useIpc).toBe(true);
+    expect(result2).not.toHaveProperty('debugServer');
   });
 
   it('should derive useIpc=false for tcp transport', () => {
     const result = sanitizeConfig(makeValidConfig({ ipcTransport: 'tcp' }));
     expect(result.useIpc).toBe(false);
+    expect(result.debugServer).toBe(4711);
   });
 
   it('should keep both launch targets so validation can reject the config', () => {
@@ -228,13 +238,23 @@ describe('mergeWithDefaults', () => {
     expect(result.request).toBe(defaultConfig.request);
     expect(result.program).toBe(defaultConfig.program);
     expect(result.cwd).toBe(defaultConfig.cwd);
-    expect(result.debugServer).toBe(defaultConfig.debugServer);
+    // debugServer is intentionally dropped when transport isn't tcp
+    if (result.ipcTransport === 'tcp') {
+      expect(result.debugServer).toBe(defaultConfig.debugServer);
+    } else {
+      expect(result).not.toHaveProperty('debugServer');
+    }
     expect(result.useIpc).toBe(defaultConfig.useIpc);
     expect(result.ipcTransport).toBe(defaultConfig.ipcTransport);
     expect(result.frameEval).toBe(defaultConfig.frameEval);
     expect(result.inProcess).toBe(defaultConfig.inProcess);
     expect(result.stopOnEntry).toBe(defaultConfig.stopOnEntry);
     expect(result.justMyCode).toBe(defaultConfig.justMyCode);
+  });
+
+  it('should include debugServer when tcp transport is requested', () => {
+    const result = mergeWithDefaults({ ipcTransport: 'tcp' });
+    expect(result.debugServer).toBe(4711);
   });
 
   it('should use provided name over default', () => {

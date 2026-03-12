@@ -51,6 +51,22 @@ describe('DapperConfigurationProvider', () => {
     expect(res?.module).toBe('pkg.main');
   });
 
+  it('resolveDebugConfiguration should return wizard placeholder unchanged', async () => {
+    const provider = new DapperConfigurationProvider(extensionUri);
+    vscode.window.showInformationMessage = vi.fn();
+
+    const placeholder = {
+      type: 'dapper',
+      request: 'launch',
+      name: 'Dapper: Configure via Wizard',
+      __dapperUseWizard: true,
+    };
+
+    const result = provider.resolveDebugConfiguration(undefined, placeholder);
+    expect(result).toBe(placeholder);
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
   it('should reject launch when both program and module are provided', async () => {
     const provider = new DapperConfigurationProvider(extensionUri);
     vscode.window.showInformationMessage = vi.fn();
