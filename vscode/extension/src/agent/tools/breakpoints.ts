@@ -28,6 +28,10 @@ interface BreakpointInfo {
   logMessage?: string;
 }
 
+function displayPath(file: string): string {
+  return vscode.workspace.asRelativePath(file, false).replace(/\\/g, '/');
+}
+
 export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsToolInput> {
   constructor(private registry: JournalRegistry) {}
 
@@ -105,7 +109,7 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
       }
 
       const info: BreakpointInfo = {
-        file: vscode.workspace.asRelativePath(bpPath, false),
+        file: displayPath(bpPath),
         line,
         enabled: bp.enabled,
       };
