@@ -181,6 +181,35 @@ class _PyDebuggerStateManager:
 
     async def get_scopes(self, frame_id: int) -> list[Scope]:
         """Get variable scopes for a stack frame."""
+        task_registry = self._debugger.task_registry
+        if task_registry is not None and task_registry.is_task_frame_id(frame_id):
+            local_ref = self._debugger.variable_manager.allocate_variable_list_ref(
+                self._build_task_scope_variables(frame_id, scope_name="locals"),
+            )
+            global_ref = self._debugger.variable_manager.allocate_variable_list_ref(
+                self._build_task_scope_variables(frame_id, scope_name="globals"),
+            )
+            causality_ref = self._debugger.variable_manager.allocate_variable_list_ref(
+                self._build_task_causality_variables(frame_id),
+            )
+            return [
+                {
+                    "name": "Local",
+                    "variablesReference": local_ref,
+                    "expensive": False,
+                },
+                {
+                    "name": "Global",
+                    "variablesReference": global_ref,
+                    "expensive": True,
+                },
+                {
+                    "name": "Async Causality",
+                    "variablesReference": causality_ref,
+                    "expensive": False,
+                },
+            ]
+
         # Use VariableManager to allocate scope references
         var_ref = self._debugger.variable_manager.allocate_scope_ref(frame_id, "locals")
         global_var_ref = self._debugger.variable_manager.allocate_scope_ref(frame_id, "globals")
@@ -197,6 +226,42 @@ class _PyDebuggerStateManager:
                 "expensive": True,
             },
         ]
+
+    def _build_task_scope_variables(self, frame_id: int, *, scope_name: str) -> list[Variable]:
+        """Build Local/Global scope variables for a task pseudo-frame."""
+        task_registry = self._debugger.task_registry
+        frame = task_registry.get_frame_object(frame_id)
+        if frame is None:
+            return []
+
+        source = frame.f_locals if scope_name == "locals" else frame.f_globals
+        variables: list[Variable] = []
+        for name, value in sorted(source.items(), key=lambda item: str(item[0])):
+            variables.append(self._debugger.variable_manager.make_variable(name, value))
+        return variables
+
+    def _build_task_causality_variables(self, frame_id: int) -> list[Variable]:
+        """Build the read-only async causality scope for a task pseudo-frame."""
+        task_registry = self._debugger.task_registry
+        snapshot = task_registry.get_causality_snapshot(frame_id)
+        if not snapshot:
+            return []
+
+        variables: list[Variable] = []
+        for key in ("task", "coroutine", "state", "summary", "wait_reason", "awaiting"):
+            value = snapshot.get(key)
+            if value is not None:
+                variables.append(self._debugger.variable_manager.make_variable(key, value))
+
+        waiter_state = snapshot.get("waiter_state")
+        if waiter_state is not None:
+            variables.append(self._debugger.variable_manager.make_variable("waiter_state", waiter_state))
+
+        waiter = snapshot.get("waiter")
+        if waiter is not None:
+            variables.append(self._debugger.variable_manager.make_variable("waiter", waiter))
+
+        return variables
 
     async def get_variables(
         self,

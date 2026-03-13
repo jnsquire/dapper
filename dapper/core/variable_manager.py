@@ -115,6 +115,13 @@ class VariableManager:
         self.var_refs[ref] = (frame_id, scope)
         return ref
 
+    def allocate_variable_list_ref(self, variables: list[VariableDict]) -> int:
+        """Allocate a variable reference for a pre-built variable list."""
+        ref = self.next_var_ref
+        self.next_var_ref = ref + 1
+        self.var_refs[ref] = variables
+        return ref
+
     def get_ref(self, ref_id: int) -> VarRef | None:
         """Retrieve a stored variable reference.
 

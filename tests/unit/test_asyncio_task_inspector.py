@@ -13,6 +13,7 @@ from dapper.core.asyncio_task_inspector import TASK_FRAME_ID_BASE
 from dapper.core.asyncio_task_inspector import TASK_THREAD_ID_BASE
 from dapper.core.asyncio_task_inspector import AsyncioTaskRegistry
 from dapper.core.asyncio_task_inspector import build_coroutine_frame_chain
+from dapper.core.asyncio_task_inspector import build_task_causality_snapshot
 from dapper.core.asyncio_task_inspector import get_all_asyncio_tasks
 from dapper.core.asyncio_task_inspector import task_display_name
 
@@ -41,6 +42,13 @@ async def _nested_outer() -> None:
 
 
 async def _nested_inner() -> None:
+    await asyncio.sleep(100)
+
+
+async def _task_with_locals() -> None:
+    sentinel = 42
+    label = "worker"
+    _ = (sentinel, label)
     await asyncio.sleep(100)
 
 
@@ -196,6 +204,31 @@ class TestBuildCoroutineFrameChain:
         assert len(frames) == 1
 
 
+class TestBuildTaskCausalitySnapshot:
+    def test_timer_wait_classification_for_sleep(self) -> None:
+        loop = asyncio.new_event_loop()
+        try:
+
+            async def _run():
+                t = loop.create_task(_simple_coro(), name="sleepy")
+                try:
+                    await asyncio.sleep(0)
+                    raw_frames = build_coroutine_frame_chain(t.get_coro())
+                    snapshot = build_task_causality_snapshot(t, raw_frames)
+                    assert snapshot["task"]
+                    assert snapshot["state"] == "pending"
+                    assert snapshot["wait_reason"] == "timer"
+                    assert "sleep" in str(snapshot["summary"])
+                finally:
+                    t.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await t
+
+            loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+
 # ---------------------------------------------------------------------------
 # AsyncioTaskRegistry
 # ---------------------------------------------------------------------------
@@ -295,6 +328,38 @@ class TestAsyncioTaskRegistry:
                             assert "line" in frame
                             assert "source" in frame
                             assert frame["id"] >= TASK_FRAME_ID_BASE
+                finally:
+                    t.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await t
+
+            loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+    def test_task_frame_lookup_and_causality_snapshot(self) -> None:
+        loop = asyncio.new_event_loop()
+        try:
+
+            async def _run():
+                t = loop.create_task(_simple_coro(), name="frame-lookup")
+                try:
+                    await asyncio.sleep(0)
+                    reg = AsyncioTaskRegistry()
+                    threads = reg.snapshot_threads()
+                    for thread in threads:
+                        if "frame-lookup" not in thread["name"]:
+                            continue
+                        frames = reg.get_task_frames(thread["id"])
+                        assert frames
+                        frame_id = frames[0]["id"]
+                        assert reg.is_task_frame_id(frame_id)
+                        assert reg.get_frame_object(frame_id) is not None
+                        snapshot = reg.get_causality_snapshot(frame_id)
+                        assert snapshot is not None
+                        assert snapshot["task"]
+                        return
+                    pytest.fail("Expected to find the task pseudo-thread")
                 finally:
                     t.cancel()
                     with pytest.raises(asyncio.CancelledError):
@@ -444,6 +509,43 @@ class TestGetThreadsIntegration:
             result = await debugger.get_stack_trace(bad_id)
             # Should return empty gracefully (falls through to backend/cache path)
             assert isinstance(result.get("stackFrames", []), list)
+        finally:
+            t.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await t
+            await debugger.shutdown()
+
+    async def test_task_frame_scopes_include_locals_and_async_causality(self) -> None:
+        debugger = await self._make_debugger()
+        t = asyncio.create_task(_task_with_locals(), name="task-scope-test")
+        try:
+            await asyncio.sleep(0)
+            threads = await debugger.get_threads()
+            task_threads = [th for th in threads if "task-scope-test" in th["name"]]
+            assert task_threads, "Expected the named task pseudo-thread"
+            pseudo_id = task_threads[0]["id"]
+            result = await debugger.get_stack_trace(pseudo_id)
+            frames = result["stackFrames"]
+            assert frames
+            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            assert target_frame is not None
+
+            scopes = await debugger.get_scopes(target_frame["id"])
+            scope_names = [scope["name"] for scope in scopes]
+            assert "Async Causality" in scope_names
+
+            local_scope = next(scope for scope in scopes if scope["name"] == "Local")
+            local_vars = await debugger.get_variables(local_scope["variablesReference"])
+            local_by_name = {var["name"]: var["value"] for var in local_vars}
+            assert local_by_name["sentinel"] == "42"
+            assert local_by_name["label"] == "'worker'"
+
+            causality_scope = next(scope for scope in scopes if scope["name"] == "Async Causality")
+            causality_vars = await debugger.get_variables(causality_scope["variablesReference"])
+            causality_names = {var["name"] for var in causality_vars}
+            assert {"task", "state", "summary", "wait_reason"}.issubset(causality_names)
+            summary_var = next(var for var in causality_vars if var["name"] == "summary")
+            assert "Waiting" in summary_var["value"]
         finally:
             t.cancel()
             with pytest.raises(asyncio.CancelledError):

@@ -155,6 +155,93 @@ def build_coroutine_frame_chain(coro: Any) -> list[Any]:
     return list(reversed(outer_to_inner))
 
 
+def _coroutine_name(obj: Any) -> str:
+    """Return a best-effort coroutine or awaitable name."""
+    try:
+        return getattr(obj, "__qualname__", "") or getattr(obj, "__name__", "") or ""
+    except Exception:
+        return ""
+
+
+def _looks_like_sleep_wait(raw_frames: list[Any]) -> bool:
+    """Return True when the suspension chain looks like asyncio.sleep."""
+    for frame in raw_frames:
+        try:
+            code = frame.f_code
+            filename = str(getattr(code, "co_filename", ""))
+            name = str(getattr(code, "co_name", ""))
+        except Exception:
+            continue
+        if name == "sleep" and "asyncio" in filename:
+            return True
+    return False
+
+
+def build_task_causality_snapshot(
+    task: asyncio.Task[Any],
+    raw_frames: list[Any],
+) -> dict[str, Any]:
+    """Build a best-effort async wait/causality snapshot for a task."""
+    coro_name = ""
+    try:
+        coro_name = _coroutine_name(task.get_coro())
+    except Exception:
+        pass
+
+    waiting_on = raw_frames[0] if raw_frames else None
+    awaiting = None
+    if waiting_on is not None:
+        try:
+            awaiting = getattr(waiting_on.f_code, "co_name", None)
+        except Exception:
+            awaiting = None
+
+    waiter = getattr(task, "_fut_waiter", None)
+    state = "pending"
+    wait_reason = "runnable"
+    summary = "Runnable in event loop"
+    waiter_state = None
+
+    if task.cancelled():
+        state = "cancelled"
+        wait_reason = "cancelled"
+        summary = "Task was cancelled"
+    elif task.done():
+        state = "done"
+        wait_reason = "completed"
+        summary = "Task completed"
+    elif waiter is not None:
+        state = "pending"
+        if isinstance(waiter, asyncio.Task):
+            wait_reason = "task completion"
+            summary = f"Waiting for task {task_display_name(waiter)}"
+        elif isinstance(waiter, asyncio.Future):
+            if _looks_like_sleep_wait(raw_frames):
+                wait_reason = "timer"
+                summary = "Waiting for asyncio.sleep timer"
+            else:
+                wait_reason = "future completion"
+                summary = "Waiting for future completion"
+            try:
+                waiter_state = "done" if waiter.done() else "pending"
+            except Exception:
+                waiter_state = None
+        else:
+            wait_reason = type(waiter).__name__
+            summary = f"Waiting on {type(waiter).__name__}"
+
+    return {
+        "task": task_display_name(task),
+        "coroutine": coro_name or None,
+        "state": state,
+        "summary": summary,
+        "wait_reason": wait_reason,
+        "awaiting": awaiting,
+        "waiter_state": waiter_state,
+        "waiter": waiter,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -178,6 +265,9 @@ class AsyncioTaskRegistry:
         self._task_to_pseudo_id: dict[int, int] = {}  # id(task) -> pseudo_id
         self._id_to_task: dict[int, asyncio.Task[Any]] = {}  # pseudo_id -> task
         self._id_to_frames: dict[int, list[StackFrameDict]] = {}  # pseudo_id -> frames
+        self._frame_id_to_frame: dict[int, Any] = {}  # frame_id -> live frame
+        self._frame_id_to_task_id: dict[int, int] = {}  # frame_id -> pseudo_id
+        self._id_to_causality: dict[int, dict[str, Any]] = {}  # pseudo_id -> wait snapshot
         self._next_thread_id: int = TASK_THREAD_ID_BASE
         self._next_frame_id: int = TASK_FRAME_ID_BASE
 
@@ -199,7 +289,7 @@ class AsyncioTaskRegistry:
             self._id_to_task[pseudo_id] = task
         return self._task_to_pseudo_id[key]
 
-    def _build_frames(self, task: asyncio.Task[Any]) -> list[StackFrameDict]:
+    def _build_frames(self, task: asyncio.Task[Any], pseudo_id: int) -> list[StackFrameDict]:
         try:
             coro = task.get_coro()
         except Exception:
@@ -207,6 +297,7 @@ class AsyncioTaskRegistry:
             return []
 
         raw_frames = build_coroutine_frame_chain(coro)
+        self._id_to_causality[pseudo_id] = build_task_causality_snapshot(task, raw_frames)
         dap_frames: list[StackFrameDict] = []
 
         for frame in raw_frames:
@@ -219,6 +310,8 @@ class AsyncioTaskRegistry:
                 continue
 
             frame_id = self._allocate_frame_id()
+            self._frame_id_to_frame[frame_id] = frame
+            self._frame_id_to_task_id[frame_id] = pseudo_id
             dap_frame: StackFrameDict = {
                 "id": frame_id,
                 "name": name,
@@ -246,12 +339,30 @@ class AsyncioTaskRegistry:
         self._task_to_pseudo_id.clear()
         self._id_to_task.clear()
         self._id_to_frames.clear()
+        self._frame_id_to_frame.clear()
+        self._frame_id_to_task_id.clear()
+        self._id_to_causality.clear()
         self._next_thread_id = TASK_THREAD_ID_BASE
         self._next_frame_id = TASK_FRAME_ID_BASE
 
     def is_task_thread_id(self, thread_id: int) -> bool:
         """Return ``True`` if *thread_id* was allocated for an asyncio task."""
         return thread_id in self._id_to_task
+
+    def is_task_frame_id(self, frame_id: int) -> bool:
+        """Return ``True`` if *frame_id* belongs to a task pseudo-frame."""
+        return frame_id in self._frame_id_to_task_id
+
+    def get_frame_object(self, frame_id: int) -> Any | None:
+        """Return the live frame object for a task pseudo-frame."""
+        return self._frame_id_to_frame.get(frame_id)
+
+    def get_causality_snapshot(self, frame_id: int) -> dict[str, Any] | None:
+        """Return the stored causality metadata for a task pseudo-frame."""
+        pseudo_id = self._frame_id_to_task_id.get(frame_id)
+        if pseudo_id is None:
+            return None
+        return self._id_to_causality.get(pseudo_id)
 
     def snapshot_threads(self) -> list[Thread]:
         """Enumerate all live asyncio tasks and return them as DAP Thread dicts.
@@ -272,7 +383,7 @@ class AsyncioTaskRegistry:
             try:
                 pseudo_id = self._register_task(task)
                 name = f"Task: {task_display_name(task)}"
-                frames = self._build_frames(task)
+                frames = self._build_frames(task, pseudo_id)
                 self._id_to_frames[pseudo_id] = frames
                 threads.append({"id": pseudo_id, "name": name})
             except Exception:  # noqa: PERF203
@@ -313,6 +424,7 @@ __all__ = [
     "TASK_THREAD_ID_BASE",
     "AsyncioTaskRegistry",
     "build_coroutine_frame_chain",
+    "build_task_causality_snapshot",
     "get_all_asyncio_tasks",
     "task_display_name",
 ]

@@ -10,6 +10,25 @@ Legend
 
 ---
 
+## 1. Async Causality and Scheduling Insight
+
+- [ ] **Async causality view** — when execution resumes in an `asyncio.Task`,
+      show why that task became runnable: completion of a specific
+      `Future`/`Task`, a loop callback, a timer, selector I/O readiness, or an
+      explicit cross-thread wakeup. The goal is to answer "what resumed this
+      task?" rather than only "where is it paused now?".
+      **Potential shape:** emit a custom DAP event or expose a virtual scope /
+      tool payload containing the most recent wakeup cause, scheduler edge, and
+      related object reprs.
+      **Likely implementation hooks:** `asyncio` task/future callbacks,
+      event-loop scheduling helpers (`call_soon`, `call_later`, selector
+      callbacks), and the existing pseudo-thread task-inspector plumbing.
+      **Acceptance signal:** when stopped in async code, the user can see the
+      last scheduling cause without manually reconstructing it from stack frames
+      and event-loop internals.
+
+---
+
 ## 2. Rich Variable Presentation
 
 - [ ] **numpy / pandas / torch tensor summaries** — show shape, dtype, and a
@@ -114,6 +133,23 @@ Legend
       the user browse recent execution as a timeline without full rr-style
       time travel.  The telemetry infrastructure in
       `_frame_eval/telemetry.py` provides a pattern to follow.
+- [ ] **Stop-reason diagnostics** — attach an explanation payload to stops that
+      are technically correct but hard to interpret, such as async-aware step
+      filtering, conditional breakpoint truthiness, exception-filter matches, or
+      user-code re-entry after skipping event-loop frames.
+      **Example explanations:** "stepped into event-loop machinery, then skipped
+      to next user frame", "stopped because breakpoint condition `total > 100`
+      evaluated truthy", or "paused because this exception matched the active
+      uncaught filter".
+      **Potential shape:** add a small structured explanation object to stopped
+      snapshots / journal entries and optionally mirror it into a custom DAP
+      event for extension UX.
+      **Likely implementation hooks:** execution controller stop classification,
+      breakpoint condition evaluation paths, async-aware stepping filters, and
+      exception-breakpoint resolution.
+      **Acceptance signal:** after a surprising stop, the user can see why the
+      debugger chose that stop without inferring behavior from raw frames and
+      internal filters.
 - [ ] **Promote to full reverse execution** — once the event log is stable,
       consider wiring it to the DAP `reverseContinue` / `stepBack` requests
       (Phase 3 roadmap item).
@@ -222,21 +258,23 @@ Ideas for building automated, reproducible screenshot capture for the docs.
 | # | Area | User Impact | Estimated Effort |
 |---|------|-------------|-----------------|
 | 1 | Async task inspector | Very High | Medium |
-| 2 | numpy / pandas / torch tensor summaries | High | Low–Medium |
-| 3 | Object reference graph | High | Low–Medium |
-| 4 | `__repr__` vs `__str__` toggle | High | Low–Medium |
-| 5 | Expression watchpoints | High | Low (frame-eval infra exists) |
-| 6 | Exception type filtering / "just my code" | High | Medium |
-| 7 | Hot code reloading | High | High |
-| 8 | Coverage-aware breakpoints | Medium | Low–Medium |
-| 9 | Multi-process attach | Medium | High |
-| 10 | Test framework integration | Medium | Medium |
-| 11 | goto / jump-to-line | Medium | Low |
-| 12 | Execution event log | Medium | Low–Medium |
-| 13 | Read-access watchpoints | Medium | Medium |
-| 14 | Doc screenshot capture (Tier 1 manual) | High | Low |
-| 15 | Doc screenshot automation / CI (Tier 2) | Medium | Medium |
+| 2 | Async causality view | Very High | Medium–High |
+| 3 | Stop-reason diagnostics | High | Medium |
+| 4 | numpy / pandas / torch tensor summaries | High | Low–Medium |
+| 5 | Object reference graph | High | Low–Medium |
+| 6 | `__repr__` vs `__str__` toggle | High | Low–Medium |
+| 7 | Expression watchpoints | High | Low (frame-eval infra exists) |
+| 8 | Exception type filtering / "just my code" | High | Medium |
+| 9 | Hot code reloading | High | High |
+| 10 | Coverage-aware breakpoints | Medium | Low–Medium |
+| 11 | Multi-process attach | Medium | High |
+| 12 | Test framework integration | Medium | Medium |
+| 13 | goto / jump-to-line | Medium | Low |
+| 14 | Execution event log | Medium | Low–Medium |
+| 15 | Read-access watchpoints | Medium | Medium |
+| 16 | Doc screenshot capture (Tier 1 manual) | High | Low |
+| 17 | Doc screenshot automation / CI (Tier 2) | Medium | Medium |
 
 ---
 
-*Generated: 2026-02-20; updated: 2026-03-06*
+*Generated: 2026-02-20; updated: 2026-03-12*

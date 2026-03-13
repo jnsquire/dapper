@@ -42,8 +42,9 @@ This means:
   coroutine name shown as the thread name (e.g. `Task: main_loop`).
 - Selecting a task thread shows its **call stack** in the Call Stack panel —
   the coroutine chain from the innermost `await` back to `asyncio.create_task`.
-- You can inspect locals, evaluate expressions, and navigate frames for any
-  suspended task, not just the one that hit the current breakpoint.
+- Task frames expose **Local**, **Global**, and **Async Causality** scopes, so
+  you can inspect coroutine locals and see the current wait reason without
+  reconstructing it from raw event-loop internals.
 
 The task registry is re-enumerated on every `threads` request, so newly created
 or completed tasks appear and disappear in real time without restarting the
@@ -77,6 +78,20 @@ with `asyncio.create_task(..., name="my-worker")` to make tasks easy to identify
   automatically.
 - If a task is **pending** (has not yet been scheduled to run), it will appear
   in the list but its stack may show only the outermost frame.
+
+### Async causality scope
+
+When you open scopes for a task pseudo-frame, Dapper now adds an
+`Async Causality` scope alongside the normal local/global scopes.
+
+- `summary` gives a short explanation of the current wait state.
+- `wait_reason` classifies the blocking edge (`timer`, `future completion`,
+  `task completion`, `runnable`, etc.).
+- `waiter` includes the underlying `Future` or `Task` object when one is
+  available, so you can inspect it directly from the variables UI.
+
+This is intentionally a best-effort view of the task's current scheduling
+dependency. It does not yet attempt full historical wakeup provenance.
 
 ---
 
