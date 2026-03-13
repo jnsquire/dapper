@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant Editor as Client
+    participant Adapter as Debug Adapter
+    participant Debuggee as Debuggee
+
+    Editor->>Adapter: initialize(request)
+    Adapter-->>Editor: initialize(response)
+    Editor->>Adapter: attach({pid, host, port})
+    Adapter->>Debuggee: connect (TCP/pipe)
+    Debuggee-->>Adapter: connection ack
+    Adapter-->>Editor: attach(response)
+    Editor->>Adapter: configurationDone()
+    Adapter-->>Editor: configurationDone(response)
+    Debuggee->>Adapter: stopped(event)
+    Adapter-->>Editor: stopped(event)
