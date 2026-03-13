@@ -575,6 +575,7 @@ async def test_set_function_breakpoints(debugger):
         ProtocolFunctionBreakpoint(
             name="helper",
             condition=f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}",
+            hitCondition=">= 2",
         ),
     ]
 
@@ -583,6 +584,12 @@ async def test_set_function_breakpoints(debugger):
     assert len(result) == 2
     assert result[0]["verified"] is True
     assert result[1]["verified"] is True
+    assert debugger.breakpoint_manager.get_function_meta("main") == {"verified": True}
+    assert debugger.breakpoint_manager.get_function_meta("helper") == {
+        "verified": True,
+        "condition": f"x > {DEFAULT_BREAKPOINT_CONDITION_VALUE - 5}",
+        "hitCondition": ">= 2",
+    }
 
 
 @pytest.mark.asyncio

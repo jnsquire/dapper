@@ -77,3 +77,22 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
 
     # Ensure the watch was registered in the debugger's internal mapping
     assert "frame:42:var:x" in real_dbg._session_facade.data_watches  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_set_data_breakpoints_replaces_existing_registrations():
+    debugger = RealDebugger(None, asyncio.get_running_loop())  # type: ignore[arg-type]
+
+    first = debugger.set_data_breakpoints([
+        {"dataId": "frame:42:var:x", "accessType": "write"},
+    ])
+    assert first == [{"verified": True}]
+    assert set(debugger.get_data_watch_map()) == {"frame:42:var:x"}
+    assert debugger.get_frame_watch_map() == {42: ["frame:42:var:x"]}
+
+    second = debugger.set_data_breakpoints([
+        {"dataId": "frame:99:var:y", "accessType": "write"},
+    ])
+    assert second == [{"verified": True}]
+    assert set(debugger.get_data_watch_map()) == {"frame:99:var:y"}
+    assert debugger.get_frame_watch_map() == {99: ["frame:99:var:y"]}

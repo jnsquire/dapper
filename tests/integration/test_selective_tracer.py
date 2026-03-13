@@ -610,8 +610,16 @@ class TestThreadSafety:
 
     def test_concurrent_trace_calls(self):
         """Test concurrent trace function calls."""
-        mock_trace_func = Mock(return_value=None)
-        self.trace_manager.enable_selective_tracing(mock_trace_func)
+        counter_lock = threading.Lock()
+        trace_func_calls = 0
+        analyzer_calls = 0
+
+        def debugger_trace_func(_frame, _event, _arg):
+            nonlocal trace_func_calls
+            with counter_lock:
+                trace_func_calls += 1
+
+        self.trace_manager.enable_selective_tracing(debugger_trace_func)
 
         # Create a mock frame
         mock_frame = Mock()
@@ -636,12 +644,23 @@ class TestThreadSafety:
             self.trace_manager.dispatcher.analyzer,
             "should_trace_frame",
         ) as mock_should_trace:
-            mock_should_trace.return_value = {
-                "should_trace": True,
-                "reason": "breakpoint_on_line",
-                "breakpoint_lines": {10},
-                "frame_info": {"filename": "test.py", "lineno": 10, "function": "test_func"},
-            }
+
+            def should_trace_side_effect(_frame):
+                nonlocal analyzer_calls
+                with counter_lock:
+                    analyzer_calls += 1
+                return {
+                    "should_trace": True,
+                    "reason": "breakpoint_on_line",
+                    "breakpoint_lines": {10},
+                    "frame_info": {
+                        "filename": "test.py",
+                        "lineno": 10,
+                        "function": "test_func",
+                    },
+                }
+
+            mock_should_trace.side_effect = should_trace_side_effect
 
             def call_trace_function():
                 try:
@@ -665,10 +684,14 @@ class TestThreadSafety:
             assert not errors, f"Errors occurred in threads: {errors}"
 
             # Verify the trace function was called the correct number of times
-            assert mock_trace_func.call_count == 500  # 5 threads * 100 calls each
+            assert trace_func_calls == 500  # 5 threads * 100 calls each
 
             # Verify the analyzer's should_trace_frame was called the correct number of times
-            assert mock_should_trace.call_count == 500
+            assert analyzer_calls == 500
+
+            stats = self.trace_manager.dispatcher.get_statistics()
+            assert stats["dispatcher_stats"]["total_calls"] == 500
+            assert stats["dispatcher_stats"]["dispatched_calls"] == 500
 
             # All results should be None (the mock returns None)
             assert all(r is None for r in results)

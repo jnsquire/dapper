@@ -15,11 +15,22 @@ from tests.mocks import make_real_frame
 
 
 def _make_frame(
-    name: str = "target_fn", filename: str = "test_file.py", lineno: int = 12
+    name: str = "target_fn",
+    filename: str = "test_file.py",
+    lineno: int = 12,
+    locals_map: dict[str, object] | None = None,
+    globals_map: dict[str, object] | None = None,
 ) -> FrameType:
     code = SimpleNamespace(co_name=name, co_filename=filename)
     return cast(
-        "FrameType", SimpleNamespace(f_code=code, f_lineno=lineno, f_locals={}, f_back=None)
+        "FrameType",
+        SimpleNamespace(
+            f_code=code,
+            f_lineno=lineno,
+            f_locals=locals_map or {},
+            f_globals=globals_map or {},
+            f_back=None,
+        ),
     )
 
 
@@ -82,6 +93,51 @@ def test_user_call_stop_action_emits_function_breakpoint(monkeypatch):
     stopped_events = [payload for event, payload in messages if event == "stopped"]
     assert stopped_events
     assert stopped_events[-1]["reason"] == "function breakpoint"
+    assert processed == [True]
+
+
+def test_user_call_function_breakpoint_condition_false_does_not_emit_stopped(monkeypatch):
+    messages: list[tuple[str, dict[str, object]]] = []
+    dbg = DebuggerBDB(send_message=lambda event, **kwargs: messages.append((event, kwargs)))
+    dbg.bp_manager.function_names = ["target_fn"]
+    dbg.bp_manager.function_meta["target_fn"] = {"condition": "x > 10"}
+
+    monkeypatch.setattr(
+        debugger_bdb_module,
+        "get_function_candidate_names",
+        lambda _frame: ["target_fn"],
+    )
+
+    dbg.user_call(_make_frame(locals_map={"x": 3}), None)
+
+    assert not any(event == "stopped" for event, _ in messages)
+    assert dbg.bp_manager.function_meta["target_fn"]["hit"] == 1
+
+
+def test_user_call_function_breakpoint_condition_true_emits_stopped(monkeypatch):
+    messages: list[tuple[str, dict[str, object]]] = []
+    processed: list[bool] = []
+    dbg = DebuggerBDB(
+        send_message=lambda event, **kwargs: messages.append((event, kwargs)),
+        process_commands=lambda: processed.append(True),
+    )
+    dbg.bp_manager.function_names = ["target_fn"]
+    dbg.bp_manager.function_meta["target_fn"] = {"condition": "x > 10"}
+
+    monkeypatch.setattr(
+        debugger_bdb_module,
+        "get_function_candidate_names",
+        lambda _frame: ["target_fn"],
+    )
+
+    frame = _make_frame(locals_map={"x": 11})
+    dbg.botframe = frame  # type: ignore[assignment]
+    dbg.user_call(frame, None)
+
+    stopped_events = [payload for event, payload in messages if event == "stopped"]
+    assert stopped_events
+    assert stopped_events[-1]["reason"] == "function breakpoint"
+    assert dbg.bp_manager.function_meta["target_fn"]["hit"] == 1
     assert processed == [True]
 
 

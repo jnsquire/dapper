@@ -42,14 +42,14 @@ Legend
 
 ### Function breakpoints
 - ✅ Set function breakpoints (adapter + debug launcher support)
-- 🟡 Function breakpoint conditions (resolver supports them; more test coverage is desirable)
+- ✅ Function breakpoint conditions (resolver support is covered for registration and runtime stop/continue behavior)
 
 ### Exception breakpoints
 - ✅ Set exception breakpoints (raised/uncaught filters supported)
 - 🟡 Exception options / advanced filtering (work in progress)
 
 ### Data breakpoints
-- 🟡 Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints implemented; adapter advertises capability)
+- ✅ Data breakpoint requests & bookkeeping (dataBreakpointInfo, setDataBreakpoints, capability advertisement, and full-replace bookkeeping semantics are covered)
 - 🟡 Runtime watchpoints (trigger on write/value change/read) — variable and expression watchpoints are supported when watches are registered (including `frame:<id>:expr:<expression>`), and read watchpoints are available on Python 3.12+ via `sys.monitoring` (name-read scope). On older versions, read access types gracefully fall back to write semantics. Broader cross-process/read-precision integration work remains. See [Watchpoints reference](../guides/watchpoints.md).
 
 Reference: see Architecture — [Breakpoints Controller](../architecture/breakpoints.md) for design notes and Phase 1 status.
@@ -62,17 +62,18 @@ Reference: see Architecture — [Breakpoints Controller](../architecture/breakpo
 - ✅ Threads listing and basic metadata
 - ✅ Dynamic thread names (live names read from `threading.enumerate()` at query time)
 - ✅ Asyncio task inspector — live `asyncio.Task` objects exposed as pseudo-threads with full coroutine call stacks
+- ✅ Async task causality inspection — task pseudo-frames expose a best-effort `Async Causality` scope summarising the current wait state (`timer`, future/task completion, runnable, cancelled, completed) and the underlying waiter object when available; see [Async Debugging reference](../guides/async-debugging.md)
 - ✅ Stack traces (frames, locations, ids)
 - ✅ Source references for non-filesystem sources (runtime source registry: `eval`, `exec`, `compile`, Cython intermediates)
 
 ### Variables & scopes
-- ✅ Scopes (locals/globals)
+- ✅ Scopes (locals/globals, plus task-frame `Async Causality` virtual scope)
 - ✅ Variables listing
 - ✅ Set variable (support for complex types and conversions)
 - ✅ Variable presentation / presentationHint — see [Variable Presentation reference](../guides/variable-presentation.md)
 
 ### Expression evaluation
-- 🟡 Evaluate expressions in-frame — [Frame Evaluation](../guides/frame-eval.md) backend; partial support
+- ✅ Evaluate expressions in-frame — normal stopped frames and async task pseudo-frames are supported, including task-frame adapter-side evaluation when the frame is not backend-owned
 - 🟡 Expression-backed watchpoints via `setDataBreakpoints` (`frame:<id>:expr:<expression>`)
 - ✅ Set expression (`setExpression` DAP request)
 - ✅ Completions / auto-complete for expression editors
@@ -94,7 +95,7 @@ See also: [Frame Eval User Guide](../guides/frame-eval.md).
 
 ## Implementation status — short summary
 
-Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are implemented. Async/concurrency debugging is fully supported — asyncio tasks appear as pseudo-threads, stepping is async-aware, and thread names are live. Structured variable rendering (dataclasses, namedtuples, Pydantic v1 & v2) is implemented with field-level expansion and presentation hints. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX, and profiling integration.
+Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are implemented. Async/concurrency debugging is fully supported — asyncio tasks appear as pseudo-threads, stepping is async-aware, thread names are live, and task frames now expose a best-effort causality scope for current wait-state inspection. Structured variable rendering (dataclasses, namedtuples, Pydantic v1 & v2) is implemented with field-level expansion and presentation hints. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX, and profiling integration.
 
 ---
 
@@ -111,4 +112,4 @@ Dapper provides a stable, functional core debugger experience: program control, 
 
 For a fuller list of ideas and proposed work, see the [Roadmap](../roadmap/feature-ideas.md).
 
-*Last updated: 2026-03-06*
+*Last updated: 2026-03-12*

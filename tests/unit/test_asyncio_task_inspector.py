@@ -551,3 +551,59 @@ class TestGetThreadsIntegration:
             with pytest.raises(asyncio.CancelledError):
                 await t
             await debugger.shutdown()
+
+    async def test_evaluate_expression_on_task_pseudo_frame(self) -> None:
+        debugger = await self._make_debugger()
+        t = asyncio.create_task(_task_with_locals(), name="task-eval-test")
+        try:
+            await asyncio.sleep(0)
+            threads = await debugger.get_threads()
+            task_threads = [th for th in threads if "task-eval-test" in th["name"]]
+            assert task_threads, "Expected the named task pseudo-thread"
+            pseudo_id = task_threads[0]["id"]
+            result = await debugger.get_stack_trace(pseudo_id)
+            frames = result["stackFrames"]
+            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            assert target_frame is not None
+
+            evaluate_result = await debugger.evaluate(
+                "sentinel + 1",
+                frame_id=target_frame["id"],
+                context="watch",
+            )
+            assert evaluate_result.get("result") == "43"
+            assert evaluate_result.get("type") == "int"
+            assert evaluate_result.get("variablesReference") == 0
+        finally:
+            t.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await t
+            await debugger.shutdown()
+
+    async def test_evaluate_expression_error_on_task_pseudo_frame(self) -> None:
+        debugger = await self._make_debugger()
+        t = asyncio.create_task(_task_with_locals(), name="task-eval-error-test")
+        try:
+            await asyncio.sleep(0)
+            threads = await debugger.get_threads()
+            task_threads = [th for th in threads if "task-eval-error-test" in th["name"]]
+            assert task_threads, "Expected the named task pseudo-thread"
+            pseudo_id = task_threads[0]["id"]
+            result = await debugger.get_stack_trace(pseudo_id)
+            frames = result["stackFrames"]
+            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            assert target_frame is not None
+
+            evaluate_result = await debugger.evaluate(
+                "missing_name + 1",
+                frame_id=target_frame["id"],
+                context="watch",
+            )
+            assert evaluate_result.get("type") == "error"
+            assert "missing_name" in str(evaluate_result.get("result"))
+            assert evaluate_result.get("variablesReference") == 0
+        finally:
+            t.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await t
+            await debugger.shutdown()

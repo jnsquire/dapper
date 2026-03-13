@@ -93,7 +93,7 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
 
       const bpPath = bp.location.uri.fsPath;
       if (file) {
-        const normalizedFile = file.startsWith('/')
+        const normalizedFile = file.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(file)
           ? file
           : vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file('/'), file).fsPath;
         if (bpPath !== normalizedFile) continue;

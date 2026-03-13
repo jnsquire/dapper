@@ -106,7 +106,9 @@ export function createLaunchHarness(options: LaunchHarnessOptions = {}): LaunchH
   });
   (vscode.workspace as any).asRelativePath = vi.fn((uriOrPath: { fsPath?: string } | string) => {
     const rawPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath?.fsPath ?? '';
-    return rawPath.startsWith(workspaceRoot) ? rawPath.slice(workspaceRoot.length).replace(/^\//, '') : rawPath;
+    return rawPath.startsWith(workspaceRoot)
+      ? rawPath.slice(workspaceRoot.length).replace(/^[\\/]+/, '')
+      : rawPath;
   });
   (vscode.workspace as any).getConfiguration = vi.fn((section?: string) => {
     const makeConfig = (getValue: (key: string, defaultValue?: unknown) => unknown) => ({

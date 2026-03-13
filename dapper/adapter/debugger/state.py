@@ -7,6 +7,8 @@ from typing import Any
 from typing import cast
 
 from dapper.adapter.types import BreakpointResponse
+from dapper.shared.value_conversion import _exec_statement_in_frame
+from dapper.shared.value_conversion import evaluate_with_policy
 
 if TYPE_CHECKING:
     from dapper.adapter.debugger.py_debugger import PyDebugger
@@ -349,6 +351,17 @@ class _PyDebuggerStateManager:
         format_options: dict[str, Any] | None = None,
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
+        task_registry = self._debugger.task_registry
+        if isinstance(frame_id, int) and task_registry is not None and task_registry.is_task_frame_id(
+            frame_id,
+        ):
+            return self._evaluate_task_frame_expression(
+                expression,
+                frame_id,
+                context,
+                format_options=format_options,
+            )
+
         backend = self._debugger.get_active_backend()
         if backend is not None:
             return await backend.evaluate(
@@ -359,3 +372,56 @@ class _PyDebuggerStateManager:
             )
         msg = f"No active backend available for evaluation: {expression!r}"
         raise RuntimeError(msg)
+
+    def _evaluate_task_frame_expression(
+        self,
+        expression: str,
+        frame_id: int,
+        context: str | None,
+        *,
+        format_options: dict[str, Any] | None = None,
+    ) -> EvaluateResponseBody:
+        """Evaluate an expression directly against a stored task pseudo-frame."""
+        task_registry = self._debugger.task_registry
+        frame = task_registry.get_frame_object(frame_id)
+        if frame is None:
+            return {
+                "result": f"No frame available for evaluation: {expression!r}",
+                "type": "error",
+                "variablesReference": 0,
+            }
+
+        use_hex = isinstance(format_options, dict) and bool(format_options.get("hex"))
+
+        try:
+            result = evaluate_with_policy(expression, frame, allow_builtins=True)
+            var_ref = self._debugger.variable_manager.allocate_ref(result)
+            if use_hex and isinstance(result, int) and not isinstance(result, bool):
+                result_str = hex(result)
+            else:
+                result_str = repr(result)
+            return {
+                "result": result_str,
+                "type": type(result).__name__,
+                "variablesReference": var_ref,
+            }
+        except Exception as eval_exc:
+            if context == "repl":
+                try:
+                    _exec_statement_in_frame(expression, frame)
+                except Exception as exec_exc:
+                    return {
+                        "result": str(exec_exc),
+                        "type": "error",
+                        "variablesReference": 0,
+                    }
+                return {
+                    "result": "",
+                    "type": "statement",
+                    "variablesReference": 0,
+                }
+            return {
+                "result": str(eval_exc),
+                "type": "error",
+                "variablesReference": 0,
+            }

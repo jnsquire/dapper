@@ -61,7 +61,7 @@ export const workspace = {
     const rawPath = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath?.fsPath ?? '';
     const base = workspace.workspaceFolders?.[0]?.uri?.fsPath ?? '';
     if (base && rawPath.startsWith(base)) {
-      return rawPath.slice(base.length).replace(/^\//, '');
+      return rawPath.slice(base.length).replace(/^[\\/]+/, '');
     }
     return rawPath;
   },
