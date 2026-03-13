@@ -27,6 +27,9 @@ For a detailed checklist of implemented and planned debugger features, see:
 
 Dapper works directly with VS Code's built-in debugger. See **[Using Dapper with VS Code](doc/getting-started/using-vscode.md)** for setup, launch configuration, attach configs, and all VS Code-specific features.
 
+For the public LM tool surface used by agents and tool-driven workflows, see
+**[LM Tools Reference](doc/reference/lm-tools.md)**.
+
 ## Installation
 
 Dapper is currently installed from source for development and evaluation:

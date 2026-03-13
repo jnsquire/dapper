@@ -7,13 +7,14 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { JournalRegistry } from '../stateJournal.js';
 import { jsonResult, errorResult } from '../toolUtils.js';
-import type { LaunchService } from '../../debugAdapter/launchService.js';
+import type { LaunchService, LaunchOptions } from '../../debugAdapter/launchService.js';
 import { LaunchTool } from './launch.js';
 import { ExecutionTool } from './execution.js';
 import { EvaluateTool } from './evaluate.js';
 import { StateTool } from './state.js';
 import { BreakpointsTool } from './breakpoints.js';
 import { InspectVariableTool } from './inspectVariable.js';
+import { GetSessionInfoTool } from './getSessionInfo.js';
 
 interface DapperCliInput {
   command: string;
@@ -111,6 +112,17 @@ interface CliCommandSpecDefinition {
   description: string;
 }
 
+interface ParsedLaunchCommand {
+  options: LaunchOptions;
+  summaryTarget: string;
+}
+
+interface ParsedBreakCommand {
+  target: string;
+  condition?: string;
+  logMessage?: string;
+}
+
 const CLI_COMMAND_SPECS = [
   {
     verb: 'help',
@@ -123,6 +135,54 @@ const CLI_COMMAND_SPECS = [
     aliases: [],
     args: 'none',
     description: 'Launch the active Python file and wait for the first stop.',
+  },
+  {
+    verb: 'launch',
+    aliases: [],
+    args: '[file <path>|module <name>|config <name>] [--cwd <path>] [--env <key=value>] [--path <path>] [--python <path>] [--venv <path>] [--stop-on-entry|--no-stop-on-entry] [--just-my-code|--no-just-my-code] [--subprocess] [--wait] [-- <arg>...]',
+    description: 'Launch a Python target with the richer dapper_launch surface.',
+  },
+  {
+    verb: 'sessions',
+    aliases: [],
+    args: 'none',
+    description: 'List tracked Dapper sessions.',
+  },
+  {
+    verb: 'info',
+    aliases: [],
+    args: '[<sessionId>]',
+    description: 'Show metadata for the selected or specified Dapper session.',
+  },
+  {
+    verb: 'inspect',
+    aliases: [],
+    args: '[--depth <n>] [--max-items <n>] <expression>',
+    description: 'Inspect a structured expression in the selected frame.',
+  },
+  {
+    verb: 'state',
+    aliases: [],
+    args: 'none',
+    description: 'Read a snapshot of the current debug state.',
+  },
+  {
+    verb: 'diff',
+    aliases: [],
+    args: '[<checkpoint>]',
+    description: 'Read the debug-state diff since checkpoint 0 or a specific checkpoint.',
+  },
+  {
+    verb: 'pause',
+    aliases: [],
+    args: 'none',
+    description: 'Pause the selected Dapper session.',
+  },
+  {
+    verb: 'restart',
+    aliases: [],
+    args: 'none',
+    description: 'Restart the selected Dapper session.',
   },
   {
     verb: 'continue',
@@ -157,8 +217,14 @@ const CLI_COMMAND_SPECS = [
   {
     verb: 'break',
     aliases: ['b'],
-    args: '<file>:<line>|<function>:<line>',
-    description: 'Add a source breakpoint at the given file, Python filename stem, or current stack function name and line.',
+    args: '<file>:<line>|<function>:<line> [if <expression>|log <message>]',
+    description: 'Add a source breakpoint, condition, or logpoint at the given file, Python filename stem, or current stack function name and line.',
+  },
+  {
+    verb: 'breaks',
+    aliases: [],
+    args: '[<file>|<file>:<line>]',
+    description: 'List all breakpoints or filter them to one file or line.',
   },
   {
     verb: 'clear',
@@ -234,6 +300,7 @@ interface ParsedCommand {
   raw: string;
   verb: CliVerb;
   arg?: string;
+  tokens: string[];
 }
 
 const CLI_COMMAND_HELP = CLI_COMMAND_SPECS.map(spec => ({
@@ -257,6 +324,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
   private readonly stateTool: StateTool;
   private readonly breakpointsTool: BreakpointsTool;
   private readonly inspectVariableTool: InspectVariableTool;
+  private readonly sessionInfoTool: GetSessionInfoTool;
   private readonly underlyingToolHelp: ToolHelpEntry[];
   private readonly sessionState = new Map<string, SessionState>();
 
@@ -271,6 +339,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     this.stateTool = new StateTool(registry);
     this.breakpointsTool = new BreakpointsTool(registry);
     this.inspectVariableTool = new InspectVariableTool(registry);
+    this.sessionInfoTool = new GetSessionInfoTool(registry);
     this.underlyingToolHelp = buildUnderlyingToolHelp(packageManifest);
   }
 
@@ -354,8 +423,22 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
         return this._handleHelp(parsed);
       case 'run':
         return await this._handleRun(parsed, token);
+      case 'launch':
+        return await this._handleLaunch(parsed, token);
+      case 'sessions':
+        return await this._handleSessions(parsed);
+      case 'info':
+        return await this._handleInfo(parsed, context.sessionId);
+      case 'inspect':
+        return await this._handleInspect(parsed, context.sessionId, context.threadId);
+      case 'state':
+        return await this._handleState(parsed, context.sessionId, context.threadId);
+      case 'diff':
+        return await this._handleDiff(parsed, context.sessionId, context.threadId);
       case 'break':
         return await this._handleBreak(parsed, context.sessionId);
+      case 'breaks':
+        return await this._handleBreaks(parsed, context.sessionId, context.threadId);
       case 'clear':
         return await this._handleClear(parsed, context.sessionId);
       case 'disable':
@@ -366,6 +449,8 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
       case 'next':
       case 'step':
       case 'finish':
+      case 'pause':
+      case 'restart':
       case 'quit':
         return await this._handleExecution(parsed, context.sessionId, context.threadId, token);
       case 'print':
@@ -441,6 +526,185 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     };
   }
 
+  private async _handleLaunch(
+    parsed: ParsedCommand,
+    token: vscode.CancellationToken,
+  ): Promise<CliExecutionResult> {
+    const launch = this._parseLaunchCommand(parsed);
+    const payload = await this._invokeJson(this.launchTool, launch.options, token) as JsonObject;
+
+    const sessionId = asString(payload?.sessionId);
+    if (!sessionId) {
+      throw new Error('Launch did not create a Dapper session.');
+    }
+
+    const state = this._stateFor(sessionId);
+    state.frameIndex = 0;
+    const snapshot = payload?.snapshot as SnapshotLike | null | undefined;
+    const location = this._captureLocation(sessionId, snapshot ?? undefined);
+    const summary = location
+      ? `Launched ${launch.summaryTarget} and stopped at ${this._formatLocation(location)}`
+      : `Launched ${launch.summaryTarget}`;
+
+    return {
+      sessionId,
+      threadId: asNumber(snapshot?.threadId),
+      frameIndex: state.frameIndex,
+      location,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary,
+        result: {
+          started: payload?.started === true,
+          waitedForStop: payload?.waitedForStop === true,
+          stopped: payload?.stopped === true,
+          resolvedTarget: payload?.resolvedTarget ?? null,
+          configuration: payload?.configuration ?? null,
+        },
+      },
+    };
+  }
+
+  private async _handleSessions(parsed: ParsedCommand): Promise<CliExecutionResult> {
+    this._assertNoArgument(parsed);
+    const payload = await this._invokeJson(this.sessionInfoTool, {} as { sessionId?: string }) as JsonObject;
+    const sessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+
+    return {
+      frameIndex: 0,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary: `Found ${sessions.length} Dapper session(s)`,
+        result: payload,
+      },
+    };
+  }
+
+  private async _handleInfo(
+    parsed: ParsedCommand,
+    sessionId: string | undefined,
+  ): Promise<CliExecutionResult> {
+    const explicitSessionId = parsed.arg?.trim();
+    const resolvedSessionId = explicitSessionId || this._requireSingleSession(sessionId).sessionId;
+    const payload = await this._invokeJson(this.sessionInfoTool, {
+      sessionId: resolvedSessionId,
+    }) as JsonObject;
+    const state = asString(payload?.state) ?? 'unknown';
+
+    return {
+      sessionId: resolvedSessionId,
+      frameIndex: this.sessionState.get(resolvedSessionId)?.frameIndex ?? 0,
+      location: this.sessionState.get(resolvedSessionId)?.lastKnownLocation,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary: `Session ${resolvedSessionId} is ${state}`,
+        result: payload,
+      },
+    };
+  }
+
+  private async _handleInspect(
+    parsed: ParsedCommand,
+    sessionId: string | undefined,
+    requestedThreadId: number | undefined,
+  ): Promise<CliExecutionResult> {
+    const inspect = this._parseInspectCommand(parsed);
+    const selected = this._requireSingleSession(sessionId);
+    const state = this._stateFor(selected.sessionId);
+    const payload = await this._invokeJson(this.inspectVariableTool, {
+      sessionId: selected.sessionId,
+      expression: inspect.expression,
+      depth: inspect.depth,
+      maxItems: inspect.maxItems,
+      frameIndex: state.frameIndex,
+    }) as JsonObject;
+
+    const value = asString(payload?.value);
+    const summary = value
+      ? `Inspected ${inspect.expression}: ${value}`
+      : `Inspected ${inspect.expression}`;
+
+    return {
+      sessionId: selected.sessionId,
+      threadId: requestedThreadId ?? state.threadId,
+      frameIndex: state.frameIndex,
+      location: state.lastKnownLocation,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary,
+        result: payload,
+      },
+    };
+  }
+
+  private async _handleState(
+    parsed: ParsedCommand,
+    sessionId: string | undefined,
+    requestedThreadId: number | undefined,
+  ): Promise<CliExecutionResult> {
+    this._assertNoArgument(parsed);
+    const selected = this._requireSingleSession(sessionId);
+    const state = this._stateFor(selected.sessionId);
+    const payload = await this._invokeJson(this.stateTool, {
+      sessionId: selected.sessionId,
+      mode: 'snapshot',
+      threadId: requestedThreadId ?? state.threadId,
+    }) as SnapshotLike & JsonObject;
+    const location = this._captureLocation(selected.sessionId, payload);
+
+    return {
+      sessionId: selected.sessionId,
+      threadId: asNumber(payload?.threadId) ?? requestedThreadId ?? state.threadId,
+      frameIndex: state.frameIndex,
+      location,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary: location ? `Snapshot at ${this._formatLocation(location)}` : 'Snapshot captured',
+        result: payload,
+      },
+    };
+  }
+
+  private async _handleDiff(
+    parsed: ParsedCommand,
+    sessionId: string | undefined,
+    requestedThreadId: number | undefined,
+  ): Promise<CliExecutionResult> {
+    const selected = this._requireSingleSession(sessionId);
+    const state = this._stateFor(selected.sessionId);
+    const sinceCheckpoint = this._parseOptionalCheckpoint(parsed);
+    const payload = await this._invokeJson(this.stateTool, {
+      sessionId: selected.sessionId,
+      mode: 'diff',
+      threadId: requestedThreadId ?? state.threadId,
+      sinceCheckpoint,
+    }) as JsonObject;
+    const fromCheckpoint = asNumber(payload?.fromCheckpoint) ?? sinceCheckpoint ?? 0;
+    const toCheckpoint = asNumber(payload?.toCheckpoint);
+    const entries = Array.isArray(payload?.entries) ? payload.entries.length : 0;
+    const summary = toCheckpoint !== undefined
+      ? `Diff ${fromCheckpoint}->${toCheckpoint} with ${entries} journal entr${entries === 1 ? 'y' : 'ies'}`
+      : `Diff since ${fromCheckpoint}`;
+
+    return {
+      sessionId: selected.sessionId,
+      threadId: requestedThreadId ?? state.threadId,
+      frameIndex: state.frameIndex,
+      location: state.lastKnownLocation,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary,
+        result: payload,
+      },
+    };
+  }
+
   private async _handleRun(
     parsed: ParsedCommand,
     token: vscode.CancellationToken,
@@ -492,10 +756,8 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     parsed: ParsedCommand,
     sessionId?: string,
   ): Promise<CliExecutionResult> {
-    const target = parsed.arg?.trim();
-    if (!target) {
-      throw new Error("'break' requires a breakpoint target such as app.py:65.");
-    }
+    const breakpoint = this._parseBreakCommand(parsed);
+    const target = breakpoint.target;
 
     const { file, line } = await this._resolveBreakpointTarget(target, sessionId);
     const breakpointPayload = await this._invokeJson(this.breakpointsTool, {
@@ -503,6 +765,8 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
       sessionId,
       file,
       lines: [line],
+      condition: breakpoint.condition,
+      logMessage: breakpoint.logMessage,
     }) as JsonObject;
 
     const location: CliLocation = {
@@ -516,8 +780,54 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
       command: {
         command: parsed.raw,
         status: 'ok',
-        summary: `Breakpoint set at ${this._formatLocation(location)}`,
+        summary: breakpoint.logMessage
+          ? `Logpoint set at ${this._formatLocation(location)}`
+          : breakpoint.condition
+            ? `Conditional breakpoint set at ${this._formatLocation(location)}`
+            : `Breakpoint set at ${this._formatLocation(location)}`,
         result: breakpointPayload,
+      },
+    };
+  }
+
+  private async _handleBreaks(
+    parsed: ParsedCommand,
+    sessionId: string | undefined,
+    threadId: number | undefined,
+  ): Promise<CliExecutionResult> {
+    let file: string | undefined;
+    let line: number | undefined;
+
+    if (parsed.arg?.trim()) {
+      const selection = await this._parseBreakpointSelection(parsed.arg, undefined, 'breaks', sessionId, threadId);
+      file = selection.file;
+      line = selection.line;
+    }
+
+    const payload = await this._invokeJson(this.breakpointsTool, {
+      sessionId,
+      action: 'list',
+      file,
+      lines: line === undefined ? undefined : [line],
+    }) as JsonObject;
+    const breakpoints = Array.isArray(payload?.breakpoints)
+      ? payload.breakpoints.filter((entry): entry is JsonObject => isRecord(entry))
+      : [];
+
+    return {
+      sessionId,
+      threadId,
+      frameIndex: this.sessionState.get(sessionId ?? '')?.frameIndex ?? 0,
+      location: file && line ? { file, line } : this.sessionState.get(sessionId ?? '')?.lastKnownLocation,
+      command: {
+        command: parsed.raw,
+        status: 'ok',
+        summary: this._breakpointListSummary(breakpoints.length, file, line),
+        result: {
+          action: 'list',
+          count: breakpoints.length,
+          breakpoints,
+        },
       },
     };
   }
@@ -624,6 +934,27 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
           command: parsed.raw,
           status: 'ok',
           summary: 'Terminating debug session',
+          result: payload,
+        },
+      };
+    }
+
+    if (parsed.verb === 'pause' || parsed.verb === 'restart') {
+      const payload = await this._invokeJson(this.executionTool, {
+        sessionId: selected.sessionId,
+        action: parsed.verb,
+        threadId,
+      }, token) as JsonObject;
+
+      return {
+        sessionId: selected.sessionId,
+        threadId,
+        frameIndex: state.frameIndex,
+        location: state.lastKnownLocation,
+        command: {
+          command: parsed.raw,
+          status: 'ok',
+          summary: parsed.verb === 'pause' ? 'Pausing debug session' : 'Restarting debug session',
           result: payload,
         },
       };
@@ -1026,6 +1357,14 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     return { file };
   }
 
+  private _breakpointListSummary(count: number, file?: string, line?: number): string {
+    if (!file) {
+      return `Found ${count} ${breakpointEntryNoun(count)}`;
+    }
+
+    return `Found ${count} ${breakpointEntryNoun(count)} at ${breakpointSummaryTarget(file, line)}`;
+  }
+
   private _resolveFilePath(file: string): string | undefined {
     if (path.isAbsolute(file)) {
       return fs.existsSync(file) ? file : undefined;
@@ -1147,14 +1486,218 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
   }
 
   private _parseCommand(command: string): ParsedCommand {
+    const tokens = tokenizeCommand(command);
+    if (tokens.length === 0) {
+      throw new Error('No command provided.');
+    }
+
     const firstSpace = command.search(/\s/);
-    const rawVerb = firstSpace >= 0 ? command.slice(0, firstSpace) : command;
+    const rawVerb = tokens[0];
     const arg = firstSpace >= 0 ? command.slice(firstSpace).trimStart() : undefined;
     const verb = COMMAND_ALIASES[rawVerb];
     if (!verb) {
       throw new Error(`Command '${rawVerb}' is not supported in this version.`);
     }
-    return { raw: command, verb, arg };
+    return { raw: command, verb, arg, tokens };
+  }
+
+  private _parseLaunchCommand(parsed: ParsedCommand): ParsedLaunchCommand {
+    const tokens = parsed.tokens.slice(1);
+    const options: LaunchOptions = {};
+    let summaryTarget = 'current file';
+
+    const consumeTargetValue = (startIndex: number): { value: string; nextIndex: number } => {
+      if (startIndex >= tokens.length || tokens[startIndex].startsWith('--')) {
+        throw new Error(`'launch ${tokens[startIndex - 1] ?? ''}' requires a value.`.trim());
+      }
+
+      let endIndex = startIndex + 1;
+      while (endIndex < tokens.length && !tokens[endIndex].startsWith('--')) {
+        endIndex += 1;
+      }
+      return {
+        value: tokens.slice(startIndex, endIndex).join(' '),
+        nextIndex: endIndex,
+      };
+    };
+
+    let index = 0;
+    if (tokens[index] === 'file' || tokens[index] === 'module' || tokens[index] === 'config') {
+      const kind = tokens[index];
+      const consumed = consumeTargetValue(index + 1);
+      if (kind === 'file') {
+        options.target = { file: consumed.value };
+        summaryTarget = vscode.workspace.asRelativePath(consumed.value, false) || consumed.value;
+      } else if (kind === 'module') {
+        options.target = { module: consumed.value };
+        summaryTarget = `module ${consumed.value}`;
+      } else {
+        options.target = { configName: consumed.value };
+        summaryTarget = `config ${consumed.value}`;
+      }
+      index = consumed.nextIndex;
+    } else {
+      options.target = { currentFile: true };
+    }
+
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (token === '--') {
+        options.args = tokens.slice(index + 1);
+        break;
+      }
+
+      switch (token) {
+        case '--cwd': {
+          const value = tokens[index + 1];
+          if (!value || value.startsWith('--')) {
+            throw new Error("'launch --cwd' requires a value.");
+          }
+          options.cwd = value;
+          index += 2;
+          break;
+        }
+        case '--env': {
+          const value = tokens[index + 1];
+          if (!value || value.startsWith('--')) {
+            throw new Error("'launch --env' requires KEY=VALUE.");
+          }
+          const equalsIndex = value.indexOf('=');
+          if (equalsIndex <= 0) {
+            throw new Error(`Launch environment '${value}' is invalid. Expected KEY=VALUE.`);
+          }
+          options.env ??= {};
+          options.env[value.slice(0, equalsIndex)] = value.slice(equalsIndex + 1);
+          index += 2;
+          break;
+        }
+        case '--path': {
+          const value = tokens[index + 1];
+          if (!value || value.startsWith('--')) {
+            throw new Error("'launch --path' requires a value.");
+          }
+          options.moduleSearchPaths ??= [];
+          options.moduleSearchPaths.push(value);
+          index += 2;
+          break;
+        }
+        case '--python': {
+          const value = tokens[index + 1];
+          if (!value || value.startsWith('--')) {
+            throw new Error("'launch --python' requires a path.");
+          }
+          options.pythonPath = value;
+          index += 2;
+          break;
+        }
+        case '--venv': {
+          const value = tokens[index + 1];
+          if (!value || value.startsWith('--')) {
+            throw new Error("'launch --venv' requires a path.");
+          }
+          options.venvPath = value;
+          index += 2;
+          break;
+        }
+        case '--stop-on-entry':
+          options.stopOnEntry = true;
+          index += 1;
+          break;
+        case '--no-stop-on-entry':
+          options.stopOnEntry = false;
+          index += 1;
+          break;
+        case '--just-my-code':
+          options.justMyCode = true;
+          index += 1;
+          break;
+        case '--no-just-my-code':
+          options.justMyCode = false;
+          index += 1;
+          break;
+        case '--subprocess':
+          options.subprocessAutoAttach = true;
+          index += 1;
+          break;
+        case '--wait':
+          options.waitForStop = true;
+          index += 1;
+          break;
+        default:
+          throw new Error(`Unknown launch option '${token}'.`);
+      }
+    }
+
+    return { options, summaryTarget };
+  }
+
+  private _parseBreakCommand(parsed: ParsedCommand): ParsedBreakCommand {
+    const tokens = parsed.tokens.slice(1);
+    if (tokens.length === 0) {
+      throw new Error("'break' requires a breakpoint target such as app.py:65.");
+    }
+
+    const keywordIndex = tokens.findIndex(token => token === 'if' || token === 'log');
+    const targetTokens = keywordIndex >= 0 ? tokens.slice(0, keywordIndex) : tokens;
+    const target = targetTokens.join(' ').trim();
+    if (!target) {
+      throw new Error("'break' requires a breakpoint target such as app.py:65.");
+    }
+
+    if (keywordIndex < 0) {
+      return { target };
+    }
+
+    const tail = tokens.slice(keywordIndex + 1).join(' ').trim();
+    if (!tail) {
+      throw new Error(`'break ${tokens[keywordIndex]}' requires a value.`);
+    }
+
+    return tokens[keywordIndex] === 'if'
+      ? { target, condition: tail }
+      : { target, logMessage: tail };
+  }
+
+  private _parseInspectCommand(parsed: ParsedCommand): {
+    expression: string;
+    depth?: number;
+    maxItems?: number;
+  } {
+    const tokens = parsed.tokens.slice(1);
+    let depth: number | undefined;
+    let maxItems: number | undefined;
+    let index = 0;
+
+    while (index < tokens.length && tokens[index].startsWith('--')) {
+      const token = tokens[index];
+      if (token === '--depth') {
+        depth = parsePositiveInteger(tokens[index + 1], "'inspect --depth' requires a positive integer.");
+        index += 2;
+        continue;
+      }
+      if (token === '--max-items') {
+        maxItems = parsePositiveInteger(tokens[index + 1], "'inspect --max-items' requires a positive integer.");
+        index += 2;
+        continue;
+      }
+      throw new Error(`Unknown inspect option '${token}'.`);
+    }
+
+    const expression = tokens.slice(index).join(' ').trim();
+    if (!expression) {
+      throw new Error("'inspect' requires an expression.");
+    }
+
+    return { expression, depth, maxItems };
+  }
+
+  private _parseOptionalCheckpoint(parsed: ParsedCommand): number | undefined {
+    const arg = parsed.arg?.trim();
+    if (!arg) {
+      return undefined;
+    }
+
+    return parseNonNegativeInteger(arg, `Diff checkpoint '${arg}' is invalid. Expected a non-negative integer.`);
   }
 
   private _renderHelpText(): string {
@@ -1175,6 +1718,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     return [
       'Dapper CLI works like pdb for common debugger actions.',
       'Phase 1 supports semicolon-chained command sequences plus frame navigation and basic breakpoint state changes.',
+      'Phase 2 draft support adds launch, session/state inspection, pause/restart, and expanded breakpoint commands including breaks, conditions, and logpoints.',
       '',
       'CLI commands:',
       ...commandLines,
@@ -1350,6 +1894,63 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
   }
 }
 
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | '\'' | undefined;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      } else if (char === '\\' && index + 1 < command.length && command[index + 1] === quote) {
+        current += command[index + 1];
+        index += 1;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === '\'') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (quote) {
+    throw new Error(`Unterminated quoted string in command '${command}'.`);
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+  return tokens;
+}
+
+function isRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function breakpointSummaryTarget(file: string, line?: number): string {
+  const displayFile = vscode.workspace.asRelativePath(file, false);
+  return line === undefined ? displayFile : `${displayFile}:${line}`;
+}
+
+function breakpointEntryNoun(count: number): string {
+  return count === 1 ? 'breakpoint' : 'breakpoints';
+}
+
 function executionActionFor(verb: Extract<CliVerb, 'continue' | 'next' | 'step' | 'finish'>): 'continue' | 'next' | 'stepIn' | 'stepOut' {
   switch (verb) {
     case 'continue':
@@ -1408,6 +2009,22 @@ function clampLineRange(startLine: number, endLine: number, totalLines: number):
     startLine: clampedStart,
     endLine: clampedEnd,
   };
+}
+
+function parsePositiveInteger(value: string | undefined, errorMessage: string): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(errorMessage);
+  }
+  return parsed;
+}
+
+function parseNonNegativeInteger(value: string | undefined, errorMessage: string): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(errorMessage);
+  }
+  return parsed;
 }
 
 function buildUnderlyingToolHelp(packageManifest: ExtensionPackageManifest): ToolHelpEntry[] {

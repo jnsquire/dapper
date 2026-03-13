@@ -14,6 +14,10 @@ const extensionPackageManifest = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
 ) as { contributes?: { languageModelTools?: unknown[] } };
 
+function normalizePathSeparators(value: string): string {
+  return value.replaceAll('\\', '/');
+}
+
 describe('DapperCliTool', () => {
   let tmpRoot: string;
   let registry: JournalRegistry;
@@ -86,6 +90,246 @@ describe('DapperCliTool', () => {
     expect(payload.sessionId).toBeTruthy();
     expect(payload.location).toMatchObject({ file: filePath, line: 1, function: '<module>' });
     expect(payload.commands[0].summary).toContain('Started and stopped at');
+  });
+
+  it('launches the active file through the new launch verb', async () => {
+    const filePath = path.join(tmpRoot, 'launch_active.py');
+    fs.writeFileSync(filePath, 'print("launch")\n');
+    harness.setActivePythonFile(filePath);
+
+    const payload = await invokeCli(tool, { command: 'launch --no-stop-on-entry --no-just-my-code --subprocess' });
+
+    expect(payload.sessionId).toBeTruthy();
+    expect(payload.commands[0].summary).toBe('Launched current file');
+    expect(harness.lastStartDebuggingCall?.config.program).toBe(filePath);
+    expect(harness.lastStartDebuggingCall?.config.stopOnEntry).toBe(false);
+    expect(harness.lastStartDebuggingCall?.config.justMyCode).toBe(false);
+    expect(harness.lastStartDebuggingCall?.config.subprocessAutoAttach).toBe(true);
+  });
+
+  it('launches a module target with sentinel args and repeated flags', async () => {
+    const pythonPath = path.join(tmpRoot, 'custom-python');
+    fs.writeFileSync(pythonPath, '');
+    harness.onSessionStarted((session) => {
+      const journal = registry.getOrCreate(session);
+      setTimeout(() => {
+        (journal as any)._onStopped({ reason: 'entry', threadId: 1 });
+      }, 10);
+    });
+
+    const payload = await invokeCli(tool, {
+      command: `launch module package.cli --cwd tools --env MODE=test --env DEBUG=1 --path src --path libs --python ${pythonPath} --wait -- --help --verbose`,
+    });
+
+    expect(payload.sessionId).toBeTruthy();
+    expect(payload.commands[0].summary).toBe('Launched module package.cli');
+    expect(harness.lastStartDebuggingCall?.config.module).toBe('package.cli');
+    expect(harness.lastStartDebuggingCall?.config.args).toEqual(['--help', '--verbose']);
+    expect(harness.lastStartDebuggingCall?.config.cwd).toBe('tools');
+    expect(harness.lastStartDebuggingCall?.config.env).toEqual({ MODE: 'test', DEBUG: '1' });
+    expect(harness.lastStartDebuggingCall?.config.moduleSearchPaths).toEqual(['src', 'libs']);
+    expect(harness.lastStartDebuggingCall?.config.pythonPath).toBe(pythonPath);
+    expect(payload.commands[0].result).toMatchObject({ waitedForStop: true, stopped: true });
+  });
+
+  it('launches a named configuration with a quoted config name', async () => {
+    const program = path.join(tmpRoot, 'fixture.py');
+    fs.writeFileSync(program, 'print("fixture")\n');
+    harness.setLaunchConfigurations([
+      {
+        type: 'dapper',
+        request: 'launch',
+        name: 'Fixture Launch Config',
+        program,
+        cwd: tmpRoot,
+      },
+    ]);
+
+    const payload = await invokeCli(tool, { command: 'launch config "Fixture Launch Config" --no-stop-on-entry' });
+
+    expect(payload.sessionId).toBeTruthy();
+    expect(payload.commands[0].summary).toBe('Launched config Fixture Launch Config');
+    expect(harness.lastStartDebuggingCall?.config.name).toBe('Fixture Launch Config');
+    expect(harness.lastStartDebuggingCall?.config.program).toBe(program);
+    expect(harness.lastStartDebuggingCall?.config.stopOnEntry).toBe(false);
+  });
+
+  it('allows launch to start another session while one is already active', async () => {
+    const existingSession = createStoppedSession('session-existing', tmpRoot);
+    registry.getOrCreate(existingSession);
+    vscode.debug.activeDebugSession = existingSession;
+
+    const filePath = path.join(tmpRoot, 'launch_parallel.py');
+    fs.writeFileSync(filePath, 'print("parallel")\n');
+    harness.setActivePythonFile(filePath);
+
+    const payload = await invokeCli(tool, { command: 'launch --no-stop-on-entry' });
+
+    expect(payload.sessionId).toBeTruthy();
+    expect(payload.sessionId).not.toBe(existingSession.id);
+    expect(payload.commands[0].summary).toBe('Launched current file');
+    expect(registry.journals.size).toBe(2);
+    expect(harness.lastStartDebuggingCall?.config.program).toBe(filePath);
+  });
+
+  it('lists tracked sessions through the sessions verb', async () => {
+    const sessionA = createStoppedSession('session-a', tmpRoot);
+    const sessionB = createStoppedSession('session-b', tmpRoot);
+    registry.getOrCreate(sessionA);
+    registry.getOrCreate(sessionB);
+    vscode.debug.activeDebugSession = sessionA;
+
+    const payload = await invokeCli(tool, { command: 'sessions' });
+
+    expect(payload.commands[0].summary).toBe('Found 2 Dapper session(s)');
+    expect(payload.commands[0].result.sessions).toHaveLength(2);
+  });
+
+  it('shows metadata for the selected session through info', async () => {
+    const session = createStoppedSession('session-info', tmpRoot);
+    registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+
+    const payload = await invokeCli(tool, { command: 'info' });
+
+    expect(payload.sessionId).toBe('session-info');
+    expect(payload.commands[0].summary).toBe('Session session-info is running');
+    expect(payload.commands[0].result).toMatchObject({ id: 'session-info', type: 'dapper' });
+  });
+
+  it('inspects structured values with depth and max-items flags', async () => {
+    const session = createStoppedSession('session-inspect', tmpRoot);
+    registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+    session.customRequest = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'dapper/agentInspect') {
+        expect(args).toMatchObject({ expression: 'session', depth: 3, maxItems: 10, frameIndex: 0 });
+        return {
+          root: {
+            name: 'session',
+            value: '<CheckoutSession>',
+            children: [
+              { name: 'total', value: '18.71' },
+            ],
+          },
+        };
+      }
+      return undefined;
+    });
+
+    const payload = await invokeCli(tool, { command: 'inspect --depth 3 --max-items 10 session' });
+
+    expect(payload.commands[0].summary).toBe('Inspected session: <CheckoutSession>');
+    expect(payload.commands[0].result).toMatchObject({ name: 'session', value: '<CheckoutSession>' });
+  });
+
+  it('returns a state snapshot and updates the current location', async () => {
+    const filePath = path.join(tmpRoot, 'snapshot.py');
+    fs.writeFileSync(filePath, 'print("snapshot")\n');
+
+    const session = createStoppedSession('session-state', tmpRoot);
+    registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+    session.customRequest = vi.fn(async (command: string) => {
+      if (command === 'dapper/agentSnapshot') {
+        return {
+          stopReason: 'breakpoint',
+          threadId: 6,
+          location: `${filePath}:1 in <module>`,
+          callStack: [{ name: '<module>', file: filePath, line: 1 }],
+          locals: { status: "'ready'" },
+          globals: {},
+          stoppedThreads: [6],
+          runningThreads: [],
+        };
+      }
+      return undefined;
+    });
+
+    const payload = await invokeCli(tool, { command: 'state' });
+
+    expect(payload.location).toMatchObject({ file: filePath, line: 1, function: '<module>' });
+    expect(payload.commands[0].summary).toBe('Snapshot at snapshot.py:1 in <module>');
+    expect(payload.commands[0].result).toMatchObject({ threadId: 6, stopReason: 'breakpoint' });
+  });
+
+  it('returns a diff since an explicit checkpoint', async () => {
+    const session = createStoppedSession('session-diff', tmpRoot);
+    const journal = registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+    vi.spyOn(journal, 'getSnapshot').mockResolvedValue({
+      checkpoint: 4,
+      timestamp: Date.now(),
+      stopReason: 'step',
+      threadId: 9,
+      location: `${tmpRoot}/diff.py:8 in work`,
+      callStack: [{ name: 'work', file: `${tmpRoot}/diff.py`, line: 8 }],
+      locals: { count: '2' },
+      globals: {},
+      stoppedThreads: [9],
+      runningThreads: [],
+    });
+    vi.spyOn(journal, 'getDiffSince').mockReturnValue({
+      fromCheckpoint: 2,
+      toCheckpoint: 4,
+      stopReason: 'step',
+      locationChanged: 'old.py:1 -> diff.py:8',
+      variableChanges: {
+        added: { count: '2' },
+        changed: {},
+        removed: [],
+      },
+      newOutput: '',
+      entries: [
+        {
+          checkpoint: 3,
+          timestamp: Date.now(),
+          type: 'stopped',
+          summary: 'Thread 9 stopped',
+        },
+      ],
+    });
+
+    const payload = await invokeCli(tool, { command: 'diff 2' });
+
+    expect(payload.commands[0].summary).toBe('Diff 2->4 with 1 journal entry');
+    expect(payload.commands[0].result).toMatchObject({ fromCheckpoint: 2, toCheckpoint: 4 });
+  });
+
+  it('pauses the selected session', async () => {
+    const session = createStoppedSession('session-pause', tmpRoot);
+    registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+    session.customRequest = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'pause') {
+        expect(args).toEqual({});
+        return undefined;
+      }
+      return undefined;
+    });
+
+    const payload = await invokeCli(tool, { command: 'pause' });
+
+    expect(payload.commands[0].summary).toBe('Pausing debug session');
+    expect(payload.commands[0].result).toMatchObject({ action: 'pause', status: 'pausing' });
+  });
+
+  it('restarts the selected session', async () => {
+    const session = createStoppedSession('session-restart', tmpRoot);
+    registry.getOrCreate(session);
+    vscode.debug.activeDebugSession = session;
+    session.customRequest = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'restart') {
+        expect(args).toEqual({});
+        return undefined;
+      }
+      return undefined;
+    });
+
+    const payload = await invokeCli(tool, { command: 'restart' });
+
+    expect(payload.commands[0].summary).toBe('Restarting debug session');
+    expect(payload.commands[0].result).toMatchObject({ action: 'restart', status: 'restarting' });
   });
 
   it('steps with alias syntax and reports the new stop location', async () => {
@@ -320,7 +564,7 @@ describe('DapperCliTool', () => {
     const payload = await invokeCli(tool, { command: 'break main:23' });
 
     expect(payload.location).toEqual({ file: filePath, line: 23 });
-    expect(payload.commands[0].summary).toBe('Breakpoint set at src/main.py:23');
+    expect(normalizePathSeparators(payload.commands[0].summary)).toBe('Breakpoint set at src/main.py:23');
   });
 
   it('resolves a breakpoint target from a function name in the active call stack', async () => {
@@ -360,7 +604,7 @@ describe('DapperCliTool', () => {
     const payload = await invokeCli(tool, { command: 'break main:41', sessionId: session.id });
 
     expect(payload.location).toEqual({ file: filePath, line: 41 });
-    expect(payload.commands[0].summary).toBe('Breakpoint set at pkg/worker.py:41');
+    expect(normalizePathSeparators(payload.commands[0].summary)).toBe('Breakpoint set at pkg/worker.py:41');
   });
 
   it('supports disabling, enabling, and clearing breakpoints', async () => {
@@ -393,6 +637,65 @@ describe('DapperCliTool', () => {
 
     await invokeCli(tool, { command: `clear pkg/toggle.py:8`, sessionId: session.id });
     expect(vscode.debug.breakpoints).toHaveLength(0);
+  });
+
+  it('lists breakpoints and supports file-line filtering through breaks', async () => {
+    const filePath = path.join(tmpRoot, 'pkg', 'listing.py');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'print("listing")\n');
+
+    await invokeCli(tool, { command: 'break pkg/listing.py:8' });
+    await invokeCli(tool, { command: 'break pkg/listing.py:9' });
+
+    const payload = await invokeCli(tool, { command: 'breaks pkg/listing.py:9' });
+
+    expect(payload.commands[0].summary).toBe('Found 1 breakpoint at pkg/listing.py:9');
+    expect(payload.commands[0].result).toMatchObject({
+      count: 1,
+      breakpoints: [
+        {
+          file: 'pkg/listing.py',
+          line: 9,
+          enabled: true,
+        },
+      ],
+    });
+  });
+
+  it('adds a conditional breakpoint through break if', async () => {
+    const filePath = path.join(tmpRoot, 'pkg', 'conditions.py');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'print("conditions")\n');
+
+    const payload = await invokeCli(tool, { command: 'break pkg/conditions.py:14 if total > 100' });
+
+    expect(payload.commands[0].summary).toBe('Conditional breakpoint set at pkg/conditions.py:14');
+    expect(payload.commands[0].result).toMatchObject({
+      condition: 'total > 100',
+      logMessage: null,
+    });
+    expect(vscode.debug.breakpoints[0]).toMatchObject({
+      condition: 'total > 100',
+      logMessage: undefined,
+    });
+  });
+
+  it('adds a logpoint through break log', async () => {
+    const filePath = path.join(tmpRoot, 'pkg', 'logpoints.py');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'print("logpoints")\n');
+
+    const payload = await invokeCli(tool, { command: 'break pkg/logpoints.py:18 log total={total}' });
+
+    expect(payload.commands[0].summary).toBe('Logpoint set at pkg/logpoints.py:18');
+    expect(payload.commands[0].result).toMatchObject({
+      condition: null,
+      logMessage: 'total={total}',
+    });
+    expect(vscode.debug.breakpoints[0]).toMatchObject({
+      condition: undefined,
+      logMessage: 'total={total}',
+    });
   });
 
   it('supports break then continue in one chained request', async () => {
@@ -442,7 +745,7 @@ describe('DapperCliTool', () => {
 
     expect(payload.commands).toHaveLength(2);
     expect(payload.commands[0].summary).toContain('Breakpoint set at');
-    expect(payload.commands[1].summary).toBe('Stopped at pkg/resume.py:8 in main');
+    expect(normalizePathSeparators(payload.commands[1].summary)).toBe('Stopped at pkg/resume.py:8 in main');
   });
 
   it('executes the full fixture file flow in one chained request', async () => {
@@ -526,7 +829,7 @@ describe('DapperCliTool', () => {
     const payload = await invokeCli(tool, { command: `break app:${breakpointLine}; run; c; p threshold; globals` });
 
     expect(payload.location).toEqual({ file: appFile, line: breakpointLine, function: 'main' });
-    expect(payload.commands.map((command: { summary: string }) => command.summary)).toEqual([
+    expect(payload.commands.map((command: { summary: string }) => normalizePathSeparators(command.summary))).toEqual([
       `Breakpoint set at app.py:${breakpointLine}`,
       'Started and stopped at app.py:1 in <module>',
       `Stopped at app.py:${breakpointLine} in main`,
@@ -643,6 +946,18 @@ describe('DapperCliTool', () => {
     const raw = await invokeCliRaw(tool, { command: 'break pkg/app.py:not-a-line' });
 
     expect(raw).toContain("Error: Breakpoint target 'pkg/app.py:not-a-line' is invalid. Expected file:line or function:line.");
+  });
+
+  it('reports invalid launch options clearly', async () => {
+    const raw = await invokeCliRaw(tool, { command: 'launch module package.cli --bogus' });
+
+    expect(raw).toContain("Error: Unknown launch option '--bogus'.");
+  });
+
+  it('reports invalid inspect options clearly', async () => {
+    const raw = await invokeCliRaw(tool, { command: 'inspect --depth nope value' });
+
+    expect(raw).toContain("Error: 'inspect --depth' requires a positive integer.");
   });
 
   it('surfaces print failures when there is no stopped frame', async () => {

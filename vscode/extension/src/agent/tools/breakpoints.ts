@@ -38,7 +38,7 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
     const { sessionId, action, file, lines, condition, logMessage } = options.input;
 
     if (action === 'list') {
-      return this._listBreakpoints(sessionId, file);
+      return this._listBreakpoints(sessionId, file, lines ?? []);
     }
 
     if (!file) {
@@ -80,10 +80,12 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
   private async _listBreakpoints(
     sessionId: string | undefined,
     file: string | undefined,
+    lines: number[],
   ): Promise<vscode.LanguageModelToolResult> {
     const allBreakpoints = vscode.debug.breakpoints;
     const resolved = resolveSession(this.registry, sessionId);
     const journal = resolved?.journal;
+    const lineSet = new Set(lines);
 
     const results: BreakpointInfo[] = [];
     for (const bp of allBreakpoints) {
@@ -97,9 +99,14 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
         if (bpPath !== normalizedFile) continue;
       }
 
+      const line = bp.location.range.start.line + 1;
+      if (lineSet.size > 0 && !lineSet.has(line)) {
+        continue;
+      }
+
       const info: BreakpointInfo = {
         file: vscode.workspace.asRelativePath(bpPath, false),
-        line: bp.location.range.start.line + 1,
+        line,
         enabled: bp.enabled,
       };
       if (bp.condition) info.condition = bp.condition;

@@ -61,21 +61,26 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
 `dapper_execution`, `dapper_evaluate`, `dapper_breakpoints`, `dapper_variable`, and
 `dapper_session_info`.
 
-### CLI Wrapper
+### Command Interface
 
-- `dapper_cli` is the Phase 1 command-style wrapper over the existing tool set.
-- Phase 1 supports semicolon-separated command chaining in a single request.
-- Supported commands are `help`/`h`, `run`, `continue`/`c`, `next`/`n`, `step`/`s`, `finish`,
-  `quit`/`q`, `break`/`b`, `clear`, `disable`, `enable`, `print`/`p`, `where`/`bt`, `locals`,
+- `dapper_cli` is a pdb-style command interface over the LM tool set.
+- The CLI supports semicolon-separated command chaining in a single request.
+- Supported commands are `help`/`h`, `run`, `launch`, `sessions`, `info`, `inspect`, `state`,
+  `diff`, `pause`, `restart`, `continue`/`c`, `next`/`n`, `step`/`s`, `finish`, `quit`/`q`,
+  `break`/`b`, `breaks`, `clear`, `disable`, `enable`, `print`/`p`, `where`/`bt`, `locals`,
   `globals`, `list`/`l`, `up`, `down`, and `frame`.
 - `help` returns a pdb-style quick-start plus a full summary of the public Dapper LM tools and their top-level arguments.
 - Chained command execution stops on the first parse or runtime error and returns partial results for commands that already completed.
 - When more than one Dapper session is active, `dapper_cli` requires an explicit `sessionId`
   rather than silently picking one.
 - Frame navigation updates the wrapper-managed `frameIndex`, and later `print`, `locals`, and
-  `globals` calls use that selected frame.
+  `globals`, and `inspect` calls use that selected frame.
+- `launch` may start an additional Dapper session even when another session is already active.
+- Launch debuggee arguments use `--` as the end-of-options marker and pass all remaining tokens through as `args`.
 - `break` first resolves explicit file paths, then unique Python filename stems in the workspace,
-  then function names found in the selected session's current call stack.
+  then function names found in the selected session's current call stack; it also accepts
+  `if` conditions and `log` messages for conditional breakpoints and logpoints.
+- `breaks` lists the current VS Code source breakpoints and can filter down to one file or line through `dapper_breakpoints`.
 
 ### Session Resolution
 

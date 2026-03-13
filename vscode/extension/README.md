@@ -247,56 +247,23 @@ await vscode.commands.executeCommand('dapper.api.runLaunch', {
 });
 ```
 
-## For Agents
+## LM Tools
 
-The tool schema in `package.json` covers inputs. These notes cover the behavior agents usually need:
+Dapper exposes a public LM tool surface for launching, controlling, and
+inspecting debug sessions from agents and other tool-driven workflows.
 
-- Use `dapper_launch` to start debugging Python code when there is no active Dapper session yet.
-- `dapper_launch` accepts a file, module, current editor, or named Dapper launch config. Omit `target`
-  to use the active Python file.
-- `dapper_launch` prefers an explicit `pythonPath` or `venvPath`, then falls back to the project's
-  configured or discovered Python environment.
-- `dapper_launch` may inject Dapper via `PYTHONPATH` instead of installing it into the workspace
-  environment.
-- Set `waitForStop: true` on `dapper_launch` when you want the initial pause before calling
-  `dapper_state`, `dapper_variable`, or `dapper_evaluate`.
-- Omit `sessionId` to use the active Dapper session. Tools do not fall back to non-Dapper sessions.
-- Start with `dapper_state` in `snapshot` mode when paused. It returns stop reason, location, call stack,
-  locals, globals, and thread state.
-- `dapper_state` in `snapshot` mode can fall back to a cached placeholder snapshot. In that case `callStack`,
-  `locals`, and `globals` may be empty, and `_adapterError` may be present.
-- Use `dapper_execution` with `report: true` for next/stepIn/stepOut/continue when you want the action,
-  the next stop, and the resulting diff in one call.
-- `dapper_execution` returning `stopped: false` means the session did not stop again before the
-  timeout or terminated.
-- `dapper_execution` without `report: true` returns acknowledgement states like `running`, `pausing`,
-  and `terminating`; it does not wait for all later events.
-- `dapper_evaluate` and `dapper_variable` execute code in the debuggee and can have side
-  effects.
-- `dapper_evaluate` accepts `expression` or `expressions`, but always runs as a batch in the chosen
-  `frameIndex`.
-- `dapper_variable` is best for structured values; it expands dicts, lists, tuples, and
-  public object attributes to the requested depth.
-- `dapper_breakpoints` uses `list`, `add`, `remove`, and `clear`.
-- `dapper_breakpoints` with `action: add` updates VS Code and also sends a direct `setBreakpoints`
-  request so the adapter sees new breakpoints immediately.
-- `dapper_breakpoints` with `action: list` always reports the VS Code breakpoint list and, with an
-  active Dapper session, merges adapter verification state into `verified` when it is definitive.
-- `dapper_breakpoints` may return `verificationState: pending` when the adapter has not yet bound a
-  breakpoint to executable code. This is different from a definitive rejection.
-- `dapper_session_info` can list tracked sessions, but only the active one has a live
-  `DebugSession`; other tracked sessions may show `state: unknown` with minimal config.
-- Test fixtures in this repo keep launch examples as `.vscode/launch.template.json` instead of a
-  real `.vscode/launch.json` so VS Code does not schema-validate nested fixture files as active
-  workspace launch configurations.
+The full user-facing reference lives in
+[`doc/reference/lm-tools.md`](../../doc/reference/lm-tools.md).
 
-Recommended agent workflow while paused:
+That page covers:
 
-1. Call `dapper_session_info` if you need to identify the session.
-2. Call `dapper_state` with `mode: snapshot` to understand the current stop.
-3. Use `dapper_variable` for structured objects and `dapper_evaluate` for focused scalar expressions.
-4. Use `dapper_execution` with `report: true` to advance execution while preserving checkpoint context.
-5. Use `dapper_breakpoints` with `action: list` and `action: add/remove/clear` when checking whether a breakpoint is present but not verified.
+- the public tool surface and shared session-resolution rules
+- the full `dapper_cli` grammar, including `launch`, `breaks`, conditional
+  breakpoints, logpoints, and `--` argument passthrough
+- runtime details for `dapper_launch`, `dapper_state`, `dapper_execution`,
+  `dapper_evaluate`, `dapper_variable`, `dapper_breakpoints`, and
+  `dapper_session_info`
+- the recommended paused-session workflow for agents
 
 ## Settings
 

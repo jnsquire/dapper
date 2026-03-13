@@ -124,6 +124,25 @@ describe('BreakpointsTool', () => {
     expect(result.breakpoints).toEqual([]);
   });
 
+  it('supports line filtering for list through the public tool API', async () => {
+    await invokeBreakpointsTool(tool, { action: 'add', file: sourceFile, lines: [11, 12] });
+
+    const raw = await invokeBreakpointsTool(tool, { action: 'list', file: sourceFile, lines: [12] });
+    const result = JSON.parse(raw);
+
+    expect(result).toMatchObject({
+      action: 'list',
+      count: 1,
+      breakpoints: [
+        {
+          file: 'app.py',
+          line: 12,
+          enabled: true,
+        },
+      ],
+    });
+  });
+
   it('disables and re-enables breakpoints while keeping the adapter in sync', async () => {
     const session = {
       id: 'session-4',

@@ -58,6 +58,7 @@ nav:
     - Examples: examples/README.md
   - Reference:
     - Configuration: reference/configuration.md
+    - LM Tools: reference/lm-tools.md
     - Feature Status: reference/checklist.md
     - Operational Modes: reference/operational-modes.md
     - DAP Extensions: reference/dap-extensions.md
@@ -83,6 +84,5 @@ nav:
       - Analysis: architecture/current-analysis.md
   - Roadmap:
     - Feature Ideas: roadmap/feature-ideas.md
-    - CLI Agent Tool Checklist: roadmap/cli-agent-tool-checklist.md
     - "Hot Reload DEP": roadmap/dep-001-hot-reload.md
     - Hot Reload Plan: roadmap/hot-reload-plan.md

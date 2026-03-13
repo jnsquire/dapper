@@ -50,7 +50,7 @@
           "properties": {
             "command": {
               "type": "string",
-              "description": "One or more pdb-like debugger commands. Phase 1 supports help/h, run, continue/c, next/n, step/s, finish, quit/q, break/b, clear, disable, enable, print/p, where/bt, locals, globals, list/l, up, down, and frame. `break` accepts file paths, unique Python filename stems like `main:65`, and current-stack function names like `handler:42`. Separate sequential commands with ';'."
+              "description": "One or more pdb-like debugger commands. The current CLI supports help/h, run, launch, sessions, info, inspect, state, diff, pause, restart, continue/c, next/n, step/s, finish, quit/q, break/b, breaks, clear, disable, enable, print/p, where/bt, locals, globals, list/l, up, down, and frame. `break` accepts file paths, unique Python filename stems like `main:65`, current-stack function names like `handler:42`, plus `if` conditions and `log` messages. `breaks` lists all breakpoints or filters to one file or line. Separate sequential commands with ';'."
             },
             "sessionId": {
               "type": "string",
@@ -302,7 +302,7 @@
               "items": {
                 "type": "number"
               },
-              "description": "Line numbers for add/remove actions."
+              "description": "Line numbers for add/remove actions, or an optional line filter when action=list."
             },
             "condition": {
               "type": "string",
