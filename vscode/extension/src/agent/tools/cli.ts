@@ -863,8 +863,8 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
         command: parsed.raw,
         status: 'ok',
         summary: target.line === undefined
-          ? `Cleared ${removed} breakpoint(s) in ${vscode.workspace.asRelativePath(target.file, false)}`
-          : `Cleared breakpoint at ${vscode.workspace.asRelativePath(target.file, false)}:${target.line}`,
+          ? `Cleared ${removed} breakpoint(s) in ${displayPath(target.file)}`
+          : `Cleared breakpoint at ${displayPath(target.file)}:${target.line}`,
         result: payload,
       },
     };
@@ -901,8 +901,8 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
         command: parsed.raw,
         status: 'ok',
         summary: target.line === undefined
-          ? `${enabled ? 'Enabled' : 'Disabled'} ${updated} breakpoint(s) in ${vscode.workspace.asRelativePath(target.file, false)}`
-          : `${enabled ? 'Enabled' : 'Disabled'} breakpoint at ${vscode.workspace.asRelativePath(target.file, false)}:${target.line}`,
+          ? `${enabled ? 'Enabled' : 'Disabled'} ${updated} breakpoint(s) in ${displayPath(target.file)}`
+          : `${enabled ? 'Enabled' : 'Disabled'} breakpoint at ${displayPath(target.file)}:${target.line}`,
         result: payload,
       },
     };
@@ -1170,7 +1170,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
       command: {
         command: parsed.raw,
         status: 'ok',
-        summary: `Listed ${lines.length} line(s) from ${vscode.workspace.asRelativePath(frameContext.frame.file, false)}`,
+        summary: `Listed ${lines.length} line(s) from ${displayPath(frameContext.frame.file)}`,
         result: {
           file: frameContext.frame.file,
           currentLine: frameContext.frame.line,
@@ -1389,7 +1389,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     }
 
     if (matches.size > 1) {
-      const matchList = Array.from(matches).map(match => vscode.workspace.asRelativePath(match, false)).join(', ');
+      const matchList = Array.from(matches).map(match => displayPath(match)).join(', ');
       throw new Error(`Breakpoint target '${target}' is ambiguous. Matches: ${matchList}. Use a path.`);
     }
 
@@ -1450,7 +1450,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
     );
 
     if (matches.size > 1) {
-      const matchList = Array.from(matches).map(match => vscode.workspace.asRelativePath(match, false)).join(', ');
+      const matchList = Array.from(matches).map(match => displayPath(match)).join(', ');
       throw new Error(`Breakpoint target '${functionName}' is ambiguous. Matches functions in: ${matchList}. Use a file path.`);
     }
 
@@ -1527,7 +1527,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
       const consumed = consumeTargetValue(index + 1);
       if (kind === 'file') {
         options.target = { file: consumed.value };
-        summaryTarget = vscode.workspace.asRelativePath(consumed.value, false) || consumed.value;
+        summaryTarget = displayPath(consumed.value) || consumed.value;
       } else if (kind === 'module') {
         options.target = { module: consumed.value };
         summaryTarget = `module ${consumed.value}`;
@@ -1850,7 +1850,7 @@ export class DapperCliTool implements vscode.LanguageModelTool<DapperCliInput> {
   }
 
   private _formatLocation(location: CliLocation): string {
-    const relative = vscode.workspace.asRelativePath(location.file, false);
+    const relative = displayPath(location.file);
     const functionSuffix = location.function ? ` in ${location.function}` : '';
     return `${relative}:${location.line}${functionSuffix}`;
   }
@@ -1943,8 +1943,12 @@ function isRecord(value: unknown): value is JsonObject {
 }
 
 function breakpointSummaryTarget(file: string, line?: number): string {
-  const displayFile = vscode.workspace.asRelativePath(file, false);
+  const displayFile = displayPath(file);
   return line === undefined ? displayFile : `${displayFile}:${line}`;
+}
+
+function displayPath(file: string): string {
+  return vscode.workspace.asRelativePath(file, false).replace(/\\/g, '/');
 }
 
 function breakpointEntryNoun(count: number): string {
