@@ -2,7 +2,7 @@
   "name": "dapper-debugger",
   "displayName": "Dapper Python Debugger",
   "description": "Python debugging support with style",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "repository": {
     "type": "git",
     "url": "https://github.com/jnsquire/dapper.git"
@@ -19,6 +19,9 @@
     "onCommand:dapper.showLogs",
     "onCommand:dapper.api.debugLaunch",
     "onCommand:dapper.api.runLaunch",
+    "onCommand:dapper.api.getEnvironmentSnapshot",
+    "onCommand:dapper.api.getTyEnvironmentSnapshot",
+    "onCommand:dapper.api.runRuffCheck",
     "onLanguageModelTool:dapper_cli",
     "onLanguageModelTool:dapper_launch",
     "onLanguageModelTool:dapper_state",
@@ -26,7 +29,16 @@
     "onLanguageModelTool:dapper_evaluate",
     "onLanguageModelTool:dapper_breakpoints",
     "onLanguageModelTool:dapper_variable",
-    "onLanguageModelTool:dapper_session_info"
+    "onLanguageModelTool:dapper_session_info",
+    "onLanguageModelTool:dapper_python_autofix",
+    "onLanguageModelTool:dapper_python_environment",
+    "onLanguageModelTool:dapper_python_diagnostics",
+    "onLanguageModelTool:dapper_python_format",
+    "onLanguageModelTool:dapper_python_imports",
+    "onLanguageModelTool:dapper_python_project_model",
+    "onLanguageModelTool:dapper_python_rename",
+    "onLanguageModelTool:dapper_python_symbol",
+    "onLanguageModelTool:dapper_python_typecheck"
   ],
   "type": "module",
   "readme": "README.md",
@@ -364,6 +376,276 @@
             "sessionId": {
               "type": "string",
               "description": "Debug session ID. Omit to list all active Dapper sessions."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_autofix",
+        "displayName": "Dapper: Python Autofix",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonAutofix",
+        "userDescription": "Run Ruff safe autofix for the current workspace or selected files.",
+        "modelDescription": "Run Ruff safe autofix for the current workspace or selected files. Applies changes by default and supports preview mode via apply=false.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ty/Ruff config files."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional file paths to pass through to Ruff autofix."
+            },
+            "apply": {
+              "type": "boolean",
+              "description": "Whether to apply fixes. Defaults to true; set false for preview diff mode."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_environment",
+        "displayName": "Dapper: Python Environment",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonEnvironment",
+        "userDescription": "Report the selected Python environment plus Ty and Ruff availability for the current workspace.",
+        "modelDescription": "Report the selected Python interpreter, search roots, Ty availability, Ruff availability, and Ty/Ruff config discovery for the current workspace or a specified search root.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ty/Ruff config files."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_diagnostics",
+        "displayName": "Dapper: Python Diagnostics",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonDiagnostics",
+        "userDescription": "Report Python diagnostics for the current workspace using the currently integrated backends.",
+        "modelDescription": "Report structured Python diagnostics for the current workspace or selected files. Returns normalized diagnostics from Ruff and Ty with grouped summary statistics (countsByFile, countsByCode, countsBySeverity, hotspots) so you can quickly see where problems cluster. Use pathFilter to focus on source or test code. The summary is computed on all matching diagnostics before the limit is applied, so you always get the full picture even when limiting the detail list.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ty/Ruff config files."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional file paths to pass through to the diagnostics backend."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Optional maximum number of normalized diagnostics to return in the detail list. Summary statistics always reflect all matching diagnostics."
+            },
+            "pathFilter": {
+              "type": "string",
+              "enum": ["source", "tests", "all"],
+              "description": "Filter diagnostics by path class. 'source' excludes test files, 'tests' returns only test files, 'all' (default) returns everything."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_format",
+        "displayName": "Dapper: Python Format",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonFormat",
+        "userDescription": "Run Ruff formatting for the current workspace or selected files.",
+        "modelDescription": "Run Ruff formatting for the current workspace or selected files. Applies formatting by default and supports preview diff mode via apply=false.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ty/Ruff config files."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional file paths to pass through to Ruff format."
+            },
+            "apply": {
+              "type": "boolean",
+              "description": "Whether to apply formatting. Defaults to true; set false for preview diff mode."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_imports",
+        "displayName": "Dapper: Python Imports",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonImports",
+        "userDescription": "Clean up unused imports, sort/organize imports, or both.",
+        "modelDescription": "Clean up unused imports (F401), sort/organize imports (isort-style), or both in a single call. Set mode to 'cleanup' for unused import removal, 'organize' for import sorting, or 'all' (default) to run both. Supports preview diff mode via apply=false.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["cleanup", "organize", "all"],
+              "description": "Which import operation to run. 'cleanup' removes unused imports (F401), 'organize' sorts imports (isort-style), 'all' (default) runs both."
+            },
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ruff config files."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional file paths to scope the import operation to."
+            },
+            "apply": {
+              "type": "boolean",
+              "description": "Whether to apply changes. Defaults to true; set false for preview diff mode."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_project_model",
+        "displayName": "Dapper: Python Project Model",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonProjectModel",
+        "userDescription": "Report Python source roots, test roots, config files, and package boundaries for the current workspace.",
+        "modelDescription": "Report a structured Python project model for the current workspace or search root. The result includes search roots, source roots, test roots, detected config files, package boundaries, and the selected Python interpreter summary.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and anchor project-model discovery to a nested project root."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_typecheck",
+        "displayName": "Dapper: Python Typecheck",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonTypecheck",
+        "userDescription": "Run Ty-backed Python type checking for the current workspace or selected files.",
+        "modelDescription": "Run Ty-backed Python type checking for the current workspace or selected files. Returns normalized Ty diagnostics with grouped summary statistics (countsByFile, countsByCode, countsBySeverity, hotspots) so you can quickly see where type errors cluster. Use pathFilter to focus on source or test code. The summary is computed on all matching diagnostics before the limit is applied.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to choose the workspace root and search upward for Python environments and Ty/Ruff config files."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional file paths to pass through to Ty."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Optional maximum number of normalized Ty diagnostics to return in the detail list. Summary statistics always reflect all matching diagnostics."
+            },
+            "pathFilter": {
+              "type": "string",
+              "enum": ["source", "tests", "all"],
+              "description": "Filter diagnostics by path class. 'source' excludes test files, 'tests' returns only test files, 'all' (default) returns everything."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_symbol",
+        "displayName": "Dapper: Python Symbol",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonSymbol",
+        "userDescription": "Resolve Python definitions, references, implementations, or hover information through the active semantic backend.",
+        "modelDescription": "Resolve Python definitions, references, implementations, or hover information for a symbol at a given file position. Uses VS Code language feature providers, preferring Ty-backed semantics when Ty is available and falling back to the active Python semantic provider otherwise.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "action",
+            "file",
+            "line"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["definition", "references", "implementations", "hover"],
+              "description": "The symbol query to run at the given file position."
+            },
+            "file": {
+              "type": "string",
+              "description": "Absolute or workspace-relative file path containing the symbol occurrence."
+            },
+            "line": {
+              "type": "number",
+              "description": "1-based line number for the symbol occurrence."
+            },
+            "column": {
+              "type": "number",
+              "description": "1-based column number for the symbol occurrence. Defaults to 1."
+            },
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to resolve relative file paths and choose the workspace root."
+            }
+          }
+        }
+      },
+      {
+        "name": "dapper_python_rename",
+        "displayName": "Dapper: Python Rename",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "dapperPythonRename",
+        "userDescription": "Run semantic rename for a Python symbol occurrence and optionally apply the resulting workspace edits.",
+        "modelDescription": "Run semantic rename for a Python symbol occurrence using the active semantic backend. Returns a normalized summary of the resulting workspace edits and applies them by default unless apply=false is requested.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "file",
+            "line",
+            "newName"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Absolute or workspace-relative file path containing the symbol occurrence to rename."
+            },
+            "line": {
+              "type": "number",
+              "description": "1-based line number for the symbol occurrence."
+            },
+            "column": {
+              "type": "number",
+              "description": "1-based column number for the symbol occurrence. Defaults to 1."
+            },
+            "newName": {
+              "type": "string",
+              "description": "New symbol name to apply."
+            },
+            "apply": {
+              "type": "boolean",
+              "description": "Whether to apply the rename edit to the workspace. Defaults to true; set false for preview mode."
+            },
+            "searchRootPath": {
+              "type": "string",
+              "description": "Optional absolute path used to resolve relative file paths and choose the workspace root."
             }
           }
         }

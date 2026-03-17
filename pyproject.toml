@@ -7,7 +7,7 @@ include = ["dapper*"]
 
 [project]
 name = "dapper"
-version = "0.9.3"
+version = "0.9.4"
 description = "Debug Adapter Protocol implementation for Python"
 readme = "README.md"
 authors = [
@@ -26,6 +26,7 @@ classifiers = [
 # extras used by developers; `uv run build-dev -- --install` expects this
 # group to exist so that pip does not warn about a missing 'dev' extra.
 dev = [
+    "ty>=0.0.23",
     "pyright>=1.1.408",
     "ruff>=0.15.5",
     "pytest>=8.3.5",
@@ -194,6 +195,7 @@ max-args = 10
 
 [dependency-groups]
 dev = [
+    "ty>=0.0.23",
     "pyright>=1.1.408",
     "ruff>=0.15.5",
     "pytest>=8.3.5",
