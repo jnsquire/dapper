@@ -36,7 +36,7 @@ npm run package
 reload the VS Code window:
 
 ```powershell
-code --install-extension dist/dapper-debugger-0.9.3.vsix --force
+  code --install-extension dist/dapper-debugger-0.9.4.vsix --force
 ```
 
 Notes:
@@ -258,11 +258,30 @@ The full user-facing reference lives in
 That page covers:
 
 - the public tool surface and shared session-resolution rules
+- the public `dapper_python_diagnostics` tool for structured Ruff and Ty
+  diagnostics
+- the public `dapper_python_environment` tool for Python, Ty, and Ruff
+  environment reporting
+- the public `dapper_python_project_model` tool for source roots, test roots,
+  config files, and package-boundary reporting
+- the public `dapper_python_autofix` tool for Ruff autofix with preview or
+  apply modes
+- the public `dapper_python_format` tool for Ruff formatting with preview or
+  apply modes
+- the public `dapper_python_rename` tool for semantic rename with preview or
+  apply modes (input is location-based; `line` is 1-based and `column` is optional)
+- the public `dapper_python_symbol` tool for definition, references,
+  implementations, and hover lookups
+- the public `dapper_python_typecheck` tool for Ty-backed type checking
 - the full `dapper_cli` grammar, including `launch`, `breaks`, conditional
   breakpoints, logpoints, and `--` argument passthrough
 - runtime details for `dapper_launch`, `dapper_state`, `dapper_execution`,
   `dapper_evaluate`, `dapper_variable`, `dapper_breakpoints`, and
-  `dapper_session_info`
+  `dapper_session_info`, `dapper_python_environment`, and
+  `dapper_python_autofix`, `dapper_python_diagnostics`,
+  `dapper_python_format`, `dapper_python_project_model`, `dapper_python_rename`,
+  `dapper_python_symbol`, and
+  `dapper_python_typecheck`
 - the recommended paused-session workflow for agents
 
 ## Settings

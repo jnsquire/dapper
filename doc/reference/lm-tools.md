@@ -12,6 +12,14 @@ JSON schemas alone.
 The current public tools are:
 
 - `dapper_cli`
+- `dapper_python_diagnostics`
+- `dapper_python_environment`
+- `dapper_python_autofix`
+- `dapper_python_format`
+- `dapper_python_project_model`
+- `dapper_python_rename`
+- `dapper_python_symbol`
+- `dapper_python_typecheck`
 - `dapper_launch`
 - `dapper_state`
 - `dapper_execution`
@@ -24,10 +32,147 @@ The current public tools are:
 
 - Most tools accept an optional `sessionId`.
 - When `sessionId` is omitted, Dapper resolves the active Dapper debug session.
+- Many Python-oriented tools also accept an optional `searchRootPath` to anchor
+  the workspace folder used for tool execution when multiple workspace roots or
+  nested projects are present.
 - Tools do not fall back to arbitrary non-Dapper sessions.
 - Thread routing for `dapper_state` and `dapper_execution` remains controlled by
   the tool input `threadId`; the CLI does not add a separate thread-selector
   grammar.
+
+## dapper_python_environment
+
+`dapper_python_environment` reports the selected Python environment and the
+current Ty/Ruff tooling view for the workspace.
+
+Important behavior:
+
+- It is read-only and does not require an active debug session.
+- It reports Python interpreter selection, search roots, Ty availability,
+  Ruff availability, and Ty/Ruff config-file discovery.
+- `searchRootPath` can be used to anchor venv discovery and config discovery to
+  a nested project root.
+
+## dapper_python_diagnostics
+
+`dapper_python_diagnostics` reports structured Python diagnostics for the
+current workspace or for a selected file set.
+
+Important behavior:
+
+- It is read-only and does not require an active debug session.
+- Ruff and Ty diagnostics are normalized into a shared schema with
+  file/position, code, message, source, and backend-specific metadata.
+- Backend coverage is reported explicitly, so agents can see when one backend
+  produced diagnostics and the other was unavailable or failed.
+- `files` narrows the backend invocation to selected paths.
+- `limit` bounds the number of normalized diagnostics returned while preserving
+  the total count and truncation state.
+
+## dapper_python_autofix
+
+`dapper_python_autofix` runs Ruff autofix for the current workspace or for a
+selected file set.
+
+Important behavior:
+
+- It is a mutating tool: by default it applies fixable Ruff edits.
+- Set `apply: false` to preview the Ruff diff without changing files.
+- The result reports whether files changed and returns diff output in preview
+  mode.
+
+## dapper_python_format
+
+`dapper_python_format` runs Ruff formatting for the current workspace or for a
+selected file set.
+
+Important behavior:
+
+- It is a mutating tool: by default it applies formatting edits.
+- Set `apply: false` to preview the Ruff formatting diff without changing
+  files.
+- The result reports whether files changed and returns diff output in preview
+  mode.
+
+## dapper_python_imports
+
+`dapper_python_imports` runs Ruff-backed import hygiene actions for the current
+workspace or for a selected file set.
+
+Important behavior:
+
+- It is a mutating tool: by default it applies changes.
+- `mode` supports `cleanup`, `organize`, and `all` (default).
+- `cleanup` removes unused imports with Ruff's `F401` fix path.
+- `organize` runs Ruff's import-sorting path.
+- Set `apply: false` to preview the diff without changing files.
+
+## dapper_python_project_model
+
+`dapper_python_project_model` reports a structured Python workspace model for
+the current workspace or a selected search root.
+
+Important behavior:
+
+- It is read-only and does not require an active debug session.
+- It reports search roots, source roots, test roots, config files, and
+  package boundaries using bounded filesystem heuristics.
+- It also returns the selected Python interpreter summary from the shared
+  environment snapshot so agents can relate the project model to the active
+  environment.
+- `searchRootPath` can be used to anchor project-model discovery to a nested
+  project root.
+
+## dapper_python_typecheck
+
+`dapper_python_typecheck` runs Ty-backed type checking for the current
+workspace or for a selected file set.
+
+Important behavior:
+
+- It is read-only and does not require an active debug session.
+- It returns only Ty diagnostics, normalized into the same shared schema used
+  by `dapper_python_diagnostics`.
+- `files` narrows the Ty invocation to selected paths.
+- `limit` bounds the number of normalized diagnostics returned while preserving
+  the total count and truncation state.
+- When Ty is unavailable, the backend status is reported explicitly instead of
+  silently returning an empty success result.
+
+## dapper_python_symbol
+
+`dapper_python_symbol` resolves definition, references, implementations, or
+hover information for a symbol occurrence in a Python file.
+
+Important behavior:
+
+- It is read-only and does not require an active debug session.
+- It is location-based: provide `file`, `line`, and optionally `column` for an
+  existing symbol occurrence.
+- It uses VS Code language feature providers, so the actual provider may be Ty,
+  Pylance, or another active semantic backend.
+- The result reports Ty availability as the preferred semantic backend for the
+  workspace, but VS Code does not expose which extension satisfied the request.
+- `action` supports `definition`, `references`, `implementations`, and `hover`.
+
+## dapper_python_rename
+
+`dapper_python_rename` runs semantic rename for a symbol occurrence in a Python
+file.
+
+Important behavior:
+
+- It is a mutating tool: by default it applies the resulting workspace edit.
+- Set `apply: false` to preview the rename result without changing files.
+- It returns a normalized summary of file edits so agents can inspect the
+  rename impact even when applying it.- The input is location-based: provide `file`, `line` (1-based), and optionally
+  `column` (1-based) for the symbol occurrence. `column` may be omitted to
+  use the provider's default location resolution.
+- It supports an optional `searchRootPath` to anchor workspace folder discovery
+  when the workspace has multiple roots or nested projects.- It uses VS Code language feature providers, so the actual rename provider may
+  be Ty, Pylance, or another active semantic backend.
+- The result reports Ty availability as the preferred semantic backend for the
+  workspace, but VS Code does not expose which extension satisfied the request.
 
 ## dapper_cli
 

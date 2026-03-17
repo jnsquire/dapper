@@ -93,6 +93,13 @@ See also: [Frame Eval User Guide](../guides/frame-eval.md).
 
 ---
 
+## Agent & tooling integrations
+
+- ✅ LM tools for agent-driven workflows (`dapper_python_environment`, `dapper_python_diagnostics`, `dapper_python_symbol`, `dapper_python_rename`, `dapper_python_autofix`, `dapper_python_format`, `dapper_python_imports`, `dapper_python_project_model`, `dapper_python_typecheck`) are implemented and exposed via the extension.
+- ✅ Semantic rename and symbol navigation use the active VS Code semantic backend (Ty/Pylance) and report backend availability clearly.
+- ✅ Ruff-backed formatting / autofix and import hygiene tools support preview mode (`apply: false`) and report diffs.
+- ✅ The CLI command surface (`dapper_cli`) is available for chained agent-style workflows.
+
 ## Implementation status — short summary
 
 Dapper provides a stable, functional core debugger experience: program control, stepping, breakpoint management, stack/threads, variables and set-variable operations are implemented and well-tested. Expression completions are implemented. Async/concurrency debugging is fully supported — asyncio tasks appear as pseudo-threads, stepping is async-aware, thread names are live, and task frames now expose a best-effort causality scope for current wait-state inspection. Structured variable rendering (dataclasses, namedtuples, Pydantic v1 & v2) is implemented with field-level expansion and presentation hints. Work remains on higher-level ergonomics: advanced breakpoint workflows (runtime watchpoints), source navigation UX, and profiling integration.

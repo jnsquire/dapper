@@ -37,8 +37,11 @@ Dapper is currently installed from source for development and evaluation:
 ```bash
 git clone https://github.com/jnsquire/dapper.git
 cd dapper
-uv sync
+uv sync --extra dev
 ```
+
+The development toolchain is declared in `pyproject.toml` and includes Ty,
+Ruff, Pyright, and pytest in the `dev` dependency set.
 
 For development setup, see [Development Setup](doc/development/setup.md).
 

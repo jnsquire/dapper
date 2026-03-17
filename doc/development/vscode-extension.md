@@ -27,7 +27,7 @@ The VS Code extension source code is located in `vscode/extension`. It is a sepa
 4. **Package and reinstall the VSIX when testing the installed extension:**
    ```bash
    npm run package
-  code --install-extension dist/dapper-debugger-0.9.3.vsix --force
+  code --install-extension dist/dapper-debugger-0.9.4.vsix --force
    ```
 
    Notes:
@@ -59,7 +59,10 @@ the runtime behavior that is easy to miss.
 
 The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dapper_state`,
 `dapper_execution`, `dapper_evaluate`, `dapper_breakpoints`, `dapper_variable`, and
-`dapper_session_info`.
+`dapper_session_info`, `dapper_python_environment`, and
+`dapper_python_autofix`, `dapper_python_diagnostics`, `dapper_python_format`,
+`dapper_python_project_model`, `dapper_python_rename`, `dapper_python_symbol`, and
+`dapper_python_typecheck`.
 
 ### Command Interface
 
@@ -86,6 +89,9 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
 
 - Most tools accept an optional `sessionId`.
 - When `sessionId` is omitted, the tool resolves to the active Dapper debug session.
+- Many Python-oriented tools also accept an optional `searchRootPath` to anchor
+  the workspace folder used for tool execution in multi-root/nested-workspace
+  scenarios.
 - Tools do not fall back to arbitrary non-Dapper sessions.
 
 ### Snapshot and Journal Semantics
