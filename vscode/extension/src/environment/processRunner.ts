@@ -4,12 +4,15 @@ import * as vscode from 'vscode';
 
 export interface ProcessRunOptions {
   label: string;
+  cwd?: string;
 }
 
 export interface ProcessRunResult {
   ok: boolean;
   code: number | null;
   output: string;
+  stdout: string;
+  stderr: string;
   error?: Error;
 }
 
@@ -29,8 +32,9 @@ export function runLoggedProcessResult(
 ): Promise<ProcessRunResult> {
   return new Promise((resolve) => {
     output.debug(`[run] ${opts.label}: ${cmd} ${args.join(' ')}`);
-    const child = spawn(cmd, args, { shell: process.platform === 'win32' });
-    const outputLines: string[] = [];
+    const child = spawn(cmd, args, { shell: process.platform === 'win32', cwd: opts.cwd });
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
     let settled = false;
 
     const finish = (result: ProcessRunResult) => {
@@ -41,19 +45,25 @@ export function runLoggedProcessResult(
       resolve(result);
     };
 
-    const onData = (chunk: Buffer) => {
-      const text = chunk.toString().trimEnd();
-      output.trace(text);
-      outputLines.push(text);
-    };
-
-    child.stdout.on('data', onData);
-    child.stderr.on('data', onData);
+    child.stdout.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      output.trace(text.trimEnd());
+      stdoutChunks.push(text);
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      output.trace(text.trimEnd());
+      stderrChunks.push(text);
+    });
     child.on('error', error => {
-      finish({ ok: false, code: null, output: outputLines.filter(Boolean).join('\n'), error });
+      const stdout = stdoutChunks.join('');
+      const stderr = stderrChunks.join('');
+      finish({ ok: false, code: null, output: [stdout, stderr].filter(Boolean).join('\n'), stdout, stderr, error });
     });
     child.on('close', code => {
-      finish({ ok: code === 0, code, output: outputLines.filter(Boolean).join('\n') });
+      const stdout = stdoutChunks.join('');
+      const stderr = stderrChunks.join('');
+      finish({ ok: code === 0, code, output: [stdout, stderr].filter(Boolean).join('\n'), stdout, stderr });
     });
   });
 }

@@ -52,6 +52,7 @@ export const workspace = {
       createDirectory: () => Promise.resolve()
   },
   openTextDocument: () => Promise.resolve({}),
+  applyEdit: () => Promise.resolve(true),
   getConfiguration: () => ({ get: () => undefined, update: () => {} }),
   getWorkspaceFolder: (uri) => {
     const folders = workspace.workspaceFolders ?? [];
@@ -158,6 +159,27 @@ export class Location {
     this.range = positionOrRange instanceof Range
       ? positionOrRange
       : new Range(positionOrRange, positionOrRange);
+  }
+}
+
+export class TextEdit {
+  constructor(range, newText) {
+    this.range = range;
+    this.newText = newText;
+  }
+}
+
+export class WorkspaceEdit {
+  constructor() {
+    this._entries = [];
+  }
+
+  set(uri, edits) {
+    this._entries.push([uri, edits]);
+  }
+
+  entries() {
+    return this._entries;
   }
 }
 
@@ -299,7 +321,7 @@ export const ConfigurationTarget = {
 window.createWebviewPanel = createWebviewPanel;
 export const EventEmitter = MockEventEmitter;
 
-export default { workspace, window, Uri, Position, Range, Location, Breakpoint, SourceBreakpoint, commands, debug, extensions, env, lm, LanguageModelTextPart, LanguageModelToolResult, DebugAdapterServer, DebugAdapterExecutable, DebugConsoleMode, ConfigurationTarget, TreeItem, TreeItemCollapsibleState, ThemeIcon, EventEmitter, Disposable };
+export default { workspace, window, Uri, Position, Range, Location, TextEdit, WorkspaceEdit, Breakpoint, SourceBreakpoint, commands, debug, extensions, env, lm, LanguageModelTextPart, LanguageModelToolResult, DebugAdapterServer, DebugAdapterExecutable, DebugConsoleMode, ConfigurationTarget, TreeItem, TreeItemCollapsibleState, ThemeIcon, EventEmitter, Disposable };
 export const ViewColumn = { One: 1, Two: 2 };
 export const resetDebugListeners = () => {
   _debugListeners.onDidStartDebugSession.length = 0;

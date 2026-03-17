@@ -12,6 +12,17 @@ import type { LaunchOptions } from './debugAdapter/launchService.js';
 import { DapperNoDebugLauncher } from './debugAdapter/noDebugLauncher.js';
 import { DapperProcessTreeView } from './views/DapperProcessTreeView.js';
 import { DapperLaunchesView, DapperLaunchHistoryService } from './views/DapperLaunchesView.js';
+import { PythonAutofixService } from './python/autofix.js';
+import { PythonDiagnosticsService } from './python/diagnostics.js';
+import { EnvironmentSnapshotService, type EnvironmentSnapshotOptions } from './python/environmentSnapshot.js';
+import { PythonFormatService } from './python/format.js';
+import { PythonImportsService } from './python/imports.js';
+import { PythonProjectModelService } from './python/projectModel.js';
+import { PythonRenameService } from './python/rename.js';
+import { RuffRunnerService, type RuffCheckOptions } from './python/ruffRunner.js';
+import { PythonSymbolService } from './python/symbols.js';
+import { TyRunnerService } from './python/tyRunner.js';
+import { PythonTypecheckService } from './python/typecheck.js';
 
 function normalizeFsPath(path: string): string {
   return process.platform === 'win32' ? path.toLowerCase() : path;
@@ -37,6 +48,54 @@ function normalizeLaunchCommandOptions(value: unknown): LaunchOptions {
   return { ...(value as LaunchOptions) };
 }
 
+function normalizeEnvironmentSnapshotOptions(value: unknown): EnvironmentSnapshotOptions & { searchRootPath?: string } {
+  if (value == null) {
+    return {};
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Environment snapshot API expects an options object.');
+  }
+
+  const raw = value as { workspaceFolder?: unknown; searchRootPath?: unknown };
+  const searchRootPath = typeof raw.searchRootPath === 'string' ? raw.searchRootPath : undefined;
+  const workspaceFolderPath = typeof raw.workspaceFolder === 'string' ? raw.workspaceFolder : undefined;
+  const workspaceFolder = workspaceFolderPath
+    ? (vscode.workspace.workspaceFolders ?? []).find(folder => normalizeFsPath(folder.uri.fsPath) === normalizeFsPath(path.resolve(workspaceFolderPath)))
+    : searchRootPath
+      ? vscode.workspace.getWorkspaceFolder(vscode.Uri.file(path.resolve(searchRootPath)))
+      : undefined;
+
+  return { workspaceFolder, searchRootPath };
+}
+
+function normalizeRuffCheckOptions(value: unknown): RuffCheckOptions {
+  if (value == null) {
+    return {};
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Ruff check API expects an options object.');
+  }
+
+  const raw = value as {
+    workspaceFolder?: unknown;
+    searchRootPath?: unknown;
+    files?: unknown;
+    fix?: unknown;
+    cwd?: unknown;
+  };
+  const snapshotOptions = normalizeEnvironmentSnapshotOptions(raw);
+  const files = Array.isArray(raw.files)
+    ? raw.files.filter((item): item is string => typeof item === 'string')
+    : undefined;
+
+  return {
+    ...snapshotOptions,
+    files,
+    fix: raw.fix === true,
+    cwd: typeof raw.cwd === 'string' ? raw.cwd : undefined,
+  };
+}
+
 type RunStickyAction = 'run' | 'runPickEnvironment';
 type DebugStickyAction = 'debug' | 'debugPickEnvironment' | 'debugStopOnEntry';
 
@@ -54,7 +113,12 @@ function normalizeDebugStickyAction(value: unknown): DebugStickyAction {
   return 'debug';
 }
 
-function* registerCommands(context: vscode.ExtensionContext, launchService: LaunchService): Iterable<vscode.Disposable> {
+function* registerCommands(
+  context: vscode.ExtensionContext,
+  launchService: LaunchService,
+  environmentSnapshotService: EnvironmentSnapshotService,
+  ruffRunnerService: RuffRunnerService,
+): Iterable<vscode.Disposable> {
   logger.log('Registering Dapper Debugger commands');
   const stoppedSessions = new Set<string>();
   const pendingReloads = new Set<string>();
@@ -293,6 +357,21 @@ function* registerCommands(context: vscode.ExtensionContext, launchService: Laun
       noDebug: true,
       stopOnEntry: false,
     });
+  });
+
+  yield vscode.commands.registerCommand('dapper.api.getEnvironmentSnapshot', async (options?: unknown) => {
+    const snapshotOptions = normalizeEnvironmentSnapshotOptions(options);
+    return environmentSnapshotService.getSnapshot(snapshotOptions);
+  });
+
+  yield vscode.commands.registerCommand('dapper.api.getTyEnvironmentSnapshot', async (options?: unknown) => {
+    const snapshotOptions = normalizeEnvironmentSnapshotOptions(options);
+    return environmentSnapshotService.getSnapshot(snapshotOptions);
+  });
+
+  yield vscode.commands.registerCommand('dapper.api.runRuffCheck', async (options?: unknown) => {
+    const checkOptions = normalizeRuffCheckOptions(options);
+    return ruffRunnerService.runCheck(checkOptions);
   });
 
   // Launch Configuration Wizard Command
@@ -554,13 +633,24 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
     launchHistory,
   );
   const launchService = new LaunchService(journalRegistry, launchHistory, noDebugLauncher);
+  const environmentSnapshotService = new EnvironmentSnapshotService(logger.getChannel());
+  const ruffRunnerService = new RuffRunnerService(logger.getChannel(), environmentSnapshotService);
+  const pythonAutofixService = new PythonAutofixService(ruffRunnerService);
+  const tyRunnerService = new TyRunnerService(logger.getChannel(), environmentSnapshotService);
+  const pythonDiagnosticsService = new PythonDiagnosticsService(environmentSnapshotService, ruffRunnerService, tyRunnerService);
+  const pythonFormatService = new PythonFormatService(ruffRunnerService);
+  const pythonImportsService = new PythonImportsService(ruffRunnerService);
+  const pythonProjectModelService = new PythonProjectModelService(environmentSnapshotService);
+  const pythonRenameService = new PythonRenameService(environmentSnapshotService);
+  const pythonSymbolService = new PythonSymbolService(environmentSnapshotService);
+  const pythonTypecheckService = new PythonTypecheckService(environmentSnapshotService, tyRunnerService);
 
   // Logger commands (returns a Disposable)
   const loggerCommandDisposable = registerLoggerCommands(context);
   allDisposables.push(loggerCommandDisposable);
 
   // Commands
-  const commandDisposables = Array.from(registerCommands(context, launchService));
+  const commandDisposables = Array.from(registerCommands(context, launchService, environmentSnapshotService, ruffRunnerService));
   allDisposables.push(...commandDisposables);
 
   // Debug Adapters
@@ -572,7 +662,20 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   allDisposables.push(
     vscode.debug.registerDebugAdapterTrackerFactory('dapper', new DapperTrackerFactory(journalRegistry)),
   );
-  const agentToolDisposables = registerAgentTools(journalRegistry, launchService, context.extension.packageJSON);
+  const agentToolDisposables = registerAgentTools(
+    journalRegistry,
+    launchService,
+    context.extension.packageJSON,
+    pythonAutofixService,
+    environmentSnapshotService,
+    pythonDiagnosticsService,
+    pythonFormatService,
+    pythonImportsService,
+    pythonProjectModelService,
+    pythonRenameService,
+    pythonSymbolService,
+    pythonTypecheckService,
+  );
   allDisposables.push(...agentToolDisposables);
 
   // Webview serializers / handlers
