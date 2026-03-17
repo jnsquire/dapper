@@ -83,16 +83,20 @@ async def test_data_breakpoint_info_and_set(mock_debugger_class):
 async def test_set_data_breakpoints_replaces_existing_registrations():
     debugger = RealDebugger(None, asyncio.get_running_loop())  # type: ignore[arg-type]
 
-    first = debugger.set_data_breakpoints([
-        {"dataId": "frame:42:var:x", "accessType": "write"},
-    ])
+    first = debugger.set_data_breakpoints(
+        [
+            {"dataId": "frame:42:var:x", "accessType": "write"},
+        ]
+    )
     assert first == [{"verified": True}]
     assert set(debugger.get_data_watch_map()) == {"frame:42:var:x"}
     assert debugger.get_frame_watch_map() == {42: ["frame:42:var:x"]}
 
-    second = debugger.set_data_breakpoints([
-        {"dataId": "frame:99:var:y", "accessType": "write"},
-    ])
+    second = debugger.set_data_breakpoints(
+        [
+            {"dataId": "frame:99:var:y", "accessType": "write"},
+        ]
+    )
     assert second == [{"verified": True}]
     assert set(debugger.get_data_watch_map()) == {"frame:99:var:y"}
     assert debugger.get_frame_watch_map() == {99: ["frame:99:var:y"]}

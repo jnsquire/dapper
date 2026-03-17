@@ -254,3 +254,16 @@ def test_global_wrapper_functions_route_to_trace_manager(monkeypatch):
     st.add_breakpoint("/workspace/a.py", 2)
     st.remove_breakpoint("/workspace/a.py", 1)
     assert st.get_tracing_statistics() == {"ok": True}
+
+
+def test_disable_selective_tracing_resets_current_thread_step_mode(monkeypatch):
+    manager = st.FrameTraceManager()
+    thread_info = SimpleNamespace(step_mode=True)
+
+    monkeypatch.setattr(st, "get_thread_info", lambda: thread_info)
+
+    manager.enable_selective_tracing(lambda *_args: None)
+    manager.disable_selective_tracing()
+
+    assert manager.is_enabled() is False
+    assert thread_info.step_mode is False

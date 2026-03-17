@@ -56,11 +56,13 @@ def test_runtime_shutdown_disables_tracing_and_clears_cache() -> None:
 
     with (
         patch("dapper._frame_eval.runtime.disable_selective_tracing") as mock_disable,
+        patch("dapper._frame_eval.runtime.clear_thread_local_info") as mock_clear_thread_local,
         patch("dapper._frame_eval.runtime.clear_all_caches") as mock_clear,
     ):
         runtime.shutdown()
 
     mock_disable.assert_called_once()
+    mock_clear_thread_local.assert_called_once()
     mock_clear.assert_called_once()
     assert runtime.initialized is False
 

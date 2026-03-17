@@ -16,6 +16,7 @@ from dapper._frame_eval.debugger_integration import integrate_debugger_bdb
 from dapper._frame_eval.debugger_integration import integrate_py_debugger
 from dapper._frame_eval.selective_tracer import update_breakpoints as _update_breakpoints
 from dapper._frame_eval.tracing_backend import TracingBackend
+from dapper._frame_eval.types import clear_thread_local_info
 
 
 class SettraceBackend(TracingBackend):
@@ -56,6 +57,7 @@ class SettraceBackend(TracingBackend):
             except Exception:
                 # Best-effort only
                 pass
+        clear_thread_local_info()
         self._installed = False
         self._debugger = None
 

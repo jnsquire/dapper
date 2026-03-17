@@ -527,7 +527,9 @@ class TestGetThreadsIntegration:
             result = await debugger.get_stack_trace(pseudo_id)
             frames = result["stackFrames"]
             assert frames
-            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            target_frame = next(
+                (frame for frame in frames if frame["name"] == "_task_with_locals"), None
+            )
             assert target_frame is not None
 
             scopes = await debugger.get_scopes(target_frame["id"])
@@ -563,7 +565,9 @@ class TestGetThreadsIntegration:
             pseudo_id = task_threads[0]["id"]
             result = await debugger.get_stack_trace(pseudo_id)
             frames = result["stackFrames"]
-            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            target_frame = next(
+                (frame for frame in frames if frame["name"] == "_task_with_locals"), None
+            )
             assert target_frame is not None
 
             evaluate_result = await debugger.evaluate(
@@ -591,7 +595,9 @@ class TestGetThreadsIntegration:
             pseudo_id = task_threads[0]["id"]
             result = await debugger.get_stack_trace(pseudo_id)
             frames = result["stackFrames"]
-            target_frame = next((frame for frame in frames if frame["name"] == "_task_with_locals"), None)
+            target_frame = next(
+                (frame for frame in frames if frame["name"] == "_task_with_locals"), None
+            )
             assert target_frame is not None
 
             evaluate_result = await debugger.evaluate(

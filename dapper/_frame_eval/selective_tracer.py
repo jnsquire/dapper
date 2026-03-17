@@ -657,6 +657,9 @@ class FrameTraceManager:
         with self._lock:
             self._enabled = False
             self.dispatcher.set_debugger_trace_func(None)
+            thread_info = get_thread_info()
+            if hasattr(thread_info, "step_mode"):
+                thread_info.step_mode = False
 
     def is_enabled(self) -> bool:
         """Check if selective tracing is enabled."""

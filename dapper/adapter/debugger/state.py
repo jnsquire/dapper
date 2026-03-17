@@ -257,7 +257,9 @@ class _PyDebuggerStateManager:
 
         waiter_state = snapshot.get("waiter_state")
         if waiter_state is not None:
-            variables.append(self._debugger.variable_manager.make_variable("waiter_state", waiter_state))
+            variables.append(
+                self._debugger.variable_manager.make_variable("waiter_state", waiter_state)
+            )
 
         waiter = snapshot.get("waiter")
         if waiter is not None:
@@ -352,8 +354,12 @@ class _PyDebuggerStateManager:
     ) -> EvaluateResponseBody:
         """Evaluate an expression in a specific context."""
         task_registry = self._debugger.task_registry
-        if isinstance(frame_id, int) and task_registry is not None and task_registry.is_task_frame_id(
-            frame_id,
+        if (
+            isinstance(frame_id, int)
+            and task_registry is not None
+            and task_registry.is_task_frame_id(
+                frame_id,
+            )
         ):
             return self._evaluate_task_frame_expression(
                 expression,

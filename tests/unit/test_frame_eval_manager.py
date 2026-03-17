@@ -480,6 +480,21 @@ class TestFrameEvalManager:
         assert backend.get_statistics()["step_mode"] == "CONTINUE"
         assert backend.get_statistics()["stepping_active"] is False
 
+    def test_eval_frame_backend_shutdown_clears_thread_local_state(self):
+        """Shutdown should clear the current thread's frame-eval state object."""
+        backend = EvalFrameBackend()
+        before = get_thread_info()
+
+        backend.set_stepping("STEP_OVER")
+        assert before.step_mode is True
+
+        with patch("dapper._frame_eval.eval_frame_backend.uninstall_eval_frame_hook"):
+            backend.shutdown()
+
+        after = get_thread_info()
+        assert after is not before
+        assert after.step_mode is False
+
     def test_eval_frame_backend_update_breakpoints_updates_shared_state(self):
         """Eval-frame breakpoint updates should fan out to both shared breakpoint stores."""
         backend = EvalFrameBackend()

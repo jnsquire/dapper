@@ -134,9 +134,15 @@ class TestSettraceBackend:
         backend._installed = True  # type: ignore[attr-defined]
         backend._debugger = MagicMock()  # type: ignore[attr-defined]
 
-        with patch("dapper._frame_eval.debugger_integration.remove_integration"):
+        with (
+            patch("dapper._frame_eval.debugger_integration.remove_integration"),
+            patch(
+                "dapper._frame_eval.settrace_backend.clear_thread_local_info"
+            ) as clear_thread_local,
+        ):
             backend.shutdown()
 
+        clear_thread_local.assert_called_once_with()
         assert backend._installed is False  # type: ignore[attr-defined]
         assert backend._debugger is None  # type: ignore[attr-defined]
 

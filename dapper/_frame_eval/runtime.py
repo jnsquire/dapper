@@ -19,6 +19,7 @@ from dapper._frame_eval.selective_tracer import disable_selective_tracing
 from dapper._frame_eval.selective_tracer import get_trace_manager
 from dapper._frame_eval.telemetry import FrameEvalTelemetrySnapshot
 from dapper._frame_eval.telemetry import get_frame_eval_telemetry
+from dapper._frame_eval.types import clear_thread_local_info
 from dapper._frame_eval.types import get_eval_frame_hook_status
 from dapper._frame_eval.types import get_frame_eval_stats
 
@@ -154,6 +155,7 @@ class FrameEvalRuntime:
         """Shutdown runtime-managed components."""
         with self._lock:
             disable_selective_tracing()
+            clear_thread_local_info()
             clear_all_caches()
             self._reset_config()
             self._initialized = False

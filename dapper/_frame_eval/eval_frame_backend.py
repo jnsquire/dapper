@@ -19,6 +19,7 @@ from dapper._frame_eval.backend import FrameEvalBackend
 from dapper._frame_eval.cache_manager import set_breakpoints as _set_breakpoints
 from dapper._frame_eval.selective_tracer import get_selective_trace_function
 from dapper._frame_eval.selective_tracer import update_breakpoints as _update_breakpoints
+from dapper._frame_eval.types import clear_thread_local_info
 from dapper._frame_eval.types import get_thread_info
 
 _CONTINUE_MODES = frozenset({"", "CONTINUE", "RESUME", "RUN"})
@@ -71,6 +72,7 @@ class EvalFrameBackend(FrameEvalBackend):
         self._breakpoints.clear()
         self._exception_breakpoint_filters = ()
         get_thread_info().step_mode = False
+        clear_thread_local_info()
         self._installed = False
         self._debugger = None
 
