@@ -1,7 +1,6 @@
-import * as path from 'path';
-
 import * as vscode from 'vscode';
 
+import { resolvePythonDocumentUri } from './document.js';
 import type { EnvironmentSnapshotOptions, EnvironmentSnapshotService } from './environmentSnapshot.js';
 
 export type PythonSymbolAction = 'definition' | 'references' | 'implementations' | 'hover';
@@ -60,7 +59,7 @@ export class PythonSymbolService {
 
   async resolve(options: PythonSymbolOptions): Promise<PythonSymbolResult> {
     const snapshot = await this.environmentSnapshotService.getSnapshot(options);
-    const documentUri = this._resolveDocumentUri(options);
+    const documentUri = resolvePythonDocumentUri(options);
     const position = new vscode.Position(options.line - 1, (options.column ?? 1) - 1);
 
     try {
@@ -97,18 +96,6 @@ export class PythonSymbolService {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }
-
-  private _resolveDocumentUri(options: PythonSymbolOptions): vscode.Uri {
-    const inputPath = path.resolve(this._resolveBasePath(options), options.file);
-    return vscode.Uri.file(inputPath);
-  }
-
-  private _resolveBasePath(options: PythonSymbolOptions): string {
-    return options.searchRootPath
-      ?? options.workspaceFolder?.uri.fsPath
-      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-      ?? process.cwd();
   }
 
   private async _executeProvider(

@@ -47,6 +47,7 @@ export class ThemeIcon {
 export const workspace = {
   workspaceFolders: [{ name: 'temp', uri: { fsPath: '' } }],
   fs: {
+      stat: () => Promise.reject(new Error('not implemented')),
       readFile: () => Promise.reject(new Error('not implemented')),
       writeFile: () => Promise.resolve(),
       createDirectory: () => Promise.resolve()

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { basename } from 'path';
+import { fileExists } from '../utils/fileSystem.js';
 
 const DEBUGGER_LOG_LEVELS = ['TRACE', 'DEBUG', 'INFO', 'WARNING', 'ERROR'] as const;
 type DebuggerLogLevel = typeof DEBUGGER_LOG_LEVELS[number];
@@ -413,8 +414,25 @@ export class DapperLaunchesView implements vscode.Disposable {
       return;
     }
 
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(logFile));
-    await vscode.window.showTextDocument(document);
+    const logUri = vscode.Uri.file(logFile);
+    try {
+      if (!(await fileExists(logUri))) {
+        vscode.window.showErrorMessage(`The log file for this launch no longer exists: ${logFile}`);
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Unable to check the log file for this launch: ${message}`);
+      return;
+    }
+
+    try {
+      const document = await vscode.workspace.openTextDocument(logUri);
+      await vscode.window.showTextDocument(document);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Unable to open the log file for this launch: ${message}`);
+    }
   }
 
   public deleteLaunch(element?: LaunchTreeElement): void {
