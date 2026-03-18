@@ -8,7 +8,7 @@ import {
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { AttachRequestArguments, LaunchRequestArguments } from './debugAdapterTypes.js';
 import { PythonDebugAdapterTransport } from './pythonDebugAdapterTransport.js';
-import { logger } from '../utils/logger.js';
+import { DapperDebugSessionRequestHandlers } from './dapperDebugSessionRequests.js';
 
 export { PythonDebugAdapterTransport } from './pythonDebugAdapterTransport.js';
 
@@ -17,11 +17,7 @@ export class DapperDebugSession extends LoggingDebugSession {
   private _configurationDone = false;
   private _isRunning = false;
   private readonly _transport: PythonDebugAdapterTransport;
-  private _eventWaiters: Array<{
-    event: string;
-    filter: (data: any) => boolean;
-    resolve: (data: any) => void;
-  }> = [];
+  private readonly _requestHandlers: DapperDebugSessionRequestHandlers;
 
   public constructor(transportOrSocket?: PythonDebugAdapterTransport | Net.Socket) {
     super();
@@ -29,6 +25,24 @@ export class DapperDebugSession extends LoggingDebugSession {
       ? transportOrSocket
       : new PythonDebugAdapterTransport(transportOrSocket);
     this._transport.attachSession(this);
+    this._requestHandlers = new DapperDebugSessionRequestHandlers({
+      sendRequestToPython: this.sendRequestToPython.bind(this),
+      sendSharedRequestToPython: this._transport.sendSharedRequest.bind(this._transport),
+      formatPythonError: this.formatPythonError.bind(this),
+      sendResponse: (response: DebugProtocol.Response) => {
+        this.sendResponse(response);
+      },
+      setConfigurationDone: (value: boolean) => {
+        this._configurationDone = value;
+      },
+      setRunning: (value: boolean) => {
+        this._isRunning = value;
+      },
+      disposeTransportAttachment: () => {
+        this.disposeTransportAttachment();
+      },
+      hasAttachedSessions: () => this._transport.hasAttachedSessions(),
+    });
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
   }
@@ -42,14 +56,6 @@ export class DapperDebugSession extends LoggingDebugSession {
   }
 
   public handleTransportMessage(message: any): void {
-    const eventName = message.event;
-    const waiterIndex = this._eventWaiters.findIndex(w => w.event === eventName && w.filter(message));
-    if (waiterIndex !== -1) {
-      const waiter = this._eventWaiters[waiterIndex];
-      this._eventWaiters.splice(waiterIndex, 1);
-      waiter.resolve(message);
-    }
-
     this.handleGeneralEvent(message);
   }
 
@@ -135,36 +141,11 @@ export class DapperDebugSession extends LoggingDebugSession {
     return this._transport.sendRequest(command, args, timeoutMs);
   }
 
-  private waitForEvent(event: string, filter: (data: any) => boolean = () => true): Promise<any> {
-    return new Promise(resolve => {
-      this._eventWaiters.push({ event, filter, resolve });
-    });
-  }
-
   protected async initializeRequest(
     response: DebugProtocol.InitializeResponse,
     args: DebugProtocol.InitializeRequestArguments,
   ): Promise<void> {
-    logger.log('initializeRequest: sending to Python');
-    let result: any;
-    try {
-      result = await this._transport.sendSharedRequest('initialize', 'initialize', args);
-      logger.debug(`initializeRequest: got response: ${JSON.stringify(result).substring(0, 200)}`);
-    } catch (e) {
-      logger.error('initializeRequest failed', e);
-      result = { success: true, body: {} };
-    }
-
-    response.body = response.body || {};
-    if (result.success && result.body) {
-      Object.assign(response.body, result.body);
-    }
-
-    response.body.supportsConfigurationDoneRequest = true;
-    response.body.supportsSetVariable = true;
-    response.body.supportsEvaluateForHovers = true;
-
-    this.sendResponse(response);
+    await this._requestHandlers.initializeRequest(response, args);
   }
 
   protected configurationDoneRequest(
@@ -172,12 +153,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.ConfigurationDoneArguments,
     _request?: DebugProtocol.Request,
   ): void {
-    logger.log('configurationDoneRequest: forwarding to Python');
-    this._configurationDone = true;
-    void this._transport.sendSharedRequest('configurationDone', 'configurationDone', args).catch((error) => {
-      logger.error('configurationDoneRequest failed', error);
-    });
-    this.sendResponse(response);
+    this._requestHandlers.configurationDoneRequest(response, args);
   }
 
   protected async launchRequest(
@@ -185,16 +161,7 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: LaunchRequestArguments,
     _request?: DebugProtocol.Request,
   ): Promise<void> {
-    logger.log('launchRequest: forwarding to Python');
-    const result = await this._transport.sendSharedRequest('launch', 'launch', args);
-    logger.log(`launchRequest: response success=${result?.success}`);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      this._isRunning = true;
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.launchRequest(response, args);
   }
 
   protected async disconnectRequest(
@@ -202,242 +169,114 @@ export class DapperDebugSession extends LoggingDebugSession {
     args: DebugProtocol.DisconnectArguments,
     _request?: DebugProtocol.Request,
   ): Promise<void> {
-    this._isRunning = false;
-    this.disposeTransportAttachment();
-    try {
-      if (!this._transport.hasAttachedSessions()) {
-        await this.sendRequestToPython('disconnect', args);
-      }
-    } catch {
-      // Socket may already be closed; ignore
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.disconnectRequest(response, args);
   }
 
   protected async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    logger.debug(`setBreakpoints: source=${args.source?.path ?? '<unknown>'} lines=${(args.breakpoints || []).map(b => b.line).join(',')}`);
-    const result = await this.sendRequestToPython('setBreakpoints', args);
-    logger.debug(`setBreakpoints: response breakpoints=${JSON.stringify(result?.body?.breakpoints?.map((b: any) => ({ line: b.line, verified: b.verified })))}`);
-    response.body = { breakpoints: (result.body && result.body.breakpoints) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.setBreakPointsRequest(response, args);
   }
 
   protected async threadsRequest(response: DebugProtocol.ThreadsResponse, _request?: DebugProtocol.Request): Promise<void> {
-    try {
-      const result = await this.sendRequestToPython('threads', {});
-      response.body = { threads: (result.body && result.body.threads) || [] };
-    } catch {
-      response.body = { threads: [{ id: DapperDebugSession.THREAD_ID, name: 'MainThread' }] };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.threadsRequest(response);
   }
 
   protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments, _request?: DebugProtocol.Request): Promise<void> {
-    try {
-      const result = await this.sendRequestToPython('stackTrace', args);
-      response.body = {
-        stackFrames: (result.body && result.body.stackFrames) || [],
-        totalFrames: (result.body && result.body.totalFrames) || 0,
-      };
-    } catch {
-      response.body = { stackFrames: [], totalFrames: 0 };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.stackTraceRequest(response, args);
   }
 
   protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments, _request?: DebugProtocol.Request): Promise<void> {
-    try {
-      const result = await this.sendRequestToPython('scopes', args);
-      response.body = { scopes: (result.body && result.body.scopes) || [] };
-    } catch {
-      response.body = { scopes: [] };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.scopesRequest(response, args);
   }
 
   protected async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, _request?: DebugProtocol.Request): Promise<void> {
-    try {
-      const result = await this.sendRequestToPython('variables', args);
-      response.body = { variables: (result.body && result.body.variables) || [] };
-    } catch {
-      response.body = { variables: [] };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.variablesRequest(response, args);
   }
 
   protected async attachRequest(response: DebugProtocol.AttachResponse, args: AttachRequestArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this._transport.sendSharedRequest('attach', 'attach', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.attachRequest(response, args);
   }
 
   protected async setFunctionBreakPointsRequest(response: DebugProtocol.SetFunctionBreakpointsResponse, args: DebugProtocol.SetFunctionBreakpointsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('setFunctionBreakpoints', args);
-    response.body = { breakpoints: (result.body && result.body.breakpoints) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.setFunctionBreakPointsRequest(response, args);
   }
 
   protected async setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    await this.sendRequestToPython('setExceptionBreakpoints', args);
-    this.sendResponse(response);
+    await this._requestHandlers.setExceptionBreakPointsRequest(response, args);
   }
 
   protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('continue', args);
-    response.body = { allThreadsContinued: result.body?.allThreadsContinued ?? true };
-    this.sendResponse(response);
+    await this._requestHandlers.continueRequest(response, args);
   }
 
   protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments, _request?: DebugProtocol.Request): Promise<void> {
-    await this.sendRequestToPython('next', args);
-    this.sendResponse(response);
+    await this._requestHandlers.nextRequest(response, args);
   }
 
   protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments, _request?: DebugProtocol.Request): Promise<void> {
-    await this.sendRequestToPython('stepIn', args);
-    this.sendResponse(response);
+    await this._requestHandlers.stepInRequest(response, args);
   }
 
   protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, _request?: DebugProtocol.Request): Promise<void> {
-    await this.sendRequestToPython('stepOut', args);
-    this.sendResponse(response);
+    await this._requestHandlers.stepOutRequest(response, args);
   }
 
   protected async stepInTargetsRequest(response: DebugProtocol.StepInTargetsResponse, args: DebugProtocol.StepInTargetsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('stepInTargets', args);
-    response.body = { targets: (result.body && result.body.targets) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.stepInTargetsRequest(response, args);
   }
 
   protected async pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('pause', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.pauseRequest(response, args);
   }
 
   protected async terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments, _request?: DebugProtocol.Request): Promise<void> {
-    await this.sendRequestToPython('terminate', args);
-    this.sendResponse(response);
+    await this._requestHandlers.terminateRequest(response, args);
   }
 
   protected async loadedSourcesRequest(response: DebugProtocol.LoadedSourcesResponse, args: DebugProtocol.LoadedSourcesArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('loadedSources', args);
-    response.body = { sources: (result.body && result.body.sources) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.loadedSourcesRequest(response, args);
   }
 
   protected async breakpointLocationsRequest(response: DebugProtocol.BreakpointLocationsResponse, args: DebugProtocol.BreakpointLocationsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('breakpointLocations', args);
-    response.body = { breakpoints: (result.body && result.body.breakpoints) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.breakpointLocationsRequest(response, args);
   }
 
   protected async sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('source', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      response.body = { content: result.body?.content ?? '', mimeType: result.body?.mimeType };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.sourceRequest(response, args);
   }
 
   protected async modulesRequest(response: DebugProtocol.ModulesResponse, args: DebugProtocol.ModulesArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('modules', args);
-    response.body = {
-      modules: (result.body && result.body.modules) || [],
-      totalModules: result.body?.totalModules,
-    };
-    this.sendResponse(response);
+    await this._requestHandlers.modulesRequest(response, args);
   }
 
   protected async setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('setVariable', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      response.body = result.body ?? {};
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.setVariableRequest(response, args);
   }
 
   protected async setExpressionRequest(response: DebugProtocol.SetExpressionResponse, args: DebugProtocol.SetExpressionArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('setExpression', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      response.body = { value: result.body?.value ?? '', type: result.body?.type };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.setExpressionRequest(response, args);
   }
 
   protected async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('evaluate', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      response.body = result.body ?? { result: '', variablesReference: 0 };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.evaluateRequest(response, args);
   }
 
   protected async dataBreakpointInfoRequest(response: DebugProtocol.DataBreakpointInfoResponse, args: DebugProtocol.DataBreakpointInfoArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('dataBreakpointInfo', args);
-    response.body = result.body ?? { dataId: null, description: 'Unavailable' };
-    this.sendResponse(response);
+    await this._requestHandlers.dataBreakpointInfoRequest(response, args);
   }
 
   protected async setDataBreakpointsRequest(response: DebugProtocol.SetDataBreakpointsResponse, args: DebugProtocol.SetDataBreakpointsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('setDataBreakpoints', args);
-    response.body = { breakpoints: (result.body && result.body.breakpoints) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.setDataBreakpointsRequest(response, args);
   }
 
   protected async exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('exceptionInfo', args);
-    if (result && result.success === false) {
-      response.success = false;
-      response.message = this.formatPythonError(result);
-    } else {
-      response.body = result.body ?? { exceptionId: '', breakMode: 'never' };
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.exceptionInfoRequest(response, args);
   }
 
   protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, _request?: DebugProtocol.Request): Promise<void> {
-    const result = await this.sendRequestToPython('completions', args);
-    response.body = { targets: (result.body && result.body.targets) || [] };
-    this.sendResponse(response);
+    await this._requestHandlers.completionsRequest(response, args);
   }
 
   protected async customRequest(command: string, response: DebugProtocol.Response, args: any, _request?: DebugProtocol.Request): Promise<void> {
-    if (command.startsWith('dapper/')) {
-      try {
-        const result = await this.sendRequestToPython(command, args || {});
-        if (result && result.success === false) {
-          response.success = false;
-          response.message = this.formatPythonError(result);
-        } else {
-          response.body = result?.body || {};
-        }
-      } catch (e) {
-        response.success = false;
-        response.message = e instanceof Error ? e.message : String(e);
-      }
-    } else {
-      response.success = false;
-      response.message = `Unrecognized custom request: ${command}`;
-    }
-    this.sendResponse(response);
+    await this._requestHandlers.customRequest(command, response, args);
   }
 }
