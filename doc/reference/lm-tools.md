@@ -308,6 +308,17 @@ Important behavior:
 - Dapper may inject itself through `PYTHONPATH` instead of installing into the
   selected workspace interpreter.
 - Set `waitForStop: true` when the next tool call needs a paused frame.
+- The result now includes `readiness` and `readyToContinue` so callers can tell
+  whether breakpoint registration has settled before trying to resume.
+- The result also includes `trackedSessionsBeforeLaunch`, `trackedSessions`, and
+  `warnings`. Treat a non-empty `warnings` list as a signal to inspect existing
+  sessions and terminate stale ones before continuing the investigation.
+- When another tracked session already targets the same `program` or `module`,
+  `warnings` includes a stronger same-target warning because duplicate repros on
+  the same fixture are the easiest way to leave accidental sessions behind.
+- When `waitForStop: true` succeeds, `readiness.lifecycleState` typically ends
+  up at `stopped` and `readyToContinue` should be `true` unless breakpoint
+  registration failed.
 
 ## dapper_state
 
@@ -336,6 +347,8 @@ Important behavior:
   ended, or the target thread/session terminated instead.
 - Without `report: true`, the tool returns acknowledgement-style statuses such
   as `running`, `pausing`, `restarting`, and `terminating`.
+- Use `action: terminate` as the standard cleanup path after an investigative
+  launch when you do not intend to keep the session alive.
 
 ## dapper_evaluate and dapper_variable
 
@@ -372,22 +385,56 @@ Important behavior:
 
 ## dapper_session_info
 
-`dapper_session_info` returns metadata about tracked Dapper sessions.
+`dapper_session_info` is the single public session-inspection tool. It returns
+session metadata together with debugger readiness and breakpoint lifecycle
+details.
 
 Important behavior:
 
 - It can list tracked sessions even when more than one exists.
 - Only the active session is guaranteed to have a live `DebugSession`.
-- Other tracked sessions may show `state: unknown` with minimal configuration
-  metadata.
+- A targeted lookup with `sessionId` returns the richer single-session payload;
+  an untargeted call returns `{ sessions: [...] }` for enumeration.
+- The payload includes `lifecycleState`, `breakpointRegistrationComplete`,
+  `lastTransition`, `lastError`, `readyToContinue`, and grouped breakpoint
+  counts plus details.
+- Breakpoint details are split into `breakpoints.details.accepted`,
+  `breakpoints.details.pending`, and `breakpoints.details.rejected`.
+- `readyToContinue: false` usually means one of three things: breakpoint
+  verification is still pending, one or more breakpoints were rejected, or the
+  adapter recorded a readiness error.
+- Non-active tracked sessions can still be reported from the journal, but they
+  may have older snapshot state than the active VS Code session.
+
+## Readiness Troubleshooting
+
+Use `dapper_session_info` first when the debugger appears stalled or reports an
+unexpected status.
+
+Common interpretations:
+
+- `lifecycleState: waiting-for-breakpoints` means Dapper is still waiting for
+  adapter verification results.
+- `breakpoints.rejected > 0` means at least one breakpoint did not bind to
+  executable code; check `breakpoints.details.rejected[*].verificationMessage`.
+- `lastError` means the journal or adapter recorded a concrete readiness or
+  snapshot failure and should be surfaced directly instead of treating the
+  session as generically unknown.
+- A failed `continue` or `step` with a timeout message usually means
+  `configurationDone` never observed breakpoint verification reaching a terminal
+  state.
 
 ## Recommended Workflow While Paused
 
 1. Call `dapper_session_info` if you need to identify the session.
-2. Call `dapper_state` with `mode: snapshot` to understand the current stop.
-3. Use `dapper_variable` for structured objects and `dapper_evaluate` for
+2. Confirm `readyToContinue` and inspect any pending or rejected breakpoints.
+3. Call `dapper_state` with `mode: snapshot` to understand the current stop.
+4. Use `dapper_variable` for structured objects and `dapper_evaluate` for
    focused scalar expressions.
-4. Use `dapper_execution` with `report: true` to advance execution while
+5. Use `dapper_execution` with `report: true` to advance execution while
    preserving checkpoint context.
-5. Use `dapper_breakpoints` with `action: list` and `action: add/remove/clear`
+6. Use `dapper_breakpoints` with `action: list` and `action: add/remove/clear`
    when checking whether a breakpoint is present but not yet verified.
+7. When the investigation is complete, call `dapper_execution` with
+  `action: terminate` unless you intentionally want to keep the session around
+  for follow-up work.

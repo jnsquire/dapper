@@ -50,6 +50,11 @@ describe('LaunchTool extension-host harness', () => {
     expect(result.resolvedTarget).toEqual({ kind: 'file', value: filePath });
     expect(result.configuration.program).toBe(filePath);
     expect(result.pythonPath).toContain('.venv');
+    expect(result.readiness).toMatchObject({
+      lifecycleState: 'initializing',
+      breakpointRegistrationComplete: false,
+    });
+    expect(result.readyToContinue).toBe(false);
   });
 
   it('preserves an explicit stopOnEntry=false override for current-file launches', async () => {
@@ -292,6 +297,9 @@ describe('LaunchTool extension-host harness', () => {
     const result = await invokePromise;
     expect(result.waitedForStop).toBe(true);
     expect(result.stopped).toBe(true);
+    expect(result.readiness).toMatchObject({
+      lifecycleState: 'stopped',
+    });
     expect(result.snapshot).toMatchObject({ stopReason: 'entry' });
   });
 
@@ -384,6 +392,83 @@ describe('LaunchTool extension-host harness', () => {
     expect(result.waitedForStop).toBe(true);
     expect(result.stopped).toBe(true);
     expect(result.snapshot).toMatchObject({ stopReason: 'breakpoint' });
+  });
+
+  it('warns when tracked sessions already exist before a new launch starts', async () => {
+    const stalePath = path.join(tmpRoot, 'stale.py');
+    const newPath = path.join(tmpRoot, 'fresh.py');
+    fs.writeFileSync(stalePath, 'print("stale")\n');
+    fs.writeFileSync(newPath, 'print("fresh")\n');
+
+    const staleSession: vscode.DebugSession = {
+      id: 'stale-session',
+      type: 'dapper',
+      name: 'stale.py',
+      configuration: {
+        type: 'dapper',
+        request: 'launch',
+        program: stalePath,
+      },
+      customRequest: vi.fn(async () => undefined),
+    } as unknown as vscode.DebugSession;
+    registry.getOrCreate(staleSession);
+
+    const result = await invokeLaunchTool(launchTool, { target: { file: newPath } });
+
+    expect(result.trackedSessionsBeforeLaunch).toBe(1);
+    expect(result.trackedSessions).toBe(2);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('1 tracked Dapper session was already active before this launch.'),
+    ]);
+    expect(result.warnings[0]).toContain("dapper_execution with action='terminate'");
+  });
+
+  it('warns when a tracked session already targets the same program', async () => {
+    const filePath = path.join(tmpRoot, 'same_target.py');
+    fs.writeFileSync(filePath, 'print("same-target")\n');
+
+    const staleSession: vscode.DebugSession = {
+      id: 'same-target-stale-session',
+      type: 'dapper',
+      name: 'same_target.py',
+      configuration: {
+        type: 'dapper',
+        request: 'launch',
+        program: filePath,
+      },
+      customRequest: vi.fn(async () => undefined),
+    } as unknown as vscode.DebugSession;
+    registry.getOrCreate(staleSession);
+
+    const result = await invokeLaunchTool(launchTool, { target: { file: filePath } });
+
+    expect(result.trackedSessionsBeforeLaunch).toBe(1);
+    expect(result.trackedSessions).toBe(2);
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('already targeting the same program'),
+    ]));
+    expect(result.warnings.some((warning: string) => warning.includes(filePath))).toBe(true);
+  });
+
+  it('warns when a tracked session already targets the same module', async () => {
+    const staleSession: vscode.DebugSession = {
+      id: 'same-module-stale-session',
+      type: 'dapper',
+      name: 'pkg.main',
+      configuration: {
+        type: 'dapper',
+        request: 'launch',
+        module: 'pkg.main',
+      },
+      customRequest: vi.fn(async () => undefined),
+    } as unknown as vscode.DebugSession;
+    registry.getOrCreate(staleSession);
+
+    const result = await invokeLaunchTool(launchTool, { target: { module: 'pkg.main' } });
+
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('already targeting the same module (pkg.main)'),
+    ]));
   });
 
   it('returns an error result when the tool receives conflicting targets', async () => {

@@ -3,6 +3,127 @@ import { describe, expect, it, vi } from 'vitest';
 import { StateJournal } from '../src/agent/stateJournal.js';
 
 describe('StateJournal', () => {
+  it('starts in initializing state with incomplete breakpoint registration', () => {
+    const session = {
+      id: 'session-initial',
+      customRequest: vi.fn(),
+    } as any;
+
+    const journal = new StateJournal(session);
+
+    expect(journal.readinessInfo).toMatchObject({
+      lifecycleState: 'initializing',
+      breakpointRegistrationComplete: false,
+      lastTransition: {
+        state: 'initializing',
+        reason: 'Debug session created',
+      },
+    });
+  });
+
+  it('tracks breakpoint registration completion from pending to verified', () => {
+    const session = {
+      id: 'session-breakpoints',
+      customRequest: vi.fn(),
+    } as any;
+
+    const journal = new StateJournal(session);
+
+    journal.updateBreakpointVerification('/workspace/app.py', 10, {
+      verificationState: 'pending',
+    });
+
+    expect(journal.readinessInfo).toMatchObject({
+      lifecycleState: 'waiting-for-breakpoints',
+      breakpointRegistrationComplete: false,
+    });
+
+    journal.updateBreakpointVerification('/workspace/app.py', 10, {
+      verificationState: 'verified',
+      verified: true,
+    });
+
+    expect(journal.readinessInfo).toMatchObject({
+      lifecycleState: 'ready',
+      breakpointRegistrationComplete: true,
+      lastTransition: {
+        state: 'ready',
+        reason: 'Breakpoint verification updated for /workspace/app.py:10',
+      },
+    });
+  });
+
+  it('records snapshot failures as errors and clears them after recovery', async () => {
+    const session = {
+      id: 'session-error-recovery',
+      customRequest: vi.fn()
+        .mockRejectedValueOnce(new Error('adapter offline'))
+        .mockResolvedValueOnce({
+          stopReason: 'pause',
+          threadId: 7,
+          location: '/workspace/app.py:17 in worker',
+          callStack: [{ name: 'worker', file: '/workspace/app.py', line: 17 }],
+          locals: { value: '42' },
+          globals: {},
+          stoppedThreads: [7],
+          runningThreads: [],
+        }),
+    } as any;
+
+    const journal = new StateJournal(session);
+
+    const failedSnapshot = await journal.getSnapshot(7);
+    expect(failedSnapshot).toBeUndefined();
+    expect(journal.readinessInfo).toMatchObject({
+      lifecycleState: 'error',
+      lastError: 'adapter offline',
+      lastTransition: {
+        state: 'error',
+        reason: 'Failed to retrieve debug snapshot',
+      },
+    });
+
+    journal.onDidSendMessage({
+      type: 'event',
+      event: 'stopped',
+      body: { threadId: 7, reason: 'pause' },
+    });
+
+    await vi.waitFor(() => {
+      expect(journal.readinessInfo).toMatchObject({
+        lifecycleState: 'stopped',
+        lastError: undefined,
+      });
+    });
+  });
+
+  it('reports aggregate breakpoint status counts', () => {
+    const session = {
+      id: 'session-counts',
+      customRequest: vi.fn(),
+    } as any;
+
+    const journal = new StateJournal(session);
+    journal.updateBreakpointVerification('/workspace/app.py', 3, {
+      verificationState: 'verified',
+      verified: true,
+    });
+    journal.updateBreakpointVerification('/workspace/app.py', 4, {
+      verificationState: 'pending',
+    });
+    journal.updateBreakpointVerification('/workspace/app.py', 5, {
+      verificationState: 'rejected',
+      verified: false,
+      verificationMessage: 'No executable code at line 5',
+    });
+
+    expect(journal.getBreakpointStatusCounts()).toEqual({
+      verified: 1,
+      pending: 1,
+      rejected: 1,
+    });
+  });
+
   it('uses the selected thread id returned by agentSnapshot', async () => {
     const session = {
       id: 'session-1',

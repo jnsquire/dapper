@@ -107,6 +107,9 @@ Confirm:
 - exactly one relevant Dapper session is reported
 - the session program points at `app.py`
 - the session state is `stopped`
+- `breakpointRegistrationComplete == true`
+- `readyToContinue == true`
+- the accepted breakpoint count is at least `1`
 
 ### 6. Read a snapshot at the first stop
 
@@ -310,6 +313,7 @@ Expected outcome:
 - `resolvedTarget.kind == "module"`
 - `resolvedTarget.value == "agent_fixture_pkg"`
 - execution stops first at `BREAKPOINT: inventory-summary`
+- `readyToContinue == true`
 
 ### 5. Snapshot the first module stop
 

@@ -6,18 +6,23 @@ import {
   ModuleEvent, ExitedEvent, Event,
 } from '@vscode/debugadapter';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { BreakpointVerificationRecord } from '../agent/stateJournal.js';
+import { toBreakpointVerificationRecord } from '../agent/stateJournal.js';
 import type { AttachRequestArguments, LaunchRequestArguments } from './debugAdapterTypes.js';
 import { PythonDebugAdapterTransport } from './pythonDebugAdapterTransport.js';
-import { DapperDebugSessionRequestHandlers } from './dapperDebugSessionRequests.js';
+import { DapperDebugSessionRequestHandlers, type ReadinessGateState } from './dapperDebugSessionRequests.js';
 
 export { PythonDebugAdapterTransport } from './pythonDebugAdapterTransport.js';
 
 export class DapperDebugSession extends LoggingDebugSession {
+  private static readonly READINESS_POLL_INTERVAL_MS = 10;
   private static readonly THREAD_ID = 1;
   private _configurationDone = false;
   private _isRunning = false;
   private readonly _transport: PythonDebugAdapterTransport;
   private readonly _requestHandlers: DapperDebugSessionRequestHandlers;
+  private readonly _breakpointVerification = new Map<string, BreakpointVerificationRecord>();
+  private _breakpointReadinessError?: string;
 
   public constructor(transportOrSocket?: PythonDebugAdapterTransport | Net.Socket) {
     super();
@@ -42,6 +47,14 @@ export class DapperDebugSession extends LoggingDebugSession {
         this.disposeTransportAttachment();
       },
       hasAttachedSessions: () => this._transport.hasAttachedSessions(),
+      setPendingBreakpoints: (args: DebugProtocol.SetBreakpointsArguments) => {
+        this._setPendingBreakpoints(args);
+      },
+      updateBreakpointVerification: (args: DebugProtocol.SetBreakpointsArguments, result: any) => {
+        this._updateBreakpointVerificationFromResult(args, result);
+      },
+      getReadinessGateState: () => this._getReadinessGateState(),
+      waitForReadinessGateState: (timeoutMs: number) => this._waitForReadinessGateState(timeoutMs),
     });
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
@@ -98,6 +111,7 @@ export class DapperDebugSession extends LoggingDebugSession {
         this.sendEvent(new ThreadEvent(body.reason, body.threadId));
         break;
       case 'breakpoint':
+        this._updateBreakpointVerificationFromEvent(body);
         this.sendEvent(new BreakpointEvent(body.reason, body.breakpoint));
         break;
       case 'loadedSource':
@@ -141,6 +155,139 @@ export class DapperDebugSession extends LoggingDebugSession {
     return this._transport.sendRequest(command, args, timeoutMs);
   }
 
+  private _setPendingBreakpoints(args: DebugProtocol.SetBreakpointsArguments): void {
+    const file = args.source?.path;
+    if (!file) {
+      return;
+    }
+
+    const requestedLines = new Set((args.breakpoints ?? []).map((breakpoint) => breakpoint.line));
+    for (const key of Array.from(this._breakpointVerification.keys())) {
+      if (key.startsWith(`${file}:`)) {
+        const line = Number(key.slice(file.length + 1));
+        if (!requestedLines.has(line)) {
+          this._breakpointVerification.delete(key);
+        }
+      }
+    }
+
+    for (const line of requestedLines) {
+      this._breakpointVerification.set(this._breakpointKey(file, line), {
+        verificationState: 'pending',
+      });
+    }
+    this._breakpointReadinessError = undefined;
+  }
+
+  private _updateBreakpointVerificationFromResult(args: DebugProtocol.SetBreakpointsArguments, result: any): void {
+    const file = args.source?.path;
+    if (!file) {
+      return;
+    }
+
+    const breakpoints = Array.isArray(result?.body?.breakpoints) ? result.body.breakpoints : [];
+    for (let index = 0; index < breakpoints.length; index++) {
+      const breakpoint = breakpoints[index];
+      const line = typeof breakpoint?.line === 'number'
+        ? breakpoint.line
+        : args.breakpoints?.[index]?.line;
+      if (typeof line !== 'number') {
+        continue;
+      }
+      const record = toBreakpointVerificationRecord(breakpoint?.verified, typeof breakpoint?.message === 'string' ? breakpoint.message : undefined);
+      if (record) {
+        this._breakpointVerification.set(this._breakpointKey(file, line), record);
+      }
+    }
+    this._breakpointReadinessError = undefined;
+  }
+
+  private _updateBreakpointVerificationFromEvent(body: Record<string, unknown>): void {
+    const breakpoint = (body['breakpoint'] as Record<string, unknown> | undefined) ?? {};
+    const source = (breakpoint['source'] as Record<string, unknown> | undefined) ?? {};
+    const file = typeof source['path'] === 'string' ? source['path'] : undefined;
+    const line = typeof breakpoint['line'] === 'number' ? breakpoint['line'] : undefined;
+    if (!file || line === undefined) {
+      return;
+    }
+
+    const record = toBreakpointVerificationRecord(
+      breakpoint['verified'],
+      typeof breakpoint['message'] === 'string' ? breakpoint['message'] : undefined,
+    );
+    if (record) {
+      this._breakpointVerification.set(this._breakpointKey(file, line), record);
+    }
+  }
+
+  private _getReadinessGateState(): ReadinessGateState {
+    let pendingBreakpoints = 0;
+    let rejectedBreakpoints = 0;
+    let firstRejected: BreakpointVerificationRecord | undefined;
+
+    for (const record of this._breakpointVerification.values()) {
+      if (record.verificationState === 'pending') {
+        pendingBreakpoints++;
+      } else if (record.verificationState === 'rejected') {
+        rejectedBreakpoints++;
+        firstRejected ??= record;
+      }
+    }
+
+    if (this._breakpointReadinessError !== undefined) {
+      return {
+        kind: 'error',
+        lastError: this._breakpointReadinessError,
+      };
+    }
+
+    if (rejectedBreakpoints > 0) {
+      return {
+        kind: 'rejected',
+        rejectedBreakpoints,
+        firstRejected,
+      };
+    }
+
+    if (pendingBreakpoints > 0) {
+      return {
+        kind: 'pending',
+        pendingBreakpoints,
+      };
+    }
+
+    return { kind: 'ready' };
+  }
+
+  private async _waitForReadinessGateState(timeoutMs: number): Promise<ReadinessGateState> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const readiness = this._getReadinessGateState();
+      if (readiness.kind !== 'pending') {
+        return readiness;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, DapperDebugSession.READINESS_POLL_INTERVAL_MS);
+      });
+    }
+
+    const readiness = this._getReadinessGateState();
+    if (readiness.kind !== 'pending') {
+      return readiness;
+    }
+
+    return {
+      kind: 'timedOut',
+      pendingBreakpoints: readiness.pendingBreakpoints,
+    };
+  }
+
+  private _breakpointKey(file: string, line: number): string {
+    return `${file}:${line}`;
+  }
+
   protected async initializeRequest(
     response: DebugProtocol.InitializeResponse,
     args: DebugProtocol.InitializeRequestArguments,
@@ -148,12 +295,12 @@ export class DapperDebugSession extends LoggingDebugSession {
     await this._requestHandlers.initializeRequest(response, args);
   }
 
-  protected configurationDoneRequest(
+  protected async configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
     args: DebugProtocol.ConfigurationDoneArguments,
     _request?: DebugProtocol.Request,
-  ): void {
-    this._requestHandlers.configurationDoneRequest(response, args);
+  ): Promise<void> {
+    await this._requestHandlers.configurationDoneRequest(response, args);
   }
 
   protected async launchRequest(

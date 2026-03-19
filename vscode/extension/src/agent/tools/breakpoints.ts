@@ -23,6 +23,7 @@ interface BreakpointInfo {
   verified?: boolean;
   verificationState?: 'verified' | 'pending' | 'rejected';
   verificationMessage?: string;
+  rejectionReason?: string;
   condition?: string;
   hitCondition?: string;
   logMessage?: string;
@@ -122,6 +123,9 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
         info.verificationState = cachedVerification.verificationState;
         if (cachedVerification.verificationMessage) {
           info.verificationMessage = cachedVerification.verificationMessage;
+          if (cachedVerification.verificationState === 'rejected') {
+            info.rejectionReason = cachedVerification.verificationMessage;
+          }
         }
       }
       results.push(info);
@@ -289,6 +293,12 @@ export class BreakpointsTool implements vscode.LanguageModelTool<BreakpointsTool
         hitCondition: bp.hitCondition,
         logMessage: bp.logMessage,
       }));
+
+    for (const breakpoint of activeBreakpoints) {
+      resolved.journal.updateBreakpointVerification(uri.fsPath, breakpoint.line, {
+        verificationState: 'pending',
+      });
+    }
 
     try {
       const result = await resolved.session.customRequest('setBreakpoints', {

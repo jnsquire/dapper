@@ -79,6 +79,8 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
 - Frame navigation updates the wrapper-managed `frameIndex`, and later `print`, `locals`, and
   `globals`, and `inspect` calls use that selected frame.
 - `launch` may start an additional Dapper session even when another session is already active.
+- `launch` now returns `trackedSessionsBeforeLaunch`, `trackedSessions`, and `warnings` so
+  agents can detect stale sessions before they stack up.
 - Launch debuggee arguments use `--` as the end-of-options marker and pass all remaining tokens through as `args`.
 - `break` first resolves explicit file paths, then unique Python filename stems in the workspace,
   then function names found in the selected session's current call stack; it also accepts
@@ -93,6 +95,22 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
   the workspace folder used for tool execution in multi-root/nested-workspace
   scenarios.
 - Tools do not fall back to arbitrary non-Dapper sessions.
+
+### Launch and Session Readiness
+
+- `dapper_launch` now returns `readiness` and `readyToContinue` in addition to
+  launch metadata.
+- `dapper_launch` also returns `warnings` when tracked sessions already exist,
+  with a stronger warning when another session already targets the same
+  `program` or `module`.
+- `dapper_session_info` is the only public session-status surface; it now
+  includes readiness fields, breakpoint counts, grouped breakpoint details,
+  the last transition, and the last recorded error.
+- If `readyToContinue` is false, check `breakpoints.pending`,
+  `breakpoints.rejected`, and `lastError` before issuing execution commands.
+- For investigative launches, the expected cleanup path is
+  `dapper_execution` with `action: terminate` unless the session is being kept
+  alive intentionally.
 
 ### Snapshot and Journal Semantics
 
@@ -133,6 +151,8 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
   adapter state is definitive.
 - If the adapter reports `verified: false` without a rejection message, the tool now reports
   `verificationState: pending` instead of a hard `verified: false`.
+- Rejected breakpoints also expose `rejectionReason`, which mirrors the adapter
+  verification message when one is available.
 - If no active Dapper session is available, breakpoint data still returns, but `verified` may be
   missing.
 
@@ -140,7 +160,18 @@ The public tool surface currently includes `dapper_cli`, `dapper_launch`, `dappe
 
 - `dapper_session_info` can enumerate tracked journals, but only the active VS Code session has a
   live `DebugSession` object.
-- Non-active sessions may therefore appear with `state: unknown` and a minimal configuration object.
+- Non-active sessions may therefore carry stale runtime state even though the
+  journal can still report readiness, breakpoint counts, and the last cached
+  snapshot metadata.
+
+### Readiness Failures
+
+- Execution requests now fail early when breakpoint verification is still
+  pending or when a breakpoint was rejected.
+- `configurationDone` waits for breakpoint verification and returns a concrete
+  timeout message if the adapter never reaches a terminal readiness state.
+- When debugging agent issues, prefer inspecting `dapper_session_info` before
+  treating a session as generically broken.
 
 ### Fixture Launch Configs
 

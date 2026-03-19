@@ -69,6 +69,39 @@ export interface BreakpointVerificationRecord {
   verificationMessage?: string;
 }
 
+export interface BreakpointVerificationSummary extends BreakpointVerificationRecord {
+  file: string;
+  line: number;
+}
+
+export interface BreakpointStatusCounts {
+  verified: number;
+  pending: number;
+  rejected: number;
+}
+
+export type SessionLifecycleState =
+  | 'initializing'
+  | 'waiting-for-breakpoints'
+  | 'ready'
+  | 'running'
+  | 'stopped'
+  | 'error'
+  | 'unknown';
+
+export interface SessionTransitionRecord {
+  state: SessionLifecycleState;
+  reason: string;
+  timestamp: number;
+}
+
+export interface SessionReadinessInfo {
+  lifecycleState: SessionLifecycleState;
+  breakpointRegistrationComplete: boolean;
+  lastTransition: SessionTransitionRecord;
+  lastError?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ring buffer
 // ---------------------------------------------------------------------------
@@ -127,6 +160,11 @@ export class StateJournal implements vscode.DebugAdapterTracker {
   private _breakpointVerification = new Map<string, BreakpointVerificationRecord>();
   private _session: vscode.DebugSession;
   private _disposed = false;
+  private _lastTransition: SessionTransitionRecord = {
+    state: 'initializing',
+    reason: 'Debug session created',
+    timestamp: Date.now(),
+  };
 
   private _lastError: string | undefined;
 
@@ -147,10 +185,17 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     const body = (message['body'] as Record<string, unknown>) ?? {};
 
     switch (event) {
+      case 'initialized':
+        this._setLifecycleState(
+          this._isBreakpointRegistrationComplete() ? 'ready' : 'waiting-for-breakpoints',
+          'Adapter finished initialize handshake',
+        );
+        break;
       case 'stopped':
         this._onStopped(body);
         break;
       case 'continued':
+        this._setLifecycleState('running', `Thread ${body['threadId'] ?? '?'} continued`);
         this._recordEntry('continued', `Thread ${body['threadId'] ?? '?'} continued`);
         break;
       case 'thread':
@@ -172,6 +217,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
         break;
       }
       case 'terminated':
+        this._setLifecycleState('unknown', 'Debug session terminated');
         this._recordEntry('terminated', 'Debug session terminated');
         break;
     }
@@ -203,17 +249,48 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     return this._breakpointVerification.get(this._breakpointKey(file, line));
   }
 
+  getBreakpointVerifications(): BreakpointVerificationSummary[] {
+    return Array.from(this._breakpointVerification.entries())
+      .map(([key, record]) => {
+        const separator = key.lastIndexOf(':');
+        const file = separator >= 0 ? key.slice(0, separator) : key;
+        const line = separator >= 0 ? Number(key.slice(separator + 1)) : Number.NaN;
+        return {
+          file,
+          line,
+          ...record,
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.line));
+  }
+
+  getBreakpointStatusCounts(): BreakpointStatusCounts {
+    const counts: BreakpointStatusCounts = {
+      verified: 0,
+      pending: 0,
+      rejected: 0,
+    };
+
+    for (const record of this._breakpointVerification.values()) {
+      counts[record.verificationState]++;
+    }
+
+    return counts;
+  }
+
   updateBreakpointVerification(
     file: string,
     line: number,
     record: BreakpointVerificationRecord,
   ): void {
     this._breakpointVerification.set(this._breakpointKey(file, line), record);
+    this._refreshBreakpointRegistrationState(`Breakpoint verification updated for ${file}:${line}`);
   }
 
   clearBreakpointVerifications(file?: string): void {
     if (!file) {
       this._breakpointVerification.clear();
+      this._refreshBreakpointRegistrationState('Cleared cached breakpoint verifications');
       return;
     }
 
@@ -223,10 +300,12 @@ export class StateJournal implements vscode.DebugAdapterTracker {
         this._breakpointVerification.delete(key);
       }
     }
+    this._refreshBreakpointRegistrationState(`Cleared cached breakpoint verifications for ${file}`);
   }
 
   deleteBreakpointVerification(file: string, line: number): void {
     this._breakpointVerification.delete(this._breakpointKey(file, line));
+    this._refreshBreakpointRegistrationState(`Deleted cached breakpoint verification for ${file}:${line}`);
   }
 
   /**
@@ -246,7 +325,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
         return snap;
       }
     } catch (err: unknown) {
-      this._lastError = err instanceof Error ? err.message : String(err);
+      this._setLifecycleState('error', 'Failed to retrieve debug snapshot', err instanceof Error ? err.message : String(err));
     }
     return this._lastSnapshot;
   }
@@ -256,6 +335,15 @@ export class StateJournal implements vscode.DebugAdapterTracker {
    */
   get lastError(): string | undefined {
     return this._lastError;
+  }
+
+  get readinessInfo(): SessionReadinessInfo {
+    return {
+      lifecycleState: this._lastTransition.state,
+      breakpointRegistrationComplete: this._isBreakpointRegistrationComplete(),
+      lastTransition: { ...this._lastTransition },
+      lastError: this._lastError,
+    };
   }
 
   /**
@@ -319,6 +407,8 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     const threadId = (body['threadId'] as number) ?? 0;
     const reason = (body['reason'] as string) ?? 'breakpoint';
 
+    this._setLifecycleState('stopped', `Stopped: ${reason} on thread ${threadId}`);
+
     const entry = this._recordEntry('stopped', `Stopped: ${reason} on thread ${threadId}`);
 
     // Snapshot capture happens asynchronously; the last snapshot will be
@@ -361,6 +451,7 @@ export class StateJournal implements vscode.DebugAdapterTracker {
       this._lastSnapshot = snapshot;
     }
     this._lastError = undefined;
+    this._setLifecycleState('stopped', `Captured snapshot for stopped thread ${threadId}`);
   }
 
   private async _requestSnapshot(options: {
@@ -428,6 +519,46 @@ export class StateJournal implements vscode.DebugAdapterTracker {
     if (record) {
       this.updateBreakpointVerification(file, line, record);
     }
+  }
+
+  private _refreshBreakpointRegistrationState(reason: string): void {
+    const hasPendingBreakpoints = this._hasPendingBreakpointVerifications();
+
+    if (hasPendingBreakpoints) {
+      this._setLifecycleState('waiting-for-breakpoints', reason);
+      return;
+    }
+
+    if (this._lastTransition.state === 'initializing' || this._lastTransition.state === 'waiting-for-breakpoints') {
+      this._setLifecycleState('ready', reason);
+    }
+  }
+
+  private _setLifecycleState(state: SessionLifecycleState, reason: string, error?: string): void {
+    this._lastTransition = {
+      state,
+      reason,
+      timestamp: Date.now(),
+    };
+
+    if (error !== undefined) {
+      this._lastError = error;
+    } else if (state !== 'error') {
+      this._lastError = undefined;
+    }
+  }
+
+  private _isBreakpointRegistrationComplete(): boolean {
+    if (this._lastTransition.state === 'initializing') {
+      return false;
+    }
+
+    return !this._hasPendingBreakpointVerifications();
+  }
+
+  private _hasPendingBreakpointVerifications(): boolean {
+    return Array.from(this._breakpointVerification.values())
+      .some((record) => record.verificationState === 'pending');
   }
 
   private _breakpointKey(file: string, line: number): string {

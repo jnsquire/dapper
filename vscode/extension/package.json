@@ -80,8 +80,8 @@
         "displayName": "Dapper: Launch Python Debug Session",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "dapperLaunch",
-        "userDescription": "Launch Python code under a new Dapper debug session.",
-        "modelDescription": "Start a new Dapper Python debug session for a file, module, or named Dapper launch configuration. This tool prefers the project interpreter when possible, including explicit pythonPath or venvPath hints, and can wait for the first stop before returning.",
+        "userDescription": "Launch Python code under a new Dapper debug session and warn about stale tracked sessions.",
+        "modelDescription": "Start a Dapper Python debug session for a file, module, or named configuration. Prefers the project interpreter when possible, can wait for the first stop, and warns when other tracked sessions are already active, especially on the same program or module.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -208,8 +208,8 @@
         "displayName": "Dapper: Execute Debug Action",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "dapperExecution",
-        "userDescription": "Control Python debug execution, optionally waiting for the next stop and returning a report.",
-        "modelDescription": "Run a Python debug action such as next, stepIn, stepOut, continue, pause, restart, or terminate. Set `report` to true for next/stepIn/stepOut/continue to wait for the next stop and return a snapshot plus diff.",
+        "userDescription": "Control Python debug execution, including terminate for session cleanup.",
+        "modelDescription": "Run a Python debug action such as next, stepIn, stepOut, continue, pause, restart, or terminate. Use terminate for cleanup; use `report: true` with next, stepIn, stepOut, or continue to wait for the next stop and return a snapshot plus diff.",
         "inputSchema": {
           "type": "object",
           "required": [
@@ -368,8 +368,8 @@
         "displayName": "Dapper: Session Info",
         "canBeReferencedInPrompt": true,
         "toolReferenceName": "dapperSessionInfo",
-        "userDescription": "Get metadata about active Dapper Python debug sessions.",
-        "modelDescription": "Get metadata about the active Dapper Python debug session(s): program being debugged, session state, breakpoint summary, and available capabilities.",
+        "userDescription": "Get metadata, readiness, and breakpoint lifecycle details for active Dapper Python debug sessions.",
+        "modelDescription": "Get metadata about the active Dapper Python debug session or sessions, including debugger readiness, breakpoint registration completion, accepted or pending or rejected breakpoints, the last transition, and the last debugger-side error.",
         "inputSchema": {
           "type": "object",
           "properties": {

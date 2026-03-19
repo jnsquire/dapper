@@ -1,10 +1,19 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { BreakpointVerificationRecord } from '../agent/stateJournal.js';
 
 import type { AttachRequestArguments, LaunchRequestArguments } from './debugAdapterTypes.js';
 import { logger } from '../utils/logger.js';
 
 type SendRequest = (command: string, args?: any, timeoutMs?: number) => Promise<any>;
 type SendSharedRequest = (key: string, command: string, args?: any, timeoutMs?: number) => Promise<any>;
+const CONFIGURATION_DONE_READINESS_TIMEOUT_MS = 5_000;
+
+export type ReadinessGateState =
+  | { kind: 'ready' }
+  | { kind: 'pending'; pendingBreakpoints: number }
+  | { kind: 'rejected'; rejectedBreakpoints: number; firstRejected?: BreakpointVerificationRecord }
+  | { kind: 'error'; lastError: string }
+  | { kind: 'timedOut'; pendingBreakpoints: number };
 
 interface SessionControls {
   sendRequestToPython: SendRequest;
@@ -15,10 +24,41 @@ interface SessionControls {
   setRunning(value: boolean): void;
   disposeTransportAttachment(): void;
   hasAttachedSessions(): boolean;
+  setPendingBreakpoints(args: DebugProtocol.SetBreakpointsArguments): void;
+  updateBreakpointVerification(args: DebugProtocol.SetBreakpointsArguments, result: any): void;
+  getReadinessGateState(): ReadinessGateState;
+  waitForReadinessGateState(timeoutMs: number): Promise<ReadinessGateState>;
 }
 
 export class DapperDebugSessionRequestHandlers {
   constructor(private readonly controls: SessionControls) {}
+
+  private applyReadinessGateFailure(response: DebugProtocol.Response, readiness = this.controls.getReadinessGateState()): boolean {
+    switch (readiness.kind) {
+      case 'ready':
+        return false;
+      case 'timedOut':
+        response.success = false;
+        response.message = `Debugger session did not become ready before timeout: waiting for ${readiness.pendingBreakpoints} breakpoint verification result(s).`;
+        return true;
+      case 'error':
+        response.success = false;
+        response.message = `Debugger session is not ready: ${readiness.lastError}`;
+        return true;
+      case 'pending':
+        response.success = false;
+        response.message = `Debugger session is not ready: waiting for ${readiness.pendingBreakpoints} breakpoint verification result(s).`;
+        return true;
+      case 'rejected': {
+        response.success = false;
+        const rejectionMessage = readiness.firstRejected?.verificationMessage;
+        response.message = rejectionMessage
+          ? `Debugger session is not ready: ${rejectionMessage}`
+          : `Debugger session is not ready: ${readiness.rejectedBreakpoints} breakpoint(s) were rejected.`;
+        return true;
+      }
+    }
+  }
 
   private applyPythonFailure(response: DebugProtocol.Response, result: any): boolean {
     if (!(result && result.success === false)) {
@@ -56,15 +96,26 @@ export class DapperDebugSessionRequestHandlers {
     this.controls.sendResponse(response);
   }
 
-  public configurationDoneRequest(
+  public async configurationDoneRequest(
     response: DebugProtocol.ConfigurationDoneResponse,
     args: DebugProtocol.ConfigurationDoneArguments,
-  ): void {
+  ): Promise<void> {
+    logger.log('configurationDoneRequest: waiting for breakpoint readiness');
+    const readiness = await this.controls.waitForReadinessGateState(CONFIGURATION_DONE_READINESS_TIMEOUT_MS);
+    if (this.applyReadinessGateFailure(response, readiness)) {
+      this.controls.sendResponse(response);
+      return;
+    }
+
     logger.log('configurationDoneRequest: forwarding to Python');
     this.controls.setConfigurationDone(true);
-    void this.controls.sendRequestToPython('configurationDone', args).catch((error) => {
+    try {
+      await this.controls.sendRequestToPython('configurationDone', args);
+    } catch (error) {
       logger.error('configurationDoneRequest failed', error);
-    });
+      response.success = false;
+      response.message = error instanceof Error ? error.message : String(error);
+    }
     this.controls.sendResponse(response);
   }
 
@@ -102,7 +153,9 @@ export class DapperDebugSessionRequestHandlers {
     args: DebugProtocol.SetBreakpointsArguments,
   ): Promise<void> {
     logger.debug(`setBreakpoints: source=${args.source?.path ?? '<unknown>'} lines=${(args.breakpoints || []).map(b => b.line).join(',')}`);
+    this.controls.setPendingBreakpoints(args);
     const result = await this.controls.sendRequestToPython('setBreakpoints', args);
+    this.controls.updateBreakpointVerification(args, result);
     logger.debug(`setBreakpoints: response breakpoints=${JSON.stringify(result?.body?.breakpoints?.map((b: any) => ({ line: b.line, verified: b.verified })))}`);
     response.body = { breakpoints: (result.body && result.body.breakpoints) || [] };
     this.controls.sendResponse(response);
@@ -172,22 +225,38 @@ export class DapperDebugSessionRequestHandlers {
   }
 
   public async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): Promise<void> {
+    if (this.applyReadinessGateFailure(response)) {
+      this.controls.sendResponse(response);
+      return;
+    }
     const result = await this.controls.sendRequestToPython('continue', args);
     response.body = { allThreadsContinued: result.body?.allThreadsContinued ?? true };
     this.controls.sendResponse(response);
   }
 
   public async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): Promise<void> {
+    if (this.applyReadinessGateFailure(response)) {
+      this.controls.sendResponse(response);
+      return;
+    }
     await this.controls.sendRequestToPython('next', args);
     this.controls.sendResponse(response);
   }
 
   public async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): Promise<void> {
+    if (this.applyReadinessGateFailure(response)) {
+      this.controls.sendResponse(response);
+      return;
+    }
     await this.controls.sendRequestToPython('stepIn', args);
     this.controls.sendResponse(response);
   }
 
   public async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): Promise<void> {
+    if (this.applyReadinessGateFailure(response)) {
+      this.controls.sendResponse(response);
+      return;
+    }
     await this.controls.sendRequestToPython('stepOut', args);
     this.controls.sendResponse(response);
   }

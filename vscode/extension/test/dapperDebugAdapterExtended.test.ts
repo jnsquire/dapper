@@ -249,6 +249,245 @@ describe('DapperDebugSession - Extended', () => {
         });
     });
 
+    describe('execution readiness gating', () => {
+        it('blocks continue while breakpoint verification is still pending', async () => {
+            const sendResponseSpy = vi.spyOn(session as any, 'sendResponse');
+
+            const setBreakpointsResponse: DebugProtocol.SetBreakpointsResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 21,
+                command: 'setBreakpoints',
+                success: true,
+                body: { breakpoints: [] }
+            } as any;
+
+            const setBreakpointsPromise = (session as any).setBreakPointsRequest(
+                setBreakpointsResponse,
+                {
+                    source: { path: '/workspace/app.py' },
+                    breakpoints: [{ line: 10 }],
+                }
+            );
+
+            await Promise.resolve();
+            const setBreakpointsSent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const setBreakpointsJson = JSON.parse(setBreakpointsSent.subarray(8).toString('utf8'));
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: setBreakpointsJson.id,
+                success: true,
+                body: { breakpoints: [{ verified: false, line: 10 }] }
+            }));
+            await setBreakpointsPromise;
+
+            const continueResponse: DebugProtocol.ContinueResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 22,
+                command: 'continue',
+                success: true,
+                body: { allThreadsContinued: true }
+            };
+
+            await (session as any).continueRequest(continueResponse, { threadId: 1 });
+
+            expect(mockSocket.write).toHaveBeenCalledTimes(1);
+            const sent = sendResponseSpy.mock.calls.at(-1)?.[0] as DebugProtocol.ContinueResponse;
+            expect(sent.success).toBe(false);
+            expect(sent.message).toContain('waiting for 1 breakpoint verification result');
+        });
+
+        it('allows continue after breakpoint verification succeeds', async () => {
+            const sendResponseSpy = vi.spyOn(session as any, 'sendResponse');
+
+            const setBreakpointsResponse: DebugProtocol.SetBreakpointsResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 23,
+                command: 'setBreakpoints',
+                success: true,
+                body: { breakpoints: [] }
+            };
+
+            const setBreakpointsPromise = (session as any).setBreakPointsRequest(
+                setBreakpointsResponse,
+                {
+                    source: { path: '/workspace/app.py' },
+                    breakpoints: [{ line: 12 }],
+                }
+            );
+
+            await Promise.resolve();
+            const setBreakpointsSent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const setBreakpointsJson = JSON.parse(setBreakpointsSent.subarray(8).toString('utf8'));
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: setBreakpointsJson.id,
+                success: true,
+                body: { breakpoints: [{ verified: true, line: 12 }] }
+            }));
+            await setBreakpointsPromise;
+
+            const continueResponse: DebugProtocol.ContinueResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 24,
+                command: 'continue',
+                success: true,
+                body: { allThreadsContinued: true }
+            };
+
+            const continuePromise = (session as any).continueRequest(continueResponse, { threadId: 1 });
+
+            await Promise.resolve();
+            expect(mockSocket.write).toHaveBeenCalledTimes(2);
+            const continueSent = mockSocket.write.mock.calls[1][0] as Buffer;
+            const continueJson = JSON.parse(continueSent.subarray(8).toString('utf8'));
+            expect(continueJson.command).toBe('continue');
+
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: continueJson.id,
+                success: true,
+                body: { allThreadsContinued: true }
+            }));
+            await continuePromise;
+
+            const sent = sendResponseSpy.mock.calls.at(-1)?.[0] as DebugProtocol.ContinueResponse;
+            expect(sent.success).not.toBe(false);
+            expect(sent.body?.allThreadsContinued).toBe(true);
+        });
+    });
+
+    describe('configurationDone readiness wait', () => {
+        it('waits for breakpoint verification before forwarding configurationDone', async () => {
+            const sendResponseSpy = vi.spyOn(session as any, 'sendResponse');
+
+            const setBreakpointsResponse: DebugProtocol.SetBreakpointsResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 25,
+                command: 'setBreakpoints',
+                success: true,
+                body: { breakpoints: [] }
+            };
+
+            const setBreakpointsPromise = (session as any).setBreakPointsRequest(
+                setBreakpointsResponse,
+                {
+                    source: { path: '/workspace/app.py' },
+                    breakpoints: [{ line: 20 }],
+                }
+            );
+
+            await Promise.resolve();
+            const setBreakpointsSent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const setBreakpointsJson = JSON.parse(setBreakpointsSent.subarray(8).toString('utf8'));
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: setBreakpointsJson.id,
+                success: true,
+                body: { breakpoints: [{ verified: false, line: 20 }] }
+            }));
+            await setBreakpointsPromise;
+
+            const configurationDoneResponse: DebugProtocol.ConfigurationDoneResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 26,
+                command: 'configurationDone',
+                success: true,
+            };
+
+            const configurationDonePromise = (session as any).configurationDoneRequest(configurationDoneResponse, {});
+            await Promise.resolve();
+            expect(mockSocket.write).toHaveBeenCalledTimes(1);
+
+            mockSocket.emit('data', createFrame({
+                event: 'breakpoint',
+                body: {
+                    reason: 'changed',
+                    breakpoint: {
+                        verified: true,
+                        line: 20,
+                        source: { path: '/workspace/app.py' },
+                    }
+                }
+            }));
+
+            await Promise.resolve();
+            await vi.waitFor(() => {
+                expect(mockSocket.write).toHaveBeenCalledTimes(2);
+            });
+
+            const configurationDoneSent = mockSocket.write.mock.calls[1][0] as Buffer;
+            const configurationDoneJson = JSON.parse(configurationDoneSent.subarray(8).toString('utf8'));
+            expect(configurationDoneJson.command).toBe('configurationDone');
+
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: configurationDoneJson.id,
+                success: true,
+                body: {}
+            }));
+
+            await configurationDonePromise;
+            const sent = sendResponseSpy.mock.calls.at(-1)?.[0] as DebugProtocol.ConfigurationDoneResponse;
+            expect(sent.success).not.toBe(false);
+        });
+
+        it('fails configurationDone when breakpoint readiness times out', async () => {
+            vi.useFakeTimers();
+            const sendResponseSpy = vi.spyOn(session as any, 'sendResponse');
+
+            const setBreakpointsResponse: DebugProtocol.SetBreakpointsResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 27,
+                command: 'setBreakpoints',
+                success: true,
+                body: { breakpoints: [] }
+            };
+
+            const setBreakpointsPromise = (session as any).setBreakPointsRequest(
+                setBreakpointsResponse,
+                {
+                    source: { path: '/workspace/app.py' },
+                    breakpoints: [{ line: 21 }],
+                }
+            );
+
+            await Promise.resolve();
+            const setBreakpointsSent = mockSocket.write.mock.calls[0][0] as Buffer;
+            const setBreakpointsJson = JSON.parse(setBreakpointsSent.subarray(8).toString('utf8'));
+            mockSocket.emit('data', createFrame({
+                event: 'response',
+                id: setBreakpointsJson.id,
+                success: true,
+                body: { breakpoints: [{ verified: false, line: 21 }] }
+            }));
+            await setBreakpointsPromise;
+
+            const configurationDoneResponse: DebugProtocol.ConfigurationDoneResponse = {
+                seq: 0,
+                type: 'response',
+                request_seq: 28,
+                command: 'configurationDone',
+                success: true,
+            };
+
+            const configurationDonePromise = (session as any).configurationDoneRequest(configurationDoneResponse, {});
+            await vi.advanceTimersByTimeAsync(5_100);
+            await configurationDonePromise;
+
+            expect(mockSocket.write).toHaveBeenCalledTimes(1);
+            const sent = sendResponseSpy.mock.calls.at(-1)?.[0] as DebugProtocol.ConfigurationDoneResponse;
+            expect(sent.success).toBe(false);
+            expect(sent.message).toContain('did not become ready before timeout');
+        });
+    });
+
     // ─── customRequest ──────────────────────────────────────────────────
 
     describe('customRequest', () => {

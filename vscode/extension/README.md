@@ -224,6 +224,8 @@ type DapperLaunchCommandOptions = {
 };
 ```
 
+For LM-tool-driven debugging, keep launch cleanup explicit. After `dapper_launch`, use `dapper_session_info` to confirm which session you are working with, and end one-off investigations with `dapper_execution` plus `action: terminate`. When `dapper_launch` reports multiple tracked sessions in its `warnings` field, especially a same-program or same-module warning, clean up stale sessions before starting another repro on the same fixture.
+
 Rules:
 
 - Omit `target` to use the active Python file.
@@ -283,6 +285,14 @@ That page covers:
   `dapper_python_symbol`, and
   `dapper_python_typecheck`
 - the recommended paused-session workflow for agents
+
+In particular:
+
+- `dapper_session_info` is the single session-inspection tool and now includes
+  readiness state, breakpoint lifecycle counts and details, `lastTransition`,
+  `lastError`, and `readyToContinue`.
+- `dapper_launch` now returns `readiness` and `readyToContinue` so callers can
+  see whether breakpoint registration has settled before resuming execution.
 
 ## Settings
 

@@ -77,6 +77,7 @@ describe('BreakpointsTool', () => {
     expect(result.breakpoints[0].verified).toBe(false);
     expect(result.breakpoints[0].verificationState).toBe('rejected');
     expect(result.breakpoints[0].verificationMessage).toContain('No executable code');
+    expect(result.breakpoints[0].rejectionReason).toContain('No executable code');
 
     journal.onDidSendMessage({
       type: 'event',
@@ -96,6 +97,39 @@ describe('BreakpointsTool', () => {
 
     expect(result.breakpoints[0].verified).toBe(true);
     expect(result.breakpoints[0].verificationState).toBe('verified');
+  });
+
+  it('marks requested breakpoints as pending before adapter verification completes', async () => {
+    let resolveRequest: ((value: unknown) => void) | undefined;
+    const session = {
+      id: 'session-pending',
+      type: 'dapper',
+      name: 'Dapper Test',
+      configuration: {},
+      customRequest: vi.fn(() => new Promise((resolve) => {
+        resolveRequest = resolve;
+      })),
+    } as any;
+    vscode.debug.activeDebugSession = session;
+    const journal = registry.getOrCreate(session);
+
+    const addPromise = invokeBreakpointsTool(tool, { action: 'add', file: sourceFile, lines: [18] });
+
+    await vi.waitFor(() => {
+      expect(journal.getBreakpointVerification(sourceFile, 18)).toMatchObject({
+        verificationState: 'pending',
+      });
+    });
+
+    resolveRequest?.({
+      breakpoints: [{ verified: true, line: 18 }],
+    });
+    await addPromise;
+
+    expect(journal.getBreakpointVerification(sourceFile, 18)).toMatchObject({
+      verificationState: 'verified',
+      verified: true,
+    });
   });
 
   it('removes cached verification entries when breakpoints are cleared', async () => {
