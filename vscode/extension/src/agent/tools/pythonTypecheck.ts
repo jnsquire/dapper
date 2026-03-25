@@ -8,6 +8,7 @@ interface PythonTypecheckToolInput {
   searchRootPath?: string;
   files?: string[];
   limit?: number;
+  offset?: number;
   pathFilter?: 'source' | 'tests' | 'all';
 }
 
@@ -38,6 +39,7 @@ export class PythonTypecheckTool implements vscode.LanguageModelTool<PythonTypec
       searchRootPath,
       files: Array.isArray(input.files) ? input.files.filter((item): item is string => typeof item === 'string') : undefined,
       limit: typeof input.limit === 'number' ? input.limit : undefined,
+      offset: typeof input.offset === 'number' ? input.offset : undefined,
       pathFilter: input.pathFilter === 'source' || input.pathFilter === 'tests' ? input.pathFilter : undefined,
     };
   }
