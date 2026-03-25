@@ -133,11 +133,68 @@ Important behavior:
 - It is read-only and does not require an active debug session.
 - It returns only Ty diagnostics, normalized into the same shared schema used
   by `dapper_python_diagnostics`.
+- When Ty provides richer semantic context, diagnostics may also include
+  `typeInfo` and `diagnosticContext` fields with declared or inferred types,
+  notes, related locations, and backend rule metadata.
 - `files` narrows the Ty invocation to selected paths.
-- `limit` bounds the number of normalized diagnostics returned while preserving
-  the total count and truncation state.
+- `limit` and `offset` support paginating normalized diagnostics while
+  preserving the total count and truncation state.
+- The result also includes `completionStatus` and `outputBudget` so agents can
+  distinguish a fully returned result from a paged, truncated, or failed one.
 - When Ty is unavailable, the backend status is reported explicitly instead of
   silently returning an empty success result.
+
+Example request:
+
+```json
+{
+  "files": ["app.py"],
+  "limit": 1,
+  "offset": 1,
+  "pathFilter": "source"
+}
+```
+
+Example paged response:
+
+```json
+{
+  "status": "complete",
+  "completionStatus": "partial",
+  "limit": 1,
+  "offset": 1,
+  "totalDiagnostics": 3,
+  "outputBudget": {
+    "requestedLimit": 1,
+    "appliedLimit": 1,
+    "requestedOffset": 1,
+    "appliedOffset": 1,
+    "returnedItems": 1,
+    "totalItems": 3,
+    "truncated": true,
+    "nextOffset": 2
+  },
+  "diagnostics": [
+    {
+      "source": "ty",
+      "code": "invalid-return-type",
+      "message": "Return type does not match returned value: expected `str`, found `Literal[42]`",
+      "typeInfo": {
+        "declaredType": "str",
+        "inferredType": "Literal[42]",
+        "symbolKind": "function",
+        "source": "ty"
+      },
+      "diagnosticContext": {
+        "summary": "Invalid Return Type",
+        "explanation": "Return type does not match returned value: expected `str`, found `Literal[42]`",
+        "rule": "invalid-return-type",
+        "code": "invalid-return-type"
+      }
+    }
+  ]
+}
+```
 
 ## dapper_python_symbol
 
@@ -154,6 +211,76 @@ Important behavior:
 - The result reports Ty availability as the preferred semantic backend for the
   workspace, but VS Code does not expose which extension satisfied the request.
 - `action` supports `definition`, `references`, `implementations`, and `hover`.
+- `limit` and `offset` can page definition, reference, implementation, or hover
+  results, and `outputBudget` reports the returned window and next offset.
+- Hover results preserve the raw `contents` array and may additionally include
+  derived `typeInfo`, `signatures`, and `documentation` fields when the hover
+  payload contains enough structure to extract them safely.
+
+Example request:
+
+```json
+{
+  "action": "hover",
+  "file": "examples/sample_programs/advanced_app.py",
+  "line": 8,
+  "column": 1,
+  "limit": 1,
+  "offset": 0
+}
+```
+
+Example paged hover response:
+
+```json
+{
+  "action": "hover",
+  "status": "complete",
+  "completionStatus": "partial",
+  "count": 1,
+  "outputBudget": {
+    "requestedLimit": 1,
+    "appliedLimit": 1,
+    "requestedOffset": 0,
+    "appliedOffset": 0,
+    "returnedItems": 1,
+    "totalItems": 2,
+    "truncated": true,
+    "nextOffset": 1
+  },
+  "results": [
+    {
+      "kind": "hover",
+      "contents": [
+        "python\n(method) def add_data(\n    self: Self@DataProcessor,\n    category: str,\n    items: list[Any]\n) -> None",
+        "Add data to the processor."
+      ],
+      "typeInfo": {
+        "declaredType": "def add_data( self: Self@DataProcessor, category: str, items: list[Any] ) -> None",
+        "inferredType": "None",
+        "symbolKind": "method",
+        "source": "ty"
+      },
+      "signatures": [
+        {
+          "label": "def add_data( self: Self@DataProcessor, category: str, items: list[Any] ) -> None",
+          "parameters": [
+            { "name": "self", "kind": "positional-or-keyword", "type": "Self@DataProcessor", "optional": false },
+            { "name": "category", "kind": "positional-or-keyword", "type": "str", "optional": false },
+            { "name": "items", "kind": "positional-or-keyword", "type": "list[Any]", "optional": false }
+          ],
+          "returnType": "None"
+        }
+      ],
+      "documentation": {
+        "format": "plaintext",
+        "summary": "Add data to the processor.",
+        "docstring": "Add data to the processor."
+      }
+    }
+  ]
+}
+```
 
 ## dapper_python_rename
 
@@ -165,11 +292,13 @@ Important behavior:
 - It is a mutating tool: by default it applies the resulting workspace edit.
 - Set `apply: false` to preview the rename result without changing files.
 - It returns a normalized summary of file edits so agents can inspect the
-  rename impact even when applying it.- The input is location-based: provide `file`, `line` (1-based), and optionally
+  rename impact even when applying it.
+- The input is location-based: provide `file`, `line` (1-based), and optionally
   `column` (1-based) for the symbol occurrence. `column` may be omitted to
   use the provider's default location resolution.
 - It supports an optional `searchRootPath` to anchor workspace folder discovery
-  when the workspace has multiple roots or nested projects.- It uses VS Code language feature providers, so the actual rename provider may
+  when the workspace has multiple roots or nested projects.
+- It uses VS Code language feature providers, so the actual rename provider may
   be Ty, Pylance, or another active semantic backend.
 - The result reports Ty availability as the preferred semantic backend for the
   workspace, but VS Code does not expose which extension satisfied the request.

@@ -329,8 +329,20 @@ Important limitation:
 - [x] Integrate Ty diagnostics as a first-class agent feedback source.
 - [ ] Integrate Ty-backed definition, references, rename, completions,
       code actions, and related language-server capabilities where available.
-- [ ] Expose Ty type information and contextual diagnostics through agent-
+- [x] Expose Ty type information and contextual diagnostics through agent-
       friendly tool payloads.
+  - [x] Define a shared `typeInfo` schema for declared type, inferred type,
+    symbol kind, and source attribution.
+  - [x] Define a shared `diagnosticContext` schema for Ty explanations,
+    notes, related locations, and rule/code metadata.
+  - [x] Extend `dapper_python_typecheck` to return Ty-enriched diagnostics
+    without requiring UI-text scraping.
+  - [x] Extend `dapper_python_symbol` to return type, signature, and
+    documentation fields where the active semantic backend provides them.
+  - [x] Add output-budget controls for Ty-enriched payloads: truncation,
+    pagination, and explicit partial-result markers.
+  - [x] Add unit and integration coverage for Ty type payloads, contextual
+    diagnostics, and backend-failure semantics.
 - [x] Account for Ty's current beta status in dependency and rollout planning.
 
 Why it matters:
@@ -702,9 +714,13 @@ Acceptance signal:
 - [ ] Include output-size management in every tool: support pagination,
       truncation, file-scope filtering, and priority ordering so that
       large-workspace results fit within agent token budgets.
-- [ ] Provide contextual diagnostic explanation where possible, not only raw
+- [x] Provide contextual diagnostic explanation where possible, not only raw
       diagnostic text. Help agents understand what a diagnostic means and why
       it was raised, especially for type errors with non-obvious causes.
+- [x] Extend `python_typecheck` results with shared `typeInfo`,
+  `diagnosticContext`, and completion-status fields.
+- [x] Extend `python_symbol` inspection results with shared `typeInfo`,
+  signature, and documentation fields.
 
 Acceptance signal:
 
@@ -712,6 +728,8 @@ Acceptance signal:
   rather than terminal commands and grep fallbacks.
 - Tool responses remain useful and bounded even in workspaces with hundreds
   of diagnostics.
+- Type, signature, documentation, and contextual Ty error payloads are
+  returned through stable schemas rather than provider-specific hover text.
 
 ### 6.5 Result schema and conflict handling
 
@@ -720,6 +738,8 @@ Acceptance signal:
   and explanatory text.
 - [x] Define a shared action-result schema for format, autofix, and rename
   operations.
+- [x] Define a shared semantic payload schema for `typeInfo`, signatures,
+      documentation, `diagnosticContext`, and output-budget metadata.
 - [ ] Decide how to merge overlapping Ruff and Ty diagnostics without hiding
   useful distinctions.
 - [x] Preserve enough metadata for the agent to decide whether an issue is
@@ -738,6 +758,8 @@ Acceptance signal:
   workflows.
 - An agent can validate a proposed edit before applying it, without requiring
   a file save round-trip.
+- Type-oriented inspection and contextual diagnostics share one payload shape
+  across `python_typecheck` and `python_symbol`.
 
 ### 6.6 Fallback and compatibility policy
 
@@ -926,6 +948,8 @@ Acceptance signal:
 
 - An agent can answer "what is this symbol, where is it used, and what is
   broken in this workspace?" without relying on grep-heavy fallback flows.
+- Type and signature inspection returns structured fields, and contextual Ty
+  diagnostics do not require hover-text or CLI-text scraping.
 
 ### Phase 2 — Agent-grade semantic edit path
 
