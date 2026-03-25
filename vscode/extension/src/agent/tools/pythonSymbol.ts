@@ -9,6 +9,8 @@ interface PythonSymbolToolInput {
   file: string;
   line: number;
   column?: number;
+  limit?: number;
+  offset?: number;
   searchRootPath?: string;
 }
 
@@ -50,6 +52,8 @@ export class PythonSymbolTool implements vscode.LanguageModelTool<PythonSymbolTo
       column: typeof input.column === 'number' && Number.isFinite(input.column) && input.column >= 1
         ? Math.floor(input.column)
         : undefined,
+      limit: typeof input.limit === 'number' ? input.limit : undefined,
+      offset: typeof input.offset === 'number' ? input.offset : undefined,
       workspaceFolder,
       searchRootPath,
     };
