@@ -1,0 +1,1613 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<link href="https://jnsquire.github.io/dapper/architecture/sys-monitoring/" rel="canonical"/>
+<link href="../frame-eval/developer-notes/" rel="prev"/>
+<link href="../current-analysis/" rel="next"/>
+<link href="../../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>sys.monitoring - Dapper</title>
+<link href="../../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="indigo" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#sysmonitoring-integration-plan">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dapper" class="md-header__button md-logo" data-md-component="logo" href="../.." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dapper
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              sys.monitoring
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="indigo" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dapper" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="Dapper">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dapper
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/jnsquire/dapper" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/using-vscode/">
+<span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/standalone-adapter/">
+<span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/manual-testing/">
+<span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/async-debugging/">
+<span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/variable-presentation/">
+<span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/frame-eval/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/watchpoints/">
+<span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../examples/">
+<span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/lm-tools/">
+<span class="md-ellipsis">
+    
+  
+    LM Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/checklist/">
+<span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/operational-modes/">
+<span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/dap-extensions/">
+<span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/telemetry/">
+<span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/setup/">
+<span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/testing/">
+<span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/contributing/">
+<span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/vscode-extension/">
+<span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/docs/">
+<span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/message-flows/">
+<span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_7_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../concurrency/">
+<span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../ipc/">
+<span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../backends/">
+<span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../breakpoints/">
+<span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../error-handling/">
+<span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../frame-eval/build-guide/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../frame-eval/backend-architecture/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval Backend
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../frame-eval/developer-notes/">
+<span class="md-ellipsis">
+    
+  
+    Frame Eval Notes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#motivation">
+<span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#event-mapping">
+<span class="md-ellipsis">
+      
+        Event Mapping
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#checklist">
+<span class="md-ellipsis">
+      
+        Checklist
+      
+    </span>
+</a>
+<nav aria-label="Checklist" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-tracingbackend-abstraction-backend-selection">
+<span class="md-ellipsis">
+      
+        Phase 1 — TracingBackend abstraction &amp; backend selection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-sysmonitoringbackend-core-line-call-events">
+<span class="md-ellipsis">
+      
+        Phase 2 — SysMonitoringBackend core (line &amp; call events)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-exception-breakpoints-advanced-events">
+<span class="md-ellipsis">
+      
+        Phase 3 — Exception breakpoints &amp; advanced events
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-4-performance-optimisation-legacy-deprecation">
+<span class="md-ellipsis">
+      
+        Phase 4 — Performance optimisation &amp; legacy deprecation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-5-read-access-watchpoints-feature-idea-12">
+<span class="md-ellipsis">
+      
+        Phase 5 — Read-access watchpoints (feature idea §12)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#files-affected">
+<span class="md-ellipsis">
+      
+        Files Affected
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#risks-mitigations">
+<span class="md-ellipsis">
+      
+        Risks &amp; Mitigations
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../current-analysis/">
+<span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/feature-ideas/">
+<span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/dep-001-hot-reload/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../roadmap/hot-reload-plan/">
+<span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#motivation">
+<span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#event-mapping">
+<span class="md-ellipsis">
+      
+        Event Mapping
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#checklist">
+<span class="md-ellipsis">
+      
+        Checklist
+      
+    </span>
+</a>
+<nav aria-label="Checklist" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-1-tracingbackend-abstraction-backend-selection">
+<span class="md-ellipsis">
+      
+        Phase 1 — TracingBackend abstraction &amp; backend selection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-2-sysmonitoringbackend-core-line-call-events">
+<span class="md-ellipsis">
+      
+        Phase 2 — SysMonitoringBackend core (line &amp; call events)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-3-exception-breakpoints-advanced-events">
+<span class="md-ellipsis">
+      
+        Phase 3 — Exception breakpoints &amp; advanced events
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-4-performance-optimisation-legacy-deprecation">
+<span class="md-ellipsis">
+      
+        Phase 4 — Performance optimisation &amp; legacy deprecation
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#phase-5-read-access-watchpoints-feature-idea-12">
+<span class="md-ellipsis">
+      
+        Phase 5 — Read-access watchpoints (feature idea §12)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#files-affected">
+<span class="md-ellipsis">
+      
+        Files Affected
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#risks-mitigations">
+<span class="md-ellipsis">
+      
+        Risks &amp; Mitigations
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="sysmonitoring-integration-plan"><code>sys.monitoring</code> Integration Plan</h1>
+<p>A phased plan for integrating Python 3.12+'s <code>sys.monitoring</code> API into
+Dapper as a high-performance alternative to the existing <code>sys.settrace</code> /
+frame-evaluation tracing backend.</p>
+<blockquote>
+<p><strong>Reference:</strong> <a href="https://docs.python.org/3/library/sys.monitoring.html">https://docs.python.org/3/library/sys.monitoring.html</a></p>
+</blockquote>
+<hr/>
+<h2 id="motivation">Motivation</h2>
+<p><code>sys.monitoring</code> (PEP 669, Python 3.12+) is purpose-built to replace
+<code>sys.settrace</code> for debuggers, profilers, and coverage tools.  Key advantages:</p>
+<ul>
+<li><strong>Near-zero overhead for unmonitored code</strong> — events are disabled per
+  code-object; non-breakpoint frames run at full speed.</li>
+<li><strong>No per-frame trace-function dispatching</strong> — eliminates the
+  <code>SelectiveTraceDispatcher</code> entirely; the VM itself skips unsolicited
+  callbacks.</li>
+<li><strong><code>DISABLE</code> return value</strong> — a callback can return
+  <code>sys.monitoring.DISABLE</code> to surgically turn off monitoring at a single
+  bytecode offset, making non-breakpoint lines a one-time cost.</li>
+<li><strong>First-class tool identity</strong> — <code>sys.monitoring.DEBUGGER_ID</code> (0) is
+  reserved for debuggers; no collision with profilers/coverage.</li>
+</ul>
+<p>The existing <code>_frame_eval</code> subsystem with <code>bdb</code>/<code>sys.settrace</code> remains the
+fallback for Python 3.9–3.11.</p>
+<hr/>
+<h2 id="architecture">Architecture</h2>
+<div class="mermaid">flowchart TB
+    subgraph DB[DebuggerBDB (core)]
+        direction TB
+        DBtxt["user_line / user_call / ..."]
+    end
+    subgraph TB[TracingBackend (ABC)]
+        direction TB
+        TBtxt["install()/shutdown()\nset_breakpoints()\nset_stepping()"]
+    end
+    subgraph ST[SettraceBackend]
+        direction TB
+        STtxt["(Python 3.9-3.11)\nexisting code"]
+    end
+    subgraph SM[SysMonitoringBackend]
+        direction TB
+        SMtxt["(Python ≥ 3.12)\nsys.monitoring API"]
+    end
+
+    DB --&gt; TB
+    TB --&gt; ST
+    TB --&gt; SM
+</div>
+<hr/>
+<h2 id="event-mapping">Event Mapping</h2>
+<table>
+<thead>
+<tr>
+<th><code>sys.monitoring</code> event</th>
+<th>Dapper use case</th>
+<th>Replaces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LINE</code></td>
+<td>Line breakpoints, stepping</td>
+<td><code>sys.settrace</code> dispatch_line → <code>user_line</code></td>
+</tr>
+<tr>
+<td><code>CALL</code></td>
+<td>Function breakpoints</td>
+<td><code>sys.settrace</code> dispatch_call → <code>user_call</code></td>
+</tr>
+<tr>
+<td><code>PY_START</code> / <code>PY_RETURN</code></td>
+<td>Code-object discovery, step-over boundary, call-stack tracking</td>
+<td><code>sys.settrace</code> dispatch_call/return</td>
+</tr>
+<tr>
+<td><code>PY_YIELD</code> / <code>PY_RESUME</code></td>
+<td>Async/generator stepping</td>
+<td>Not currently handled cleanly</td>
+</tr>
+<tr>
+<td><code>RAISE</code> / <code>RERAISE</code></td>
+<td>Exception breakpoints</td>
+<td><code>sys.settrace</code> dispatch_exception → <code>user_exception</code></td>
+</tr>
+<tr>
+<td><code>EXCEPTION_HANDLED</code></td>
+<td>"User-unhandled" exception filter</td>
+<td>Not currently possible cleanly</td>
+</tr>
+<tr>
+<td><code>INSTRUCTION</code></td>
+<td>Instruction-level stepping, read watchpoints</td>
+<td><code>frame.f_trace_opcodes = True</code></td>
+</tr>
+<tr>
+<td><code>BRANCH_LEFT</code> / <code>BRANCH_RIGHT</code></td>
+<td>Coverage-aware breakpoints (feature idea §8)</td>
+<td>Not available today</td>
+</tr>
+<tr>
+<td><code>set_local_events()</code></td>
+<td>Per-file breakpoint activation</td>
+<td><code>SelectiveTraceDispatcher</code> + <code>FrameTraceAnalyzer</code></td>
+</tr>
+<tr>
+<td><code>DISABLE</code> return</td>
+<td>Per-offset event suppression</td>
+<td><code>BytecodeModifier</code> (breakpoint bytecode injection)</td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h2 id="checklist">Checklist</h2>
+<h3 id="phase-1-tracingbackend-abstraction-backend-selection">Phase 1 — <code>TracingBackend</code> abstraction &amp; backend selection</h3>
+<p>Introduce the backend interface without changing any runtime behaviour.
+All existing code continues to work behind <code>SettraceBackend</code>.</p>
+<ul>
+<li>[x] <strong>1.1 Define <code>TracingBackend</code> protocol</strong></li>
+<li>Created <code>dapper/_frame_eval/tracing_backend.py</code>.</li>
+<li>Define abstract methods:<ul>
+<li><code>install(debugger) → None</code></li>
+<li><code>shutdown() → None</code></li>
+<li><code>update_breakpoints(file: str, lines: set[int]) → None</code></li>
+<li><code>set_stepping(mode: StepMode) → None</code></li>
+<li><code>set_exception_breakpoints(filters: list[str]) → None</code></li>
+<li><code>get_statistics() → dict[str, Any]</code></li>
+</ul>
+</li>
+<li>
+<p>Document thread-safety expectations in docstrings.</p>
+</li>
+<li>
+<p>[x] <strong>1.2 Add <code>TracingBackendKind</code> enum to config</strong></p>
+</li>
+<li>Edited <code>dapper/_frame_eval/config.py</code>.</li>
+<li>Add <code>TracingBackendKind</code> enum with values <code>AUTO</code>, <code>SETTRACE</code>,
+    <code>SYS_MONITORING</code>.</li>
+<li>Add <code>tracing_backend: TracingBackendKind = TracingBackendKind.AUTO</code>
+    field to <code>FrameEvalConfig</code>.</li>
+<li>
+<p>Update <code>to_dict()</code> / <code>from_dict()</code> to serialise the new field.</p>
+</li>
+<li>
+<p>[x] <strong>1.3 Wrap existing code in <code>SettraceBackend</code></strong></p>
+</li>
+<li>Created <code>dapper/_frame_eval/settrace_backend.py</code>.</li>
+<li>Implement <code>TracingBackend</code> by delegating to
+    <code>SelectiveTraceDispatcher</code>, <code>DebuggerFrameEvalBridge</code>, and
+    <code>BytecodeModifier</code>.</li>
+<li>
+<p>Existing functionality must be byte-for-byte identical; this is a
+    pure refactoring wrapper.</p>
+</li>
+<li>
+<p>[x] <strong>1.4 Wire backend selection into <code>FrameEvalManager</code></strong></p>
+</li>
+<li>Edited <code>dapper/_frame_eval/frame_eval_main.py</code>.</li>
+<li><code>setup()</code> reads <code>config.tracing_backend</code>:<ul>
+<li><code>AUTO</code> → pick <code>SYS_MONITORING</code> on 3.12+, else <code>SETTRACE</code>.</li>
+<li><code>SETTRACE</code> / <code>SYS_MONITORING</code> → use explicitly.</li>
+</ul>
+</li>
+<li>
+<p><code>shutdown()</code> delegates to the active backend's <code>shutdown()</code>.</p>
+</li>
+<li>
+<p>[x] <strong>1.5 Update compatibility policy</strong></p>
+</li>
+<li>Edited <code>dapper/_frame_eval/compatibility_policy.py</code>.</li>
+<li>Raise <code>max_python</code> ceiling to <code>(3, 14)</code> (or remove it).</li>
+<li>
+<p>Add <code>supports_sys_monitoring</code> property: <code>True</code> when
+    <code>sys.version_info &gt;= (3, 12)</code>.</p>
+</li>
+<li>
+<p>[x] <strong>1.6 Unit tests for Phase 1</strong></p>
+</li>
+<li>Created <code>tests/unit/test_tracing_backend_selection.py</code> (29 tests, all passing).</li>
+</ul>
+<hr/>
+<h3 id="phase-2-sysmonitoringbackend-core-line-call-events">Phase 2 — <code>SysMonitoringBackend</code> core (line &amp; call events)</h3>
+<p>A working debugger backend powered entirely by <code>sys.monitoring</code> that
+handles breakpoints and stepping.</p>
+<ul>
+<li>[x] <strong>2.1 Create <code>SysMonitoringBackend</code> class</strong></li>
+<li>Created <code>dapper/_frame_eval/monitoring_backend.py</code>.</li>
+<li>On <code>install()</code>:<ul>
+<li><code>sys.monitoring.use_tool_id(DEBUGGER_ID, "dapper")</code>.</li>
+<li>Register callbacks for <code>LINE</code>, <code>CALL</code>, <code>PY_START</code>, <code>PY_RETURN</code>.</li>
+<li>Store reference to the debugger instance.</li>
+<li>Raises <code>RuntimeError</code> if <code>DEBUGGER_ID</code> slot is already held.</li>
+</ul>
+</li>
+<li>
+<p>On <code>shutdown()</code>:</p>
+<ul>
+<li><code>sys.monitoring.set_events(DEBUGGER_ID, NO_EVENTS)</code>.</li>
+<li>Unregister all callbacks.</li>
+<li><code>sys.monitoring.free_tool_id(DEBUGGER_ID)</code>.</li>
+</ul>
+</li>
+<li>
+<p>[x] <strong>2.2 <code>LINE</code> callback — breakpoint hits</strong></p>
+</li>
+<li>Callback signature: <code>(code: CodeType, line_number: int) → object</code>.</li>
+<li>Look up <code>code.co_filename</code> in breakpoint registry.</li>
+<li>If <code>line_number</code> not in breakpoint set and not stepping → return <code>DISABLE</code>.</li>
+<li>If conditional breakpoint → evaluate via <code>ConditionEvaluator</code>; if
+    falsy → return <code>None</code> (not <code>DISABLE</code>, so condition can be re-evaluated).</li>
+<li>Otherwise, obtain frame via <code>sys._getframe(1)</code> and call
+    <code>debugger.user_line(frame)</code>.</li>
+<li>
+<p>Stepping path: any <code>LINE</code> event fires <code>user_line</code> when <code>_step_mode ≠ CONTINUE</code>.</p>
+</li>
+<li>
+<p>[x] <strong>2.3 Breakpoint management via <code>set_local_events()</code></strong></p>
+</li>
+<li>Maintains <code>_code_registry: dict[str, set[CodeType]]</code> and
+    <code>_breakpoints: dict[str, frozenset[int]]</code>.</li>
+<li><code>update_breakpoints(file, lines)</code>:<ul>
+<li>For each code object in <code>code_registry[file]</code>:</li>
+<li>If <code>lines</code> is non-empty → <code>sys.monitoring.set_local_events(DEBUGGER_ID, code, events.LINE)</code>.</li>
+<li>If <code>lines</code> is empty → <code>sys.monitoring.set_local_events(DEBUGGER_ID, code, events.NO_EVENTS)</code>.</li>
+<li>Calls <code>sys.monitoring.restart_events()</code> to re-enable any
+  previously <code>DISABLE</code>d offsets.</li>
+</ul>
+</li>
+<li>
+<p><code>set_conditions(filepath, line, expression)</code> wires per-line conditions.</p>
+</li>
+<li>
+<p>[x] <strong>2.4 Code-object registry via <code>PY_START</code></strong></p>
+</li>
+<li><code>PY_START</code> callback: <code>(code, instruction_offset) → object</code>.</li>
+<li>Register <code>code</code> in <code>code_registry[code.co_filename]</code>.</li>
+<li>If that file has active breakpoints, immediately call
+    <code>set_local_events(DEBUGGER_ID, code, events.LINE)</code> so new
+    functions are monitored as they are first entered.</li>
+<li>
+<p>Always returns <code>DISABLE</code> (code object now known; no need for future
+    <code>PY_START</code> calls on this <code>(code, offset)</code> pair).</p>
+</li>
+<li>
+<p>[x] <strong>2.5 Stepping support</strong></p>
+</li>
+<li><code>set_stepping(STEP_IN)</code>:<ul>
+<li><code>sys.monitoring.set_events(DEBUGGER_ID, events.LINE | events.PY_START | events.PY_RETURN)</code> globally.</li>
+</ul>
+</li>
+<li><code>set_stepping(STEP_OVER)</code>:<ul>
+<li>Enable <code>LINE</code> only on the current code object via
+  <code>set_local_events</code> (set by <code>capture_step_context</code>).</li>
+<li>Enable <code>PY_RETURN</code> globally so we detect exiting the current frame.</li>
+</ul>
+</li>
+<li><code>set_stepping(STEP_OUT)</code>:<ul>
+<li>Enable <code>PY_RETURN</code> globally; disable <code>LINE</code> on current code object.</li>
+</ul>
+</li>
+<li><code>set_stepping(CONTINUE)</code>:<ul>
+<li><code>sys.monitoring.set_events(DEBUGGER_ID, events.PY_START)</code>.</li>
+<li>Re-enable per-code-object <code>LINE</code> events only for files with active breakpoints.</li>
+</ul>
+</li>
+<li><code>capture_step_context(code)</code> records the code object used for
+    <code>STEP_OVER</code> / <code>STEP_OUT</code> local event control.</li>
+<li>
+<p><code>_on_py_return</code> transitions <code>STEP_OVER</code> / <code>STEP_OUT</code> → <code>STEP_IN</code>
+    when the monitored frame exits.</p>
+</li>
+<li>
+<p>[x] <strong>2.6 <code>CALL</code> callback for function breakpoints</strong></p>
+</li>
+<li>On <code>CALL</code> event, match the callable's <code>__qualname__</code> / <code>__name__</code>
+    against the function-breakpoint set.</li>
+<li>If match → call <code>debugger.user_call(frame, arg)</code>.</li>
+<li>If no match → return <code>DISABLE</code>.</li>
+<li>
+<p><code>update_function_breakpoints(names)</code> manages the set and adds /
+    removes the <code>CALL</code> global event flag accordingly.</p>
+</li>
+<li>
+<p>[x] <strong>2.7 Bridge to <code>DebuggerBDB</code></strong></p>
+</li>
+<li>Added <code>integrate_with_backend(backend, debugger_instance)</code> to
+    <code>dapper/_frame_eval/debugger_integration.py</code>.</li>
+<li>If <code>SysMonitoringBackend</code>: calls <code>backend.install(debugger_instance)</code>
+    directly — no <code>user_line</code> wrapping, no <code>sys.settrace</code>.</li>
+<li>
+<p>If <code>SettraceBackend</code> (or any other backend): delegates to the
+    existing <code>integrate_debugger_bdb()</code> path unchanged.</p>
+</li>
+<li>
+<p>[x] <strong>2.8 Integration tests for Phase 2</strong></p>
+</li>
+<li>Created <code>tests/unit/test_sys_monitoring_backend.py</code> (55 tests, all passing).</li>
+<li>Covers: instantiation, install/shutdown lifecycle, DEBUGGER_ID conflict,
+    code-object registry, breakpoint management, <code>LINE</code> callback (DISABLE /
+    hit / conditional), stepping (all four modes, <code>PY_RETURN</code> transitions),
+    <code>CALL</code> callback, <code>integrate_with_backend</code> routing, statistics shape,
+    and concurrent thread safety.</li>
+</ul>
+<hr/>
+<h3 id="phase-3-exception-breakpoints-advanced-events">Phase 3 — Exception breakpoints &amp; advanced events</h3>
+<ul>
+<li>[ ] <strong>3.1 Exception breakpoints</strong></li>
+<li>Register <code>RAISE</code> callback.</li>
+<li>On <code>RAISE</code>: inspect exception type against filter list from
+    <code>ExceptionHandler</code>.</li>
+<li>If match → call <code>debugger.user_exception(frame, exc_info)</code>.</li>
+<li>
+<p>If no match → return <code>DISABLE</code>.</p>
+</li>
+<li>
+<p>[ ] <strong>3.2 "User-unhandled" exceptions via <code>EXCEPTION_HANDLED</code></strong></p>
+</li>
+<li>Register <code>EXCEPTION_HANDLED</code> callback.</li>
+<li>Track whether a <code>RAISE</code> was followed by <code>EXCEPTION_HANDLED</code>
+    within user code (using <code>just_my_code.is_user_frame()</code>).</li>
+<li>
+<p>If the exception propagates out of user code without being
+    handled → break.</p>
+</li>
+<li>
+<p>[ ] <strong>3.3 <code>RERAISE</code> support</strong></p>
+</li>
+<li>Register <code>RERAISE</code> callback for <code>finally</code> / <code>except</code> re-raise
+    detection.</li>
+<li>
+<p>Ensure exception info is correctly updated when re-raised.</p>
+</li>
+<li>
+<p>[ ] <strong>3.4 Instruction-level stepping</strong></p>
+</li>
+<li>Register <code>INSTRUCTION</code> event only when
+    <code>StepGranularity.INSTRUCTION</code> is active.</li>
+<li>Replaces <code>frame.f_trace_opcodes = True</code>.</li>
+<li>On <code>INSTRUCTION</code> callback → call <code>debugger.user_opcode(frame)</code>.</li>
+<li>
+<p>Unregister when stepping mode changes back to <code>LINE</code>.</p>
+</li>
+<li>
+<p>[ ] <strong>3.5 Generator/coroutine support</strong></p>
+</li>
+<li>Handle <code>PY_YIELD</code> / <code>PY_RESUME</code> events to maintain correct
+    stepping state across <code>yield</code> / <code>await</code> boundaries.</li>
+<li>
+<p>Ensure step-over does not "leak" into a resumed generator.</p>
+</li>
+<li>
+<p>[ ] <strong>3.6 <code>BRANCH_LEFT</code> / <code>BRANCH_RIGHT</code> for coverage</strong></p>
+</li>
+<li>Use for coverage-aware breakpoints (feature idea §8).</li>
+<li>Count branch executions with zero overhead when not actively
+    debugging.</li>
+<li>Use feature detection: <code>hasattr(sys.monitoring.events, 'BRANCH_LEFT')</code> (3.14+).</li>
+<li>
+<p>Fall back to deprecated <code>BRANCH</code> event on 3.12–3.13.</p>
+</li>
+<li>
+<p>[ ] <strong>3.7 Tests for Phase 3</strong></p>
+</li>
+<li>Exception breakpoint fires on matching type.</li>
+<li>"User-unhandled" exception correctly ignored when caught in user
+    code.</li>
+<li>Instruction stepping produces correct offsets.</li>
+<li>Generator step-over stays in caller.</li>
+<li>Async <code>await</code> stepping works correctly.</li>
+</ul>
+<hr/>
+<h3 id="phase-4-performance-optimisation-legacy-deprecation">Phase 4 — Performance optimisation &amp; legacy deprecation</h3>
+<ul>
+<li>[ ] <strong>4.1 Remove Cython dependency on 3.12+</strong></li>
+<li>The <code>_frame_evaluator.pyx</code> / <code>.c</code> extension exists to provide a
+    C-level frame-eval hook. With <code>sys.monitoring</code>, this is
+    unnecessary — the VM handles event dispatch natively.</li>
+<li>Make Cython optional/legacy; skip compilation on 3.12+.</li>
+<li>
+<p>Update <code>build/frame-eval/</code> and <code>scripts/build_frame_eval.py</code>.</p>
+</li>
+<li>
+<p>[ ] <strong>4.2 Deprecate <code>BytecodeModifier</code> on 3.12+</strong></p>
+</li>
+<li><code>sys.monitoring.set_local_events()</code> + <code>DISABLE</code> replaces bytecode
+    injection for breakpoint checks.</li>
+<li>Keep <code>BytecodeModifier</code> for the settrace path only.</li>
+<li>
+<p>Add deprecation notice in docstrings.</p>
+</li>
+<li>
+<p>[ ] <strong>4.3 Optimise <code>DISABLE</code> usage in <code>LINE</code> callback</strong></p>
+</li>
+<li>Profile: return <code>DISABLE</code> aggressively for every line that is NOT
+    a breakpoint line to minimise callback invocations.</li>
+<li>
+<p>Ensure <code>restart_events()</code> is called only when breakpoints
+    actually change (batch updates).</p>
+</li>
+<li>
+<p>[ ] <strong>4.4 Optimise code-object registry memory</strong></p>
+</li>
+<li>
+<p>Use <code>weakref.WeakSet</code> for code-object references to avoid
+    preventing garbage collection of unloaded modules.</p>
+</li>
+<li>
+<p>[ ] <strong>4.5 Benchmarks</strong></p>
+</li>
+<li>Compare wall-clock overhead:<ul>
+<li>(a) settrace + frame_eval (current).</li>
+<li>(b) sys.monitoring (naive).</li>
+<li>(c) sys.monitoring + <code>DISABLE</code> optimisation.</li>
+<li>(d) no debugger attached.</li>
+</ul>
+</li>
+<li>Target: &lt; 5% overhead for (c) with a small number of breakpoints
+    set.</li>
+<li>Publish results in <code>doc/reference/</code>.</li>
+</ul>
+<hr/>
+<h3 id="phase-5-read-access-watchpoints-feature-idea-12">Phase 5 — Read-access watchpoints (feature idea §12)</h3>
+<ul>
+<li>[ ] <strong>5.1 Read watchpoints via <code>INSTRUCTION</code> events</strong></li>
+<li>Use <code>INSTRUCTION</code> events on targeted code objects.</li>
+<li>Inspect opcode at <code>instruction_offset</code> for variable-read
+    operations: <code>LOAD_NAME</code>, <code>LOAD_FAST</code>, <code>LOAD_GLOBAL</code>,
+    <code>LOAD_ATTR</code>.</li>
+<li>Match against watched variable names.</li>
+<li>
+<p>Return <code>DISABLE</code> for non-matching instructions to minimise
+    overhead.</p>
+</li>
+<li>
+<p>[ ] <strong>5.2 Graceful fallback on &lt; 3.12</strong></p>
+</li>
+<li>On Python &lt; 3.12, fall back to the existing write-only
+    <code>DataBreakpointState</code> behaviour.</li>
+<li>
+<p>Surface a capabilities flag in DAP <code>initialize</code> response:
+    <code>supportsReadWatchpoints: True</code> only on 3.12+.</p>
+</li>
+<li>
+<p>[ ] <strong>5.3 Tests for read watchpoints</strong></p>
+</li>
+<li>Read of a watched local variable triggers a stop.</li>
+<li>Read of a watched global triggers a stop.</li>
+<li>Read of a watched attribute triggers a stop.</li>
+<li>Unwatched reads do not trigger (verify <code>DISABLE</code>).</li>
+<li>Fallback on &lt; 3.12 produces write-only behaviour.</li>
+</ul>
+<hr/>
+<h2 id="files-affected">Files Affected</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Path</th>
+<th>Phase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>New</strong></td>
+<td><code>dapper/_frame_eval/tracing_backend.py</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>New</strong></td>
+<td><code>dapper/_frame_eval/settrace_backend.py</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>New</strong></td>
+<td><code>dapper/_frame_eval/monitoring_backend.py</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/_frame_eval/debugger_integration.py</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><strong>New</strong></td>
+<td><code>tests/unit/test_sys_monitoring_backend.py</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/_frame_eval/config.py</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/_frame_eval/frame_eval_main.py</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/_frame_eval/compatibility_policy.py</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/_frame_eval/debugger_integration.py</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>dapper/core/debugger_bdb.py</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><strong>Deprecate</strong></td>
+<td><code>dapper/_frame_eval/_frame_evaluator.pyx</code></td>
+<td>4</td>
+</tr>
+<tr>
+<td><strong>Deprecate</strong></td>
+<td><code>dapper/_frame_eval/modify_bytecode.py</code></td>
+<td>4</td>
+</tr>
+<tr>
+<td><strong>Modify</strong></td>
+<td><code>scripts/build_frame_eval.py</code></td>
+<td>4</td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h2 id="risks-mitigations">Risks &amp; Mitigations</h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LINE</code> callback receives <code>(code, line_number)</code> — no frame object</td>
+<td>Use <code>sys._getframe(1)</code> inside callback, or track frames via <code>PY_START</code>; benchmark both approaches</td>
+</tr>
+<tr>
+<td><code>restart_events()</code> is global (all tools)</td>
+<td>Only call when breakpoints actually change; document that Dapper may re-enable events for other tools (per CPython semantics)</td>
+</tr>
+<tr>
+<td>Another tool already holds <code>DEBUGGER_ID</code> slot</td>
+<td>Call <code>sys.monitoring.get_tool(DEBUGGER_ID)</code> at startup; if taken, fall back to <code>SettraceBackend</code> with a warning</td>
+</tr>
+<tr>
+<td>Python 3.12/3.13 vs 3.14 behaviour differences</td>
+<td><code>BRANCH</code> deprecated in 3.14 in favour of <code>BRANCH_LEFT</code>/<code>BRANCH_RIGHT</code>; use <code>hasattr()</code> feature detection</td>
+</tr>
+<tr>
+<td>Thread safety of callback registration</td>
+<td>All <code>register_callback</code> / <code>set_events</code> calls happen on the main thread or under a lock; callbacks themselves are thread-safe (stateless lookups into immutable snapshots)</td>
+</tr>
+<tr>
+<td><code>sys._getframe()</code> may be slow or restricted</td>
+<td>Profile; if problematic, switch to frame tracking via <code>PY_START</code> with a thread-local frame stack</td>
+</tr>
+</tbody>
+</table>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({});</script></body>
+</html>

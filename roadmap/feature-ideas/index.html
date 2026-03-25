@@ -1,0 +1,2548 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://jnsquire.github.io/dapper/roadmap/feature-ideas/">
+      
+      
+        <link rel="prev" href="../../architecture/current-analysis/">
+      
+      
+        <link rel="next" href="../dep-001-hot-reload/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Feature Ideas - Dapper</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dapper-feature-improvement-ideas" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Dapper" class="md-header__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Dapper
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Feature Ideas
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Dapper" class="md-nav__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Dapper
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/using-vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/standalone-adapter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/manual-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/async-debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/variable-presentation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/frame-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/watchpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/lm-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LM Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/operational-modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/dap-extensions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/vscode-extension/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/message-flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ipc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/breakpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/build-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/backend-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/developer-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/sys-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/current-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-async-causality-and-scheduling-insight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Async Causality and Scheduling Insight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-rich-variable-presentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Rich Variable Presentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-expression-watchpoints-set-expression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Expression Watchpoints / Set Expression
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-multi-process-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Multi-Process Debugging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-execution-event-log-lightweight-reverse-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Execution Event Log (Lightweight Reverse Debugging)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-coverage-aware-breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Coverage-Aware Breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-test-framework-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Test-Framework Integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-richer-exception-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Richer Exception Filtering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-documentation-screenshot-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Documentation Screenshot Infrastructure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Documentation Screenshot Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tier-1-manual-capture-immediate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1 — Manual Capture (immediate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier-2-automated-ci-driven-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 2 — Automated / CI-Driven Capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mkdocs-image-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MkDocs image support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-001-hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hot-reload-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-async-causality-and-scheduling-insight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Async Causality and Scheduling Insight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-rich-variable-presentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Rich Variable Presentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-expression-watchpoints-set-expression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Expression Watchpoints / Set Expression
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-multi-process-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Multi-Process Debugging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-execution-event-log-lightweight-reverse-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Execution Event Log (Lightweight Reverse Debugging)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-coverage-aware-breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Coverage-Aware Breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-test-framework-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Test-Framework Integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-richer-exception-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Richer Exception Filtering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-documentation-screenshot-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Documentation Screenshot Infrastructure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Documentation Screenshot Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tier-1-manual-capture-immediate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1 — Manual Capture (immediate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier-2-automated-ci-driven-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 2 — Automated / CI-Driven Capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mkdocs-image-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MkDocs image support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="dapper-feature-improvement-ideas">Dapper — Feature Improvement Ideas</h1>
+<p>Ideas generated from a full codebase review, organised by theme.
+Each item is unchecked and intended to be promoted into the main
+<a href="../../reference/checklist/">checklist</a> or a phase roadmap as work begins.</p>
+<p>Legend
+- [ ] Not started
+- [x] Done / promoted to main checklist</p>
+<hr />
+<h2 id="1-async-causality-and-scheduling-insight">1. Async Causality and Scheduling Insight</h2>
+<ul>
+<li>[ ] <strong>Async causality view</strong> — when execution resumes in an <code>asyncio.Task</code>,
+      show why that task became runnable: completion of a specific
+      <code>Future</code>/<code>Task</code>, a loop callback, a timer, selector I/O readiness, or an
+      explicit cross-thread wakeup. The goal is to answer "what resumed this
+      task?" rather than only "where is it paused now?".
+      <strong>Potential shape:</strong> emit a custom DAP event or expose a virtual scope /
+      tool payload containing the most recent wakeup cause, scheduler edge, and
+      related object reprs.
+      <strong>Likely implementation hooks:</strong> <code>asyncio</code> task/future callbacks,
+      event-loop scheduling helpers (<code>call_soon</code>, <code>call_later</code>, selector
+      callbacks), and the existing pseudo-thread task-inspector plumbing.
+      <strong>Acceptance signal:</strong> when stopped in async code, the user can see the
+      last scheduling cause without manually reconstructing it from stack frames
+      and event-loop internals.</li>
+</ul>
+<hr />
+<h2 id="2-rich-variable-presentation">2. Rich Variable Presentation</h2>
+<ul>
+<li>[ ] <strong>numpy / pandas / torch tensor summaries</strong> — show shape, dtype, and a
+      compact data preview instead of the full <code>repr</code> (which can hang the UI
+      for large arrays).</li>
+<li>[ ] <strong>Object reference graph</strong> — a custom evaluate response or DAP event
+      that serialises a shallow object graph; useful for spotting aliasing bugs
+      and unintended shared-state.</li>
+<li>[ ] <strong><code>__repr__</code> vs <code>__str__</code> toggle</strong> — let the user choose which
+      representation the variable panel displays when both differ meaningfully
+      (e.g. SQLAlchemy models, custom domain objects).</li>
+</ul>
+<hr />
+<h2 id="5-expression-watchpoints-set-expression">5. Expression Watchpoints / Set Expression</h2>
+<ul>
+<li>[x] <strong>Set expression (<code>setExpression</code> DAP request)</strong> — complements data
+      breakpoints with expression-backed writes.</li>
+</ul>
+<hr />
+<h2 id="6-multi-process-debugging">6. Multi-Process Debugging</h2>
+<ul>
+<li>[ ] <strong>Auto-attach to child processes (Phase 1 scaffold promoted)</strong> — when the debuggee calls
+      <code>subprocess.Popen</code>, <code>multiprocessing.Process</code>, or
+      <code>concurrent.futures.ProcessPoolExecutor</code>, inject the Dapper launcher
+      before <code>exec</code> so child processes are debuggable automatically.<br />
+<strong>Current status:</strong> Python <code>subprocess.Popen</code> child rewrite, lifecycle events, VS Code extension child-session attach plumbing, and process-tree / tracked-PID UX are implemented for rewritten Python subprocess launches. <code>multiprocessing.Process</code> / <code>ProcessPoolExecutor</code> still remain scaffold-level candidate detection outside the cases that already pass through rewritten Python subprocess launches. Attach-by-PID for already-running Python 3.14 interpreters is now implemented as a separate complementary flow rather than a future phase.</li>
+<li>[ ] <strong>Auto-attach implementation roadmap (Phase 1–3)</strong></li>
+<li>[x] <strong>Phase 1 (MVP): <code>subprocess.Popen</code> for Python children</strong><ul>
+<li>[x] Add launch config flag to enable/disable child auto-attach
+      (default off for safety).</li>
+<li>[x] Wire <code>SubprocessManager</code> into external launch lifecycle
+      (enable on launch, disable on terminate/disconnect).</li>
+<li>[x] Intercept Python child commands and rewrite to launcher form,
+      preserving script/module args.</li>
+<li>[x] Emit <code>dapper/childProcess</code> event with PID, parent PID, command,
+      and IPC endpoint for extension-side attach.</li>
+<li>[x] Add tests: detection, arg rewrite, patch/unpatch behavior,
+      event payload, non-Python passthrough.</li>
+</ul>
+</li>
+<li>[ ] <strong>Phase 2: <code>multiprocessing</code> + <code>ProcessPoolExecutor</code> coverage</strong><ul>
+<li>[x] Add scaffold-level detection hooks/events for
+      <code>multiprocessing.Process</code> / <code>ProcessPoolExecutor</code> to support
+      iterative rollout before full launcher injection.</li>
+<li>[x] Handle <code>spawn</code> / <code>forkserver</code> launch paths where command lines are
+      visible and safe to rewrite.</li>
+<li>[x] Validate behavior across Linux/macOS/Windows transport defaults.</li>
+<li>[x] Add limits/guardrails (max children, recursion prevention).</li>
+<li>[ ] Promote scaffold detection to full child-session attach for direct
+      <code>multiprocessing</code> / <code>ProcessPoolExecutor</code> launch paths that do not
+      already flow through rewritten Python <code>subprocess.Popen</code> invocations.</li>
+<li>Validation note: behavior is covered by unit-level launch rewrite tests
+      and platform transport defaults; expand with full OS matrix runtime
+      tests in CI as follow-up hardening.</li>
+</ul>
+</li>
+<li>[x] <strong>Phase 2.5: extension child-session attach plumbing</strong><ul>
+<li>[x] Handle <code>dapper/childProcess</code>, <code>dapper/childProcessExited</code>, and
+      <code>dapper/childProcessCandidate</code> in the VS Code extension.</li>
+<li>[x] Replace the single-session IPC wiring with child-aware socket/session
+      correlation.</li>
+<li>[x] Start child debug sessions from correlated events instead of only
+      emitting launch-side events.</li>
+</ul>
+</li>
+<li>[x] <strong>Phase 3: process tree + tracked-PID UX polish</strong><ul>
+<li>[x] Add process lifecycle events (<code>started</code> / <code>exited</code>) sufficient for
+      extension-side process tree rendering.</li>
+<li>[x] Consume parent/child session IDs in the extension for actual tree
+      grouping.</li>
+<li>[x] Surface tracked PIDs in the extension TreeView with process/session
+      commands so the process tree can be used as an active control surface.</li>
+<li>[x] Document known limitations (non-Python children, shell wrappers,
+      custom launchers).</li>
+<li>[x] Wire tracked Python processes to true attach-by-PID instead of tree-only
+      visibility and control affordances.</li>
+<li>[ ] <strong>Acceptance criteria (for promoting from idea to checklist)</strong></li>
+<li>[x] With auto-attach enabled, Python <code>subprocess.Popen(...)</code> children
+        emit attachable child-process events.</li>
+<li>[x] With auto-attach disabled, launch behavior is unchanged.</li>
+<li>[x] Patching is always cleaned up on session end (no global leakage).</li>
+<li>[x] Existing launch/attach flows remain regression-free.</li>
+<li>[x] Child-process events cause real child debug sessions to be created
+        in VS Code.</li>
+<li>[x] Parent/child sessions are grouped coherently in extension UX.</li>
+</ul>
+</li>
+<li>[x] <strong>Phase 4: attach by PID for live Python 3.14 interpreters</strong><ul>
+<li>[x] Add a Python-side live-attach bootstrap that can be injected with
+      <code>sys.remote_exec(pid, script)</code> and then connect back over Dapper's
+      existing IPC transport.</li>
+<li>[x] Extend DAP attach config parsing so <code>processId</code> is a first-class
+      attach mode alongside direct IPC endpoint attach.</li>
+<li>[x] Teach the VS Code debug adapter factory to allocate the IPC listener
+      first, then invoke a local CPython 3.14 helper that performs the
+      remote execution into the target process.</li>
+<li>[x] Surface actionable diagnostics for version mismatch, disabled remote
+      debugging, missing privileges, and bootstrap timeout cases.</li>
+<li>[x] Add focused tests for the processId attach handshake.</li>
+<li>[x] Document the Python 3.14 / permission constraints.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="7-execution-event-log-lightweight-reverse-debugging">7. Execution Event Log (Lightweight Reverse Debugging)</h2>
+<ul>
+<li>[x] <strong>Structured execution history</strong> — record every <code>stopped</code> event with a
+      frame snapshot (locals, call stack) to an in-memory ring buffer.  Lets
+      the user browse recent execution as a timeline without full rr-style
+      time travel.  The telemetry infrastructure in
+      <code>_frame_eval/telemetry.py</code> provides a pattern to follow.</li>
+<li>[ ] <strong>Stop-reason diagnostics</strong> — attach an explanation payload to stops that
+      are technically correct but hard to interpret, such as async-aware step
+      filtering, conditional breakpoint truthiness, exception-filter matches, or
+      user-code re-entry after skipping event-loop frames.
+      <strong>Example explanations:</strong> "stepped into event-loop machinery, then skipped
+      to next user frame", "stopped because breakpoint condition <code>total &gt; 100</code>
+      evaluated truthy", or "paused because this exception matched the active
+      uncaught filter".
+      <strong>Potential shape:</strong> add a small structured explanation object to stopped
+      snapshots / journal entries and optionally mirror it into a custom DAP
+      event for extension UX.
+      <strong>Likely implementation hooks:</strong> execution controller stop classification,
+      breakpoint condition evaluation paths, async-aware stepping filters, and
+      exception-breakpoint resolution.
+      <strong>Acceptance signal:</strong> after a surprising stop, the user can see why the
+      debugger chose that stop without inferring behavior from raw frames and
+      internal filters.</li>
+<li>[ ] <strong>Promote to full reverse execution</strong> — once the event log is stable,
+      consider wiring it to the DAP <code>reverseContinue</code> / <code>stepBack</code> requests
+      (Phase 3 roadmap item).</li>
+</ul>
+<hr />
+<h2 id="8-coverage-aware-breakpoints">8. Coverage-Aware Breakpoints</h2>
+<ul>
+<li>[ ] <strong>Per-line execution counts</strong> — emit counts via a custom DAP event
+      (e.g. <code>dapper/lineCoverage</code>) as lines are executed; the frame-eval
+      tracing layer already visits every line.</li>
+<li>[ ] <strong>Editor decoration support in VS Code extension</strong> — use the counts to
+      shade hit / unhit lines, making unexercised branches immediately visible
+      without a separate coverage tool.</li>
+</ul>
+<hr />
+<h2 id="9-test-framework-integration">9. Test-Framework Integration</h2>
+<ul>
+<li>[ ] <strong>Parametrised-test context</strong> — when stopped inside a <code>pytest</code>
+      parametrised test, surface the current parameter set as a virtual scope
+      in the variables panel.</li>
+<li>[ ] <strong>Fixture inspection</strong> — expose active pytest fixtures as a virtual
+      scope in the stack frame view.</li>
+<li>[ ] <strong>Re-run on save</strong> — after a hot-reload edit (see §4), re-run the
+      currently-paused test body automatically.</li>
+</ul>
+<hr />
+<h2 id="11-richer-exception-filtering">11. Richer Exception Filtering</h2>
+<ul>
+<li>[ ] <strong>Exception type filter</strong> — break only on specific exception classes
+      (e.g. <code>ValueError</code>, <code>KeyError</code>) rather than all raised exceptions.</li>
+<li>[ ] <strong>Module-origin filter</strong> — break on exceptions originating in user code
+      but ignore those raised inside site-packages (analogous to debugpy
+      "user-unhandled").</li>
+<li>[ ] <strong>"Just my code" mode</strong> — skip all frames inside site-packages /
+      standard library entirely during stepping and stack display.</li>
+</ul>
+<hr />
+<h2 id="12-documentation-screenshot-infrastructure">12. Documentation Screenshot Infrastructure</h2>
+<p>Ideas for building automated, reproducible screenshot capture for the docs.</p>
+<h3 id="tier-1-manual-capture-immediate">Tier 1 — Manual Capture (immediate)</h3>
+<ul>
+<li>[ ] <strong>Install Flameshot for Linux</strong> — <code>sudo apt install flameshot</code>.  Run
+      <code>flameshot gui -p doc/img/vscode/</code> to capture annotated screenshots
+      (arrows, highlights, blur) directly into the docs image directory.</li>
+<li>[ ] <strong>ImageMagick post-processing script</strong> — <code>scripts/process-screenshot.sh</code>
+      that applies a consistent drop shadow and white border to all PNGs so
+      every image looks uniform in the rendered site.</li>
+<li>[ ] <strong><code>doc/img/vscode/</code> directory</strong> — centralised home for all VS Code UI
+      screenshots.  Use the naming convention
+      <code>vscode-{context}-{element}-{state}.png</code>
+      (e.g. <code>vscode-debug-breakpoint-hit.png</code>).</li>
+<li>[ ] <strong>Initial screenshot batch for <a href="../../getting-started/using-vscode/">using-vscode.md</a></strong> — eight
+      key captures: launch.json config, adapter terminal, breakpoint hit,
+      Variables panel, Threads/async view, Call Stack, extension install, Debug
+      Console.</li>
+</ul>
+<h3 id="tier-2-automated-ci-driven-capture">Tier 2 — Automated / CI-Driven Capture</h3>
+<ul>
+<li>[ ] <strong><code>scripts/capture-screenshots.py</code> via Playwright + code-server</strong> —
+      launch <code>code-server</code> pointing at the dapper workspace, use Playwright to
+      navigate to each debug state (open file → set breakpoint → start
+      debugging → step), capture <code>page.screenshot()</code> for each panel.  Saves
+      deterministic PNGs that can be regenerated after any UI change.
+      <code>bash
+      pip install playwright &amp;&amp; playwright install chromium
+      npm install -g code-server
+      python scripts/capture-screenshots.py</code></li>
+<li>[ ] <strong><code>@vscode/test-electron</code> + Electron capture (alternative)</strong> — for
+      pixel-perfect desktop VS Code screenshots (not web), use the existing
+      <code>@vscode/test-electron</code> integration test harness together with
+      Electron's <code>webContents.capturePage()</code>.  Run headlessly with
+      <code>xvfb-run</code> in CI.</li>
+<li>[ ] <strong><code>xvfb-run</code> GitHub Actions job</strong> — add a CI workflow step that runs
+      <code>scripts/capture-screenshots.py</code> and commits updated images when the
+      dapper version bumps, ensuring docs screenshots track releases
+      automatically.</li>
+<li>[ ] <strong>Stale-screenshot detection</strong> — a <code>scripts/check-doc-images.sh</code> script
+      that verifies every <code>![]()</code> image reference in the Markdown files points
+      to an existing file, and optionally checks image mtimes against the
+      last-modified date of the doc page that references them.</li>
+<li>[ ] <strong>Baseline comparison with <code>pixelmatch</code></strong> — after an automated capture
+      run, compare new PNGs against the committed baseline; fail CI only if
+      the diff exceeds a configurable pixel-change threshold (to tolerate minor
+      font rendering differences across OS versions).</li>
+</ul>
+<h3 id="mkdocs-image-support">MkDocs image support</h3>
+<ul>
+<li>[ ] <strong>Add <code>glightbox</code> plugin</strong> — <code>pip install mkdocs-glightbox</code>; add to
+      <code>mkdocs.yml</code> so readers can click any screenshot to see it full-size.</li>
+<li>[ ] <strong>Add <code>attr_list</code> extension</strong> — enables <code>{ width="600" }</code> syntax on
+      image references for responsive sizing without raw HTML.</li>
+<li>[ ] <strong>Upgrade theme to <code>material</code></strong> (optional but unlocks image captions,
+      dark mode, admonitions, and better overall DX).</li>
+</ul>
+<hr />
+<h2 id="priority-summary">Priority Summary</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Area</th>
+<th>User Impact</th>
+<th>Estimated Effort</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Async task inspector</td>
+<td>Very High</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Async causality view</td>
+<td>Very High</td>
+<td>Medium–High</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Stop-reason diagnostics</td>
+<td>High</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>4</td>
+<td>numpy / pandas / torch tensor summaries</td>
+<td>High</td>
+<td>Low–Medium</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Object reference graph</td>
+<td>High</td>
+<td>Low–Medium</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>__repr__</code> vs <code>__str__</code> toggle</td>
+<td>High</td>
+<td>Low–Medium</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Expression watchpoints</td>
+<td>High</td>
+<td>Low (frame-eval infra exists)</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Exception type filtering / "just my code"</td>
+<td>High</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Hot code reloading</td>
+<td>High</td>
+<td>High</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Coverage-aware breakpoints</td>
+<td>Medium</td>
+<td>Low–Medium</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Multi-process attach</td>
+<td>Medium</td>
+<td>High</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Test framework integration</td>
+<td>Medium</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>13</td>
+<td>goto / jump-to-line</td>
+<td>Medium</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Execution event log</td>
+<td>Medium</td>
+<td>Low–Medium</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Read-access watchpoints</td>
+<td>Medium</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Doc screenshot capture (Tier 1 manual)</td>
+<td>High</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Doc screenshot automation / CI (Tier 2)</td>
+<td>Medium</td>
+<td>Medium</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Generated: 2026-02-20; updated: 2026-03-12</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
