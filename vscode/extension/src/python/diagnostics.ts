@@ -1,5 +1,6 @@
 import type { EnvironmentSnapshotOptions, EnvironmentSnapshotService } from './environmentSnapshot.js';
 import type { RuffCheckOptions, RuffCheckResult, RuffRunnerService } from './ruffRunner.js';
+import type { PythonDiagnosticContext, PythonTypeInfo } from './semanticPayloads.js';
 import type { TyCheckResult, TyRunnerService } from './tyRunner.js';
 import { type DiagnosticSummary, computeDiagnosticSummary, filterByPathClass } from './diagnosticSummary.js';
 
@@ -24,6 +25,8 @@ export interface PythonDiagnostic {
   fixable?: boolean;
   fingerprint?: string;
   url?: string;
+  typeInfo?: PythonTypeInfo;
+  diagnosticContext?: PythonDiagnosticContext;
 }
 
 export interface PythonDiagnosticsBackendStatus {

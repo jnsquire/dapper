@@ -1,5 +1,12 @@
 import type { EnvironmentSnapshotOptions, EnvironmentSnapshotService } from './environmentSnapshot.js';
 import type { PythonDiagnostic, PythonDiagnosticsBackendStatus } from './diagnostics.js';
+import type {
+  PythonDiagnosticContext,
+  PythonOutputBudget,
+  PythonRelatedLocation,
+  PythonToolCompletionStatus,
+  PythonTypeInfo,
+} from './semanticPayloads.js';
 import type { TyCheckResult, TyRunnerService } from './tyRunner.js';
 import { type DiagnosticSummary, computeDiagnosticSummary, filterByPathClass } from './diagnosticSummary.js';
 
@@ -7,19 +14,23 @@ export interface PythonTypecheckOptions extends EnvironmentSnapshotOptions {
   files?: string[];
   cwd?: string;
   limit?: number;
+  offset?: number;
   pathFilter?: 'source' | 'tests' | 'all';
 }
 
 export interface PythonTypecheckResult {
   generatedAt: string;
   status: 'complete' | 'failed';
+  completionStatus: PythonToolCompletionStatus;
   workspaceFolder?: string;
   cwd?: string;
   files?: string[];
   pathFilter?: 'source' | 'tests' | 'all';
   limit?: number;
+  offset?: number;
   truncated: boolean;
   totalDiagnostics: number;
+  outputBudget: PythonOutputBudget;
   summary: DiagnosticSummary;
   diagnostics: PythonDiagnostic[];
   backend: PythonDiagnosticsBackendStatus;
@@ -32,10 +43,6 @@ interface TyDiagnosticPayload {
   severity?: string;
   location?: {
     path?: string;
-    lines?: {
-      begin?: number;
-      end?: number;
-    };
     positions?: {
       begin?: {
         line?: number;
@@ -63,7 +70,8 @@ export class PythonTypecheckService {
     const filteredDiagnostics = filterByPathClass(allDiagnostics, pathFilter);
     const summary = computeDiagnosticSummary(filteredDiagnostics);
     const limit = this._normalizeLimit(options.limit);
-    const diagnostics = limit == null ? filteredDiagnostics : filteredDiagnostics.slice(0, limit);
+    const offset = this._normalizeOffset(options.offset);
+    const diagnostics = this._slicePage(filteredDiagnostics, offset, limit);
     const backend: PythonDiagnosticsBackendStatus = {
       name: 'ty',
       status: this._mapTyStatus(tyResult),
@@ -72,17 +80,32 @@ export class PythonTypecheckService {
       diagnosticCount: allDiagnostics.length,
       error: tyResult.error,
     };
+    const nextOffset = offset + diagnostics.length;
+    const truncated = nextOffset < filteredDiagnostics.length;
+    const partial = offset > 0 || truncated;
 
     return {
       generatedAt: new Date().toISOString(),
       status: backend.status === 'complete' ? 'complete' : 'failed',
+      completionStatus: this._mapCompletionStatus(backend.status, partial),
       workspaceFolder: snapshot.workspaceFolder,
       cwd: options.cwd ?? options.searchRootPath ?? options.workspaceFolder?.uri.fsPath ?? snapshot.workspaceFolder,
       files: options.files,
       pathFilter: pathFilter !== 'all' ? pathFilter : undefined,
       limit,
-      truncated: diagnostics.length < filteredDiagnostics.length,
+      offset,
+      truncated,
       totalDiagnostics: filteredDiagnostics.length,
+      outputBudget: {
+        requestedLimit: options.limit,
+        appliedLimit: limit,
+        requestedOffset: options.offset,
+        appliedOffset: offset,
+        returnedItems: diagnostics.length,
+        totalItems: filteredDiagnostics.length,
+        truncated,
+        nextOffset: truncated ? nextOffset : undefined,
+      },
       summary,
       diagnostics,
       backend,
@@ -100,19 +123,102 @@ export class PythonTypecheckService {
       return undefined;
     }
 
+    const message = this._normalizeTyMessage(item);
+
     return {
       source: 'ty',
       severity: this._mapTySeverity(item.severity),
       nativeSeverity: item.severity,
       code: item.check_name,
-      message: item.description,
+      message,
       file: item.location?.path,
-      startLine: item.location?.lines?.begin ?? item.location?.positions?.begin?.line,
+      startLine: item.location?.positions?.begin?.line,
       startColumn: item.location?.positions?.begin?.column,
-      endLine: item.location?.lines?.end ?? item.location?.positions?.end?.line,
+      endLine: item.location?.positions?.end?.line,
       endColumn: item.location?.positions?.end?.column,
       fingerprint: item.fingerprint,
+      typeInfo: this._normalizeTypeInfo(item, message),
+      diagnosticContext: this._normalizeDiagnosticContext(item, message),
     };
+  }
+
+  private _normalizeTypeInfo(item: TyDiagnosticPayload, message: string): PythonTypeInfo | undefined {
+    const pair = this._extractExpectedFoundTypes(message);
+    const declaredType = pair?.expected;
+    const inferredType = pair?.found;
+    const symbolKind = item.check_name === 'invalid-return-type' ? 'function' : undefined;
+    if (!declaredType && !inferredType && !symbolKind) {
+      return undefined;
+    }
+
+    return {
+      declaredType,
+      inferredType,
+      symbolKind,
+      source: 'ty',
+    };
+  }
+
+  private _normalizeDiagnosticContext(item: TyDiagnosticPayload, message: string): PythonDiagnosticContext | undefined {
+    const summary = this._humanizeTyCheckName(item.check_name);
+    const explanation = message;
+    const code = this._firstString(item.check_name);
+
+    if (!summary && !explanation && !code) {
+      return undefined;
+    }
+
+    return {
+      summary,
+      explanation,
+      code,
+      rule: code,
+    };
+  }
+
+  private _normalizeTyMessage(item: TyDiagnosticPayload): string {
+    const description = item.description?.trim() ?? '';
+    const prefix = item.check_name ? `${item.check_name}: ` : undefined;
+    if (prefix && description.startsWith(prefix)) {
+      return description.slice(prefix.length);
+    }
+    return description;
+  }
+
+  private _extractExpectedFoundTypes(message: string): { expected?: string; found?: string } | undefined {
+    const match = /expected `([^`]+)`, found `([^`]+)`/.exec(message);
+    if (!match) {
+      return undefined;
+    }
+
+    return {
+      expected: match[1]?.trim(),
+      found: match[2]?.trim(),
+    };
+  }
+
+  private _humanizeTyCheckName(value: string | undefined): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    return value
+      .split('-')
+      .filter(part => part.length > 0)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private _firstString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    }
+    return undefined;
   }
 
   private _mapTyStatus(result: TyCheckResult): PythonDiagnosticsBackendStatus['status'] {
@@ -141,10 +247,34 @@ export class PythonTypecheckService {
     }
   }
 
+  private _mapCompletionStatus(
+    backendStatus: PythonDiagnosticsBackendStatus['status'],
+    partial: boolean,
+  ): PythonToolCompletionStatus {
+    if (backendStatus === 'failed' || backendStatus === 'unavailable' || backendStatus === 'not-implemented') {
+      return 'failed';
+    }
+    return partial ? 'partial' : 'complete';
+  }
+
   private _normalizeLimit(value: number | undefined): number | undefined {
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
       return undefined;
     }
     return Math.floor(value);
+  }
+
+  private _normalizeOffset(value: number | undefined): number {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return 0;
+    }
+    return Math.floor(value);
+  }
+
+  private _slicePage<T>(items: T[], offset: number, limit: number | undefined): T[] {
+    if (limit == null) {
+      return items.slice(offset);
+    }
+    return items.slice(offset, offset + limit);
   }
 }
