@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PythonSymbolService } from '../src/python/symbols.js';
@@ -25,7 +27,8 @@ describe('PythonSymbolService', () => {
   });
 
   it('normalizes definition locations from VS Code providers', async () => {
-    vi.spyOn(vscode.workspace, 'openTextDocument').mockResolvedValue({ uri: vscode.Uri.file('/workspace/app.py') } as any);
+    const documentUri = vscode.Uri.file('/workspace/app.py');
+    vi.spyOn(vscode.workspace, 'openTextDocument').mockResolvedValue({ uri: documentUri } as any);
     vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue([
       new vscode.Location(
         vscode.Uri.file('/workspace/pkg/mod.py'),
@@ -55,11 +58,13 @@ describe('PythonSymbolService', () => {
         range: { startLine: 5, startColumn: 3, endLine: 5, endColumn: 11 },
       },
     ]);
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'vscode.executeDefinitionProvider',
-      expect.objectContaining({ fsPath: '/workspace/app.py' }),
-      expect.objectContaining({ line: 9, character: 2 }),
-    );
+    const [commandId, providerUri, providerPosition] = vi.mocked(vscode.commands.executeCommand).mock.calls[0] ?? [];
+    expect(commandId).toBe('vscode.executeDefinitionProvider');
+    expect(providerUri).toMatchObject({
+      scheme: 'file',
+      fsPath: path.normalize(path.resolve(vscode.workspace.workspaceFolders[0].uri.fsPath, 'app.py')),
+    });
+    expect(providerPosition).toMatchObject({ line: 9, character: 2 });
   });
 
   it('normalizes hover results', async () => {

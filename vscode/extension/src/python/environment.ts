@@ -21,42 +21,100 @@ export interface PythonEnvironmentSelection {
 
 type PythonEnvironmentQuickPickItem = PythonEnvironmentSelection & vscode.QuickPickItem;
 
+export type PythonEnvironmentErrorCode =
+  | 'python_extension_missing'
+  | 'python_extension_api_unavailable'
+  | 'interpreter_not_found'
+  | 'environment_variables_unavailable'
+  | 'unknown';
+
+export class PythonEnvironmentError extends Error {
+  constructor(
+    public readonly code: PythonEnvironmentErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PythonEnvironmentError';
+  }
+}
+
+interface PythonExtensionApi {
+  environments: {
+    resolveEnvironment: (uri?: vscode.Uri) => Promise<any>;
+  };
+}
+
 export class PythonEnvironmentManager {
   private static readonly workspaceVenvDirs = ['.venv', 'venv', 'env', '.env'];
 
-  private static async getPythonExtension() {
+  private static async getPythonExtensionApi(): Promise<PythonExtensionApi> {
     const pythonExtension = vscode.extensions.getExtension('ms-python.python');
     if (!pythonExtension) {
-      throw new Error('Python extension is not installed');
+      throw new PythonEnvironmentError('python_extension_missing', 'Python extension is not installed');
     }
     if (!pythonExtension.isActive) {
       await pythonExtension.activate();
     }
-    return pythonExtension;
+
+    const api = pythonExtension.exports as {
+      environments?: {
+        resolveEnvironment?: (uri?: vscode.Uri) => Promise<any>;
+      };
+    };
+
+    if (typeof api?.environments?.resolveEnvironment !== 'function') {
+      throw new PythonEnvironmentError(
+        'python_extension_api_unavailable',
+        'Python extension does not expose a compatible environments.resolveEnvironment API',
+      );
+    }
+
+    return {
+      environments: {
+        resolveEnvironment: api.environments.resolveEnvironment,
+      },
+    };
   }
 
   public static async getPythonEnvironment(workspaceFolder?: vscode.WorkspaceFolder): Promise<PythonEnvironment> {
-    const pythonExtension = await this.getPythonExtension();
-    const api = pythonExtension.exports;
+    try {
+      const api = await this.getPythonExtensionApi();
+      
+      // Get the Python interpreter details
+      const interpreter = await api.environments.resolveEnvironment(
+        workspaceFolder ? workspaceFolder.uri : undefined
+      );
 
-    // Get the Python interpreter details
-    const interpreter = await api.environments.resolveEnvironment(
-      workspaceFolder ? workspaceFolder.uri : undefined
-    );
+      if (!interpreter) {
+        throw new PythonEnvironmentError('interpreter_not_found', 'No Python interpreter found');
+      }
 
-    if (!interpreter) {
-      throw new Error('No Python interpreter found');
+      // Get environment variables for the interpreter
+      let env: NodeJS.ProcessEnv;
+      try {
+        env = await interpreter.envVars || {};
+      } catch (error) {
+        throw new PythonEnvironmentError(
+          'environment_variables_unavailable',
+          `Failed to resolve Python environment variables: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      
+      return {
+        path: interpreter.path,
+        version: interpreter.version?.major && interpreter.version?.minor
+          ? `${interpreter.version.major}.${interpreter.version.minor}`
+          : 'unknown',
+        env,
+        pythonPath: interpreter.path
+      };
+    } catch (error) {
+      console.error('Failed to get Python environment:', error);
+      if (error instanceof PythonEnvironmentError) {
+        throw error;
+      }
+      throw new PythonEnvironmentError('unknown', error instanceof Error ? error.message : String(error));
     }
-
-    // Get environment variables for the interpreter
-    const env = await interpreter.envVars;
-
-    return {
-      path: interpreter.path,
-      version: interpreter.version?.major + '.' + interpreter.version?.minor,
-      env: env || {},
-      pythonPath: interpreter.path
-    };
   }
 
   public static async pickPythonEnvironment(

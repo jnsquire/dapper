@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { createExtensionApi, type DapperExtensionApi } from './api.js';
 import { DapperDebugAdapterDescriptorFactory } from './debugAdapter/dapperDebugAdapter.js';
 import { DapperConfigurationProvider, DapperDynamicConfigurationProvider } from './debugAdapter/configurationProvider.js';
 import { DapperWebview } from './webview/DapperWebview.js';
@@ -699,7 +700,7 @@ export function register(context: vscode.ExtensionContext): vscode.Disposable {
   return vscode.Disposable.from(...allDisposables);
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext): DapperExtensionApi | undefined {
   logger.log('Dapper Debugger extension is activating...');
   DapperWebview.initialize(context.workspaceState);
   logger.log(`Extension version: ${context.extension.packageJSON.version}`);
@@ -739,9 +740,11 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     logger.log('Dapper Debugger extension is now active');
+    return createExtensionApi();
   } catch (error) {
     logger.error('Failed to activate Dapper Debugger extension', error as Error);
     vscode.window.showErrorMessage('Failed to activate Dapper Debugger. Check the output for details.');
+    return undefined;
   }
 }
 
