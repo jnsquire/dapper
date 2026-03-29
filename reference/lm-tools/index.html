@@ -1,0 +1,2934 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://jnsquire.github.io/dapper/reference/lm-tools/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../checklist/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>LM Tools - Dapper</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#lm-tools" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Dapper" class="md-header__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Dapper
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LM Tools
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Dapper" class="md-nav__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Dapper
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/using-vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/standalone-adapter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/manual-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/async-debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/variable-presentation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/frame-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/watchpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LM Tools
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LM Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#public-tool-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public Tool Surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_environment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_autofix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_autofix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_imports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_imports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_project_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_project_model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_typecheck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_typecheck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_symbol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_symbol
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_rename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_rename
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_cli
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="dapper_cli">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#launch-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Launch Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspection-and-state-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspection and State Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#breakpoint-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Breakpoint Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_launch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_state
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_execution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_evaluate-and-dapper_variable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_evaluate and dapper_variable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_session_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_session_info
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readiness-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-workflow-while-paused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Workflow While Paused
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operational-modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dap-extensions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/vscode-extension/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/message-flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ipc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/breakpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/build-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/backend-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/developer-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/sys-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/current-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/feature-ideas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/dep-001-hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/hot-reload-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#public-tool-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public Tool Surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_environment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_autofix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_autofix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_imports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_imports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_project_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_project_model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_typecheck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_typecheck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_symbol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_symbol
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_python_rename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_python_rename
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_cli
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="dapper_cli">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#launch-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Launch Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspection-and-state-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspection and State Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#breakpoint-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Breakpoint Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_launch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_state
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_execution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_evaluate-and-dapper_variable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_evaluate and dapper_variable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dapper_session_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dapper_session_info
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readiness-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-workflow-while-paused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Workflow While Paused
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="lm-tools">LM Tools</h1>
+<p>Dapper exposes a small set of public language model tools for launching,
+inspecting, and controlling Python debug sessions from agents and other
+tool-driven workflows.</p>
+<p>This page documents the important runtime behavior that is easy to miss from the
+JSON schemas alone.</p>
+<h2 id="public-tool-surface">Public Tool Surface</h2>
+<p>The current public tools are:</p>
+<ul>
+<li><code>dapper_cli</code></li>
+<li><code>dapper_python_diagnostics</code></li>
+<li><code>dapper_python_environment</code></li>
+<li><code>dapper_python_autofix</code></li>
+<li><code>dapper_python_format</code></li>
+<li><code>dapper_python_project_model</code></li>
+<li><code>dapper_python_rename</code></li>
+<li><code>dapper_python_symbol</code></li>
+<li><code>dapper_python_typecheck</code></li>
+<li><code>dapper_launch</code></li>
+<li><code>dapper_state</code></li>
+<li><code>dapper_execution</code></li>
+<li><code>dapper_evaluate</code></li>
+<li><code>dapper_breakpoints</code></li>
+<li><code>dapper_variable</code></li>
+<li><code>dapper_session_info</code></li>
+</ul>
+<h2 id="common-rules">Common Rules</h2>
+<ul>
+<li>Most tools accept an optional <code>sessionId</code>.</li>
+<li>When <code>sessionId</code> is omitted, Dapper resolves the active Dapper debug session.</li>
+<li>Many Python-oriented tools also accept an optional <code>searchRootPath</code> to anchor
+  the workspace folder used for tool execution when multiple workspace roots or
+  nested projects are present.</li>
+<li>Tools do not fall back to arbitrary non-Dapper sessions.</li>
+<li>Thread routing for <code>dapper_state</code> and <code>dapper_execution</code> remains controlled by
+  the tool input <code>threadId</code>; the CLI does not add a separate thread-selector
+  grammar.</li>
+</ul>
+<h2 id="dapper_python_environment">dapper_python_environment</h2>
+<p><code>dapper_python_environment</code> reports the selected Python environment and the
+current Ty/Ruff tooling view for the workspace.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is read-only and does not require an active debug session.</li>
+<li>It reports Python interpreter selection, search roots, Ty availability,
+  Ruff availability, and Ty/Ruff config-file discovery.</li>
+<li><code>searchRootPath</code> can be used to anchor venv discovery and config discovery to
+  a nested project root.</li>
+</ul>
+<h2 id="dapper_python_diagnostics">dapper_python_diagnostics</h2>
+<p><code>dapper_python_diagnostics</code> reports structured Python diagnostics for the
+current workspace or for a selected file set.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is read-only and does not require an active debug session.</li>
+<li>Ruff and Ty diagnostics are normalized into a shared schema with
+  file/position, code, message, source, and backend-specific metadata.</li>
+<li>Backend coverage is reported explicitly, so agents can see when one backend
+  produced diagnostics and the other was unavailable or failed.</li>
+<li><code>files</code> narrows the backend invocation to selected paths.</li>
+<li><code>limit</code> bounds the number of normalized diagnostics returned while preserving
+  the total count and truncation state.</li>
+</ul>
+<h2 id="dapper_python_autofix">dapper_python_autofix</h2>
+<p><code>dapper_python_autofix</code> runs Ruff autofix for the current workspace or for a
+selected file set.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is a mutating tool: by default it applies fixable Ruff edits.</li>
+<li>Set <code>apply: false</code> to preview the Ruff diff without changing files.</li>
+<li>The result reports whether files changed and returns diff output in preview
+  mode.</li>
+</ul>
+<h2 id="dapper_python_format">dapper_python_format</h2>
+<p><code>dapper_python_format</code> runs Ruff formatting for the current workspace or for a
+selected file set.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is a mutating tool: by default it applies formatting edits.</li>
+<li>Set <code>apply: false</code> to preview the Ruff formatting diff without changing
+  files.</li>
+<li>The result reports whether files changed and returns diff output in preview
+  mode.</li>
+</ul>
+<h2 id="dapper_python_imports">dapper_python_imports</h2>
+<p><code>dapper_python_imports</code> runs Ruff-backed import hygiene actions for the current
+workspace or for a selected file set.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is a mutating tool: by default it applies changes.</li>
+<li><code>mode</code> supports <code>cleanup</code>, <code>organize</code>, and <code>all</code> (default).</li>
+<li><code>cleanup</code> removes unused imports with Ruff's <code>F401</code> fix path.</li>
+<li><code>organize</code> runs Ruff's import-sorting path.</li>
+<li>Set <code>apply: false</code> to preview the diff without changing files.</li>
+</ul>
+<h2 id="dapper_python_project_model">dapper_python_project_model</h2>
+<p><code>dapper_python_project_model</code> reports a structured Python workspace model for
+the current workspace or a selected search root.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is read-only and does not require an active debug session.</li>
+<li>It reports search roots, source roots, test roots, config files, and
+  package boundaries using bounded filesystem heuristics.</li>
+<li>It also returns the selected Python interpreter summary from the shared
+  environment snapshot so agents can relate the project model to the active
+  environment.</li>
+<li><code>searchRootPath</code> can be used to anchor project-model discovery to a nested
+  project root.</li>
+</ul>
+<h2 id="dapper_python_typecheck">dapper_python_typecheck</h2>
+<p><code>dapper_python_typecheck</code> runs Ty-backed type checking for the current
+workspace or for a selected file set.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is read-only and does not require an active debug session.</li>
+<li>It returns only Ty diagnostics, normalized into the same shared schema used
+  by <code>dapper_python_diagnostics</code>.</li>
+<li>When Ty provides richer semantic context, diagnostics may also include
+  <code>typeInfo</code> and <code>diagnosticContext</code> fields with declared or inferred types,
+  notes, related locations, and backend rule metadata.</li>
+<li><code>files</code> narrows the Ty invocation to selected paths.</li>
+<li><code>limit</code> and <code>offset</code> support paginating normalized diagnostics while
+  preserving the total count and truncation state.</li>
+<li>The result also includes <code>completionStatus</code> and <code>outputBudget</code> so agents can
+  distinguish a fully returned result from a paged, truncated, or failed one.</li>
+<li>When Ty is unavailable, the backend status is reported explicitly instead of
+  silently returning an empty success result.</li>
+</ul>
+<p>Example request:</p>
+<pre><code class="language-json">{
+  &quot;files&quot;: [&quot;app.py&quot;],
+  &quot;limit&quot;: 1,
+  &quot;offset&quot;: 1,
+  &quot;pathFilter&quot;: &quot;source&quot;
+}
+</code></pre>
+<p>Example paged response:</p>
+<pre><code class="language-json">{
+  &quot;status&quot;: &quot;complete&quot;,
+  &quot;completionStatus&quot;: &quot;partial&quot;,
+  &quot;limit&quot;: 1,
+  &quot;offset&quot;: 1,
+  &quot;totalDiagnostics&quot;: 3,
+  &quot;outputBudget&quot;: {
+    &quot;requestedLimit&quot;: 1,
+    &quot;appliedLimit&quot;: 1,
+    &quot;requestedOffset&quot;: 1,
+    &quot;appliedOffset&quot;: 1,
+    &quot;returnedItems&quot;: 1,
+    &quot;totalItems&quot;: 3,
+    &quot;truncated&quot;: true,
+    &quot;nextOffset&quot;: 2
+  },
+  &quot;diagnostics&quot;: [
+    {
+      &quot;source&quot;: &quot;ty&quot;,
+      &quot;code&quot;: &quot;invalid-return-type&quot;,
+      &quot;message&quot;: &quot;Return type does not match returned value: expected `str`, found `Literal[42]`&quot;,
+      &quot;typeInfo&quot;: {
+        &quot;declaredType&quot;: &quot;str&quot;,
+        &quot;inferredType&quot;: &quot;Literal[42]&quot;,
+        &quot;symbolKind&quot;: &quot;function&quot;,
+        &quot;source&quot;: &quot;ty&quot;
+      },
+      &quot;diagnosticContext&quot;: {
+        &quot;summary&quot;: &quot;Invalid Return Type&quot;,
+        &quot;explanation&quot;: &quot;Return type does not match returned value: expected `str`, found `Literal[42]`&quot;,
+        &quot;rule&quot;: &quot;invalid-return-type&quot;,
+        &quot;code&quot;: &quot;invalid-return-type&quot;
+      }
+    }
+  ]
+}
+</code></pre>
+<h2 id="dapper_python_symbol">dapper_python_symbol</h2>
+<p><code>dapper_python_symbol</code> resolves definition, references, implementations, or
+hover information for a symbol occurrence in a Python file.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is read-only and does not require an active debug session.</li>
+<li>It is location-based: provide <code>file</code>, <code>line</code>, and optionally <code>column</code> for an
+  existing symbol occurrence.</li>
+<li>It uses VS Code language feature providers, so the actual provider may be Ty,
+  Pylance, or another active semantic backend.</li>
+<li>The result reports Ty availability as the preferred semantic backend for the
+  workspace, but VS Code does not expose which extension satisfied the request.</li>
+<li><code>action</code> supports <code>definition</code>, <code>references</code>, <code>implementations</code>, and <code>hover</code>.</li>
+<li><code>limit</code> and <code>offset</code> can page definition, reference, implementation, or hover
+  results, and <code>outputBudget</code> reports the returned window and next offset.</li>
+<li>Hover results preserve the raw <code>contents</code> array and may additionally include
+  derived <code>typeInfo</code>, <code>signatures</code>, and <code>documentation</code> fields when the hover
+  payload contains enough structure to extract them safely.</li>
+</ul>
+<p>Example request:</p>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;hover&quot;,
+  &quot;file&quot;: &quot;examples/sample_programs/advanced_app.py&quot;,
+  &quot;line&quot;: 8,
+  &quot;column&quot;: 1,
+  &quot;limit&quot;: 1,
+  &quot;offset&quot;: 0
+}
+</code></pre>
+<p>Example paged hover response:</p>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;hover&quot;,
+  &quot;status&quot;: &quot;complete&quot;,
+  &quot;completionStatus&quot;: &quot;partial&quot;,
+  &quot;count&quot;: 1,
+  &quot;outputBudget&quot;: {
+    &quot;requestedLimit&quot;: 1,
+    &quot;appliedLimit&quot;: 1,
+    &quot;requestedOffset&quot;: 0,
+    &quot;appliedOffset&quot;: 0,
+    &quot;returnedItems&quot;: 1,
+    &quot;totalItems&quot;: 2,
+    &quot;truncated&quot;: true,
+    &quot;nextOffset&quot;: 1
+  },
+  &quot;results&quot;: [
+    {
+      &quot;kind&quot;: &quot;hover&quot;,
+      &quot;contents&quot;: [
+        &quot;python\n(method) def add_data(\n    self: Self@DataProcessor,\n    category: str,\n    items: list[Any]\n) -&gt; None&quot;,
+        &quot;Add data to the processor.&quot;
+      ],
+      &quot;typeInfo&quot;: {
+        &quot;declaredType&quot;: &quot;def add_data( self: Self@DataProcessor, category: str, items: list[Any] ) -&gt; None&quot;,
+        &quot;inferredType&quot;: &quot;None&quot;,
+        &quot;symbolKind&quot;: &quot;method&quot;,
+        &quot;source&quot;: &quot;ty&quot;
+      },
+      &quot;signatures&quot;: [
+        {
+          &quot;label&quot;: &quot;def add_data( self: Self@DataProcessor, category: str, items: list[Any] ) -&gt; None&quot;,
+          &quot;parameters&quot;: [
+            { &quot;name&quot;: &quot;self&quot;, &quot;kind&quot;: &quot;positional-or-keyword&quot;, &quot;type&quot;: &quot;Self@DataProcessor&quot;, &quot;optional&quot;: false },
+            { &quot;name&quot;: &quot;category&quot;, &quot;kind&quot;: &quot;positional-or-keyword&quot;, &quot;type&quot;: &quot;str&quot;, &quot;optional&quot;: false },
+            { &quot;name&quot;: &quot;items&quot;, &quot;kind&quot;: &quot;positional-or-keyword&quot;, &quot;type&quot;: &quot;list[Any]&quot;, &quot;optional&quot;: false }
+          ],
+          &quot;returnType&quot;: &quot;None&quot;
+        }
+      ],
+      &quot;documentation&quot;: {
+        &quot;format&quot;: &quot;plaintext&quot;,
+        &quot;summary&quot;: &quot;Add data to the processor.&quot;,
+        &quot;docstring&quot;: &quot;Add data to the processor.&quot;
+      }
+    }
+  ]
+}
+</code></pre>
+<h2 id="dapper_python_rename">dapper_python_rename</h2>
+<p><code>dapper_python_rename</code> runs semantic rename for a symbol occurrence in a Python
+file.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It is a mutating tool: by default it applies the resulting workspace edit.</li>
+<li>Set <code>apply: false</code> to preview the rename result without changing files.</li>
+<li>It returns a normalized summary of file edits so agents can inspect the
+  rename impact even when applying it.</li>
+<li>The input is location-based: provide <code>file</code>, <code>line</code> (1-based), and optionally
+  <code>column</code> (1-based) for the symbol occurrence. <code>column</code> may be omitted to
+  use the provider's default location resolution.</li>
+<li>It supports an optional <code>searchRootPath</code> to anchor workspace folder discovery
+  when the workspace has multiple roots or nested projects.</li>
+<li>It uses VS Code language feature providers, so the actual rename provider may
+  be Ty, Pylance, or another active semantic backend.</li>
+<li>The result reports Ty availability as the preferred semantic backend for the
+  workspace, but VS Code does not expose which extension satisfied the request.</li>
+</ul>
+<h2 id="dapper_cli">dapper_cli</h2>
+<p><code>dapper_cli</code> is a pdb-style command interface over the public LM tools. It
+keeps common debugging actions short while preserving the underlying structured
+tool semantics.</p>
+<h3 id="command-model">Command Model</h3>
+<ul>
+<li>Commands can be chained with <code>;</code> and run left to right.</li>
+<li>Chained execution stops on the first parse or runtime error.</li>
+<li>Completed commands still return partial results even when a later command
+  fails.</li>
+<li>Frame navigation updates a wrapper-managed <code>frameIndex</code>, and later <code>print</code>,
+  <code>locals</code>, <code>globals</code>, and <code>inspect</code> calls use that selected frame.</li>
+</ul>
+<p>Supported commands:</p>
+<ul>
+<li><code>help</code> / <code>h</code></li>
+<li><code>run</code></li>
+<li><code>launch</code></li>
+<li><code>sessions</code></li>
+<li><code>info</code></li>
+<li><code>inspect</code></li>
+<li><code>state</code></li>
+<li><code>diff</code></li>
+<li><code>pause</code></li>
+<li><code>restart</code></li>
+<li><code>continue</code> / <code>c</code></li>
+<li><code>next</code> / <code>n</code></li>
+<li><code>step</code> / <code>s</code></li>
+<li><code>finish</code></li>
+<li><code>quit</code> / <code>q</code></li>
+<li><code>break</code> / <code>b</code></li>
+<li><code>breaks</code></li>
+<li><code>clear</code></li>
+<li><code>disable</code></li>
+<li><code>enable</code></li>
+<li><code>print</code> / <code>p</code></li>
+<li><code>where</code> / <code>bt</code></li>
+<li><code>locals</code></li>
+<li><code>globals</code></li>
+<li><code>list</code> / <code>l</code></li>
+<li><code>up</code></li>
+<li><code>down</code></li>
+<li><code>frame</code></li>
+</ul>
+<h3 id="launch-commands">Launch Commands</h3>
+<p><code>run</code> is the short form for launching the active Python file and waiting for the
+first stop.</p>
+<p><code>launch</code> exposes the richer <code>dapper_launch</code> surface.</p>
+<p>Supported forms:</p>
+<pre><code class="language-text">launch
+launch file app.py
+launch module package.cli
+launch config My Launch Config
+</code></pre>
+<p>Supported launch flags:</p>
+<ul>
+<li><code>--cwd PATH</code></li>
+<li><code>--env KEY=VALUE</code></li>
+<li><code>--path PATH</code></li>
+<li><code>--python PATH</code></li>
+<li><code>--venv PATH</code></li>
+<li><code>--stop-on-entry</code></li>
+<li><code>--no-stop-on-entry</code></li>
+<li><code>--just-my-code</code></li>
+<li><code>--no-just-my-code</code></li>
+<li><code>--subprocess</code></li>
+<li><code>--wait</code></li>
+<li><code>-- ARG...</code></li>
+</ul>
+<p>Launch rules:</p>
+<ul>
+<li><code>launch</code> with no target uses <code>target.currentFile = true</code>.</li>
+<li>Exactly one target form is allowed: implicit current file, <code>file</code>, <code>module</code>,
+  or <code>config</code>.</li>
+<li><code>run</code> stays restricted to cases where no Dapper session is already active.</li>
+<li><code>launch</code> may start an additional Dapper session even when another Dapper
+  session is already active.</li>
+<li><code>--</code> ends launch-option parsing and passes all remaining tokens through to the
+  debuggee as <code>args</code>.</li>
+</ul>
+<p>Examples:</p>
+<pre><code class="language-text">launch module package.cli --cwd examples --wait -- --help --verbose
+launch file app.py --python .venv/bin/python --no-stop-on-entry
+</code></pre>
+<h3 id="inspection-and-state-commands">Inspection and State Commands</h3>
+<ul>
+<li><code>sessions</code> lists tracked Dapper sessions.</li>
+<li><code>info [SESSION_ID]</code> returns metadata for the selected or specified session.</li>
+<li><code>inspect</code> maps to <code>dapper_variable</code> and is intended for structured values.</li>
+<li><code>state</code> maps to <code>dapper_state</code> with <code>mode: snapshot</code>.</li>
+<li><code>diff [CHECKPOINT]</code> maps to <code>dapper_state</code> with <code>mode: diff</code>.</li>
+<li><code>print</code> remains the focused scalar expression path through <code>dapper_evaluate</code>.</li>
+</ul>
+<h3 id="breakpoint-commands">Breakpoint Commands</h3>
+<ul>
+<li><code>break TARGET</code> adds a breakpoint.</li>
+<li><code>break TARGET if EXPR</code> creates a conditional breakpoint.</li>
+<li><code>break TARGET log MESSAGE</code> creates a logpoint.</li>
+<li><code>breaks</code> lists breakpoints.</li>
+<li><code>breaks FILE</code> filters to one file.</li>
+<li><code>breaks FILE:LINE</code> filters to one line through the underlying
+  <code>dapper_breakpoints</code> line filter.</li>
+</ul>
+<p>Breakpoint target resolution order:</p>
+<ol>
+<li>Explicit file path</li>
+<li>Unique Python filename stem in the workspace</li>
+<li>Function name in the selected session's current call stack</li>
+</ol>
+<h2 id="dapper_launch">dapper_launch</h2>
+<p>Use <code>dapper_launch</code> to start a new Dapper Python debug session for a file,
+module, current editor, or named launch configuration.</p>
+<p>Important behavior:</p>
+<ul>
+<li>Omit <code>target</code> to use the active Python file.</li>
+<li>Provide exactly one target: <code>currentFile</code>, <code>file</code>, <code>module</code>, or <code>configName</code>.</li>
+<li><code>dapper_launch</code> prefers an explicit <code>pythonPath</code> or <code>venvPath</code>, then falls
+  back to the configured or discovered workspace environment.</li>
+<li>Dapper may inject itself through <code>PYTHONPATH</code> instead of installing into the
+  selected workspace interpreter.</li>
+<li>Set <code>waitForStop: true</code> when the next tool call needs a paused frame.</li>
+<li>The result now includes <code>readiness</code> and <code>readyToContinue</code> so callers can tell
+  whether breakpoint registration has settled before trying to resume.</li>
+<li>The result also includes <code>trackedSessionsBeforeLaunch</code>, <code>trackedSessions</code>, and
+  <code>warnings</code>. Treat a non-empty <code>warnings</code> list as a signal to inspect existing
+  sessions and terminate stale ones before continuing the investigation.</li>
+<li>When another tracked session already targets the same <code>program</code> or <code>module</code>,
+  <code>warnings</code> includes a stronger same-target warning because duplicate repros on
+  the same fixture are the easiest way to leave accidental sessions behind.</li>
+<li>When <code>waitForStop: true</code> succeeds, <code>readiness.lifecycleState</code> typically ends
+  up at <code>stopped</code> and <code>readyToContinue</code> should be <code>true</code> unless breakpoint
+  registration failed.</li>
+</ul>
+<h2 id="dapper_state">dapper_state</h2>
+<p><code>dapper_state</code> reads Python debugger state in either snapshot or diff mode.</p>
+<p>Important behavior:</p>
+<ul>
+<li><code>snapshot</code> mode returns stop reason, location, call stack, locals, globals,
+  and thread state.</li>
+<li><code>snapshot</code> reads through <code>StateJournal.getSnapshot()</code>.</li>
+<li>Right after a stop event, the journal may still hold a placeholder snapshot
+  with empty <code>callStack</code>, <code>locals</code>, and <code>globals</code> until the follow-up custom
+  request completes.</li>
+<li>If that follow-up request fails, Dapper keeps the last successful snapshot and
+  may include <code>_adapterError</code>.</li>
+</ul>
+<h2 id="dapper_execution">dapper_execution</h2>
+<p><code>dapper_execution</code> controls debug execution.</p>
+<p>Important behavior:</p>
+<ul>
+<li>Use <code>report: true</code> with <code>next</code>, <code>stepIn</code>, <code>stepOut</code>, or <code>continue</code> when you
+  want one call to both advance execution and return the next stop plus diff.</li>
+<li><code>stopped: false</code> means the session did not report a new stop before the wait
+  ended, or the target thread/session terminated instead.</li>
+<li>Without <code>report: true</code>, the tool returns acknowledgement-style statuses such
+  as <code>running</code>, <code>pausing</code>, <code>restarting</code>, and <code>terminating</code>.</li>
+<li>Use <code>action: terminate</code> as the standard cleanup path after an investigative
+  launch when you do not intend to keep the session alive.</li>
+</ul>
+<h2 id="dapper_evaluate-and-dapper_variable">dapper_evaluate and dapper_variable</h2>
+<p>These tools execute expressions in the debuggee process.</p>
+<p>Use <code>dapper_evaluate</code> for focused scalar expressions and <code>dapper_variable</code> for
+structured values.</p>
+<p>Important behavior:</p>
+<ul>
+<li>Both tools run in the chosen <code>frameIndex</code> and can have side effects.</li>
+<li><code>dapper_evaluate</code> accepts either <code>expression</code> or <code>expressions</code>, but executes
+  them as a batch in the selected frame.</li>
+<li><code>dapper_variable</code> expands dicts, lists, tuples, and public object attributes
+  to the requested depth.</li>
+</ul>
+<h2 id="dapper_breakpoints">dapper_breakpoints</h2>
+<p><code>dapper_breakpoints</code> manages the VS Code breakpoint set and synchronizes it with
+the live adapter when a Dapper session is available.</p>
+<p>Important behavior:</p>
+<ul>
+<li><code>action: list</code> reports the current VS Code source breakpoints.</li>
+<li><code>action: list</code> accepts <code>file</code> as a file filter and <code>lines</code> as an optional
+  line filter.</li>
+<li>With an active Dapper session, <code>list</code> merges adapter verification state into
+  the returned records when that state is definitive.</li>
+<li><code>verificationState: pending</code> means the adapter has not yet resolved whether a
+  breakpoint binds to executable code. It is not the same as a rejection.</li>
+<li><code>action: add</code> updates VS Code and also sends <code>setBreakpoints</code> immediately so
+  the adapter sees the new breakpoint set without waiting for later editor
+  events.</li>
+</ul>
+<h2 id="dapper_session_info">dapper_session_info</h2>
+<p><code>dapper_session_info</code> is the single public session-inspection tool. It returns
+session metadata together with debugger readiness and breakpoint lifecycle
+details.</p>
+<p>Important behavior:</p>
+<ul>
+<li>It can list tracked sessions even when more than one exists.</li>
+<li>Only the active session is guaranteed to have a live <code>DebugSession</code>.</li>
+<li>A targeted lookup with <code>sessionId</code> returns the richer single-session payload;
+  an untargeted call returns <code>{ sessions: [...] }</code> for enumeration.</li>
+<li>The payload includes <code>lifecycleState</code>, <code>breakpointRegistrationComplete</code>,
+  <code>lastTransition</code>, <code>lastError</code>, <code>readyToContinue</code>, and grouped breakpoint
+  counts plus details.</li>
+<li>Breakpoint details are split into <code>breakpoints.details.accepted</code>,
+  <code>breakpoints.details.pending</code>, and <code>breakpoints.details.rejected</code>.</li>
+<li><code>readyToContinue: false</code> usually means one of three things: breakpoint
+  verification is still pending, one or more breakpoints were rejected, or the
+  adapter recorded a readiness error.</li>
+<li>Non-active tracked sessions can still be reported from the journal, but they
+  may have older snapshot state than the active VS Code session.</li>
+</ul>
+<h2 id="readiness-troubleshooting">Readiness Troubleshooting</h2>
+<p>Use <code>dapper_session_info</code> first when the debugger appears stalled or reports an
+unexpected status.</p>
+<p>Common interpretations:</p>
+<ul>
+<li><code>lifecycleState: waiting-for-breakpoints</code> means Dapper is still waiting for
+  adapter verification results.</li>
+<li><code>breakpoints.rejected &gt; 0</code> means at least one breakpoint did not bind to
+  executable code; check <code>breakpoints.details.rejected[*].verificationMessage</code>.</li>
+<li><code>lastError</code> means the journal or adapter recorded a concrete readiness or
+  snapshot failure and should be surfaced directly instead of treating the
+  session as generically unknown.</li>
+<li>A failed <code>continue</code> or <code>step</code> with a timeout message usually means
+  <code>configurationDone</code> never observed breakpoint verification reaching a terminal
+  state.</li>
+</ul>
+<h2 id="recommended-workflow-while-paused">Recommended Workflow While Paused</h2>
+<ol>
+<li>Call <code>dapper_session_info</code> if you need to identify the session.</li>
+<li>Confirm <code>readyToContinue</code> and inspect any pending or rejected breakpoints.</li>
+<li>Call <code>dapper_state</code> with <code>mode: snapshot</code> to understand the current stop.</li>
+<li>Use <code>dapper_variable</code> for structured objects and <code>dapper_evaluate</code> for
+   focused scalar expressions.</li>
+<li>Use <code>dapper_execution</code> with <code>report: true</code> to advance execution while
+   preserving checkpoint context.</li>
+<li>Use <code>dapper_breakpoints</code> with <code>action: list</code> and <code>action: add/remove/clear</code>
+   when checking whether a breakpoint is present but not yet verified.</li>
+<li>When the investigation is complete, call <code>dapper_execution</code> with
+  <code>action: terminate</code> unless you intentionally want to keep the session around
+  for follow-up work.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

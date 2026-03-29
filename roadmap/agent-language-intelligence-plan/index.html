@@ -1,0 +1,3556 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://jnsquire.github.io/dapper/roadmap/agent-language-intelligence-plan/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Agent-Focused Language Intelligence Plan - Dapper</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#agent-focused-language-intelligence-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Dapper" class="md-header__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Dapper
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Agent-Focused Language Intelligence Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Dapper" class="md-nav__button md-logo" aria-label="Dapper" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Dapper
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jnsquire/dapper" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/using-vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/standalone-adapter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standalone Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/manual-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manual Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/async-debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Debugging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/variable-presentation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variable Display
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/frame-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/watchpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Watchpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/lm-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LM Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/operational-modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operational Modes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/dap-extensions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DAP Extensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/vscode-extension/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code Extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/message-flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Message Flows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ipc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/breakpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/build-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/backend-architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/frame-eval/developer-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame Eval Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/sys-monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    sys.monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/current-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Roadmap
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-ideas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Ideas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-001-hot-reload/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload DEP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hot-reload-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hot Reload Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-this-plan-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this plan exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-baseline-in-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current baseline in this repo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-order-for-working-the-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended order for working the checklist
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recommended order for working the checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-0-lock-the-backend-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0 - Lock the backend decision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-1-ship-the-environment-snapshot-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 - Ship the environment snapshot first
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-prioritize-the-read-path-over-the-edit-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 - Prioritize the read path over the edit path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-add-ruff-backed-mechanical-actions-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 - Add Ruff-backed mechanical actions next
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-add-semantic-mutations-last" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 - Add semantic mutations last
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-use-debugger-data-as-the-differentiator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5 - Use debugger data as the differentiator
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-minimum-agent-grade-language-intelligence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Minimum agent-grade language intelligence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Minimum agent-grade language intelligence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-syntax-and-parse-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Syntax and parse validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-import-resolution-and-interpreter-aware-module-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Import resolution and interpreter-aware module analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-structured-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Structured diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-symbol-navigation-and-cross-reference-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Symbol navigation and cross-reference lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-type-signature-and-doc-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Type, signature, and doc inspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-safe-refactoring-and-code-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Safe refactoring and code actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-project-model-and-workspace-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Project model and workspace semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-ruff-aligned-quality-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8 Ruff-aligned quality layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#19-ty-aligned-semantic-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.9 Ty-aligned semantic layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#110-dynamic-static-analysis-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.10 Dynamic-static analysis bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-nice-to-have-language-intelligence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Nice-to-have language intelligence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Nice-to-have language intelligence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-completion-style-candidate-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Completion-style candidate generation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-signature-help-style-call-assistance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Signature-help style call assistance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-hover-equivalent-symbol-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Hover-equivalent symbol summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-call-hierarchy-and-richer-relationship-graphs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Call hierarchy and richer relationship graphs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-notebook-aware-semantic-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Notebook-aware semantic support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-low-value-or-unnecessary-language-intelligence-for-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Low-value or unnecessary language intelligence for agents
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Low-value or unnecessary language intelligence for agents">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-mostly-human-facing-editor-presentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Mostly human-facing editor presentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-snippet-and-typing-accelerators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Snippet and typing accelerators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-ui-only-lenses-and-decorations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 UI-only lenses and decorations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-dapper-specific-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Dapper-specific implications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recommended-implementation-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Recommended implementation strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Recommended implementation strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-integrate-an-existing-python-language-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A — Integrate an existing Python language stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-build-a-smaller-agent-only-semantics-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B — Build a smaller agent-only semantics layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommendation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-ruff-ty-integration-checklist-for-dapper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Ruff + Ty integration checklist for Dapper
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Ruff + Ty integration checklist for Dapper">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-workspace-and-environment-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Workspace and environment detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-ruff-command-execution-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Ruff command execution surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-ty-command-and-language-service-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 Ty command and language-service surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-agent-tool-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Agent tool surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-result-schema-and-conflict-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 Result schema and conflict handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-fallback-and-compatibility-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 Fallback and compatibility policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#67-configuration-and-user-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.7 Configuration and user control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#68-validation-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.8 Validation matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#69-performance-and-latency-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.9 Performance and latency model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#610-concurrency-and-parallel-tool-invocations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.10 Concurrency and parallel tool invocations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#611-remote-and-container-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.11 Remote and container development
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#612-testing-strategy-for-the-integration-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.12 Testing strategy for the integration layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#613-rollout-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.13 Rollout phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6.13 Rollout phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-a-quality-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A — Quality layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-b-semantic-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase B — Semantic diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-c-semantic-editor-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase C — Semantic editor actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-d-unified-bug-resolution-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D — Unified bug-resolution loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-suggested-phased-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Suggested phased roadmap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Suggested phased roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-agent-grade-semantic-read-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Agent-grade semantic read path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-agent-grade-semantic-edit-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — Agent-grade semantic edit path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-bug-resolution-workflow-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — Bug-resolution workflow support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-optional-accelerators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4 — Optional accelerators
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-decision-rule-for-future-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Decision rule for future features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="agent-focused-language-intelligence-plan">Agent-Focused Language Intelligence Plan</h1>
+<blockquote>
+<p><strong>Goal:</strong> Define the subset of Python language intelligence that is worth
+building or integrating when the target user is a tool-using agent rather
+than a human editing code interactively.</p>
+<p><strong>Scope:</strong> This plan is not about matching a full Python IDE feature-for-
+feature. It is about identifying the semantic capabilities that materially
+improve agent correctness, edit precision, and bug-resolution workflow.</p>
+</blockquote>
+<hr />
+<h2 id="why-this-plan-exists">Why this plan exists</h2>
+<p>For a human-focused extension, "language intelligence" often includes a large
+amount of editor UX: completions, hover cards, highlighting, inline hints,
+code lenses, snippets, and similar affordances.</p>
+<p>For an agent, most of that is indirect or irrelevant. The useful question is
+not "what makes Python pleasant to edit by hand?" It is:</p>
+<ul>
+<li>Can the agent find the right symbol or file reliably?</li>
+<li>Can the agent make a semantically correct change?</li>
+<li>Can the agent explain why the workspace is broken?</li>
+<li>Can the agent produce or narrow a repro without guessing?</li>
+</ul>
+<p>This plan breaks the language-intelligence surface into three buckets:</p>
+<ul>
+<li>Minimum agent-grade language intelligence</li>
+<li>Nice-to-have language intelligence</li>
+<li>Low-value or unnecessary language intelligence for agents</li>
+</ul>
+<hr />
+<h2 id="current-baseline-in-this-repo">Current baseline in this repo</h2>
+<p>Verified against the current Dapper codebase and project configuration in
+March 2026:</p>
+<ul>
+<li>[x] Dapper already has a debugger-first runtime foundation: launch/attach
+  flows, interpreter preparation, launch history, process observability,
+  and agent-facing paused-session tools.</li>
+<li>[x] The VS Code extension now contributes debugger/runtime LM tools plus
+  early Python language-intelligence tools such as <code>dapper_python_environment</code>,
+  <code>dapper_python_diagnostics</code>, and <code>dapper_python_typecheck</code>.</li>
+<li>[x] The extension still does not include a dedicated Python language
+  server/client of its own, but it now does include tool-oriented
+  diagnostics, symbol-navigation, and semantic edit surfaces via Ty/Ruff
+  runners and VS Code language-feature providers.</li>
+<li>[x] The extension now has an internal environment snapshot API command,
+      <code>dapper.api.getEnvironmentSnapshot</code>, that reports selected Python
+      environment, Ty/Ruff resolution, and Ty/Ruff config-file discovery.</li>
+<li>[x] The extension now exposes a public <code>dapper_python_environment</code> LM tool
+  for agent-facing Python/Ty/Ruff environment reporting.</li>
+<li>[x] The extension now exposes a public <code>dapper_python_diagnostics</code> LM tool
+  that normalizes Ruff and Ty diagnostics into one shared schema and reports
+  backend status explicitly.</li>
+<li>[x] The extension now exposes a public <code>dapper_python_symbol</code> LM tool for
+  definition, references, implementations, and hover through the active VS
+  Code semantic backend.</li>
+<li>[x] The extension now exposes a public <code>dapper_python_rename</code> LM tool for
+  semantic rename with preview or apply modes through the active VS Code
+  semantic backend.</li>
+<li>[x] The extension now exposes public <code>dapper_python_autofix</code> and
+  <code>dapper_python_format</code> LM tools for Ruff-backed mechanical edits with
+  preview or apply modes.</li>
+<li>[x] The extension now exposes a public <code>dapper_python_imports</code> LM tool for
+  Ruff-backed import hygiene, including unused-import cleanup, import
+  organization, and a combined mode.</li>
+<li>[x] The extension now has an internal Ruff runner service and API command,
+  <code>dapper.api.runRuffCheck</code>, for structured Ruff check execution.</li>
+<li>[x] The extension now has an internal Ty runner service for structured Ty
+  check execution.</li>
+<li>[x] The repo already uses Ruff as part of its development toolchain and has
+  non-trivial Ruff configuration in <code>pyproject.toml</code>.</li>
+<li>[x] The repo already uses Pyright in development dependencies.</li>
+<li>[x] Ty is the baseline semantic backend for this roadmap.</li>
+<li>[x] Python plus Pylance remains the fallback semantic path during rollout.</li>
+<li>[x] Add Ty to the repository's declared tooling and integration baseline.</li>
+<li>[ ] Decide whether the first shippable milestone is read-only semantic
+  intelligence or the full edit/validate loop.</li>
+</ul>
+<p>Working interpretation:</p>
+<ul>
+<li>The main gap is not Python environment selection or debugger control.</li>
+<li>The main gap is the semantic read/edit layer that sits beside the debugger.</li>
+<li>The shortest path through this checklist is to ship read-path semantics
+  first, then add mechanical quality actions, then add semantic mutations.</li>
+</ul>
+<hr />
+<h2 id="recommended-order-for-working-the-checklist">Recommended order for working the checklist</h2>
+<p>The checklist below is comprehensive, but it should not be executed top to
+bottom as one flat backlog. The practical order for Dapper is:</p>
+<h3 id="step-0-lock-the-backend-decision">Step 0 - Lock the backend decision</h3>
+<ul>
+<li>[x] Use Ty as the first semantic backend target.</li>
+<li>[x] Keep Python plus Pylance as the fallback semantic path while Ty is being
+  validated.</li>
+<li>[ ] Decide whether Ruff is always the first quality backend when available.</li>
+<li>[ ] Define fallback expectations up front: best-effort, warning-only, or
+  hard dependency.</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>The project can answer "what backend do we ship first, and what do we do
+  when it is unavailable?" without ambiguity.</li>
+</ul>
+<h3 id="step-1-ship-the-environment-snapshot-first">Step 1 - Ship the environment snapshot first</h3>
+<ul>
+<li>[x] Build the environment and executable-detection layer before any Ruff or
+  Ty-specific runner work.</li>
+<li>[x] Reuse Dapper's existing interpreter/environment selection logic rather
+  than inventing a second Python-resolution path for language tools.</li>
+<li>[x] Produce one structured snapshot that records interpreter, venv,
+  workspace roots, executable provenance, and tool versions.</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>Dapper can explain which Python, Ruff, and semantic backend it would use for
+  the current workspace before trying to analyze anything.</li>
+</ul>
+<p>Current progress:</p>
+<ul>
+<li>A shared environment snapshot now exists for Python environment selection,
+  Ty/Ruff executable or module resolution, and Ty/Ruff config discovery.</li>
+<li>The snapshot is exposed publicly through <code>dapper_python_environment</code>.</li>
+<li>The remaining gap is broader project-model reporting beyond the current
+  environment and tool-resolution slice.</li>
+</ul>
+<h3 id="step-2-prioritize-the-read-path-over-the-edit-path">Step 2 - Prioritize the read path over the edit path</h3>
+<ul>
+<li>[ ] Deliver syntax checking, diagnostics retrieval, import resolution, and
+  symbol lookup before semantic rename or code actions.</li>
+<li>[ ] Treat this as the first user-visible milestone because it answers the
+  core agent questions: what is this, where is it used, and what is
+  broken?</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>An agent can inspect a Python workspace semantically without relying on
+  grep-heavy fallbacks.</li>
+</ul>
+<h3 id="step-3-add-ruff-backed-mechanical-actions-next">Step 3 - Add Ruff-backed mechanical actions next</h3>
+<ul>
+<li>[x] Add formatting, safe autofix, and import cleanup after diagnostics are
+  stable.</li>
+<li>[ ] Keep these actions explicitly separate from semantic refactors in both
+  settings and result schemas.</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>An agent can perform fast mechanical cleanup with bounded, explainable
+  results.</li>
+</ul>
+<h3 id="step-4-add-semantic-mutations-last">Step 4 - Add semantic mutations last</h3>
+<ul>
+<li>[ ] Add definition, references, rename, and code actions only after the
+  semantic backend has proven stable on representative repositories.</li>
+<li>[ ] Keep fallback behavior explicit when rename or code actions are not
+  trustworthy for a given backend or workspace.</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>Dapper can make structural edits semantically, not just diagnose problems.</li>
+</ul>
+<h3 id="step-5-use-debugger-data-as-the-differentiator">Step 5 - Use debugger data as the differentiator</h3>
+<ul>
+<li>[ ] Treat the dynamic-static bridge as a deliberate later phase, not as a
+  prerequisite for the first semantic release.</li>
+<li>[ ] Design every runtime-derived payload so agents can distinguish observed
+  facts from static-analysis facts.</li>
+</ul>
+<p>Exit criterion:</p>
+<ul>
+<li>Dapper adds value that Ruff, Ty, and Pylance cannot provide on their own.</li>
+</ul>
+<hr />
+<h2 id="1-minimum-agent-grade-language-intelligence">1. Minimum agent-grade language intelligence</h2>
+<p>These capabilities directly affect whether an agent can operate safely and
+productively in a Python workspace. Without them, the agent falls back to text
+search, heuristics, and trial-and-error edits.</p>
+<h3 id="11-syntax-and-parse-validation">1.1 Syntax and parse validation</h3>
+<ul>
+<li>[ ] Provide fast Python syntax checking for files and unsaved snippets.</li>
+<li>[ ] Return structured parse errors with file, line, column, and message.</li>
+<li>[ ] Support checking generated code before applying edits.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Prevents the agent from introducing obviously invalid code.</li>
+<li>Provides immediate feedback when a generated patch is malformed.</li>
+<li>Enables safer patch planning before a file is modified.</li>
+</ul>
+<h3 id="12-import-resolution-and-interpreter-aware-module-analysis">1.2 Import resolution and interpreter-aware module analysis</h3>
+<ul>
+<li>[ ] Resolve imports against the active Python environment.</li>
+<li>[ ] Distinguish missing packages from missing source roots and typo-level
+      import failures.</li>
+<li>[ ] Surface workspace source roots, interpreter paths, virtual environment
+      location, and import search path.</li>
+<li>[ ] Detect unresolved imports and shadowed imports.</li>
+<li>[ ] Account for type stubs (<code>types-*</code> packages), typeshed, and <code>py.typed</code>
+      inline typing when evaluating type coverage.</li>
+<li>[ ] Help agents understand why type information is missing for a dependency:
+      no stubs available, untyped library, or misconfigured search path.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Python code is only understandable in the context of the active interpreter.</li>
+<li>Many "bugs" are environment or import-graph problems rather than runtime
+  logic problems.</li>
+<li>Agents need to tell the difference between a bad edit and a bad environment.</li>
+<li>Many popular libraries have no inline types and depend entirely on stubs;
+  real-world type analysis quality is dominated by stub and typeshed coverage.</li>
+</ul>
+<h3 id="13-structured-diagnostics">1.3 Structured diagnostics</h3>
+<ul>
+<li>[x] Collect syntax, import, type, and selected semantic diagnostics for the
+      workspace and for individual files.</li>
+<li>[ ] Group diagnostics by severity and file.</li>
+<li>[x] Preserve machine-actionable metadata where available.</li>
+<li>[x] Expose diagnostics in a way that an agent can consume without scraping
+      UI text.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>This is the main feedback loop that tells the agent whether an edit made the
+  codebase healthier or worse.</li>
+<li>Diagnostics often localize the problem faster than executing the code.</li>
+<li>Clean bug-resolution workflows require a reliable "what is broken now?"
+  answer.</li>
+</ul>
+<h3 id="14-symbol-navigation-and-cross-reference-lookup">1.4 Symbol navigation and cross-reference lookup</h3>
+<ul>
+<li>[x] Support go to definition for modules, classes, functions, methods,
+      variables, and imported names.</li>
+<li>[x] Support find references / usages.</li>
+<li>[ ] Support workspace symbol search.</li>
+<li>[x] Support implementation lookup where the language stack can infer it.</li>
+<li>[x] Preserve file and location identity in results.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>This is the difference between semantic editing and grep-based editing.</li>
+<li>Most non-trivial fixes require understanding where a symbol is defined and
+  what else depends on it.</li>
+<li>Refactors and bug investigations both depend on accurate symbol routing.</li>
+</ul>
+<h3 id="15-type-signature-and-doc-inspection">1.5 Type, signature, and doc inspection</h3>
+<ul>
+<li>[ ] Return inferred or declared type information for expressions and symbols.</li>
+<li>[ ] Return call signatures with parameter names and defaults.</li>
+<li>[ ] Return docstrings or symbol documentation.</li>
+<li>[ ] Return base-class and override relationships when available.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Agents need semantic shape more than UI hover text.</li>
+<li>The ability to inspect types and signatures reduces bad API usage.</li>
+<li>Docstrings help the agent choose among similarly-named helpers without
+  reading every implementation body.</li>
+</ul>
+<h3 id="16-safe-refactoring-and-code-actions">1.6 Safe refactoring and code actions</h3>
+<ul>
+<li>[x] Support semantic rename.</li>
+<li>[x] Support import organization and unused-import cleanup.</li>
+<li>[ ] Support selected safe code actions such as add missing imports,
+      convert import forms, or apply fix-all where the language stack offers
+      them.</li>
+<li>[x] Allow preview or dry-run of refactor edits before applying them.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Agents frequently need structural edits, not just local line patches.</li>
+<li>Semantic rename is much safer than find-and-replace.</li>
+<li>Quick fixes turn diagnostics into actionable remediations.</li>
+</ul>
+<h3 id="17-project-model-and-workspace-semantics">1.7 Project model and workspace semantics</h3>
+<ul>
+<li>[ ] Discover Python workspace roots and user files.</li>
+<li>[x] Detect config sources such as <code>pyproject.toml</code>, <code>setup.cfg</code>,
+      <code>pytest.ini</code>, <code>tox.ini</code>, and notebook metadata where relevant.</li>
+<li>[x] Identify test roots, source roots, and package boundaries.</li>
+<li>[ ] Surface the active Python environment and available environments.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Agents need a correct model of the workspace before editing it.</li>
+<li>Many wrong edits come from misunderstanding package boundaries or config
+  ownership.</li>
+<li>Bug reports are much easier to resolve when the project model is explicit.</li>
+</ul>
+<h3 id="18-ruff-aligned-quality-layer">1.8 Ruff-aligned quality layer</h3>
+<ul>
+<li>[x] Integrate Ruff lint diagnostics as a first-class agent feedback source.</li>
+<li>[x] Integrate Ruff autofix for safe, mechanical remediations.</li>
+<li>[x] Integrate Ruff formatting where the workspace chooses Ruff as the
+      formatter.</li>
+<li>[x] Integrate Ruff import organization and unused-import cleanup as explicit
+      agent actions.</li>
+<li>[x] Surface Ruff rule identifiers and fixability metadata in tool results.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Ruff covers a large and valuable part of the agent feedback loop: syntax-
+  adjacent issues, code quality diagnostics, import hygiene, style
+  normalization, and many safe autofixes.</li>
+<li>Ruff is fast enough to support tight edit-validate cycles, which matters for
+  agent iteration.</li>
+<li>Ruff can replace a broad set of quality tools with one consistent interface,
+  which simplifies both extension integration and agent prompting.</li>
+</ul>
+<p>Important limitation:</p>
+<ul>
+<li>Ruff does not replace symbol navigation, cross-reference lookup, semantic
+  rename, rich type analysis, or doc/signature inspection.</li>
+<li>Treat Ruff as a major part of the quality-and-remediation layer, not as the
+  entire language-intelligence stack.</li>
+</ul>
+<h3 id="19-ty-aligned-semantic-layer">1.9 Ty-aligned semantic layer</h3>
+<ul>
+<li>[x] Evaluate Ty as the primary type-checking and language-server backend.</li>
+<li>[x] Integrate Ty diagnostics as a first-class agent feedback source.</li>
+<li>[ ] Integrate Ty-backed definition, references, rename, completions,
+      code actions, and related language-server capabilities where available.</li>
+<li>[x] Expose Ty type information and contextual diagnostics through agent-
+      friendly tool payloads.</li>
+<li>[x] Define a shared <code>typeInfo</code> schema for declared type, inferred type,
+    symbol kind, and source attribution.</li>
+<li>[x] Define a shared <code>diagnosticContext</code> schema for Ty explanations,
+    notes, related locations, and rule/code metadata.</li>
+<li>[x] Extend <code>dapper_python_typecheck</code> to return Ty-enriched diagnostics
+    without requiring UI-text scraping.</li>
+<li>[x] Extend <code>dapper_python_symbol</code> to return type, signature, and
+    documentation fields where the active semantic backend provides them.</li>
+<li>[x] Add output-budget controls for Ty-enriched payloads: truncation,
+    pagination, and explicit partial-result markers.</li>
+<li>[x] Add unit and integration coverage for Ty type payloads, contextual
+    diagnostics, and backend-failure semantics.</li>
+<li>[x] Account for Ty's current beta status in dependency and rollout planning.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Ty is explicitly positioned as both a Python type checker and a language
+  server, which makes it relevant to the semantic half of the checklist that
+  Ruff does not cover.</li>
+<li>Ty's diagnostic system appears designed to provide rich, contextual error
+  messages, which is especially useful for agent reasoning and bug
+  explanation.</li>
+<li>If Ty's language-server capabilities are mature enough in practice, it can
+  cover a substantial share of the minimum agent-grade semantic surface:
+  diagnostics, navigation, rename, completions, code actions, and type-driven
+  analysis.</li>
+</ul>
+<p>Important limitation:</p>
+<ul>
+<li>Ty is still in beta and does not yet present a stable API or fully mature
+  feature envelope.</li>
+<li>It should be treated as a promising semantic backend, but one that needs
+  careful validation against real Python repositories and agent workflows.</li>
+</ul>
+<h3 id="110-dynamic-static-analysis-bridge">1.10 Dynamic-static analysis bridge</h3>
+<ul>
+<li>[ ] Define how runtime type information observed during debug sessions can
+      supplement static type analysis, especially for untyped or <code>Any</code>-typed
+      call sites that Ty or Pylance cannot resolve.</li>
+<li>[ ] Expose runtime call graphs from observed debug sessions as a precise
+      complement to static call-hierarchy analysis.</li>
+<li>[ ] Allow runtime import paths (what actually got imported, from where) to
+      validate or contradict static import resolution.</li>
+<li>[ ] Surface runtime variable types, shapes, and values alongside static
+      type annotations when both are available for a symbol.</li>
+<li>[ ] Design the bridge so that static analysis is the default path and
+      runtime observations are additive enrichment, not a dependency.</li>
+</ul>
+<p>Why it matters:</p>
+<ul>
+<li>Dapper is a debugger. No other tool in this space has access to both static
+  analysis and live runtime state. This is a differentiating opportunity.</li>
+<li>Python's dynamic nature means static analysis is weakest exactly where
+  runtime observation is strongest: untyped libraries, dynamic dispatch,
+  metaprogramming, and data-dependent control flow.</li>
+<li>Debug sessions already produce observed call stacks, resolved import paths,
+  and concrete types. Surfacing these to the agent turns debugging artifacts
+  into semantic intelligence.</li>
+<li>This capability has no pure-static equivalent and cannot be replicated by
+  Ruff, Ty, or Pylance alone.</li>
+</ul>
+<p>Important limitation:</p>
+<ul>
+<li>Runtime observations are path-specific and may not generalize. They should
+  be treated as high-confidence evidence for the observed execution, not
+  universal facts about the codebase.</li>
+<li>The bridge needs clear labeling so agents can distinguish static-analysis
+  results from runtime-observed results.</li>
+</ul>
+<hr />
+<h2 id="2-nice-to-have-language-intelligence">2. Nice-to-have language intelligence</h2>
+<p>These features can improve agent efficiency or reduce ambiguity, but they are
+not strictly required for clean agent workflows.</p>
+<h3 id="21-completion-style-candidate-generation">2.1 Completion-style candidate generation</h3>
+<ul>
+<li>[ ] Expose completion candidates for module members, object attributes, and
+      configuration keys where the backing language service already supports
+      this cheaply.</li>
+</ul>
+<p>Why it helps:</p>
+<ul>
+<li>Useful when the agent is choosing among unfamiliar APIs.</li>
+<li>Can reduce speculative symbol-name guessing.</li>
+</ul>
+<p>Why it is not core:</p>
+<ul>
+<li>Agents can often recover from missing completions via symbol lookup, docs,
+  and definitions.</li>
+</ul>
+<h3 id="22-signature-help-style-call-assistance">2.2 Signature-help style call assistance</h3>
+<ul>
+<li>[ ] Return overload-aware call signatures for a specific call site.</li>
+<li>[ ] Highlight active parameter position when available.</li>
+</ul>
+<p>Why it helps:</p>
+<ul>
+<li>Useful in edit-time reasoning about function calls.</li>
+</ul>
+<p>Why it is not core:</p>
+<ul>
+<li>Much of the value overlaps with general signature inspection.</li>
+</ul>
+<h3 id="23-hover-equivalent-symbol-summaries">2.3 Hover-equivalent symbol summaries</h3>
+<ul>
+<li>[ ] Provide compact symbol summaries that combine type, docs, and source
+      location.</li>
+</ul>
+<p>Why it helps:</p>
+<ul>
+<li>Good for quick agent decisions without multiple tool calls.</li>
+</ul>
+<p>Why it is not core:</p>
+<ul>
+<li>The value comes from the underlying metadata, not the hover UI concept.</li>
+</ul>
+<h3 id="24-call-hierarchy-and-richer-relationship-graphs">2.4 Call hierarchy and richer relationship graphs</h3>
+<ul>
+<li>[ ] Support incoming/outgoing call hierarchy for Python symbols.</li>
+<li>[ ] Support class hierarchy browsing.</li>
+</ul>
+<p>Why it helps:</p>
+<ul>
+<li>Speeds up impact analysis in larger codebases.</li>
+<li>Useful for architectural or bug-propagation analysis.</li>
+</ul>
+<p>Why it is not core:</p>
+<ul>
+<li>It is an accelerator, not a prerequisite, if definitions and references are
+  already available.</li>
+</ul>
+<h3 id="25-notebook-aware-semantic-support">2.5 Notebook-aware semantic support</h3>
+<ul>
+<li>[ ] Preserve semantic understanding across notebooks and Python files.</li>
+<li>[ ] Route definitions and diagnostics across notebook cell boundaries where
+      possible.</li>
+</ul>
+<p>Why it helps:</p>
+<ul>
+<li>Important for agent workflows in data-science-heavy repositories.</li>
+</ul>
+<p>Why it is not core:</p>
+<ul>
+<li>Many software repositories do not need notebook intelligence at all.</li>
+</ul>
+<hr />
+<h2 id="3-low-value-or-unnecessary-language-intelligence-for-agents">3. Low-value or unnecessary language intelligence for agents</h2>
+<p>These features mainly serve human editor ergonomics. They may still be worth
+shipping for interactive users, but they are not strong requirements for an
+agent-first extension.</p>
+<h3 id="31-mostly-human-facing-editor-presentation">3.1 Mostly human-facing editor presentation</h3>
+<ul>
+<li>[ ] Semantic token coloring</li>
+<li>[ ] Inlay hints as visual decoration</li>
+<li>[ ] Breadcrumbs</li>
+<li>[ ] Folding regions</li>
+<li>[ ] bracket-pair or indent guide presentation</li>
+</ul>
+<p>Why low value:</p>
+<ul>
+<li>Agents do not consume the rendered editor surface.</li>
+<li>The underlying structure may matter, but the visual affordance itself does
+  not.</li>
+</ul>
+<h3 id="32-snippet-and-typing-accelerators">3.2 Snippet and typing accelerators</h3>
+<ul>
+<li>[ ] Snippet packs</li>
+<li>[ ] auto-closing / paired typing behaviors</li>
+<li>[ ] editor micro-productivity helpers</li>
+</ul>
+<p>Why low value:</p>
+<ul>
+<li>These optimize manual typing throughput, not semantic reasoning.</li>
+</ul>
+<h3 id="33-ui-only-lenses-and-decorations">3.3 UI-only lenses and decorations</h3>
+<ul>
+<li>[ ] CodeLens counts</li>
+<li>[ ] rich gutter decorations unrelated to diagnostics</li>
+<li>[ ] outline presentation polish</li>
+</ul>
+<p>Why low value:</p>
+<ul>
+<li>Agents need the underlying data, not the UI treatment.</li>
+</ul>
+<hr />
+<h2 id="4-dapper-specific-implications">4. Dapper-specific implications</h2>
+<p>The current Dapper VS Code extension is debugger-first. It already provides a
+substantial runtime and debugging foundation:</p>
+<ul>
+<li>debug launch and attach flows</li>
+<li>interpreter/environment preparation for debugger execution</li>
+<li>launch configuration wizard and run/debug commands</li>
+<li>process and launch observability</li>
+<li>agent-facing debug tools for paused-session inspection and control</li>
+</ul>
+<p>That is a strong base for runtime diagnosis, but it does not yet provide the
+minimum language-intelligence layer described above.</p>
+<p>Implication:</p>
+<ul>
+<li>Dapper does not need to become a full human-facing Python IDE to become
+  agent-complete.</li>
+<li>Dapper does need a semantic backend and tool surface for the minimum set in
+  Section 1.</li>
+</ul>
+<p>Additional implication from the current repo state:</p>
+<ul>
+<li>The first tranche of work should plug into the existing environment and
+  launch model, not bypass it.</li>
+<li>The first tranche should be read-oriented and schema-oriented, because that
+  delivers agent value without immediately taking on the correctness risk of
+  semantic mutation.</li>
+</ul>
+<hr />
+<h2 id="5-recommended-implementation-strategy">5. Recommended implementation strategy</h2>
+<p>Before choosing a language-stack strategy, separate two concerns:</p>
+<ul>
+<li>semantic navigation and analysis</li>
+<li>quality diagnostics, formatting, and autofix</li>
+</ul>
+<p>Ruff is especially strong in the second category.
+Ty appears strong in the first category and overlaps with part of the
+diagnostics layer.</p>
+<h3 id="option-a-integrate-an-existing-python-language-stack">Option A — Integrate an existing Python language stack</h3>
+<ul>
+<li>[ ] Depend on Ty as the primary language-intelligence backend.</li>
+<li>[ ] Preserve compatibility with the Python extension and Pylance as the
+  fallback semantic path.</li>
+<li>[ ] Depend on Ruff for linting, formatting, import hygiene, and safe
+  autofix where the workspace uses it.</li>
+<li>[ ] Expose agent-friendly command and tool wrappers over that language stack.</li>
+<li>[ ] Keep Dapper focused on debugging, runtime state, and bug-resolution UX.</li>
+</ul>
+<p>Pros:</p>
+<ul>
+<li>Fastest path to strong semantics.</li>
+<li>Ty + Ruff provides a potentially cohesive Astral-based toolchain.</li>
+<li>Fastest path to strong semantics plus high-quality edit/validate loops.</li>
+<li>Avoids rebuilding a Python language server stack.</li>
+<li>Leverages a mature diagnostic and indexing engine.</li>
+<li>Lets Ruff handle a large share of mechanical cleanup and quality feedback.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>Requires explicit integration boundaries and dependency assumptions.</li>
+<li>Agent tool quality becomes partially dependent on external extension quality.</li>
+<li>Ty specifically adds beta-lifecycle risk until its stability and coverage are
+  proven on target repositories.</li>
+</ul>
+<h3 id="option-b-build-a-smaller-agent-only-semantics-layer">Option B — Build a smaller agent-only semantics layer</h3>
+<ul>
+<li>[ ] Implement only the minimum set from Section 1.</li>
+<li>[ ] Use Ruff as the default diagnostics / formatting / autofix backend where
+  possible.</li>
+<li>[ ] Consider Ty as the default semantic backend before building custom
+  navigation and type-analysis services.</li>
+<li>[ ] Avoid human-IDE features that do not contribute to agent workflows.</li>
+<li>[ ] Keep the surface strongly tool-oriented rather than UI-oriented.</li>
+</ul>
+<p>Pros:</p>
+<ul>
+<li>Smaller than building a full Python IDE.</li>
+<li>Ruff reduces the amount of custom diagnostics and formatting infrastructure
+  Dapper would need to own.</li>
+<li>Ty may reduce the amount of custom semantic infrastructure Dapper would need
+  to own.</li>
+<li>More control over agent-oriented behavior and payload shape.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>Still a meaningful language-tools project.</li>
+<li>Ruff still leaves symbol, type, reference, and documentation gaps.</li>
+<li>Ty's beta status means fallback planning is still required.</li>
+<li>Hard to match the correctness and coverage of a mature language stack.</li>
+</ul>
+<h3 id="recommendation">Recommendation</h3>
+<ul>
+<li>[x] Prefer Option A unless there is a strong product reason to avoid
+      depending on external Python language infrastructure.</li>
+<li>[x] Treat Ruff + Ty as the first toolchain to integrate.</li>
+<li>[x] Keep a fallback path to Python + Pylance until Ty's stability and
+      feature coverage are validated for Dapper's target repositories.</li>
+<li>[ ] Treat Dapper's core value as debugger/runtime depth, not generic Python
+      editor parity.</li>
+</ul>
+<p>Decision record:</p>
+<ul>
+<li>Ty is the baseline semantic backend for the first implementation passes in
+  this plan.</li>
+<li>Ruff remains the intended quality backend when available.</li>
+<li>Python plus Pylance is retained as the semantic fallback until Ty proves
+  stable enough on representative Dapper target repositories.</li>
+</ul>
+<hr />
+<h2 id="6-ruff-ty-integration-checklist-for-dapper">6. Ruff + Ty integration checklist for Dapper</h2>
+<p>This section turns the strategy above into concrete extension and agent-tooling
+work.</p>
+<h3 id="61-workspace-and-environment-detection">6.1 Workspace and environment detection</h3>
+<ul>
+<li>[x] Detect whether Ruff is available in the active workspace environment.</li>
+<li>[x] Detect whether Ty is available in the active workspace environment.</li>
+<li>[x] Detect whether the user has configured Ruff or Ty in <code>pyproject.toml</code> or
+  related config files.</li>
+<li>[x] Distinguish between bundled/global tool availability and workspace-local
+  tool availability.</li>
+<li>[x] Record the active interpreter, tool executable path, and tool version in
+  a structured environment snapshot.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Dapper can explain exactly which Ruff and Ty executables it intends to use,
+  and why.</li>
+</ul>
+<h3 id="62-ruff-command-execution-surface">6.2 Ruff command execution surface</h3>
+<ul>
+<li>[x] Add an internal Ruff runner service in the extension.</li>
+<li>[x] Support file-scoped Ruff checks.</li>
+<li>[x] Support workspace-scoped Ruff checks.</li>
+<li>[x] Support Ruff autofix for selected files.</li>
+<li>[x] Support Ruff format for selected files.</li>
+<li>[x] Support Ruff import cleanup / organize-import workflows where supported
+  by the active configuration.</li>
+<li>[ ] Capture stdout, stderr, exit code, timing, and invoked arguments in a
+  structured result object.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Dapper can run Ruff repeatably and expose results without shell-text
+  scraping.</li>
+</ul>
+<h3 id="63-ty-command-and-language-service-surface">6.3 Ty command and language-service surface</h3>
+<ul>
+<li>[x] Add an internal Ty runner or integration layer in the extension.</li>
+<li>[x] Support file-scoped Ty checks.</li>
+<li>[x] Support workspace-scoped Ty checks.</li>
+<li>[x] Support structured Ty diagnostics retrieval.</li>
+<li>[ ] Evaluate whether Dapper should integrate Ty through its VS Code language
+  server extension, direct CLI usage, or both.</li>
+<li>[x] Prefer language-server-backed features for navigation, rename, and code
+  actions when available.</li>
+<li>[ ] Capture stdout, stderr, exit code, timing, and invoked arguments in a
+  structured result object for CLI-backed flows.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Dapper can retrieve Ty-backed semantic diagnostics and can route semantic
+  editor actions through a stable integration path.</li>
+<li>When Ty is unavailable or unsuitable, Dapper can fall back to Python plus
+  Pylance without changing the higher-level agent workflow shape.</li>
+</ul>
+<h3 id="64-agent-tool-surface">6.4 Agent tool surface</h3>
+<ul>
+<li>[x] Add a <code>python_diagnostics</code>-style tool that merges Ruff and Ty results
+  while preserving source attribution. Initial public slice is Ruff-backed and
+  reports Ty backend status separately until Ty diagnostics are integrated.</li>
+<li>[x] Add a <code>python_format</code>-style tool that can invoke Ruff formatting.</li>
+<li>[x] Add a <code>python_autofix</code>-style tool for Ruff safe fixes.</li>
+<li>[x] Add a <code>python_imports</code>-style tool for unused-import cleanup, import
+  organization, and combined import hygiene workflows.</li>
+<li>[x] Add a <code>python_typecheck</code>-style tool for Ty checks.</li>
+<li>[x] Add a <code>python_symbol</code>-style tool family for definition, references,
+  rename, and symbol inspection through Ty or the fallback semantic
+  backend.</li>
+<li>[x] Add a <code>python_environment</code>-style tool for interpreter, package, and tool
+  version reporting.</li>
+<li>[x] Add a <code>python_project_model</code>-style tool for source roots, test roots,
+  config files, and package-boundary reporting.</li>
+<li>[ ] Include output-size management in every tool: support pagination,
+      truncation, file-scope filtering, and priority ordering so that
+      large-workspace results fit within agent token budgets.</li>
+<li>[x] Provide contextual diagnostic explanation where possible, not only raw
+      diagnostic text. Help agents understand what a diagnostic means and why
+      it was raised, especially for type errors with non-obvious causes.</li>
+<li>[x] Extend <code>python_typecheck</code> results with shared <code>typeInfo</code>,
+  <code>diagnosticContext</code>, and completion-status fields.</li>
+<li>[x] Extend <code>python_symbol</code> inspection results with shared <code>typeInfo</code>,
+  signature, and documentation fields.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>An agent can perform the full edit-validate loop through structured tools
+  rather than terminal commands and grep fallbacks.</li>
+<li>Tool responses remain useful and bounded even in workspaces with hundreds
+  of diagnostics.</li>
+<li>Type, signature, documentation, and contextual Ty error payloads are
+  returned through stable schemas rather than provider-specific hover text.</li>
+</ul>
+<h3 id="65-result-schema-and-conflict-handling">6.5 Result schema and conflict handling</h3>
+<ul>
+<li>[x] Define a shared diagnostics schema that records source tool (<code>ruff</code>,
+  <code>ty</code>, or fallback provider), severity, rule/code, fixability, location,
+  and explanatory text.</li>
+<li>[x] Define a shared action-result schema for format, autofix, and rename
+  operations.</li>
+<li>[x] Define a shared semantic payload schema for <code>typeInfo</code>, signatures,
+      documentation, <code>diagnosticContext</code>, and output-budget metadata.</li>
+<li>[ ] Decide how to merge overlapping Ruff and Ty diagnostics without hiding
+  useful distinctions.</li>
+<li>[x] Preserve enough metadata for the agent to decide whether an issue is
+  style-only, semantic, or type-driven.</li>
+<li>[ ] Define how unsaved or in-flight content is handled: whether Ruff and Ty
+  can analyze buffer content via stdin or temp files, or whether a
+  save-analyze-revert workflow is required.</li>
+<li>[ ] Clarify the interaction between buffer-level analysis and the language-
+  server protocol's <code>textDocument/didChange</code> model.</li>
+<li>[ ] Support pre-edit validation: the agent should be able to check proposed
+  code against the analysis backends before writing it to disk.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Diagnostic consumers do not need tool-specific parsing logic for common
+  workflows.</li>
+<li>An agent can validate a proposed edit before applying it, without requiring
+  a file save round-trip.</li>
+<li>Type-oriented inspection and contextual diagnostics share one payload shape
+  across <code>python_typecheck</code> and <code>python_symbol</code>.</li>
+</ul>
+<h3 id="66-fallback-and-compatibility-policy">6.6 Fallback and compatibility policy</h3>
+<ul>
+<li>[ ] Define the fallback path when Ruff is unavailable.</li>
+<li>[ ] Define the fallback path when Ty is unavailable.</li>
+<li>[ ] Define the fallback path when Ty is installed but not sufficiently stable
+  for a repository's language features or dependency patterns.</li>
+<li>[x] Preserve compatibility with Python + Pylance as a semantic fallback while
+      Ty rollout is ongoing.</li>
+<li>[ ] Decide whether Dapper should offer soft warnings, hard requirements, or
+  best-effort behavior for missing tools.</li>
+<li>[ ] Define a version-pinning or compatibility-range policy for Ruff and Ty.
+  Decide whether Dapper pins supported versions, accepts semver ranges, or
+  tests against latest-at-ship-time.</li>
+<li>[ ] Add a CI gate that validates Dapper's integration against the latest
+  Ruff and Ty releases before each Dapper release.</li>
+<li>[ ] Define detection and upgrade guidance when a breaking change in Ruff or
+  Ty CLI flags, diagnostic output, or LSP behavior affects Dapper.</li>
+<li>[ ] Define error-recovery and partial-result semantics: distinguish "no
+  issues found" from "analysis failed" from "analysis timed out and
+  results are incomplete."</li>
+<li>[ ] Handle tool misbehavior (crashes, non-zero exit on valid input,
+  nonsensical output) with explicit error reporting rather than silent
+  omission of results.</li>
+<li>[ ] Tag every tool result with a completion status (complete, partial,
+  failed, timed-out) so agents never mistake a backend failure for a
+  clean workspace.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Dapper can degrade gracefully instead of failing the entire agent workflow
+  when one backend is missing or unsuitable.</li>
+<li>Agents can always tell whether a result reflects a complete analysis or a
+  partial/failed one.</li>
+</ul>
+<h3 id="67-configuration-and-user-control">6.7 Configuration and user control</h3>
+<ul>
+<li>[ ] Add extension settings to control preferred semantic backend (<code>ty</code>,
+  <code>pylance</code>, <code>auto</code>).</li>
+<li>[ ] Add extension settings to control preferred quality backend (<code>ruff</code>,
+  <code>none</code>, <code>auto</code>).</li>
+<li>[ ] Add settings for fix mode preferences: diagnostics only, safe autofix,
+  or explicit user confirmation.</li>
+<li>[ ] Add settings or heuristics for workspace trust, large-workspace limits,
+  and background analysis behavior.</li>
+<li>[ ] Document executable resolution order and environment assumptions.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Backend choice and automation level are explicit, debuggable, and default to
+  the Ty-first policy described above.</li>
+</ul>
+<h3 id="68-validation-matrix">6.8 Validation matrix</h3>
+<ul>
+<li>[ ] Validate on a small typed project.</li>
+<li>[ ] Validate on a partially typed legacy project.</li>
+<li>[ ] Validate on a monorepo or multi-root layout.</li>
+<li>[ ] Validate on a notebook-heavy or mixed tooling repository if that user
+  segment matters.</li>
+<li>[ ] Compare Ty-backed navigation and diagnostics against the fallback
+  provider on representative repositories.</li>
+<li>[ ] Check agent workflows for latency, determinism, and diagnostic quality.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Backend selection is based on observed agent outcomes, not only feature
+  claims.</li>
+</ul>
+<h3 id="69-performance-and-latency-model">6.9 Performance and latency model</h3>
+<ul>
+<li>[ ] Define target response-time envelopes for each tool category:
+  syntax check, diagnostics retrieval, navigation, format, autofix.</li>
+<li>[ ] Determine whether incremental or cached analysis is assumed or required
+  for acceptable agent iteration speed.</li>
+<li>[ ] Plan for first-analysis cold start: Ty and Ruff may need to index a
+  large workspace before returning useful results. Define what happens
+  during that window.</li>
+<li>[ ] Measure and document observed latencies on representative repositories
+  for each backend and tool.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Agent edit-validate cycles meet a documented latency threshold on
+  representative workspaces.</li>
+<li>Cold-start behavior is explicit and does not silently degrade tool quality.</li>
+</ul>
+<h3 id="610-concurrency-and-parallel-tool-invocations">6.10 Concurrency and parallel tool invocations</h3>
+<ul>
+<li>[ ] Determine whether Ruff and Ty backends handle concurrent requests safely.</li>
+<li>[ ] Define whether tool handlers need serialization, locking, or
+  request-queuing when multiple tools are invoked in parallel.</li>
+<li>[ ] Define the interaction model when one tool mutates a file (autofix,
+  format) while another reads diagnostics concurrently.</li>
+<li>[ ] Ensure that file-mutating tools return or invalidate stale cached
+  analysis results.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Parallel tool invocations do not produce corrupt, stale, or
+  nondeterministic results.</li>
+</ul>
+<h3 id="611-remote-and-container-development">6.11 Remote and container development</h3>
+<ul>
+<li>[ ] Scope whether Remote-SSH, Dev Containers, WSL, and similar remote
+  development scenarios are in scope.</li>
+<li>[ ] If in scope: define how executable detection (Ruff, Ty, Python) works
+  when the interpreter and tools live on a different machine from the
+  VS Code UI.</li>
+<li>[ ] If in scope: define how runner services (6.2, 6.3) invoke tools on
+  the remote host rather than the local machine.</li>
+<li>[ ] If out of scope: document the limitation explicitly.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Remote development is either supported with tested paths or explicitly
+  documented as unsupported.</li>
+</ul>
+<h3 id="612-testing-strategy-for-the-integration-layer">6.12 Testing strategy for the integration layer</h3>
+<ul>
+<li>[x] Add unit tests for tool handlers with mocked Ruff and Ty output.</li>
+<li>[ ] Add integration tests against pinned Ruff and Ty versions.</li>
+<li>[ ] Add regression tests that detect when a Ruff or Ty version bump changes
+  diagnostic output, CLI flags, or result schema.</li>
+<li>[ ] Ensure the existing extension test suite does not become tightly coupled
+  to language-backend behavior.</li>
+<li>[ ] Include tests for error-recovery paths: backend crashes, timeouts,
+  partial output, and unavailable executables.</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Integration failures are caught by CI before reaching users.</li>
+<li>Backend version bumps produce actionable test failures, not silent behavior
+  changes.</li>
+</ul>
+<h3 id="613-rollout-phases">6.13 Rollout phases</h3>
+<h4 id="phase-a-quality-layer">Phase A — Quality layer</h4>
+<ul>
+<li>[x] Ship Ruff detection, diagnostics, formatting, and autofix.</li>
+<li>[x] Expose Ruff-backed agent tools first.</li>
+<li>[x] Use this phase to harden environment and executable resolution.</li>
+</ul>
+<h4 id="phase-b-semantic-diagnostics">Phase B — Semantic diagnostics</h4>
+<ul>
+<li>[x] Ship Ty detection and structured type-check diagnostics.</li>
+<li>[ ] Compare diagnostics quality and stability against fallback providers.</li>
+<li>[ ] Keep navigation and refactoring behind a validation gate until proven.</li>
+</ul>
+<p>Goal of this phase:</p>
+<ul>
+<li>Establish Ty as the default semantic read-path backend for supported
+  workspaces.</li>
+</ul>
+<h4 id="phase-c-semantic-editor-actions">Phase C — Semantic editor actions</h4>
+<ul>
+<li>[ ] Ship Ty-backed definition, references, rename, and code actions where the
+  integration is reliable.</li>
+<li>[ ] Preserve a fallback path for repositories that do not behave well under
+  Ty.</li>
+</ul>
+<h4 id="phase-d-unified-bug-resolution-loop">Phase D — Unified bug-resolution loop</h4>
+<ul>
+<li>[ ] Combine Ruff diagnostics, Ty diagnostics, test failures, environment
+  state, and Dapper runtime state into one repro-oriented workflow.</li>
+<li>[ ] Integrate the dynamic-static analysis bridge (Section 1.10): enrich
+  static diagnostics with runtime type observations, observed call paths,
+  and resolved import paths from debug sessions where available.</li>
+<li>[ ] Make the output suitable for both agent consumption and human bug-report
+  triage.</li>
+</ul>
+<hr />
+<h2 id="7-suggested-phased-roadmap">7. Suggested phased roadmap</h2>
+<h3 id="phase-1-agent-grade-semantic-read-path">Phase 1 — Agent-grade semantic read path</h3>
+<ul>
+<li>[ ] Syntax checking for files and snippets</li>
+<li>[ ] Import resolution and environment-aware module discovery</li>
+<li>[x] File/workspace diagnostics retrieval</li>
+<li>[x] Ruff diagnostics retrieval with rule and fixability metadata</li>
+<li>[x] Ty diagnostics retrieval with structured type and semantic context</li>
+<li>[x] Definition and reference lookup</li>
+<li>[ ] Type/signature/doc inspection</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>An agent can answer "what is this symbol, where is it used, and what is
+  broken in this workspace?" without relying on grep-heavy fallback flows.</li>
+<li>Type and signature inspection returns structured fields, and contextual Ty
+  diagnostics do not require hover-text or CLI-text scraping.</li>
+</ul>
+<h3 id="phase-2-agent-grade-semantic-edit-path">Phase 2 — Agent-grade semantic edit path</h3>
+<ul>
+<li>[x] Semantic rename</li>
+<li>[x] Ruff autofix and formatting execution</li>
+<li>[ ] Ty-backed rename, code actions, and semantic edit support</li>
+<li>[ ] Organize imports and selected safe quick fixes</li>
+<li>[ ] Workspace-aware refactor previews</li>
+<li>[x] Configuration-aware project model reporting</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>An agent can make targeted structural edits and validate them semantically.</li>
+</ul>
+<h3 id="phase-3-bug-resolution-workflow-support">Phase 3 — Bug-resolution workflow support</h3>
+<ul>
+<li>[x] Repro-oriented environment snapshot</li>
+<li>[ ] Installed-package and interpreter reporting</li>
+<li>[ ] Config source discovery for Python, test, and quality tools</li>
+<li>[ ] Joined view of diagnostics, failing tests, and debug launch context</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>A bug report can be turned into a reproducible, diagnosable workspace state
+  with minimal manual reconstruction.</li>
+</ul>
+<h3 id="phase-4-optional-accelerators">Phase 4 — Optional accelerators</h3>
+<ul>
+<li>[ ] Completion-style candidate lookup</li>
+<li>[ ] call hierarchy</li>
+<li>[ ] notebook semantic support where product needs justify it</li>
+</ul>
+<p>Acceptance signal:</p>
+<ul>
+<li>Agent workflows become faster, but not newly possible.</li>
+</ul>
+<hr />
+<h2 id="8-decision-rule-for-future-features">8. Decision rule for future features</h2>
+<p>Before adding a new language-intelligence feature, ask:</p>
+<ol>
+<li>Does it help an agent find the right code more reliably?</li>
+<li>Does it help an agent make a more semantically correct edit?</li>
+<li>Does it help an agent explain or localize a bug faster?</li>
+<li>Does it improve reproducibility or bug-report resolution?</li>
+<li>Is the integration cost proportionate to the agent-workflow improvement?</li>
+</ol>
+<p>If the answer to questions 1–4 is no, it is probably not part of the minimum
+agent-grade language-intelligence surface. If a feature passes 1–4 but fails
+5, it should be deferred until the cost-benefit ratio improves (e.g., because
+a backend matures or a simpler integration path becomes available).</p>
+<hr />
+<h2 id="9-summary">9. Summary</h2>
+<p>For agent development, the important part of language intelligence is the
+semantic backend, not the editor chrome.</p>
+<p>The minimum useful set is:</p>
+<ul>
+<li>syntax validation</li>
+<li>import and environment resolution</li>
+<li>structured diagnostics</li>
+<li>symbol navigation and cross-references</li>
+<li>type, signature, and doc inspection</li>
+<li>safe semantic refactoring</li>
+<li>project-model awareness</li>
+<li>dynamic-static analysis bridge (runtime observations enriching static
+  analysis)</li>
+</ul>
+<p>Ruff is a strong fit for:</p>
+<ul>
+<li>diagnostics</li>
+<li>formatting</li>
+<li>import cleanup</li>
+<li>unused-code cleanup</li>
+<li>safe mechanical autofix</li>
+</ul>
+<p>Ty is a strong fit for:</p>
+<ul>
+<li>type checking</li>
+<li>rich contextual diagnostics</li>
+<li>language-server-backed navigation</li>
+<li>rename and code actions</li>
+<li>completions and related semantic editor services</li>
+</ul>
+<p>Ruff is not, by itself, a replacement for:</p>
+<ul>
+<li>symbol navigation</li>
+<li>reference lookup</li>
+<li>semantic rename</li>
+<li>rich type analysis</li>
+<li>signature and doc inspection</li>
+</ul>
+<p>Ty plus Ruff is close to a full agent-grade language-intelligence stack,
+provided Ty's beta-state risks are acceptable and its real-world coverage holds
+up on the kinds of repositories Dapper cares about.</p>
+<p>Everything else should be justified against agent correctness or bug-resolution
+value, not against traditional IDE expectations.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
